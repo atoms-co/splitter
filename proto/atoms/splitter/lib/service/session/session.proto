@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package atoms.splitter.lib.service.service;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/lib/service/session/pb";
+
+// Location is a location for component observability. System components move around. Can be used for debugging.
+message Location {
+  string region = 1; // region
+  string node = 2;   // pod_name
+}
+
+// Client represents a general-purpose session client. The client id is expected to persist for reconnects,
+// which will have a later session id.
+message Client {
+  string client_id = 1;
+  Location location = 2;
+}
+
+// SessionMessage is a sub-protocol for bidirectional sessions with a server-determined session lease. The lease
+// is used to delegate other responsibility.
+message Message {
+
+  // Establish establishes a new session for a client.
+  message Establish {
+    Client client = 1;
+    string id = 2;
+  }
+
+  // Established extends the session to the given lease timestamp. Sent in response to Establish/Heartbeat.
+  message Established {
+    google.protobuf.Timestamp ttl = 1;
+  }
+
+  // Heartbeat is a request to extend the session lease.
+  message Heartbeat {
+    google.protobuf.Timestamp now = 1;
+  }
+
+  // Close closes the session.
+  message Close {
+
+  }
+
+  // Closed terminates the session, because it has become defunct or in response to Close. The session lease
+  // is valid until the last established timestamp, but no new session requests can be sent.
+  message Closed {
+    string error = 1;
+  }
+
+  oneof request {
+    Establish establish = 1;
+    Established established = 2;
+    Heartbeat heartbeat = 3;
+    Close close = 4;
+    Closed closed = 5;
+  }
+}
