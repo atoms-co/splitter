@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
+	"time"
 )
 
 // Location is a location for component observability. System components move around. Can be used for debugging.
@@ -43,35 +45,35 @@ func (l Location) String() string {
 // ClientID identifies a live session client instance. It is transient and bound in-memory
 type ClientID string
 
-// Client represents a session client. Immutable.
-type Client struct {
-	pb *session_v1.Client
+// ClientDefinition represents a session client. Immutable.
+type ClientDefinition struct {
+	pb *session_v1.ClientDefinition
 }
 
-func NewClient(location Location) Client {
-	return Client{pb: &session_v1.Client{
+func NewClientDefinition(location Location) ClientDefinition {
+	return ClientDefinition{pb: &session_v1.ClientDefinition{
 		ClientId: uuid.NewString(),
 		Location: UnwrapLocation(location),
 	}}
 }
 
-func WrapClient(pb *session_v1.Client) Client {
-	return Client{pb: pb}
+func WrapClientDefinition(pb *session_v1.ClientDefinition) ClientDefinition {
+	return ClientDefinition{pb: pb}
 }
 
-func UnwrapClient(m Client) *session_v1.Client {
+func UnwrapClientDefinition(m ClientDefinition) *session_v1.ClientDefinition {
 	return m.pb
 }
 
-func (c Client) ID() ClientID {
+func (c ClientDefinition) ID() ClientID {
 	return ClientID(c.pb.GetClientId())
 }
 
-func (c Client) Location() Location {
+func (c ClientDefinition) Location() Location {
 	return WrapLocation(c.pb.GetLocation())
 }
 
-func (c Client) String() string {
+func (c ClientDefinition) String() string {
 	return fmt.Sprintf("%v[%v]", c.ID(), c.Location())
 }
 
@@ -87,13 +89,49 @@ type Message struct {
 	pb *session_v1.Message
 }
 
-func NewEstablishSessionMessage(sid ID, client Client) Message {
+func NewEstablishMessage(sid ID, client ClientDefinition) Message {
 	return WrapMessage(&session_v1.Message{
 		Request: &session_v1.Message_Establish_{
 			Establish: &session_v1.Message_Establish{
-				Client: UnwrapClient(client),
+				Client: UnwrapClientDefinition(client),
 				Id:     string(sid),
 			},
+		},
+	})
+}
+
+func NewHeartbeatMessage(now time.Time) Message {
+	return WrapMessage(&session_v1.Message{
+		Request: &session_v1.Message_Heartbeat_{
+			Heartbeat: &session_v1.Message_Heartbeat{
+				Now: timestamppb.New(now),
+			},
+		},
+	})
+}
+
+func NewCloseMessage() Message {
+	return WrapMessage(&session_v1.Message{
+		Request: &session_v1.Message_Close_{
+			Close: &session_v1.Message_Close{},
+		},
+	})
+}
+
+func NewEstablishedMessage(ttl time.Time) Message {
+	return WrapMessage(&session_v1.Message{
+		Request: &session_v1.Message_Established_{
+			Established: &session_v1.Message_Established{
+				Ttl: timestamppb.New(ttl),
+			},
+		},
+	})
+}
+
+func NewClosedMessage() Message {
+	return WrapMessage(&session_v1.Message{
+		Request: &session_v1.Message_Closed_{
+			Closed: &session_v1.Message_Closed{},
 		},
 	})
 }
@@ -132,14 +170,28 @@ func (m Message) Establish() (Establish, bool) {
 	}
 	establish := m.pb.GetEstablish()
 	return Establish{
-		Client: WrapClient(establish.GetClient()),
-		ID:     ID(establish.GetId()),
+		Definition: WrapClientDefinition(establish.GetClient()),
+		ID:         ID(establish.GetId()),
 	}, true
 }
 
 type Establish struct {
-	Client Client
-	ID     ID
+	Definition ClientDefinition
+	ID         ID
+}
+
+func (m Message) Heartbeat() (time.Time, bool) {
+	if !m.IsHeartbeat() {
+		return time.Time{}, false
+	}
+	return m.pb.GetHeartbeat().GetNow().AsTime(), true
+}
+
+func (m Message) Established() (time.Time, bool) {
+	if !m.IsEstablished() {
+		return time.Time{}, false
+	}
+	return m.pb.GetEstablished().GetTtl().AsTime(), true
 }
 
 func (m Message) MessageType() string {
