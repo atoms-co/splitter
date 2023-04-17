@@ -35,7 +35,7 @@ type Client struct {
 	draining iox.AsyncCloser
 }
 
-func NewClient(ctx context.Context, cl clock.Clock, client ClientDefinition) (*Client, <-chan Message) {
+func NewClient(ctx context.Context, cl clock.Clock, client ClientDefinition) (*Client, Message, <-chan Message) {
 	out := make(chan Message, clientBufChanSize)
 	c := &Client{
 		AsyncCloser: iox.NewAsyncCloser(),
@@ -52,7 +52,7 @@ func NewClient(ctx context.Context, cl clock.Clock, client ClientDefinition) (*C
 	)
 	go c.process(ctx)
 
-	return c, out
+	return c, NewEstablishMessage(c.sid, c.client), out
 }
 
 // Observe observes session messages to the Client
@@ -83,8 +83,6 @@ func (c *Client) process(ctx context.Context) {
 	heartbeat := c.cl.NewTicker(heartbeatDuration)
 	defer heartbeat.Stop()
 
-	// Send initial establish message
-	c.send(ctx, NewEstablishMessage(c.sid, c.client))
 	expiration := c.cl.NewTicker(pendingEstablishedTimeout)
 	defer expiration.Stop()
 

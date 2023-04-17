@@ -16,11 +16,11 @@ func TestClient_Establish(t *testing.T) {
 	cl := mockclock.NewUnsynchronized()
 
 	def := session.NewClientDefinition(session.NewLocation("us-west2", "unknown"))
-	client, out := session.NewClient(ctx, cl, def)
+	client, msg, _ := session.NewClient(ctx, cl, def)
 	defer client.Close()
+	time.Sleep(100 * time.Millisecond)
 
-	// First message should be an Establish message
-	msg := read(t, out)
+	// Initial message should be an Establish message
 	establish, ok := msg.Establish()
 	assert.True(t, ok)
 	assert.Equal(t, def, establish.Definition)
@@ -31,11 +31,11 @@ func TestClient_Heartbeat(t *testing.T) {
 	cl := mockclock.NewUnsynchronized()
 
 	def := session.NewClientDefinition(session.NewLocation("us-west2", "unknown"))
-	client, out := session.NewClient(ctx, cl, def)
+	client, _, out := session.NewClient(ctx, cl, def)
 	defer client.Close()
 
-	read(t, out) // establish
 	client.Observe(ctx, session.NewEstablishedMessage(cl.Now().Add(30*time.Second)))
+	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 4; i++ {
 		cl.Add(10 * time.Second)
@@ -53,10 +53,9 @@ func TestClient_ExpirationPending(t *testing.T) {
 	cl := mockclock.NewUnsynchronized()
 
 	def := session.NewClientDefinition(session.NewLocation("us-west2", "unknown"))
-	client, out := session.NewClient(ctx, cl, def)
+	client, _, _ := session.NewClient(ctx, cl, def)
 	defer client.Close()
-
-	read(t, out) // establish
+	time.Sleep(100 * time.Millisecond)
 
 	// Not timed out yet
 	cl.Add(10 * time.Second)
@@ -74,11 +73,11 @@ func TestClient_ExpirationEstablished(t *testing.T) {
 	cl := mockclock.NewUnsynchronized()
 
 	def := session.NewClientDefinition(session.NewLocation("us-west2", "unknown"))
-	client, out := session.NewClient(ctx, cl, def)
+	client, _, out := session.NewClient(ctx, cl, def)
 	defer client.Close()
 
-	read(t, out) // establish
 	client.Observe(ctx, session.NewEstablishedMessage(cl.Now().Add(30*time.Second)))
+	time.Sleep(100 * time.Millisecond)
 
 	cl.Add(10 * time.Second)
 	time.Sleep(100 * time.Millisecond)
