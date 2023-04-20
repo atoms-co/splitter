@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package atoms.splitter.lib.service.location;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/lib/service/location/pb";
+
+// Location is a location for component observability. System components move around. Can be used for debugging.
+message Location {
+  string region = 1; // region
+  string node = 2;   // pod_name
+}

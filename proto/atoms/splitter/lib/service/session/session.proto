@@ -3,21 +3,16 @@ syntax = "proto3";
 package atoms.splitter.lib.service.service;
 
 import "google/protobuf/timestamp.proto";
+import "atoms/splitter/lib/service/location/location.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/lib/service/session/pb";
-
-// Location is a location for component observability. System components move around. Can be used for debugging.
-message Location {
-  string region = 1; // region
-  string node = 2;   // pod_name
-}
 
 // ClientDefinition represents a general-purpose session client. The client id is expected to persist for reconnects,
 // which will have a later session id.
 message ClientDefinition {
   string client_id = 1;
-  Location location = 2;
+  atoms.splitter.lib.service.location.Location location = 2;
 }
 
 // Message is a sub-protocol for bidirectional sessions with a server-determined session lease. The lease

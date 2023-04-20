@@ -2,6 +2,7 @@ package session_test
 
 import (
 	"context"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/mockclock"
 	"github.com/stretchr/testify/assert"
@@ -22,7 +23,7 @@ func TestServer_Established(t *testing.T) {
 	dontRead(t, out)
 
 	// First message should be an Established message after receiving an Establish
-	server.Observe(ctx, session.NewEstablishMessage(session.NewID(), session.NewClientDefinition(session.NewLocation("us-west2", "unknown"))))
+	server.Observe(ctx, session.NewEstablishMessage(session.NewID(), session.NewClientDefinition(location.New("us-west2", "unknown"))))
 	msg := read(t, out)
 	established, ok := msg.Established()
 	assert.True(t, ok)
@@ -36,7 +37,7 @@ func TestServer_Heartbeat(t *testing.T) {
 	server, out := session.NewServer(ctx, cl)
 	defer server.Close()
 
-	server.Observe(ctx, session.NewEstablishMessage(session.NewID(), session.NewClientDefinition(session.NewLocation("us-west2", "unknown"))))
+	server.Observe(ctx, session.NewEstablishMessage(session.NewID(), session.NewClientDefinition(location.New("us-west2", "unknown"))))
 	read(t, out) // Establish
 
 	server.Observe(ctx, session.NewHeartbeatMessage(cl.Now()))
@@ -70,7 +71,7 @@ func TestServer_ExpirationEstablished(t *testing.T) {
 	server, out := session.NewServer(ctx, cl)
 	defer server.Close()
 
-	server.Observe(ctx, session.NewEstablishMessage(session.NewID(), session.NewClientDefinition(session.NewLocation("us-west2", "unknown"))))
+	server.Observe(ctx, session.NewEstablishMessage(session.NewID(), session.NewClientDefinition(location.New("us-west2", "unknown"))))
 	read(t, out) // Establish
 
 	server.Observe(ctx, session.NewHeartbeatMessage(cl.Now()))

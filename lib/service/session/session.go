@@ -1,7 +1,7 @@
 package session
 
 import (
-	"atoms.co/lib-go/pkg/dist/region"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session/pb"
 	"fmt"
 	"github.com/golang/protobuf/proto"
@@ -9,38 +9,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"time"
 )
-
-// Location is a location for component observability. System components move around. Can be used for debugging.
-type Location struct {
-	pb *session_v1.Location
-}
-
-func NewLocation(region region.Region, node string) Location {
-	return Location{pb: &session_v1.Location{
-		Region: string(region),
-		Node:   node,
-	}}
-}
-
-func WrapLocation(pb *session_v1.Location) Location {
-	return Location{pb: pb}
-}
-
-func UnwrapLocation(l Location) *session_v1.Location {
-	return l.pb
-}
-
-func (l Location) Region() region.Region {
-	return region.Region(l.pb.GetRegion())
-}
-
-func (l Location) Node() string {
-	return l.pb.GetNode()
-}
-
-func (l Location) String() string {
-	return fmt.Sprintf("%v/%v", l.Region(), l.Node())
-}
 
 // ClientID identifies a live session client instance. It is transient and bound in-memory
 type ClientID string
@@ -50,10 +18,10 @@ type ClientDefinition struct {
 	pb *session_v1.ClientDefinition
 }
 
-func NewClientDefinition(location Location) ClientDefinition {
+func NewClientDefinition(loc location.Location) ClientDefinition {
 	return ClientDefinition{pb: &session_v1.ClientDefinition{
 		ClientId: uuid.NewString(),
-		Location: UnwrapLocation(location),
+		Location: location.Unwrap(loc),
 	}}
 }
 
@@ -69,8 +37,8 @@ func (c ClientDefinition) ID() ClientID {
 	return ClientID(c.pb.GetClientId())
 }
 
-func (c ClientDefinition) Location() Location {
-	return WrapLocation(c.pb.GetLocation())
+func (c ClientDefinition) Location() location.Location {
+	return location.Wrap(c.pb.GetLocation())
 }
 
 func (c ClientDefinition) String() string {
