@@ -21,7 +21,7 @@ type ClientDefinition struct {
 func NewClientDefinition(loc location.Location) ClientDefinition {
 	return ClientDefinition{pb: &session_v1.ClientDefinition{
 		ClientId: uuid.NewString(),
-		Location: location.Unwrap(loc),
+		Location: loc.ToProto(),
 	}}
 }
 
@@ -38,7 +38,7 @@ func (c ClientDefinition) ID() ClientID {
 }
 
 func (c ClientDefinition) Location() location.Location {
-	return location.Wrap(c.pb.GetLocation())
+	return location.Parse(c.pb.GetLocation())
 }
 
 func (c ClientDefinition) String() string {

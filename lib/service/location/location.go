@@ -1,39 +1,43 @@
 package location
 
 import (
-	"atoms.co/lib-go/pkg/dist/region"
 	"go.atoms.co/splitter/lib/service/location/pb"
 	"fmt"
 )
 
+// Region represents a persistence-layer region for affinity.
+type Region string
+
+// Node represents a virtual or physical machine or pod.
+type Node string
+
 // Location is a location for component observability. System components move around. Can be used for debugging.
 type Location struct {
-	pb *location_v1.Location
+	Region Region
+	Node   Node
 }
 
-func New(region region.Region, node string) Location {
-	return Location{pb: &location_v1.Location{
-		Region: string(region),
+func New(region Region, node Node) Location {
+	return Location{
+		Region: region,
 		Node:   node,
-	}}
+	}
 }
 
-func Wrap(pb *location_v1.Location) Location {
-	return Location{pb: pb}
+func Parse(pb *location_v1.Location) Location {
+	return Location{
+		Region: Region(pb.GetRegion()),
+		Node:   Node(pb.GetNode()),
+	}
 }
 
-func Unwrap(l Location) *location_v1.Location {
-	return l.pb
-}
-
-func (l Location) Region() region.Region {
-	return region.Region(l.pb.GetRegion())
-}
-
-func (l Location) Node() string {
-	return l.pb.GetNode()
+func (l Location) ToProto() *location_v1.Location {
+	return &location_v1.Location{
+		Region: string(l.Region),
+		Node:   string(l.Node),
+	}
 }
 
 func (l Location) String() string {
-	return fmt.Sprintf("%v/%v", l.Region(), l.Node())
+	return fmt.Sprintf("%v/%v", l.Region, l.Node)
 }
