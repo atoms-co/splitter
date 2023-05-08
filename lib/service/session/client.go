@@ -46,10 +46,6 @@ func NewClient(ctx context.Context, cl clock.Clock, client ClientDefinition) (*C
 		out:         out,
 		draining:    iox.NewAsyncCloser(),
 	}
-	ctx = log.NewContext(ctx,
-		log.String("session_id", string(c.sid)),
-		log.String("client", c.client.String()),
-	)
 	go c.process(ctx)
 
 	return c, NewEstablishMessage(c.sid, c.client), out
@@ -96,13 +92,13 @@ func (c *Client) process(ctx context.Context) {
 				chanx.Drain(expiration.C)
 				expiration.Reset(c.cl.Until(ttl))
 			case msg.IsClosed():
-				log.Infof(ctx, "Session closed")
+				log.Infof(ctx, "Session closed. sid: %v, client: %v", c.sid, c.client)
 				return
 			default:
-				log.Warnf(ctx, "Received unknown message: %v", msg)
+				log.Warnf(ctx, "Received unknown message for sid %v: %v", c.sid, msg)
 			}
 		case <-expiration.C:
-			log.Infof(ctx, "Session expired")
+			log.Infof(ctx, "Session expired. sid: %v, client: %v", c.sid, c.client)
 			return
 		case <-heartbeat.C:
 			c.send(ctx, NewHeartbeatMessage(c.cl.Now()))

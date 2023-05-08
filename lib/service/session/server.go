@@ -92,6 +92,7 @@ func (s *Server) process(ctx context.Context) {
 	for {
 		select {
 		case msg := <-s.in:
+			// First message must be establish
 			if !s.established {
 				if !msg.IsEstablish() {
 					log.Infof(ctx, "Received message before establish %v", msg)
@@ -119,7 +120,6 @@ func (s *Server) process(ctx context.Context) {
 			case msg.IsHeartbeat():
 				now, _ := msg.Heartbeat()
 				expirationTime := now.Add(leaseDuration)
-				log.Infof(ctx, "Received heartbeat for sid %v, extending lease to: %v", s.sid, expirationTime)
 
 				s.send(ctx, NewEstablishedMessage(expirationTime))
 				// reset expiration
@@ -132,7 +132,11 @@ func (s *Server) process(ctx context.Context) {
 				log.Warnf(ctx, "Received unknown message for sid %v: %v", s.sid, msg)
 			}
 		case <-expiration.C:
-			log.Infof(ctx, "Session expired")
+			if s.established {
+				log.Infof(ctx, "Session expired. sid: %v, client: %v", s.sid, s.client)
+			} else {
+				log.Infof(ctx, "Session expired before establish message.")
+			}
 			return
 		case <-s.draining.Closed():
 			s.send(ctx, NewClosedMessage())
