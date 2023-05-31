@@ -5,7 +5,7 @@ import (
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/chanx"
+	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
 	"fmt"
 	"time"
@@ -21,7 +21,8 @@ const (
 )
 
 var (
-	numServerMessages = metrics.NewCounter("atoms.co/libs/go/session/server_messages", "Number of messages", sessionIDKey, messageTypeKey)
+	serverHeartbeatLag = metrics.NewHistogram("atoms.co/libs/go/session/server_heartbeat_lag", "Heartbeat lag", metrics.JavaBucketOptions, sessionIDKey)
+	numServerMessages  = metrics.NewCounter("atoms.co/libs/go/session/server_messages", "Number of messages", sessionIDKey, messageTypeKey)
 )
 
 // Server represents the server-side component of session-scoped keepalive. Can be used agnostic of transport protocol.
@@ -86,7 +87,7 @@ func (s *Server) process(ctx context.Context) {
 	defer close(s.out)
 	defer close(s.establish)
 
-	expiration := s.cl.NewTicker(pendingEstablishedTimeout)
+	expiration := clockx.NewTimer(s.cl, pendingEstablishedTimeout)
 	defer expiration.Stop()
 
 	for {
@@ -105,7 +106,6 @@ func (s *Server) process(ctx context.Context) {
 				establish, _ := msg.Establish()
 				log.Infof(ctx, "Received establish for sid %v, client: %v", establish.ID, establish.Definition)
 
-				// Establish session
 				s.established = true
 				s.client = establish.Definition
 				s.sid = establish.ID
@@ -113,17 +113,17 @@ func (s *Server) process(ctx context.Context) {
 
 				expirationTime := s.cl.Now().Add(leaseDuration)
 				s.send(ctx, NewEstablishedMessage(expirationTime))
-				// reset expiration
-				chanx.Drain(expiration.C)
 				expiration.Reset(s.cl.Until(expirationTime))
 
 			case msg.IsHeartbeat():
 				now, _ := msg.Heartbeat()
-				expirationTime := now.Add(leaseDuration)
-
+				serverHeartbeatLag.Observe(
+					ctx,
+					s.cl.Now().Sub(now),
+					metrics.Tag{Key: sessionIDKey, Value: fmt.Sprintf("%v", s.sid)},
+				)
+				expirationTime := s.cl.Now().Add(leaseDuration)
 				s.send(ctx, NewEstablishedMessage(expirationTime))
-				// reset expiration
-				chanx.Drain(expiration.C)
 				expiration.Reset(s.cl.Until(expirationTime))
 			case msg.IsClose():
 				log.Infof(ctx, "Session closed")

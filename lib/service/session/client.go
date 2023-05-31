@@ -5,7 +5,7 @@ import (
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/chanx"
+	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
 	"time"
 )
@@ -79,7 +79,7 @@ func (c *Client) process(ctx context.Context) {
 	heartbeat := c.cl.NewTicker(heartbeatDuration)
 	defer heartbeat.Stop()
 
-	expiration := c.cl.NewTicker(pendingEstablishedTimeout)
+	expiration := clockx.NewTimer(c.cl, pendingEstablishedTimeout)
 	defer expiration.Stop()
 
 	for {
@@ -88,8 +88,6 @@ func (c *Client) process(ctx context.Context) {
 			switch {
 			case msg.IsEstablished():
 				ttl, _ := msg.Established()
-				// reset expiration
-				chanx.Drain(expiration.C)
 				expiration.Reset(c.cl.Until(ttl))
 			case msg.IsClosed():
 				log.Infof(ctx, "Session closed. sid: %v, client: %v", c.sid, c.client)
