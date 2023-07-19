@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package atoms.splitter;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb";
+option java_package = "co.atoms.splitter.pb";
+
+// Tenant represents a top-level namespace
+message Tenant {
+  string name = 1;
+
+  message Config {
+
+  }
+  Config config = 2;
+
+  google.protobuf.Timestamp created = 3;
+}

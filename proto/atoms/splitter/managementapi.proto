@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package atoms.splitter;
+
+import "proto/public_v1/management.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb";
+option java_package = "co.atoms.splitter.pb";
+
+message ListTenantsRequest {
+
+}
+
+// TenantInfo captures the full tenant information.
+message TenantInfo {
+  Tenant tenant = 1;
+  int64 version = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message ListTenantsResponse {
+  repeated TenantInfo tenants = 1;
+}
+
+message NewTenantRequest {
+  string name = 1;
+  Tenant.Config config = 2;
+}
+
+message NewTenantResponse {
+  Tenant tenant = 1;
+}
+
+message ReadTenantRequest {
+  string name = 1;
+}
+
+message ReadTenantResponse {
+  TenantInfo tenant = 1;
+}
+
+message UpdateTenantRequest {
+  string name = 1;
+  int64 version = 2;
+  Tenant.Config config = 3;
+}
+
+message UpdateTenantResponse {
+  TenantInfo tenant = 1;
+}
+
+message DeleteTenantRequest {
+  string name = 1;
+}
+
+message DeleteTenantResponse {
+
+}
+
+// ManagementService is the public tenant management service.
+service ManagementService {
+  rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
+  rpc NewTenant (NewTenantRequest) returns (NewTenantResponse);
+  rpc ReadTenant (ReadTenantRequest) returns (ReadTenantResponse);
+  rpc UpdateTenant (UpdateTenantRequest) returns (UpdateTenantResponse);
+  rpc DeleteTenant (DeleteTenantRequest) returns (DeleteTenantResponse);
+}

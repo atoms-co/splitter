@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+package atoms.splitter.private;
+
+import "proto/public_v1/management.proto";
+import "proto/public_v1/managementapi.proto";
+import "atoms/splitter/lib/service/session/session.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb/private";
+
+// TenantRequest represents a management request for tenants
+message TenantRequest {
+  oneof req {
+    atoms.splitter.ListTenantsRequest list = 1;
+    atoms.splitter.NewTenantRequest new = 2;
+    atoms.splitter.ReadTenantRequest read = 3;
+    atoms.splitter.UpdateTenantRequest update = 4;
+    atoms.splitter.DeleteTenantRequest delete = 5;
+  }
+}
+
+// TenantResponse represents a management response for tenants
+message TenantResponse {
+  oneof resp {
+    atoms.splitter.ListTenantsResponse list = 1;
+    atoms.splitter.NewTenantResponse new = 2;
+    atoms.splitter.ReadTenantResponse read = 3;
+    atoms.splitter.UpdateTenantResponse update = 4;
+    atoms.splitter.DeleteTenantResponse delete = 5;
+  }
+}
+
+// LeaderHandleRequest represents a management or info request to the leader
+message LeaderHandleRequest {
+  oneof req {
+    TenantRequest tenant = 1;
+  }
+}
+
+// LeaderHandleResponse represents a management or info response from the leader
+message LeaderHandleResponse {
+  oneof resp {
+    TenantResponse tenant = 1;
+  }
+}
+
+// LeaderService is the internal service for leader communication.
+service LeaderService {
+  // Handle sends a request to the leader. It returns a matching response. Mainly for Management and Info
+  rpc Handle (LeaderHandleRequest) returns (LeaderHandleResponse);
+}
