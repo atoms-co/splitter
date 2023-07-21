@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package atoms.splitter;
+
+import "proto/public_v1/placement.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb";
+option java_package = "co.atoms.splitter.pb";
+
+message ListPlacementsRequest {
+
+}
+
+message ListPlacementsResponse {
+  repeated PlacementInfo info = 1;
+}
+
+message InfoPlacementRequest {
+  string name = 1;
+}
+
+message InfoPlacementResponse {
+  PlacementInfo info = 1;
+}
+
+// PlacementService is the public placement service for region load distribution. Read-only.
+service PlacementService {
+  rpc List(ListPlacementsRequest) returns (ListPlacementsResponse);
+
+  rpc Info(InfoPlacementRequest) returns (InfoPlacementResponse);
+}

@@ -9,14 +9,77 @@ option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
 option java_package = "co.atoms.splitter.pb";
 
-// Tenant represents a top-level namespace
+// Tenant represents a top-level namespace.
 message Tenant {
   string name = 1;
 
   message Config {
-
+    // Region preference for coordinator and UNIT/GLOBAL domains. Optional.
+    string region = 1;
+    // Default sharding policy. Optional.
+    ShardingPolicy default_sharding_policy = 2;
   }
   Config config = 2;
 
   google.protobuf.Timestamp created = 3;
+}
+
+message QualifiedDomainName {
+  string tenant = 1;
+  string group = 2; // optional namespace
+  string name = 3;
+}
+
+// Domain represents an ownership domain.
+message Domain {
+  QualifiedDomainName name = 1;
+
+  enum Type {
+    INVALID = 0;
+    // Domain is a indivisible unit, useful for leader election. Key is not used. Region is informational.
+    UNIT = 1;
+    // Domain is a global uuid range. Region is informational.
+    GLOBAL = 2;
+    // Domain is a set of region-explicit uuid ranges. Each key must be qualified by a region.
+    REGIONAL = 3;
+  }
+  Type type = 2;
+
+  // state is the domain state. Different states change the way messages are sent to clients.
+  enum State {
+    UNKNOWN = 0;
+    // active permits work assignments to to be sent to all connected consumers. Default state.
+    ACTIVE = 1;
+    // suspended prevents consumers from receiving new assignments on the domain.
+    // Consumers can be connected to a suspended domain but will never receive updates.
+    SUSPENDED = 2;
+  }
+  State state = 3;
+
+  message Config {
+    // Dynamic placement name if GLOBAL. Optional.
+    string placement = 1;
+    // List of regions if REGIONAL domain. An empty list is valid.
+    repeated string regions = 2;
+
+    // Sharding policy if GLOBAL/REGIONAL.
+    ShardingPolicy sharding_policy = 3;
+
+    // Domains to avoid shard overlap in assignments. Asymmetric: the present domain is penalized in
+    // allocation and may thus be more volatile, not the targets. UNIT domains overlap with every shard.
+    repeated QualifiedDomainName anti_affinity = 4;
+  }
+  Config config = 4;
+
+  google.protobuf.Timestamp created = 5;
+}
+
+message ShardingPolicy {
+  int64 shards = 1; // target #shards (guaranteed minimum)
+}
+
+message DomainInfo {
+  Domain domain = 1;
+  int64 version = 2;
+  google.protobuf.Timestamp timestamp = 3;
 }
