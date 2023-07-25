@@ -9,7 +9,7 @@ option go_package = "go.atoms.co/splitter/pb";
 option java_package = "co.atoms.splitter.pb";
 
 message ListPlacementsRequest {
-
+  string tenant = 1;
 }
 
 message ListPlacementsResponse {
@@ -17,7 +17,7 @@ message ListPlacementsResponse {
 }
 
 message InfoPlacementRequest {
-  string name = 1;
+  QualifiedPlacementName name = 1;
 }
 
 message InfoPlacementResponse {

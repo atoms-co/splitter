@@ -8,19 +8,29 @@ option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
 option java_package = "co.atoms.splitter.pb";
 
-// Placement is a coarse assignment of keys to region for a named aspect, such as "facility_id".
-// It defines a segmentation of the full key range into segments, represented as sorted split
-// points to minimize the work needed to ensure a valid, complete placement w/o gaps or overlaps.
-// Placements may change over time. They are used by domains for dynamic region assignments.
-message Placement {
-  string name = 1;
-  string region = 2; // initial region, starting at zero
+// Distribution is a coarse assignment of keys to region. It defines a segmentation of the full key range
+// into segments, represented as sorted split points to minimize the work needed to ensure a valid,
+// complete key distribution w/o gaps or overlaps.
+message Distribution {
+  string region = 1; // initial region, starting at zero
 
   message Split {
     string key = 1;    // split point, included in the new region
     string region = 2; // new region
   }
-  repeated Split splits = 3;
+  repeated Split splits = 2;
+}
+
+message QualifiedPlacementName {
+  string tenant = 1;
+  string name = 2;
+}
+
+// Placement is a named distribution, such as "facility_id". Placement distributions may change over time.
+// They are used by domains for dynamic region assignments.
+message Placement {
+  QualifiedPlacementName name = 1;
+  Distribution current = 2;
 }
 
 message PlacementInfo {

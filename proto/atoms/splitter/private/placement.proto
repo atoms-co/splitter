@@ -1,0 +1,105 @@
+syntax = "proto3";
+
+package atoms.splitter.private;
+
+import "proto/public_v1/placement.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb/private";
+
+// BlockDistribution is an internal representation of a region assignment as 1024 blocks. That
+// sets a minimal granularity (~0.1%) and is easier for humans to comprehend and manipulate.
+message BlockDistribution {
+  string region = 1;
+
+  message Split {
+    int64 block = 1;
+    string region = 2;
+  }
+  repeated Split splits = 2;
+}
+
+message InternalPlacement {
+  atoms.splitter.QualifiedPlacementName name = 1;
+
+  enum State {
+    UNKNOWN = 0;
+    // Active placements slowly converge to the target distribution.
+    ACTIVE = 1;
+    // Suspended placements are paused.
+    SUSPENDED = 2;
+    // Decommissioned placements are marked for deletion and cannot be updated.
+    // No domain can take a new dependency on this placement.
+    DECOMMISSIONED = 3;
+  }
+  State state = 2;
+
+  message Config {
+    BlockDistribution target = 1;
+    BlockDistribution current = 2;
+  }
+  Config config = 3;
+
+  google.protobuf.Timestamp created = 4;
+}
+
+message ListPlacementsRequest {
+  string tenant = 1;
+}
+
+// InternalPlacementInfo captures the full internal placement information.
+message InternalPlacementInfo {
+  InternalPlacement placement = 1;
+  int64 version = 2;
+  google.protobuf.Timestamp timestamp = 3;
+}
+
+message ListPlacementsResponse {
+  repeated InternalPlacementInfo info = 1;
+}
+
+message NewPlacementRequest {
+  atoms.splitter.QualifiedPlacementName name = 1;
+  InternalPlacement.Config config = 2;
+}
+
+message NewPlacementResponse {
+  InternalPlacementInfo info = 1;
+}
+
+message InfoPlacementRequest {
+  atoms.splitter.QualifiedPlacementName name = 1;
+}
+
+message InfoPlacementResponse {
+  InternalPlacementInfo info = 1;
+}
+
+message UpdatePlacementRequest {
+  string QualifiedPlacementName = 1;
+  int64 version = 2;
+  InternalPlacement.State state = 3;  // optional
+  InternalPlacement.Config config = 4; // optional
+}
+
+message UpdatePlacementResponse {
+  InternalPlacementInfo info = 1;
+}
+
+message DeletePlacementRequest {
+  string QualifiedPlacementName = 1;
+}
+
+message DeletePlacementResponse {
+
+}
+
+// PlacementManagementService is the internal placement management service.
+service PlacementManagementService {
+  rpc ListPlacements(ListPlacementsRequest) returns (ListPlacementsResponse);
+  rpc NewPlacement (NewPlacementRequest) returns (NewPlacementResponse);
+  rpc InfoPlacement (InfoPlacementRequest) returns (InfoPlacementResponse);
+  rpc UpdatePlacement (UpdatePlacementRequest) returns (UpdatePlacementResponse);
+  rpc DeletePlacement (DeletePlacementRequest) returns (DeletePlacementResponse);
+}

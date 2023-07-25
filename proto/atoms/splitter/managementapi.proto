@@ -13,13 +13,6 @@ message ListTenantsRequest {
 
 }
 
-// TenantInfo captures the full tenant information.
-message TenantInfo {
-  Tenant tenant = 1;
-  int64 version = 2;
-  google.protobuf.Timestamp timestamp = 3;
-}
-
 message ListTenantsResponse {
   repeated TenantInfo tenants = 1;
 }
