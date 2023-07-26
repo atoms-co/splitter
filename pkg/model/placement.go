@@ -7,6 +7,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"sort"
 	"strings"
 	"time"
 )
@@ -19,9 +20,25 @@ type DistributionSplit struct {
 
 // Distribution is a coarse assignment of keys to region. It defines a segmentation of the full key range
 // into segments, represented as sorted split points to minimize the work needed to ensure a valid,
-// complete key distribution w/o gaps or overlaps.
+// complete key distribution w/o gaps or overlaps. Immutable.
 type Distribution struct {
 	pb *public_v1.Distribution
+}
+
+func NewDistribution(initial Region, splits ...DistributionSplit) Distribution {
+	sort.Slice(splits, func(i, j int) bool {
+		return splits[i].Key.Less(splits[j].Key)
+	})
+
+	return Distribution{&public_v1.Distribution{
+		Region: string(initial),
+		Splits: slicex.Map(splits, func(s DistributionSplit) *public_v1.Distribution_Split {
+			return &public_v1.Distribution_Split{
+				Key:    s.Key.String(),
+				Region: string(s.Region),
+			}
+		}),
+	}}
 }
 
 func (d Distribution) Initial() Region {

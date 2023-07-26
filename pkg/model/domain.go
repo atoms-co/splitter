@@ -2,6 +2,7 @@ package model
 
 import (
 	"go.atoms.co/slicex"
+	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pb"
 	"fmt"
 	"github.com/golang/protobuf/proto"
@@ -10,9 +11,6 @@ import (
 	"strings"
 	"time"
 )
-
-// Region is a cloud region.
-type Region string
 
 type Version int64
 
@@ -180,6 +178,30 @@ type Key uuid.UUID
 var (
 	ZeroKey = Key(uuid.Nil)
 )
+
+func ParseKey(key string) (Key, error) {
+	ret, err := uuid.Parse(key)
+	if err != nil {
+		return Key{}, fmt.Errorf("invalid uuid '%v': %v", key, err)
+	}
+	return Key(ret), nil
+}
+
+func MustParseKey(key string) Key {
+	ret, err := ParseKey(key)
+	if err != nil {
+		panic(err)
+	}
+	return ret
+}
+
+func (k Key) Less(o Key) bool {
+	return uuidx.Less(uuid.UUID(k), uuid.UUID(o))
+}
+
+func (k Key) String() string {
+	return uuid.UUID(k).String()
+}
 
 type QualifiedKey struct {
 	Domain QualifiedDomainName
