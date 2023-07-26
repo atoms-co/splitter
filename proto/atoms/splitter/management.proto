@@ -29,10 +29,14 @@ message TenantInfo {
   google.protobuf.Timestamp timestamp = 3;
 }
 
-message QualifiedDomainName {
+message QualifiedServiceName {
   string tenant = 1;
   string service = 2; // service namespace
-  string name = 3;
+}
+
+message QualifiedDomainName {
+  QualifiedServiceName service = 1;
+  string name = 2;
 }
 
 // Domain represents an ownership domain.
