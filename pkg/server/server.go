@@ -7,6 +7,7 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/statshandlerx"
 	"go.atoms.co/splitter/pkg/service/frontend"
 	"go.atoms.co/splitter/pkg/storage"
@@ -15,7 +16,6 @@ import (
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"net"
-	"sync"
 	"time"
 )
 
@@ -60,24 +60,9 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, leaderCh <-
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(metrics.WithGrpcStatsHandler(), statshandlerx.WithServerGRPCStatsHandler())
 	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService())
+	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService())
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		<-ctx.Done()
-		gs.GracefulStop()
-	}()
-
-	if err := gs.Serve(listener); err != nil {
-		return err
-	}
-
-	wg.Wait()
-
-	return nil
+	return grpcx.Serve(ctx, gs, listener)
 }
 
 // ServeInternal starts the internal grpc server on the given port. Blocking.
@@ -86,23 +71,7 @@ func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error
 	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl))
 	internal_v1.RegisterRaftServiceServer(gs, frontend.NewRaftService(s.cl, s.raft))
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		<-ctx.Done()
-		gs.GracefulStop()
-	}()
-
-	if err := gs.Serve(listener); err != nil {
-		return err
-	}
-
-	wg.Wait()
-
-	return nil
+	return grpcx.Serve(ctx, gs, listener)
 }
 
 // Shutdown tries to gracefully shut down the instance components.
