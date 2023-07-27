@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
 	"google.golang.org/grpc"
 )
@@ -43,5 +44,23 @@ func (p *placementClient) Info(ctx context.Context, name QualifiedPlacementName)
 		return PlacementInfo{}, err
 	}
 	return WrapPlacementInfo(resp.GetInfo()), nil
+}
 
+type Client interface {
+	RaftJoin(ctx context.Context, addr, id string) error
+}
+
+type client struct {
+	raft internal_v1.RaftServiceClient
+}
+
+func (c client) RaftJoin(ctx context.Context, addr, id string) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func NewClient(cc *grpc.ClientConn) Client {
+	return &client{
+		raft: internal_v1.NewRaftServiceClient(cc),
+	}
 }

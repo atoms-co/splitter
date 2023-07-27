@@ -14,20 +14,26 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/splitter/pkg/server"
+	"go.atoms.co/splitter/pkg/storage/raftstorage"
 	"go.atoms.co/splitter/pkg/util"
 	"fmt"
+	"github.com/hashicorp/raft"
+	boltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
 	"io/ioutil"
 	"net"
 	"os"
+	"path/filepath"
+	"reflect"
 	"sync"
 	"time"
 )
 
 var (
-	endpoint, instance, configPath, dataPath *string
-	port, internalPort                       *int
+	configPath, dataPath, raftID *string
+	port, internalPort, raftPort *int
+	bootstrap                    *bool
 )
 
 func makeStartCommand() *cobra.Command {
@@ -38,12 +44,13 @@ func makeStartCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 
-	endpoint = cmd.PersistentFlags().String("endpoint", "splitter.splitter:50051", "splitter endpoint")
-	instance = cmd.PersistentFlags().String("instance", util.GetInstance(), "instance IP to publish")
 	configPath = cmd.PersistentFlags().String("config_path", "/app_config/splitter.yaml", "Base config file")
-	dataPath = cmd.PersistentFlags().String("data_path", "/data", "Data path")
 	port = cmd.PersistentFlags().Int("port", 50051, "grpc server port")
 	internalPort = cmd.PersistentFlags().Int("internal_port", 50052, "grpc server port for pod-to-pod traffic")
+	raftPort = cmd.PersistentFlags().Int("raft_port", 50053, "tcp port for raft traffic")
+	dataPath = cmd.PersistentFlags().String("data_path", "/tmp", "Data path")
+	raftID = cmd.PersistentFlags().String("raft_id", "id1", "Node id used by Raft")
+	bootstrap = cmd.PersistentFlags().Bool("bootstrap", false, "Bootstrap raft node")
 
 	return cmd
 }
@@ -77,18 +84,104 @@ func startFn(cmd *cobra.Command, args []string) {
 
 	loc := locationx.New()
 
-	s := server.New(ctx, cl, loc, *instance, *endpoint)
+	baseDir := filepath.Join(*dataPath, *raftID)
+	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
+		if err := os.Mkdir(baseDir, 0700); err != nil {
+			log.Fatalf(ctx, "Failed to make base raft path", err)
+		}
+	}
 
-	// (3) Try to read data path
-
-	entries, err := os.ReadDir("./")
+	fsm, err := raftstorage.NewFSM(baseDir)
 	if err != nil {
-		log.Fatalf(ctx, "Failed to read data path, %v", err)
+		log.Fatalf(ctx, "failed to create FSM", err)
 	}
 
-	for _, e := range entries {
-		log.Infof(ctx, "Name, %v", e.Name())
+	ldb, err := boltdb.NewBoltStore(filepath.Join(baseDir, "logs.dat"))
+	if err != nil {
+		log.Fatalf(ctx, "failed to create boltdb log store", err)
 	}
+
+	sdb, err := boltdb.NewBoltStore(filepath.Join(baseDir, "stable.dat"))
+	if err != nil {
+		log.Fatalf(ctx, "failed to create boltdb stable store", err)
+	}
+
+	fss, err := raft.NewFileSnapshotStore(baseDir, 3, os.Stderr)
+	if err != nil {
+		log.Fatalf(ctx, "failed to create file snapshot store", err)
+	}
+
+	bindAddr := fmt.Sprintf("localhost:%v", *raftPort)
+
+	tcpAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
+	if err != nil {
+		log.Fatalf(ctx, "failed to resolve TCP addr", err)
+	}
+
+	// https://github.com/yusufsyaifudin/raft-sample/blob/master/cmd/api/main.go#L52
+	trans, err := raft.NewTCPTransport(bindAddr, tcpAddr, 3, 10*time.Second, os.Stderr)
+	if err != nil {
+		log.Fatalf(ctx, "failed to setup raft tcp transport", err)
+	}
+
+	raftConf := raft.DefaultConfig()
+	raftConf.LocalID = raft.ServerID(*raftID)
+
+	raftObj, err := raft.NewRaft(raftConf, fsm, ldb, sdb, fss, trans)
+	if err != nil {
+		log.Fatalf(ctx, "Failed to initialize raft instance", err)
+	}
+
+	leaderCh := make(chan raft.Observation, 16)
+	observer := raft.NewObserver(leaderCh, true, func(o *raft.Observation) bool {
+		_, ok := o.Data.(raft.LeaderObservation)
+		return ok
+	})
+	raftObj.RegisterObserver(observer)
+
+	quitObs := iox.NewAsyncCloser()
+	go func() {
+		for {
+			select {
+			case obs := <-leaderCh:
+				leaderObs, ok := obs.Data.(raft.LeaderObservation)
+				if !ok {
+					log.Debugf(ctx, "Got unknown observation type from raft", "type", reflect.TypeOf(obs.Data))
+					continue
+				}
+
+				//s.grpcLeaderForwarder.UpdateLeaderAddr(s.config.Datacenter, string(leaderObs.LeaderAddr))
+				//s.peeringBackend.SetLeaderAddress(string(leaderObs.LeaderAddr))
+				//s.raftStorageBackend.LeaderChanged()
+				//s.controllerManager.SetRaftLeader(s.IsLeader())
+
+				log.Infof(ctx, "Got observation", leaderObs)
+
+			case <-quitObs.Closed():
+				raftObj.DeregisterObserver(observer)
+				return
+			}
+		}
+	}()
+
+	if *bootstrap {
+		configuration := raft.Configuration{
+			Servers: []raft.Server{
+				{
+					ID:      raft.ServerID(*raftID),
+					Address: trans.LocalAddr(),
+				},
+			},
+		}
+		f := raftObj.BootstrapCluster(configuration)
+		if err := f.Error(); err != nil {
+			log.Fatalf(ctx, "Failed to bootstrap raft cluster", err)
+		}
+	}
+
+	_, mgmt := raftstorage.New(cl, fsm, raftObj)
+
+	s := server.New(ctx, cl, loc, leaderCh, raftObj, mgmt)
 
 	// (2) Start server and await termination
 
@@ -102,7 +195,7 @@ func startFn(cmd *cobra.Command, args []string) {
 		defer wg.Done()
 		defer quit.Close()
 
-		listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", *port))
+		listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%v", *port))
 		if err != nil {
 			log.Errorf(ctx, "failed to open port %v: %v", *port, err)
 			return
@@ -117,7 +210,7 @@ func startFn(cmd *cobra.Command, args []string) {
 		defer wg.Done()
 		defer quit.Close()
 
-		listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", *internalPort))
+		listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%v", *internalPort))
 		if err != nil {
 			log.Errorf(ctx, "failed to open port %v: %v", *internalPort, err)
 			return
@@ -139,6 +232,7 @@ func startFn(cmd *cobra.Command, args []string) {
 
 	<-quit.Closed()
 	cancel()
+	quitObs.Close()
 
 	log.Infof(ctx, "Shutting down. Exiting in 20s.")
 

@@ -9,8 +9,10 @@ import (
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/statshandlerx"
 	"go.atoms.co/splitter/pkg/service/frontend"
+	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
+	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"net"
 	"sync"
@@ -34,16 +36,23 @@ func WithLeaderFastActivation(fastActivation bool) Option {
 // Server holds all service components.
 type Server struct {
 	cl clock.Clock
+
+	location location.Location
+	raft     *raft.Raft
+	storage  storage.Management
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, instance, endpoint string, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, leaderCh <-chan raft.Observation, raftObj *raft.Raft, storageObj storage.Management, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
 	}
 
 	return &Server{
-		cl: cl,
+		cl:       cl,
+		location: loc,
+		raft:     raftObj,
+		storage:  storageObj,
 	}
 }
 
@@ -75,6 +84,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(metrics.WithGrpcStatsHandler(), statshandlerx.WithServerGRPCStatsHandler())
 	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl))
+	internal_v1.RegisterRaftServiceServer(gs, frontend.NewRaftService(s.cl, s.raft))
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -104,7 +114,19 @@ func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) {
 	defer timer.Stop()
 
 	select {
+	case err := <-wrapFuture(s.raft.Shutdown()):
+		if err != nil {
+			log.Warnf(ctx, "Failed to shutdown raft")
+		}
 	case <-timer.C:
-		log.Warnf(ctx, "Failed to drain leader in %v", time.Since(now))
+		log.Warnf(ctx, "Failed to drain gracefully in %v", time.Since(now))
 	}
+}
+
+func wrapFuture(f raft.Future) <-chan error {
+	errChan := make(chan error)
+	go func() {
+		errChan <- f.Error()
+	}()
+	return errChan
 }
