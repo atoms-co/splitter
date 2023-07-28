@@ -77,7 +77,7 @@ message InfoPlacementResponse {
 }
 
 message UpdatePlacementRequest {
-  string QualifiedPlacementName = 1;
+  atoms.splitter.QualifiedPlacementName name = 1;
   int64 version = 2;
   InternalPlacement.State state = 3;  // optional
   InternalPlacement.Config config = 4; // optional
@@ -88,7 +88,7 @@ message UpdatePlacementResponse {
 }
 
 message DeletePlacementRequest {
-  string QualifiedPlacementName = 1;
+  atoms.splitter.QualifiedPlacementName name = 1;
 }
 
 message DeletePlacementResponse {
@@ -97,9 +97,9 @@ message DeletePlacementResponse {
 
 // PlacementManagementService is the internal placement management service.
 service PlacementManagementService {
-  rpc ListPlacements(ListPlacementsRequest) returns (ListPlacementsResponse);
-  rpc NewPlacement (NewPlacementRequest) returns (NewPlacementResponse);
-  rpc InfoPlacement (InfoPlacementRequest) returns (InfoPlacementResponse);
-  rpc UpdatePlacement (UpdatePlacementRequest) returns (UpdatePlacementResponse);
-  rpc DeletePlacement (DeletePlacementRequest) returns (DeletePlacementResponse);
+  rpc List (ListPlacementsRequest) returns (ListPlacementsResponse);
+  rpc New (NewPlacementRequest) returns (NewPlacementResponse);
+  rpc Info (InfoPlacementRequest) returns (InfoPlacementResponse);
+  rpc Update (UpdatePlacementRequest) returns (UpdatePlacementResponse);
+  rpc Delete (DeletePlacementRequest) returns (DeletePlacementResponse);
 }

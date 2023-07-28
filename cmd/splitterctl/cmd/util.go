@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/splitter/pkg/core"
 	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"google.golang.org/grpc"
@@ -17,7 +18,7 @@ var (
 	insecure    bool
 )
 
-// withClient runs a function in a KEQ2 client context.
+// withClient runs a function in a Splitter client context.
 func withClient(fn func(ctx context.Context, client splitter.Client) error) error {
 	ctx := context.Background()
 
@@ -35,6 +36,25 @@ func withClient(fn func(ctx context.Context, client splitter.Client) error) erro
 	defer func() { _ = cc.Close() }()
 
 	return fn(ctx, splitter.NewClient(cc))
+}
+
+func withInternalClient(fn func(ctx context.Context, client core.Client) error) error {
+	ctx := context.Background()
+
+	opts := []grpc.DialOption{
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1 << 30)), // 1GB
+	}
+	if insecure {
+		opts = append(opts, grpcx.WithInsecure())
+	}
+
+	cc, err := grpcx.Dial(ctx, endpoint, dialTimeout, opts...)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = cc.Close() }()
+
+	return fn(ctx, core.NewClient(cc))
 }
 
 func printJson(pb proto.Message, multiLine bool) {

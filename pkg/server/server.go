@@ -61,6 +61,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(metrics.WithGrpcStatsHandler(), statshandlerx.WithServerGRPCStatsHandler())
 	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService())
 	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService())
+	internal_v1.RegisterPlacementManagementServiceServer(gs, frontend.NewInternalPlacementService())
 
 	return grpcx.Serve(ctx, gs, listener)
 }

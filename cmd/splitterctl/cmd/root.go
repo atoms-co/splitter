@@ -11,7 +11,7 @@ import (
 var (
 	rootCmd = &cobra.Command{
 		Use:   "splitterctl",
-		Short: "KEQ2 command line client",
+		Short: "Splitter command line client",
 	}
 )
 
@@ -22,6 +22,13 @@ func init() {
 
 	rootCmd.AddCommand(raftCmd)
 	raftCmd.AddCommand(makeJoinRaftCommand())
+
+	rootCmd.AddCommand(placementCmd)
+	placementCmd.AddCommand(makeListPlacementCmd())
+	placementCmd.AddCommand(makeNewPlacementCmd())
+	placementCmd.AddCommand(makeInfoPlacementCmd())
+	placementCmd.AddCommand(makeUpdatePlacementCmd())
+	placementCmd.AddCommand(makeDeletePlacementCmd())
 }
 
 func Execute() {

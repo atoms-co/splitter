@@ -8,7 +8,8 @@ import (
 // Management provide access to the management table. The table is expected to be small with all values cached
 // in memory by the leader. Thread-safe.
 type Management struct {
-	Tenants Tenants
+	Tenants    Tenants
+	Placements Placements
 }
 
 type Tenants interface {
