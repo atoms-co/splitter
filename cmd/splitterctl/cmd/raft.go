@@ -2,7 +2,7 @@ package cmd
 
 import (
 	"context"
-	splitter "go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pkg/core"
 	"fmt"
 	"github.com/spf13/cobra"
 )
@@ -25,7 +25,7 @@ func makeJoinRaftCommand() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		id := args[0]
 		addr := args[1]
-		return withClient(func(ctx context.Context, client splitter.Client) error {
+		return withInternalClient(func(ctx context.Context, client core.Client) error {
 			err := client.RaftJoin(ctx, id, addr)
 			if err != nil {
 				return fmt.Errorf("raft join failed: %v", err)
