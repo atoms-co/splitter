@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	splitter "go.atoms.co/splitter/pkg/model"
+	"fmt"
 	"github.com/spf13/cobra"
 )
 
@@ -15,21 +16,20 @@ var (
 
 func makeJoinRaftCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "join <addr> <id>",
+		Use:          "join <id> <addr>",
 		Short:        "join raft group",
 		Args:         cobra.ExactArgs(2),
 		SilenceUsage: true,
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		//addr := args[0]
-		//id := args[1]
+		id := args[0]
+		addr := args[1]
 		return withClient(func(ctx context.Context, client splitter.Client) error {
-			//err := client.DeleteTenant(ctx, tenant)
-			//if err != nil {
-			//	return fmt.Errorf("delete tenant failed: %v", err)
-			//}
-			//fmt.Println("Deleted tenant: ", tenant)
+			err := client.RaftJoin(ctx, id, addr)
+			if err != nil {
+				return fmt.Errorf("raft join failed: %v", err)
+			}
 			return nil
 		})
 	}

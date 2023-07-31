@@ -54,9 +54,13 @@ type client struct {
 	raft internal_v1.RaftServiceClient
 }
 
-func (c client) RaftJoin(ctx context.Context, addr, id string) error {
-	//TODO implement me
-	panic("implement me")
+func (c client) RaftJoin(ctx context.Context, id, addr string) error {
+	req := &internal_v1.RaftJoinRequest{
+		Id:   id,
+		Addr: addr,
+	}
+	_, err := c.raft.Join(ctx, req)
+	return err
 }
 
 func NewClient(cc *grpc.ClientConn) Client {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/log/hclog"
 	"go.atoms.co/lib/service/envoyx"
 	"go.atoms.co/lib/service/locationx"
 	"go.atoms.co/lib/service/metricsx"
@@ -39,6 +40,8 @@ func makeStartCommand() *cobra.Command {
 	dataPath := cmd.PersistentFlags().String("data_path", "/data", "Data path")
 	port := cmd.PersistentFlags().Int("port", 50051, "grpc server port")
 	internalPort := cmd.PersistentFlags().Int("internal_port", 50052, "grpc server port for pod-to-pod traffic")
+	healthPort := cmd.PersistentFlags().Int("health_port", 8081, "http port for health check traffic")
+	pprofPort := cmd.PersistentFlags().Int("pprof_port", 6060, "http port for pprof debug traffic")
 
 	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "tcp port for raft traffic")
 	raftID := cmd.PersistentFlags().String("raft_id", "id1", "Node id used by Raft")
@@ -52,7 +55,7 @@ func makeStartCommand() *cobra.Command {
 
 		envoyx.EnsureReady(ctx, envoyx.WaitTimeout)
 		metricsx.Init(ctx, "splitter")
-		go startPprofHandler(ctx)
+		go startPprofHandler(ctx, *pprofPort)
 
 		loc := locationx.New()
 
@@ -98,14 +101,17 @@ func makeStartCommand() *cobra.Command {
 			log.Fatalf(ctx, "failed to resolve TCP addr", err)
 		}
 
+		hclogger := hclog.New(ctx, "", log.SevDebug)
+
 		// https://github.com/yusufsyaifudin/raft-sample/blob/master/cmd/api/main.go#L52
-		trans, err := raft.NewTCPTransport(bindAddr, tcpAddr, 3, 10*time.Second, os.Stderr)
+		trans, err := raft.NewTCPTransportWithLogger(bindAddr, tcpAddr, 3, 10*time.Second, hclogger)
 		if err != nil {
 			log.Fatalf(ctx, "failed to setup raft tcp transport", err)
 		}
 
 		raftConf := raft.DefaultConfig()
 		raftConf.LocalID = raft.ServerID(*raftID)
+		raftConf.Logger = hclogger
 
 		raftObj, err := raft.NewRaft(raftConf, fsm, ldb, sdb, fss, trans)
 		if err != nil {
@@ -180,6 +186,7 @@ func makeStartCommand() *cobra.Command {
 				log.Errorf(ctx, "failed to open port %v: %v", *port, err)
 				return
 			}
+			log.Infof(ctx, "Serving public traffic on port %d", *port)
 			if err := s.Serve(wctx, listener); err != nil {
 				log.Errorf(ctx, "Server exited: %v", err)
 			}
@@ -195,6 +202,7 @@ func makeStartCommand() *cobra.Command {
 				log.Errorf(ctx, "failed to open port %v: %v", *internalPort, err)
 				return
 			}
+			log.Infof(ctx, "Serving internal traffic on port %d", *internalPort)
 			if err := s.ServeInternal(wctx, listener); err != nil {
 				log.Errorf(ctx, "Server exited: %v", err)
 			}
@@ -208,7 +216,7 @@ func makeStartCommand() *cobra.Command {
 		}()
 
 		// start health check after server components initialized
-		go startHealthCheck(wctx)
+		go startHealthCheck(wctx, *healthPort)
 
 		<-quit.Closed()
 		cancel()

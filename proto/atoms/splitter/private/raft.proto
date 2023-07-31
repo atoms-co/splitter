@@ -5,14 +5,14 @@ package atoms.splitter.private;
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
 
-message JoinRequest {
+message RaftJoinRequest {
   string id = 1;
   string addr = 2;
 }
 
-message JoinResponse {
+message RaftJoinResponse {
 }
 
 service RaftService {
-  rpc Join (JoinRequest) returns (JoinResponse);
+  rpc Join (RaftJoinRequest) returns (RaftJoinResponse);
 }
