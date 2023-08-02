@@ -1,4 +1,4 @@
-package memdb
+package memory
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 
 var (
 	_ storage.Tenants    = (*tenants)(nil)
+	_ storage.Domains    = (*domains)(nil)
 	_ storage.Placements = (*placements)(nil)
 )
 
@@ -30,12 +31,12 @@ type Storage struct {
 	mu      sync.Mutex
 }
 
-func New(cl clock.Clock) (*Storage, storage.Management) {
+func New(cl clock.Clock) (*Storage, storage.Storage) {
 	d := &Storage{
 		cl:      cl,
 		tenants: map[model.TenantName]*tenantInfo{},
 	}
-	return d, storage.Management{
+	return d, storage.Storage{
 		Tenants:    (*tenants)(d),
 		Placements: (*placements)(d),
 	}
@@ -76,7 +77,7 @@ func (t *tenants) Read(ctx context.Context, name model.TenantName) (model.Tenant
 	return info.info, nil
 }
 
-func (t *tenants) Update(ctx context.Context, tenant model.Tenant, guard storage.UpdateGuard) error {
+func (t *tenants) Update(ctx context.Context, tenant model.Tenant, guard model.Version) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -84,7 +85,7 @@ func (t *tenants) Update(ctx context.Context, tenant model.Tenant, guard storage
 	if !ok {
 		return model.ErrNotFound
 	}
-	if info.info.Version() != guard.Guard {
+	if info.info.Version() != guard {
 		return model.ErrVersionMismatch
 	}
 
@@ -98,6 +99,33 @@ func (t *tenants) Delete(ctx context.Context, name model.TenantName) error {
 
 	delete(t.tenants, name)
 	return nil
+}
+
+type domains Storage
+
+func (d *domains) List(ctx context.Context) ([]model.Domain, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *domains) New(ctx context.Context, domain model.Domain) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *domains) Read(ctx context.Context, name model.QualifiedDomainName) (model.Domain, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *domains) Update(ctx context.Context, domain model.Domain, guard model.Version) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (d *domains) Delete(ctx context.Context, name model.QualifiedDomainName) error {
+	//TODO implement me
+	panic("implement me")
 }
 
 type placements Storage

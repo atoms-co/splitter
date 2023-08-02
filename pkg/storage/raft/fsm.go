@@ -1,4 +1,4 @@
-package raftstorage
+package raft
 
 import (
 	"github.com/hashicorp/raft"

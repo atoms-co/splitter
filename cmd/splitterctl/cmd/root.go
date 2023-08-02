@@ -20,9 +20,6 @@ func init() {
 	rootCmd.PersistentFlags().DurationVar(&dialTimeout, "dial-timeout", 5*time.Second, "Dial timeout for connections")
 	rootCmd.PersistentFlags().BoolVar(&insecure, "insecure", false, "Insecure connection")
 
-	rootCmd.AddCommand(raftCmd)
-	raftCmd.AddCommand(makeJoinRaftCommand())
-
 	rootCmd.AddCommand(placementCmd)
 	placementCmd.AddCommand(makeListPlacementCmd())
 	placementCmd.AddCommand(makeNewPlacementCmd())

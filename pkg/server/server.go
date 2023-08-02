@@ -9,11 +9,11 @@ import (
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/statshandlerx"
+	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/service/frontend"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
-	"github.com/hashicorp/raft"
 	"google.golang.org/grpc"
 	"net"
 	"time"
@@ -38,21 +38,27 @@ type Server struct {
 	cl clock.Clock
 
 	location location.Location
-	raft     *raft.Raft
-	storage  storage.Management
+	cluster  *cluster.Cluster
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, leaderCh <-chan raft.Observation, raftObj *raft.Raft, storageObj storage.Management, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cluster.Cluster, leaders <-chan *cluster.Leader, s storage.Storage, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
 	}
 
+	// TODO(jhhurwitz): 08/01/2023 Use leader for forwarding
+	go func() {
+		for l := range leaders {
+			// Initialize leader -> leader.New(s)
+			log.Infof(ctx, "Leader info: %v", l)
+		}
+	}()
+
 	return &Server{
 		cl:       cl,
 		location: loc,
-		raft:     raftObj,
-		storage:  storageObj,
+		cluster:  cluster,
 	}
 }
 
@@ -70,7 +76,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(metrics.WithGrpcStatsHandler(), statshandlerx.WithServerGRPCStatsHandler())
 	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl))
-	internal_v1.RegisterRaftServiceServer(gs, frontend.NewRaftService(s.cl, s.raft))
+	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cl, s.cluster))
 
 	return grpcx.Serve(ctx, gs, listener)
 }
@@ -83,20 +89,12 @@ func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
+	s.cluster.Drain(timeout)
+
 	select {
-	case err := <-wrapFuture(s.raft.Shutdown()):
-		if err != nil {
-			log.Warnf(ctx, "Failed to shutdown raft")
-		}
+	case <-s.cluster.Closed():
+		log.Infof(ctx, "Successfully drained cluster in %v", time.Since(now))
 	case <-timer.C:
 		log.Warnf(ctx, "Failed to drain gracefully in %v", time.Since(now))
 	}
-}
-
-func wrapFuture(f raft.Future) <-chan error {
-	errChan := make(chan error)
-	go func() {
-		errChan <- f.Error()
-	}()
-	return errChan
 }

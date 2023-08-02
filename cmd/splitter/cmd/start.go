@@ -12,8 +12,9 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/lib/yamlx"
+	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/server"
-	"go.atoms.co/splitter/pkg/storage/raftstorage"
+	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
 	"fmt"
 	"github.com/hashicorp/raft"
 	boltdb "github.com/hashicorp/raft-boltdb/v2"
@@ -21,7 +22,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sync"
 	"time"
 )
@@ -45,7 +45,7 @@ func makeStartCommand() *cobra.Command {
 
 	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "tcp port for raft traffic")
 	raftID := cmd.PersistentFlags().String("raft_id", "id1", "Node id used by Raft")
-	bootstrap := cmd.PersistentFlags().Bool("bootstrap", false, "Bootstrap raft node")
+	raftPeers := cmd.PersistentFlags().StringSlice("raft_peers", []string{}, "Raft peers including self")
 
 	cmd.Run = func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
@@ -73,6 +73,8 @@ func makeStartCommand() *cobra.Command {
 				log.Fatalf(ctx, "Failed to make base raft path", err)
 			}
 		}
+
+		// (2) Set up raft node
 
 		fsm, err := raftstorage.NewFSM(baseDir)
 		if err != nil {
@@ -113,63 +115,19 @@ func makeStartCommand() *cobra.Command {
 		raftConf.LocalID = raft.ServerID(*raftID)
 		raftConf.Logger = hclogger
 
-		raftObj, err := raft.NewRaft(raftConf, fsm, ldb, sdb, fss, trans)
+		r, err := raft.NewRaft(raftConf, fsm, ldb, sdb, fss, trans)
 		if err != nil {
 			log.Fatalf(ctx, "Failed to initialize raft instance", err)
 		}
 
-		leaderCh := make(chan raft.Observation, 16)
-		observer := raft.NewObserver(leaderCh, true, func(o *raft.Observation) bool {
-			_, ok := o.Data.(raft.LeaderObservation)
-			return ok
-		})
-		raftObj.RegisterObserver(observer)
+		// (3) Initialize Server components and Server
 
-		quitObs := iox.NewAsyncCloser()
-		go func() {
-			for {
-				select {
-				case obs := <-leaderCh:
-					leaderObs, ok := obs.Data.(raft.LeaderObservation)
-					if !ok {
-						log.Debugf(ctx, "Got unknown observation type from raft", "type", reflect.TypeOf(obs.Data))
-						continue
-					}
+		_, storage := raftstorage.New(cl, fsm, r)
+		c, leaders := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(bindAddr), r, *raftPeers)
 
-					//s.grpcLeaderForwarder.UpdateLeaderAddr(s.config.Datacenter, string(leaderObs.LeaderAddr))
-					//s.peeringBackend.SetLeaderAddress(string(leaderObs.LeaderAddr))
-					//s.raftStorageBackend.LeaderChanged()
-					//s.controllerManager.SetRaftLeader(s.IsLeader())
+		s := server.New(ctx, cl, loc, c, leaders, storage)
 
-					log.Infof(ctx, "Got observation", leaderObs)
-
-				case <-quitObs.Closed():
-					raftObj.DeregisterObserver(observer)
-					return
-				}
-			}
-		}()
-
-		if *bootstrap {
-			configuration := raft.Configuration{
-				Servers: []raft.Server{
-					{
-						ID:      raft.ServerID(*raftID),
-						Address: trans.LocalAddr(),
-					},
-				},
-			}
-			f := raftObj.BootstrapCluster(configuration)
-			if err := f.Error(); err != nil {
-				log.Fatalf(ctx, "Failed to bootstrap raft cluster", err)
-			}
-		}
-
-		_, mgmt := raftstorage.New(cl, fsm, raftObj)
-
-		s := server.New(ctx, cl, loc, leaderCh, raftObj, mgmt)
-
-		// (2) Start server and await termination
+		// (4) Start server and await termination
 
 		quit := iox.NewAsyncCloser()
 		wctx, cancel := contextx.WithQuitCancel(ctx, quit.Closed())
@@ -215,12 +173,12 @@ func makeStartCommand() *cobra.Command {
 			log.Infof(ctx, "Received '%v' signal. Exiting", sig)
 		}()
 
-		// start health check after server components initialized
+		// (5) Start health check after server components initialized
+
 		go startHealthCheck(wctx, *healthPort)
 
 		<-quit.Closed()
 		cancel()
-		quitObs.Close()
 
 		log.Infof(ctx, "Shutting down. Exiting in 20s.")
 

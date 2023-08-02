@@ -29,19 +29,15 @@ type Client interface {
 	InfoPlacement(ctx context.Context, name model.QualifiedPlacementName) (InternalPlacementInfo, error)
 	UpdatePlacement(ctx context.Context, name model.QualifiedPlacementName, guard model.Version, opts ...UpdatePlacementOption) (InternalPlacementInfo, error)
 	DeletePlacement(ctx context.Context, name model.QualifiedPlacementName) error
-
-	RaftJoin(ctx context.Context, addr, id string) error
 }
 
 type client struct {
 	placement internal_v1.PlacementManagementServiceClient
-	raft      internal_v1.RaftServiceClient
 }
 
 func NewClient(cc *grpc.ClientConn) Client {
 	return &client{
 		placement: internal_v1.NewPlacementManagementServiceClient(cc),
-		raft:      internal_v1.NewRaftServiceClient(cc),
 	}
 }
 
@@ -104,14 +100,5 @@ func (c *client) DeletePlacement(ctx context.Context, name model.QualifiedPlacem
 		Name: name.ToProto(),
 	}
 	_, err := c.placement.Delete(ctx, req)
-	return err
-}
-
-func (c client) RaftJoin(ctx context.Context, id, addr string) error {
-	req := &internal_v1.RaftJoinRequest{
-		Id:   id,
-		Addr: addr,
-	}
-	_, err := c.raft.Join(ctx, req)
 	return err
 }

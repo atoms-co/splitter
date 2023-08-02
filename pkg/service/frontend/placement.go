@@ -8,7 +8,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
-	"go.atoms.co/splitter/pkg/storage/memdb"
+	memorystorage "go.atoms.co/splitter/pkg/storage/memory"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
 	"fmt"
@@ -66,7 +66,7 @@ type InternalPlacementService struct {
 }
 
 func NewInternalPlacementService() *InternalPlacementService {
-	_, db := memdb.New(clock.New())
+	_, db := memorystorage.New(clock.New())
 	return &InternalPlacementService{db: db.Placements}
 }
 

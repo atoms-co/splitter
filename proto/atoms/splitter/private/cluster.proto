@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package atoms.splitter.private;
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb/private";
+
+message ClusterNotifyRequest {
+  string id = 1;
+  string address = 2;
+}
+
+message ClusterNotifyResponse {
+}
+
+service ClusterService {
+  rpc Notify (ClusterNotifyRequest) returns (ClusterNotifyResponse);
+}
