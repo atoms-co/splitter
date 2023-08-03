@@ -12,3 +12,11 @@ message Location {
   string region = 1; // region
   string node = 2;   // pod_name
 }
+
+// Instance identifies a component instance. The instance id must be globally unique and both id an the location
+// must be immutable for the lifetime of the instance. Useful for debugging.
+message Instance {
+  string id = 1;
+  atoms.splitter.lib.service.location.Location location = 2;
+  google.protobuf.Timestamp created = 3;
+}

@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/clockx"
@@ -28,14 +29,14 @@ type Client struct {
 	cl clock.Clock
 
 	sid    ID
-	client ClientDefinition
+	client location.Instance
 
 	in       chan Message
 	out      chan Message
 	draining iox.AsyncCloser
 }
 
-func NewClient(ctx context.Context, cl clock.Clock, client ClientDefinition) (*Client, Message, <-chan Message) {
+func NewClient(ctx context.Context, cl clock.Clock, client location.Instance) (*Client, Message, <-chan Message) {
 	out := make(chan Message, clientBufChanSize)
 	c := &Client{
 		AsyncCloser: iox.NewAsyncCloser(),

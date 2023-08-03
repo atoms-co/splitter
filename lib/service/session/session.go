@@ -3,7 +3,6 @@ package session
 import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session/pb"
-	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -11,44 +10,7 @@ import (
 )
 
 // ClientID identifies a live session client instance. It is transient and bound in-memory
-type ClientID string
-
-// ClientDefinition represents a session client. Immutable.
-type ClientDefinition struct {
-	pb *session_v1.ClientDefinition
-}
-
-func NewClientDefinition(loc location.Location) ClientDefinition {
-	return ClientDefinition{pb: &session_v1.ClientDefinition{
-		ClientId: uuid.NewString(),
-		Location: loc.ToProto(),
-		Created:  timestamppb.New(time.Now()),
-	}}
-}
-
-func WrapClientDefinition(pb *session_v1.ClientDefinition) ClientDefinition {
-	return ClientDefinition{pb: pb}
-}
-
-func UnwrapClientDefinition(m ClientDefinition) *session_v1.ClientDefinition {
-	return m.pb
-}
-
-func (c ClientDefinition) ID() ClientID {
-	return ClientID(c.pb.GetClientId())
-}
-
-func (c ClientDefinition) Location() location.Location {
-	return location.Parse(c.pb.GetLocation())
-}
-
-func (c ClientDefinition) Created() time.Time {
-	return c.pb.GetCreated().AsTime()
-}
-
-func (c ClientDefinition) String() string {
-	return fmt.Sprintf("%v[%v]@%v", c.ID(), c.Location(), c.Created().Unix())
-}
+type ClientID = location.InstanceID
 
 // ID identifies a unique session ID.
 type ID string
@@ -62,11 +24,11 @@ type Message struct {
 	pb *session_v1.Message
 }
 
-func NewEstablishMessage(sid ID, client ClientDefinition) Message {
+func NewEstablishMessage(sid ID, client location.Instance) Message {
 	return WrapMessage(&session_v1.Message{
 		Request: &session_v1.Message_Establish_{
 			Establish: &session_v1.Message_Establish{
-				Client: UnwrapClientDefinition(client),
+				Client: location.UnwrapInstance(client),
 				Id:     string(sid),
 			},
 		},
@@ -143,14 +105,14 @@ func (m Message) Establish() (Establish, bool) {
 	}
 	establish := m.pb.GetEstablish()
 	return Establish{
-		Definition: WrapClientDefinition(establish.GetClient()),
-		ID:         ID(establish.GetId()),
+		Instance: location.WrapInstance(establish.GetClient()),
+		ID:       ID(establish.GetId()),
 	}, true
 }
 
 type Establish struct {
-	Definition ClientDefinition
-	ID         ID
+	Instance location.Instance
+	ID       ID
 }
 
 func (m Message) Heartbeat() (time.Time, bool) {

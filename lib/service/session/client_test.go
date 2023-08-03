@@ -16,7 +16,7 @@ func TestClient_Establish(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 
-	def := session.NewClientDefinition(location.New("us-west2", "unknown"))
+	def := location.NewInstance(location.New("us-west2", "unknown"))
 	client, msg, _ := session.NewClient(ctx, cl, def)
 	defer client.Close()
 	time.Sleep(100 * time.Millisecond)
@@ -24,14 +24,14 @@ func TestClient_Establish(t *testing.T) {
 	// Initial message should be an Establish message
 	establish, ok := msg.Establish()
 	assert.True(t, ok)
-	assert.Equal(t, def, establish.Definition)
+	assert.Equal(t, def, establish.Instance)
 }
 
 func TestClient_Heartbeat(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 
-	def := session.NewClientDefinition(location.New("us-west2", "unknown"))
+	def := location.NewInstance(location.New("us-west2", "unknown"))
 	client, _, out := session.NewClient(ctx, cl, def)
 	defer client.Close()
 
@@ -53,7 +53,7 @@ func TestClient_ExpirationPending(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 
-	def := session.NewClientDefinition(location.New("us-west2", "unknown"))
+	def := location.NewInstance(location.New("us-west2", "unknown"))
 	client, _, _ := session.NewClient(ctx, cl, def)
 	defer client.Close()
 	time.Sleep(100 * time.Millisecond)
@@ -73,7 +73,7 @@ func TestClient_ExpirationEstablished(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 
-	def := session.NewClientDefinition(location.New("us-west2", "unknown"))
+	def := location.NewInstance(location.New("us-west2", "unknown"))
 	client, _, out := session.NewClient(ctx, cl, def)
 	defer client.Close()
 

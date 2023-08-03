@@ -8,21 +8,13 @@ import "atoms/splitter/lib/service/location/location.proto";
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/lib/service/session/pb";
 
-// ClientDefinition represents a general-purpose session client. The client id is expected to persist for reconnects,
-// which will have a later session id.
-message ClientDefinition {
-  string client_id = 1;
-  atoms.splitter.lib.service.location.Location location = 2;
-  google.protobuf.Timestamp created = 3;
-}
-
 // Message is a sub-protocol for bidirectional sessions with a server-determined session lease. The lease
 // is used to delegate other responsibility.
 message Message {
 
   // Establish establishes a new session for a client.
   message Establish {
-    ClientDefinition client = 1;
+    atoms.splitter.lib.service.location.Instance client = 1;
     string id = 2;
   }
 

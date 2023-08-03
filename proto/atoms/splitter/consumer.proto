@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package atoms.splitter;
 
-import "atoms/splitter/lib/service/session/session.proto";
+import "atoms/splitter/lib/service/location/location.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
@@ -10,6 +10,6 @@ option java_package = "co.atoms.splitter.pb";
 
 // Consumer defines a domain consumer.
 message Consumer {
-  atoms.splitter.lib.service.service.ClientDefinition client = 1;
+  atoms.splitter.lib.service.location.Instance client = 1;
   string endpoint = 2;
 }

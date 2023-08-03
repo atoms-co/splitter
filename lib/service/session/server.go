@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/clockx"
@@ -32,7 +33,7 @@ type Server struct {
 	cl clock.Clock
 
 	sid         ID
-	client      ClientDefinition
+	client      location.Instance
 	establish   chan Establish
 	established bool
 
@@ -104,10 +105,10 @@ func (s *Server) process(ctx context.Context) {
 			switch {
 			case msg.IsEstablish():
 				establish, _ := msg.Establish()
-				log.Infof(ctx, "Received establish for sid %v, client: %v", establish.ID, establish.Definition)
+				log.Infof(ctx, "Received establish for sid %v, client: %v", establish.ID, establish.Instance)
 
 				s.established = true
-				s.client = establish.Definition
+				s.client = establish.Instance
 				s.sid = establish.ID
 				s.establish <- establish
 
