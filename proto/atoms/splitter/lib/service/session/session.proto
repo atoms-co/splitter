@@ -13,6 +13,7 @@ option go_package = "go.atoms.co/splitter/lib/service/session/pb";
 message ClientDefinition {
   string client_id = 1;
   atoms.splitter.lib.service.location.Location location = 2;
+  google.protobuf.Timestamp created = 3;
 }
 
 // Message is a sub-protocol for bidirectional sessions with a server-determined session lease. The lease

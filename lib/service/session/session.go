@@ -22,6 +22,7 @@ func NewClientDefinition(loc location.Location) ClientDefinition {
 	return ClientDefinition{pb: &session_v1.ClientDefinition{
 		ClientId: uuid.NewString(),
 		Location: loc.ToProto(),
+		Created:  timestamppb.New(time.Now()),
 	}}
 }
 
@@ -41,8 +42,12 @@ func (c ClientDefinition) Location() location.Location {
 	return location.Parse(c.pb.GetLocation())
 }
 
+func (c ClientDefinition) Created() time.Time {
+	return c.pb.GetCreated().AsTime()
+}
+
 func (c ClientDefinition) String() string {
-	return fmt.Sprintf("%v[%v]", c.ID(), c.Location())
+	return fmt.Sprintf("%v[%v]@%v", c.ID(), c.Location(), c.Created().Unix())
 }
 
 // ID identifies a unique session ID.

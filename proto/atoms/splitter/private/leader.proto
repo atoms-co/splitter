@@ -4,8 +4,12 @@ package atoms.splitter.private;
 
 import "proto/public_v1/management.proto";
 import "proto/public_v1/managementapi.proto";
+import "proto/public_v1/placement.proto";
+import "proto/public_v1/consumer.proto";
 import "proto/internal_v1/placement.proto";
 import "atoms/splitter/lib/service/session/session.proto";
+import "atoms/splitter/lib/service/location/location.proto";
+import "google/protobuf/timestamp.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
@@ -68,8 +72,145 @@ message LeaderHandleResponse {
   }
 }
 
+// Grant represents a granted tenant with an implicit lease.
+message Grant {
+  string id = 1;
+  string tenant = 2;
+  google.protobuf.Timestamp assigned = 3; // informational
+}
+
+message WorkerMessage {
+
+  // Register must be the first message from the worker on connect. If a re-connect, the leader may already know about the
+  // worker, in which case existing assignments are generally chosen to continue to minimize disruption (assuming the
+  // session lease has not expired meanwhile).
+  //
+  // Revoked grants are omitted and implicitly relinquished on re-connect.
+  message Register {
+    atoms.splitter.Consumer worker = 1;
+    repeated Grant active = 2;
+  }
+
+  // Deregister indicates that the worker will soon disappear, usually restarted in ~30s. The leader should initiate a
+  // graceful drain of responsibilities by revoking all tenants and wait for them to relinquish. No new work should be
+  // assigned to the worker.
+  message Deregister {
+
+  }
+
+  // LeaseUpdate extends all granted tenant leases. Note that after a re-connect, only explicitly (re-)granted
+  // leases are included. This lease is independent of -- and generally longer than -- the session lease.
+  message LeaseUpdate {
+    google.protobuf.Timestamp ttl = 1;
+  }
+
+  // Disconnect indicates that the worker should immediately disconnect. The server will generally only send
+  // DISCONNECT when draining.
+  message Disconnect {
+
+  }
+
+  // Assign grants an exclusive tenant lease to the worker, under the worker lease. The worker must create a
+  // tenant coordinator and lease domain ownership to its clients. The tenant state is sent out with the assignment.
+  //
+  // The leader must explicitly re-grant unexpired tenant leases for reconnected consumers.
+  message Assign {
+    Grant grant = 1;
+
+    atoms.splitter.TenantInfo info = 2;
+    repeated atoms.splitter.DomainInfo domains = 3;
+    repeated atoms.splitter.PlacementInfo placements = 4;
+  }
+
+  // Revoke gracefully revokes previously granted tenant leases. The worker should relinquish the coordinator
+  // quickly. Subsequent lease updates do not apply to the revoked tenants. The client shard leases should generally
+  // be long enough to ensure uninterrupted ownership during tenant reassignments.
+  message Revoke {
+    repeated Grant grants = 1;
+  }
+
+  // Relinquish returns the voluntary exclusive lease for the given tenants back to the leader. It is usually sent in
+  // response to REVOKE before the lease expires.
+  message Relinquished {
+    repeated Grant grants = 1;
+  }
+
+  oneof msg {
+    Register register = 1;
+    Deregister deregister = 2;
+    LeaseUpdate lease = 3;
+    Disconnect disconnect = 4;
+    Assign assign = 5;
+    Revoke revoke = 6;
+    Relinquished relinquished = 7;
+  }
+}
+
+// StateMessage are incremental tenant state updates sent to the coordinators only.
+message StateMessage {
+  message Tenant {
+    atoms.splitter.TenantInfo updated = 1;
+  }
+
+  message Domain {
+    repeated atoms.splitter.DomainInfo updated = 1;
+    repeated atoms.splitter.QualifiedDomainName removed = 2;
+  }
+
+  message Placement {
+    repeated atoms.splitter.PlacementInfo updated = 1;
+    repeated atoms.splitter.QualifiedPlacementName removed = 2;
+  }
+
+  oneof msg {
+    Tenant tenant = 1;
+    Domain domain = 2;
+    Placement placement = 3;
+  }
+}
+
+// ClusterMessage represents an update in tenant ownership. The initial update contains a full routing table.
+message ClusterMessage {
+  message Assignment {
+    atoms.splitter.Consumer worker = 1;
+    repeated Grant grants = 2;
+  }
+
+  message Full {
+    repeated Assignment assignments = 1;
+  }
+
+  message Update {
+    repeated Assignment assignments = 1;
+  }
+
+  message Remove {
+    repeated string tenants = 1;
+  }
+
+  oneof msg {
+    Full full = 1;
+    Update update = 2;
+    Remove remove = 3;
+  }
+}
+
+message JoinMessage {
+  oneof msg {
+    atoms.splitter.lib.service.service.Message session = 1;
+    WorkerMessage worker = 2;
+    StateMessage state = 3;
+    ClusterMessage cluster = 4;
+  }
+}
+
+
 // LeaderService is the internal service for leader communication.
 service LeaderService {
+  // Join establishes a bi-directional connection between a worker and the leader. The leader will assign
+  // and load-balance tenants to each worker.
+  rpc Join (stream JoinMessage) returns (stream JoinMessage);
+
   // Handle sends a request to the leader. It returns a matching response. Mainly for Management and Info
   rpc Handle (LeaderHandleRequest) returns (LeaderHandleResponse);
 }

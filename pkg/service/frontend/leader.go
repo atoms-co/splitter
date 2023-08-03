@@ -16,6 +16,10 @@ func NewLeaderService(cl clock.Clock) *LeaderService {
 	}
 }
 
-func (l LeaderService) Handle(ctx context.Context, request *internal_v1.LeaderHandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error {
+	panic("implement me")
+}
+
+func (l *LeaderService) Handle(ctx context.Context, request *internal_v1.LeaderHandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	return nil, nil
 }
