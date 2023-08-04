@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"go.atoms.co/splitter/pkg/core"
+	"go.atoms.co/splitter/pkg/model"
 	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"github.com/spf13/cobra"
@@ -149,6 +150,33 @@ func makeDeletePlacementCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("delete placement failed: %v", err)
 			}
+			return nil
+		})
+	}
+
+	return cmd
+}
+
+func makePublicInfoPlacementCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "pubinfo <tenant>/<placement>",
+		Short:        "Show public placement information",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+	}
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		name, ok := splitter.ParseQualifiedPlacementNameStr(args[0])
+		if !ok {
+			return fmt.Errorf("invalid placement name")
+		}
+
+		return withClient(func(ctx context.Context, client model.Client) error {
+			info, err := client.InfoPlacement(ctx, name)
+			if err != nil {
+				return fmt.Errorf("info placement failed: %v", err)
+			}
+			printJson(model.UnwrapPlacementInfo(info), true)
 			return nil
 		})
 	}

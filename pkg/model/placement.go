@@ -105,8 +105,8 @@ type Placement struct {
 
 func NewPlacement(name QualifiedPlacementName, distribution Distribution) Placement {
 	return Placement{pb: &public_v1.Placement{
-		Name:    nil,
-		Current: nil,
+		Name:    name.ToProto(),
+		Current: distribution.pb,
 	}}
 }
 

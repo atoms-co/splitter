@@ -8,8 +8,8 @@ option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
 option java_package = "co.atoms.splitter.pb";
 
-// Consumer defines a domain consumer.
-message Consumer {
+// Instance defines an addressable dynamic component instance. Immutable.
+message Instance {
   atoms.splitter.lib.service.location.Instance client = 1;
   string endpoint = 2;
 }

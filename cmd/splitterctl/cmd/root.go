@@ -26,6 +26,8 @@ func init() {
 	placementCmd.AddCommand(makeInfoPlacementCmd())
 	placementCmd.AddCommand(makeUpdatePlacementCmd())
 	placementCmd.AddCommand(makeDeletePlacementCmd())
+
+	placementCmd.AddCommand(makePublicInfoPlacementCmd())
 }
 
 func Execute() {

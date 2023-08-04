@@ -87,7 +87,7 @@ message WorkerMessage {
   //
   // Revoked grants are omitted and implicitly relinquished on re-connect.
   message Register {
-    atoms.splitter.Consumer worker = 1;
+    atoms.splitter.Instance worker = 1;
     repeated Grant active = 2;
   }
 
@@ -172,7 +172,7 @@ message StateMessage {
 // ClusterMessage represents an update in tenant ownership. The initial update contains a full routing table.
 message ClusterMessage {
   message Assignment {
-    atoms.splitter.Consumer worker = 1;
+    atoms.splitter.Instance worker = 1;
     repeated Grant grants = 2;
   }
 
