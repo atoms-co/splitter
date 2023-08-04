@@ -128,7 +128,7 @@ func (c *Cluster) Notify(ctx context.Context, id string, address string) error {
 		return nil
 	}
 
-	log.Infof(ctx, "Reached expected bootstrap count of %d, starting ", len(c.peers))
+	log.Infof(ctx, "Reached expected bootstrap count %d, servers: %v", len(c.peers), servers)
 	err = c.raft.BootstrapCluster(raft.Configuration{
 		Servers: servers,
 	}).Error()

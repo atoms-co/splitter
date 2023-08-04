@@ -15,6 +15,7 @@ import (
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/server"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
+	"go.atoms.co/splitter/pkg/util/raftx"
 	"fmt"
 	"github.com/hashicorp/raft"
 	boltdb "github.com/hashicorp/raft-boltdb/v2"
@@ -44,8 +45,9 @@ func makeStartCommand() *cobra.Command {
 	pprofPort := cmd.PersistentFlags().Int("pprof_port", 6060, "http port for pprof debug traffic")
 
 	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "tcp port for raft traffic")
-	raftID := cmd.PersistentFlags().String("raft_id", "id1", "Node id used by Raft")
-	raftPeers := cmd.PersistentFlags().StringSlice("raft_peers", []string{}, "Raft peers including self")
+	raftID := cmd.PersistentFlags().String("raft_id", getName(), "Node id used by Raft")
+	raftServer := cmd.PersistentFlags().String("raft_server", "", "Server address used by Raft")
+	joinPeers := cmd.PersistentFlags().StringSlice("join_peers", []string{}, "Peers to join including self")
 
 	cmd.Run = func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
@@ -96,7 +98,7 @@ func makeStartCommand() *cobra.Command {
 			log.Fatalf(ctx, "failed to create file snapshot store", err)
 		}
 
-		bindAddr := fmt.Sprintf("localhost:%v", *raftPort)
+		bindAddr := fmt.Sprintf("0.0.0.0:%v", *raftPort)
 
 		tcpAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
 		if err != nil {
@@ -106,7 +108,7 @@ func makeStartCommand() *cobra.Command {
 		hclogger := hclog.New(ctx, "", log.SevDebug)
 
 		// https://github.com/yusufsyaifudin/raft-sample/blob/master/cmd/api/main.go#L52
-		trans, err := raft.NewTCPTransportWithLogger(bindAddr, tcpAddr, 3, 10*time.Second, hclogger)
+		trans, err := raftx.NewTCPTransportWithLogger(bindAddr, tcpAddr, 3, 10*time.Second, hclogger)
 		if err != nil {
 			log.Fatalf(ctx, "failed to setup raft tcp transport", err)
 		}
@@ -123,7 +125,7 @@ func makeStartCommand() *cobra.Command {
 		// (3) Initialize Server components and Server
 
 		_, storage := raftstorage.New(cl, fsm, r)
-		c, leaders := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(bindAddr), r, *raftPeers)
+		c, leaders := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *joinPeers)
 
 		s := server.New(ctx, cl, loc, c, leaders, storage)
 
@@ -139,7 +141,7 @@ func makeStartCommand() *cobra.Command {
 			defer wg.Done()
 			defer quit.Close()
 
-			listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%v", *port))
+			listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", *port))
 			if err != nil {
 				log.Errorf(ctx, "failed to open port %v: %v", *port, err)
 				return
@@ -155,7 +157,7 @@ func makeStartCommand() *cobra.Command {
 			defer wg.Done()
 			defer quit.Close()
 
-			listener, err := net.Listen("tcp", fmt.Sprintf("localhost:%v", *internalPort))
+			listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", *internalPort))
 			if err != nil {
 				log.Errorf(ctx, "failed to open port %v: %v", *internalPort, err)
 				return

@@ -30,3 +30,10 @@ func getInstance() string {
 	}
 	return "localhost"
 }
+
+func getName() string {
+	if name := os.Getenv("POD_NAME"); len(name) > 0 {
+		return name
+	}
+	return "local"
+}
