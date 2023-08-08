@@ -25,8 +25,10 @@ const (
 )
 
 var (
-	numApplied = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_applied", "RAFT last index applied to the FSM", core.RaftServerIdKey))
-	numLast    = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_last", "RAFT last index in stable storage", core.RaftServerIdKey))
+	numAppliedIndex = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_applied_index", "RAFT last index applied to the FSM", core.RaftServerIdKey))
+	numLastIndex    = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_last_index", "RAFT last index in stable storage", core.RaftServerIdKey))
+	numLastContact  = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_last_contact", "RAFT time since last leader contact", core.RaftServerIdKey))
+	numState        = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_state", "RAFT state iota", core.RaftServerIdKey))
 )
 
 // Leader connection details
@@ -233,8 +235,14 @@ func (c *Cluster) process(ctx context.Context) {
 }
 
 func (c *Cluster) recordMetrics(ctx context.Context) {
-	numApplied.Set(ctx, float64(c.raft.AppliedIndex()), core.RaftServerIdTag(c.id))
-	numLast.Set(ctx, float64(c.raft.LastIndex()), core.RaftServerIdTag(c.id))
+	numAppliedIndex.Set(ctx, float64(c.raft.AppliedIndex()), core.RaftServerIdTag(c.id))
+	numLastIndex.Set(ctx, float64(c.raft.LastIndex()), core.RaftServerIdTag(c.id))
+	if c.raft.State() == raft.Follower {
+		numLastContact.Set(ctx, c.cl.Since(c.raft.LastContact()).Seconds(), core.RaftServerIdTag(c.id))
+	} else {
+		numLastContact.Reset(ctx, core.RaftServerIdTag(c.id))
+	}
+	numState.Set(ctx, float64(c.raft.State()), core.RaftServerIdTag(c.id))
 }
 
 func (c *Cluster) shutdownRaft(ctx context.Context) {
