@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package atoms.splitter.private;
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb/private";
+
+message RaftInfoRequest {
+  string raft_id = 1;
+}
+
+message RaftInfoResponse {
+  map<string, string> raft_state = 1;
+}
+
+
+// InfoService is the internal service for information apis.
+service InfoService {
+  // RaftInfo sends an info request to a raft server.
+  rpc RaftInfo (RaftInfoRequest) returns (RaftInfoResponse);
+}

@@ -25,3 +25,7 @@ func (r ClusterService) Notify(ctx context.Context, req *internal_v1.ClusterNoti
 	}
 	return &internal_v1.ClusterNotifyResponse{}, nil
 }
+
+func (r ClusterService) Handle(ctx context.Context, request *internal_v1.ClusterHandleRequest) (*internal_v1.ClusterHandleResponse, error) {
+	return nil, nil
+}

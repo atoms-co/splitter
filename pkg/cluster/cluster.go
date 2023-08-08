@@ -4,10 +4,12 @@ import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"github.com/hashicorp/raft"
@@ -17,8 +19,14 @@ import (
 )
 
 const (
+	statsInterval    = 15 * time.Second
 	notifyInterval   = 5 * time.Second
 	bootstrapTimeout = 1 * time.Minute
+)
+
+var (
+	numApplied = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_applied", "RAFT last index applied to the FSM", core.RaftServerIdKey))
+	numLast    = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_last", "RAFT last index in stable storage", core.RaftServerIdKey))
 )
 
 // Leader connection details
@@ -94,7 +102,7 @@ func (c *Cluster) Notify(ctx context.Context, id string, address string) error {
 
 	log.Infof(ctx, "Received notify request: %v@%v", raftID, raftAddress)
 	servers, err := syncx.Txn1(ctx, c.txn, func() ([]raft.Server, error) {
-		if c.bootstrapped || c.HasLeader() {
+		if c.bootstrapped || c.hasLeader() {
 			return nil, nil
 		}
 
@@ -140,9 +148,8 @@ func (c *Cluster) Notify(ctx context.Context, id string, address string) error {
 	return nil
 }
 
-func (c *Cluster) HasLeader() bool {
-	addr, id := c.raft.LeaderWithID()
-	return addr != "" || id != ""
+func (c *Cluster) Handle(ctx context.Context, request *internal_v1.ClusterHandleRequest) (*internal_v1.ClusterHandleResponse, error) {
+	return nil, nil
 }
 
 func (c *Cluster) Drain(timeout time.Duration) {
@@ -155,9 +162,10 @@ func (c *Cluster) init(ctx context.Context, observeCh chan raft.Observation) {
 	defer close(observeCh) // closes c.leaderCh
 
 	notify := c.cl.NewTicker(notifyInterval + jitter(notifyInterval))
+	defer notify.Stop()
 
 notifyLoop:
-	for !c.HasLeader() {
+	for !c.hasLeader() {
 		select {
 		case <-notify.C:
 			for _, peer := range c.peers {
@@ -200,9 +208,19 @@ notifyLoop:
 	c.process(ctx)
 }
 
+func (c *Cluster) hasLeader() bool {
+	addr, id := c.raft.LeaderWithID()
+	return addr != "" || id != ""
+}
+
 func (c *Cluster) process(ctx context.Context) {
+	stats := c.cl.NewTicker(statsInterval)
+	defer stats.Stop()
+
 	for {
 		select {
+		case <-stats.C:
+			c.recordMetrics(ctx)
 		case fn := <-c.inject:
 			fn()
 		case <-c.drain.Closed():
@@ -212,6 +230,11 @@ func (c *Cluster) process(ctx context.Context) {
 			c.shutdownRaft(ctx)
 		}
 	}
+}
+
+func (c *Cluster) recordMetrics(ctx context.Context) {
+	numApplied.Set(ctx, float64(c.raft.AppliedIndex()), core.RaftServerIdTag(c.id))
+	numLast.Set(ctx, float64(c.raft.LastIndex()), core.RaftServerIdTag(c.id))
 }
 
 func (c *Cluster) shutdownRaft(ctx context.Context) {
