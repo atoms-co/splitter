@@ -28,25 +28,52 @@ type Storage struct {
 	cl clock.Clock
 
 	tenants map[model.TenantName]*tenantInfo
-	mu      sync.Mutex
+	mu      sync.RWMutex
 }
 
-func New(cl clock.Clock) (*Storage, storage.Storage) {
-	d := &Storage{
+func New(cl clock.Clock) *Storage {
+	s := &Storage{
 		cl:      cl,
 		tenants: map[model.TenantName]*tenantInfo{},
 	}
-	return d, storage.Storage{
-		Tenants:    (*tenants)(d),
-		Placements: (*placements)(d),
+	return s
+}
+
+func (s *Storage) Tenants() storage.Tenants {
+	return (*tenants)(s)
+}
+
+func (s *Storage) Domains() storage.Domains {
+	return (*domains)(s)
+}
+
+func (s *Storage) Placements() storage.Placements {
+	return (*placements)(s)
+}
+
+func (s *Storage) Restore(tenants []model.TenantInfo, placements []core.InternalPlacementInfo) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	upd := make(map[model.TenantName]*tenantInfo)
+	for _, tenant := range tenants {
+		upd[tenant.Name()] = &tenantInfo{
+			info:       tenant,
+			placements: make(map[model.PlacementName]core.InternalPlacementInfo),
+		}
 	}
+	for _, placement := range placements {
+		upd[placement.Name().Tenant].placements[placement.Name().Placement] = placement
+	}
+
+	s.tenants = upd
 }
 
 type tenants Storage
 
 func (t *tenants) List(ctx context.Context) ([]model.TenantInfo, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	t.mu.RLock()
+	defer t.mu.RUnlock()
 
 	return mapx.MapValues(t.tenants, func(v *tenantInfo) model.TenantInfo {
 		return v.info
@@ -69,6 +96,9 @@ func (t *tenants) New(ctx context.Context, tenant model.Tenant) error {
 }
 
 func (t *tenants) Read(ctx context.Context, name model.TenantName) (model.TenantInfo, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
 	info, ok := t.tenants[name]
 	if !ok {
 		return model.TenantInfo{}, model.ErrNotFound
@@ -89,7 +119,7 @@ func (t *tenants) Update(ctx context.Context, tenant model.Tenant, guard model.V
 		return model.ErrVersionMismatch
 	}
 
-	t.tenants[tenant.Name()].info = model.NewTenantInfo(info.info.Tenant(), info.info.Version()+1, t.cl.Now())
+	t.tenants[tenant.Name()].info = model.NewTenantInfo(tenant, info.info.Version()+1, t.cl.Now())
 	return nil
 }
 
@@ -131,8 +161,8 @@ func (d *domains) Delete(ctx context.Context, name model.QualifiedDomainName) er
 type placements Storage
 
 func (p *placements) List(ctx context.Context, tenant model.TenantName) ([]core.InternalPlacementInfo, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	info, ok := p.tenants[tenant]
 	if !ok {
@@ -162,8 +192,8 @@ func (p *placements) Create(ctx context.Context, placement core.InternalPlacemen
 }
 
 func (p *placements) Read(ctx context.Context, name model.QualifiedPlacementName) (core.InternalPlacementInfo, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
 	info, ok := p.tenants[name.Tenant]
 	if !ok {

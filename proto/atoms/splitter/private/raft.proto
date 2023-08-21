@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package atoms.splitter.private;
+
+
+import "proto/public_v1/management.proto";
+import "proto/public_v1/placement.proto";
+import "proto/internal_v1/placement.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb/private";
+
+message TenantCommand {
+  message New {
+    atoms.splitter.Tenant tenant = 1;
+  };
+  message Update {
+    atoms.splitter.Tenant tenant = 1;
+    int64 version = 2;
+  };
+  message Delete {
+    string name = 1;
+  };
+  New new = 1;
+  Update update = 2;
+  Delete delete = 3;
+}
+
+message PlacementCommand {
+  message New {
+    atoms.splitter.private.InternalPlacement placement = 1;
+  };
+  message Update {
+    atoms.splitter.private.InternalPlacement placement = 1;
+    int64 version = 2;
+  };
+  message Delete {
+    string name = 1;
+  };
+  New new = 1;
+  Update update = 2;
+  Delete delete = 3;
+}
+
+message RaftCommand {
+  oneof update {
+    TenantCommand tenant = 1;
+    PlacementCommand placement = 2;
+  }
+}
+
+message RaftResponse {
+  bool succeeded = 1;
+  string error = 2;
+}
+
+message RaftSnapshot {
+  repeated atoms.splitter.TenantInfo tenants = 1;
+  repeated atoms.splitter.private.InternalPlacementInfo placements = 2;
+}

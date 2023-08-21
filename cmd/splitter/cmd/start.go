@@ -14,6 +14,7 @@ import (
 	"go.atoms.co/lib/yamlx"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/server"
+	"go.atoms.co/splitter/pkg/storage/memory"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
 	"go.atoms.co/splitter/pkg/util/raftx"
 	"fmt"
@@ -78,7 +79,7 @@ func makeStartCommand() *cobra.Command {
 
 		// (2) Set up raft node
 
-		fsm, err := raftstorage.NewFSM(baseDir)
+		fsm, err := raftstorage.NewFSM(memory.New(cl))
 		if err != nil {
 			log.Fatalf(ctx, "failed to create FSM", err)
 		}
@@ -124,7 +125,7 @@ func makeStartCommand() *cobra.Command {
 
 		// (3) Initialize Server components and Server
 
-		_, storage := raftstorage.New(cl, fsm, r)
+		storage := raftstorage.New(cl, raft.ServerID(*raftID), r, fsm)
 		c, leaders := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *joinPeers)
 
 		s := server.New(ctx, cl, loc, c, leaders, storage)

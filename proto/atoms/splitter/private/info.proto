@@ -13,7 +13,6 @@ message RaftInfoResponse {
   map<string, string> raft_state = 1;
 }
 
-
 // InfoService is the internal service for information apis.
 service InfoService {
   // RaftInfo sends an info request to a raft server.

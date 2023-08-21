@@ -123,6 +123,10 @@ func NewInternalPlacementInfo(placement InternalPlacement, version model.Version
 	})
 }
 
+func (t InternalPlacementInfo) Name() model.QualifiedPlacementName {
+	return t.InternalPlacement().Name()
+}
+
 func (t InternalPlacementInfo) InternalPlacement() InternalPlacement {
 	return WrapInternalPlacement(t.pb.GetPlacement())
 }

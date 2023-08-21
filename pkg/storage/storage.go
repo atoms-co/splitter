@@ -9,10 +9,10 @@ import (
 
 // Storage provides access to the Splitter storage. The information is expected to be small with all values cached
 // in memory by the leader. Thread-safe.
-type Storage struct {
-	Tenants    Tenants
-	Domains    Domains
-	Placements Placements
+type Storage interface {
+	Tenants() Tenants
+	Domains() Domains
+	Placements() Placements
 }
 
 // Tenants is a versioned tenants store. Must be thread-safe.

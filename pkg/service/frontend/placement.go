@@ -66,8 +66,8 @@ type InternalPlacementService struct {
 }
 
 func NewInternalPlacementService() *InternalPlacementService {
-	_, db := memorystorage.New(clock.New())
-	return &InternalPlacementService{db: db.Placements}
+	db := memorystorage.New(clock.New())
+	return &InternalPlacementService{db: db.Placements()}
 }
 
 func (i *InternalPlacementService) List(ctx context.Context, request *internal_v1.ListPlacementsRequest) (*internal_v1.ListPlacementsResponse, error) {

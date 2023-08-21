@@ -2,6 +2,7 @@ package model
 
 import (
 	"go.atoms.co/splitter/pb"
+	"fmt"
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"time"
@@ -9,9 +10,9 @@ import (
 
 type TenantOption func(tenant *public_v1.Tenant)
 
-func WithTenantRegion(region Region) TenantOption {
+func WithTenantConfig(cfg TenantConfig) TenantOption {
 	return func(tenant *public_v1.Tenant) {
-		tenant.Config.Region = string(region)
+		tenant.Config = UnwrapTenantConfig(cfg)
 	}
 }
 
@@ -22,7 +23,7 @@ type Tenant struct {
 	pb *public_v1.Tenant
 }
 
-func NewTenant(name TenantName, now time.Time, opts ...TenantOption) Tenant {
+func NewTenant(name TenantName, now time.Time, opts ...TenantOption) (Tenant, error) {
 	pb := &public_v1.Tenant{
 		Name:    string(name),
 		Config:  &public_v1.Tenant_Config{},
@@ -31,15 +32,26 @@ func NewTenant(name TenantName, now time.Time, opts ...TenantOption) Tenant {
 	for _, fn := range opts {
 		fn(pb)
 	}
-	return WrapTenant(pb)
+	return ParseTenant(pb)
 }
 
-func UpdateTenant(tenant Tenant, opts ...TenantOption) Tenant {
+func ParseTenant(pb *public_v1.Tenant) (Tenant, error) {
+	if err := validateTopic(pb); err != nil {
+		return Tenant{}, fmt.Errorf("invalid tenant: %w", err)
+	}
+	return Tenant{pb: proto.Clone(pb).(*public_v1.Tenant)}, nil
+}
+
+func validateTopic(pb *public_v1.Tenant) error {
+	return nil // TODO(jhhurwitz): 08/18/2023 Actually validate
+}
+
+func UpdateTenant(tenant Tenant, opts ...TenantOption) (Tenant, error) {
 	upd := proto.Clone(tenant.pb).(*public_v1.Tenant)
 	for _, fn := range opts {
 		fn(upd)
 	}
-	return WrapTenant(upd)
+	return ParseTenant(upd)
 }
 
 func WrapTenant(tenant *public_v1.Tenant) Tenant {
@@ -54,6 +66,10 @@ func (t Tenant) Name() TenantName {
 	return TenantName(t.pb.GetName())
 }
 
+func (t Tenant) Config() TenantConfig {
+	return WrapTenantConfig(t.pb.GetConfig())
+}
+
 // Region returns a region preference for coordinator and UNIT/GLOBAL domains. Optional.
 func (t Tenant) Region() (Region, bool) {
 	r := t.pb.GetConfig().GetRegion()
@@ -66,6 +82,52 @@ func (t Tenant) Equals(t1 Tenant) bool {
 
 func (t Tenant) String() string {
 	return proto.MarshalTextString(t.pb)
+}
+
+type TenantConfigOption func(cfg *public_v1.Tenant_Config)
+
+func WithTenantRegion(region Region) TenantConfigOption {
+	return func(cfg *public_v1.Tenant_Config) {
+		cfg.Region = string(region)
+	}
+}
+
+// TenantConfig holds topic configuration.
+type TenantConfig struct {
+	pb *public_v1.Tenant_Config
+}
+
+func NewTenantConfig(region Region, opts ...TenantConfigOption) TenantConfig {
+	pb := &public_v1.Tenant_Config{
+		Region: string(region),
+	}
+	for _, fn := range opts {
+		fn(pb)
+	}
+	return WrapTenantConfig(pb)
+}
+
+func UpdateTenantConfig(tenant Tenant, opts ...TenantConfigOption) (TenantConfig, error) {
+	pb := UnwrapTenant(tenant).Config
+	if pb == nil {
+		pb = &public_v1.Tenant_Config{}
+	}
+	pb = proto.Clone(pb).(*public_v1.Tenant_Config)
+	for _, fn := range opts {
+		fn(pb)
+	}
+	if _, err := UpdateTenant(tenant, WithTenantConfig(WrapTenantConfig(pb))); err != nil {
+		return TenantConfig{}, err
+	}
+	return WrapTenantConfig(pb), nil
+}
+
+func WrapTenantConfig(pb *public_v1.Tenant_Config) TenantConfig {
+	return TenantConfig{pb: pb}
+}
+
+func UnwrapTenantConfig(cfg TenantConfig) *public_v1.Tenant_Config {
+	return cfg.pb
 }
 
 // TenantInfo captures the full topic information.
@@ -90,7 +152,7 @@ func NewTenantInfo(tenant Tenant, version Version, now time.Time) TenantInfo {
 }
 
 func (t TenantInfo) Name() TenantName {
-	return TenantName(t.pb.GetTenant().GetName())
+	return t.Tenant().Name()
 }
 
 func (t TenantInfo) Tenant() Tenant {

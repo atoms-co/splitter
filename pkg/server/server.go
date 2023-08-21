@@ -39,6 +39,7 @@ type Server struct {
 
 	location location.Location
 	cluster  *cluster.Cluster
+	storage  storage.Storage
 }
 
 func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cluster.Cluster, leaders <-chan *cluster.Leader, s storage.Storage, opts ...Option) *Server {
@@ -59,13 +60,14 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cl
 		cl:       cl,
 		location: loc,
 		cluster:  cluster,
+		storage:  s,
 	}
 }
 
 // Serve starts the public grpc server on the given port. Blocking.
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(metrics.WithGrpcStatsHandler(), statshandlerx.WithServerGRPCStatsHandler())
-	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService())
+	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.cl, s.storage))
 	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService())
 	internal_v1.RegisterPlacementManagementServiceServer(gs, frontend.NewInternalPlacementService())
 
