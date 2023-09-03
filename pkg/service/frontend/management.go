@@ -14,7 +14,7 @@ import (
 
 type ManagementService struct {
 	cl      clock.Clock
-	storage storage.Storage
+	storage storage.Storage // TODO(jhhurwitz): 09/01/2023 Move to leader when forwarding is implemented
 }
 
 func NewManagementService(cl clock.Clock, storage storage.Storage) *ManagementService {
@@ -59,17 +59,21 @@ func (s *ManagementService) ReadTenant(ctx context.Context, req *public_v1.ReadT
 
 func (s *ManagementService) UpdateTenant(ctx context.Context, req *public_v1.UpdateTenantRequest) (*public_v1.UpdateTenantResponse, error) {
 	name, cfg, version := req.GetName(), req.GetConfig(), req.GetVersion()
-	tenant, err := model.NewTenant(model.TenantName(name), s.cl.Now(), model.WithTenantConfig(model.WrapTenantConfig(cfg)))
+	existing, err := s.storage.Tenants().Read(ctx, model.TenantName(name))
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "failed to parse tenant: %v", err)
+		return nil, model.WrapError(err)
 	}
-	if err := s.storage.Tenants().Update(ctx, tenant, model.Version(version)); err != nil {
+	upd, err := model.UpdateTenant(existing.Tenant(), model.WithTenantConfig(model.WrapTenantConfig(cfg)))
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid tenant update: %v", err)
+	}
+	info, err := s.storage.Tenants().Update(ctx, upd, model.Version(version))
+	if err != nil {
 		log.Errorf(ctx, "UpdateTenant failed: %v", err)
 		return nil, model.WrapError(err)
 	}
-	version += 1
 	return &public_v1.UpdateTenantResponse{
-		Tenant: model.UnwrapTenantInfo(model.NewTenantInfo(tenant, model.Version(version), s.cl.Now())), // TODO(jhhurwitz): 08/18/2023: Have db return updated info for accurate time
+		Tenant: model.UnwrapTenantInfo(info),
 	}, nil
 }
 
@@ -80,4 +84,82 @@ func (s *ManagementService) DeleteTenant(ctx context.Context, req *public_v1.Del
 		return nil, model.WrapError(err)
 	}
 	return &public_v1.DeleteTenantResponse{}, nil
+}
+
+func (s *ManagementService) ListDomains(ctx context.Context, req *public_v1.ListDomainsRequest) (*public_v1.ListDomainsResponse, error) {
+	domains, err := s.storage.Domains().List(ctx, model.TenantName(req.GetTenant()))
+	if err != nil {
+		log.Errorf(ctx, "ListDomains failed: %v", err)
+		return nil, model.WrapError(err)
+	}
+	return &public_v1.ListDomainsResponse{Domains: slicex.Map(domains, model.UnwrapDomainInfo)}, nil
+}
+
+func (s *ManagementService) NewDomain(ctx context.Context, req *public_v1.NewDomainRequest) (*public_v1.NewDomainResponse, error) {
+	name, domainType, cfg := req.GetName(), req.GetType(), req.GetConfig()
+	fqdn, err := model.ParseQualifiedDomainName(name)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse domain name: %v", err)
+	}
+	domain, err := model.NewDomain(fqdn, domainType, s.cl.Now(), model.WithDomainConfig(model.WrapDomainConfig(cfg)))
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse domain: %v", err)
+	}
+	if err := s.storage.Domains().New(ctx, domain); err != nil {
+		log.Errorf(ctx, "NewDomain failed: %v", err)
+		return nil, model.WrapError(err)
+	}
+	return &public_v1.NewDomainResponse{
+		Domain: model.UnwrapDomain(domain),
+	}, nil
+}
+
+func (s *ManagementService) ReadDomain(ctx context.Context, req *public_v1.ReadDomainRequest) (*public_v1.ReadDomainResponse, error) {
+	fqdn, err := model.ParseQualifiedDomainName(req.GetName())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse domain name: %v", err)
+	}
+	domain, err := s.storage.Domains().Read(ctx, fqdn)
+	if err != nil {
+		log.Errorf(ctx, "ReadDomain failed: %v", err)
+		return nil, model.WrapError(err)
+	}
+	return &public_v1.ReadDomainResponse{Domain: model.UnwrapDomainInfo(domain)}, nil
+}
+
+func (s *ManagementService) UpdateDomain(ctx context.Context, req *public_v1.UpdateDomainRequest) (*public_v1.UpdateDomainResponse, error) {
+	name, cfg, version := req.GetName(), req.GetConfig(), req.GetVersion()
+	fqdn, err := model.ParseQualifiedDomainName(name)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse domain name: %v", err)
+	}
+	existing, err := s.storage.Domains().Read(ctx, fqdn)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	upd, err := model.UpdateDomain(existing.Domain(), model.WithDomainConfig(model.WrapDomainConfig(cfg)))
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid domain update: %v", err)
+	}
+	info, err := s.storage.Domains().Update(ctx, upd, model.Version(version))
+	if err != nil {
+		log.Errorf(ctx, "UpdateDomain failed: %v", err)
+		return nil, model.WrapError(err)
+	}
+	return &public_v1.UpdateDomainResponse{
+		Domain: model.UnwrapDomainInfo(info),
+	}, nil
+}
+
+func (s *ManagementService) DeleteDomain(ctx context.Context, req *public_v1.DeleteDomainRequest) (*public_v1.DeleteDomainResponse, error) {
+	name := req.GetName()
+	fqdn, err := model.ParseQualifiedDomainName(name)
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "failed to parse domain name: %v", err)
+	}
+	if err := s.storage.Domains().Delete(ctx, fqdn); err != nil {
+		log.Errorf(ctx, "DeleteDomain failed: %v", err)
+		return nil, model.WrapError(err)
+	}
+	return &public_v1.DeleteDomainResponse{}, nil
 }

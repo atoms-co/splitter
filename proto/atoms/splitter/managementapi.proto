@@ -52,6 +52,50 @@ message DeleteTenantResponse {
 
 }
 
+message ListDomainsRequest {
+  string tenant = 1;
+}
+
+message ListDomainsResponse {
+  repeated DomainInfo domains = 1;
+}
+
+message NewDomainRequest {
+  QualifiedDomainName name = 1;
+  Domain.Type type = 2;
+  Domain.Config config = 3;
+}
+
+message NewDomainResponse {
+  Domain domain = 1;
+}
+
+message ReadDomainRequest {
+  QualifiedDomainName name = 1;
+}
+
+message ReadDomainResponse {
+  DomainInfo domain = 1;
+}
+
+message UpdateDomainRequest {
+  QualifiedDomainName name = 1;
+  int64 version = 2;
+  Domain.Config config = 3;
+}
+
+message UpdateDomainResponse {
+  DomainInfo domain = 1;
+}
+
+message DeleteDomainRequest {
+  QualifiedDomainName name = 1;
+}
+
+message DeleteDomainResponse {
+
+}
+
 // ManagementService is the public tenant management service.
 service ManagementService {
   rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
@@ -59,4 +103,10 @@ service ManagementService {
   rpc ReadTenant (ReadTenantRequest) returns (ReadTenantResponse);
   rpc UpdateTenant (UpdateTenantRequest) returns (UpdateTenantResponse);
   rpc DeleteTenant (DeleteTenantRequest) returns (DeleteTenantResponse);
+
+  rpc ListDomains(ListDomainsRequest) returns (ListDomainsResponse);
+  rpc NewDomain (NewDomainRequest) returns (NewDomainResponse);
+  rpc ReadDomain (ReadDomainRequest) returns (ReadDomainResponse);
+  rpc UpdateDomain (UpdateDomainRequest) returns (UpdateDomainResponse);
+  rpc DeleteDomain (DeleteDomainRequest) returns (DeleteDomainResponse);
 }

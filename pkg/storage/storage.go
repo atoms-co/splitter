@@ -21,17 +21,17 @@ type Tenants interface {
 
 	New(ctx context.Context, tenant model.Tenant) error
 	Read(ctx context.Context, name model.TenantName) (model.TenantInfo, error)
-	Update(ctx context.Context, tenant model.Tenant, guard model.Version) error
+	Update(ctx context.Context, tenant model.Tenant, guard model.Version) (model.TenantInfo, error)
 	Delete(ctx context.Context, name model.TenantName) error
 }
 
 // Domains is a versioned domains store. Must be thread-safe.
 type Domains interface {
-	List(ctx context.Context) ([]model.Domain, error)
+	List(ctx context.Context, tenant model.TenantName) ([]model.DomainInfo, error)
 
 	New(ctx context.Context, domain model.Domain) error
-	Read(ctx context.Context, name model.QualifiedDomainName) (model.Domain, error)
-	Update(ctx context.Context, domain model.Domain, guard model.Version) error
+	Read(ctx context.Context, name model.QualifiedDomainName) (model.DomainInfo, error)
+	Update(ctx context.Context, domain model.Domain, guard model.Version) (model.DomainInfo, error)
 	Delete(ctx context.Context, name model.QualifiedDomainName) error
 }
 

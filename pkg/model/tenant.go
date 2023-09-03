@@ -36,13 +36,13 @@ func NewTenant(name TenantName, now time.Time, opts ...TenantOption) (Tenant, er
 }
 
 func ParseTenant(pb *public_v1.Tenant) (Tenant, error) {
-	if err := validateTopic(pb); err != nil {
+	if err := validateTenant(pb); err != nil {
 		return Tenant{}, fmt.Errorf("invalid tenant: %w", err)
 	}
 	return Tenant{pb: proto.Clone(pb).(*public_v1.Tenant)}, nil
 }
 
-func validateTopic(pb *public_v1.Tenant) error {
+func validateTenant(pb *public_v1.Tenant) error {
 	return nil // TODO(jhhurwitz): 08/18/2023 Actually validate
 }
 
@@ -92,7 +92,13 @@ func WithTenantRegion(region Region) TenantConfigOption {
 	}
 }
 
-// TenantConfig holds topic configuration.
+func WithTenantDefaultShardingPolicy(policy ShardingPolicy) TenantConfigOption {
+	return func(cfg *public_v1.Tenant_Config) {
+		cfg.DefaultShardingPolicy = UnwrapShardingPolicy(policy)
+	}
+}
+
+// TenantConfig holds tenant configuration.
 type TenantConfig struct {
 	pb *public_v1.Tenant_Config
 }
@@ -130,7 +136,7 @@ func UnwrapTenantConfig(cfg TenantConfig) *public_v1.Tenant_Config {
 	return cfg.pb
 }
 
-// TenantInfo captures the full topic information.
+// TenantInfo captures the full tenant information.
 type TenantInfo struct {
 	pb *public_v1.TenantInfo
 }

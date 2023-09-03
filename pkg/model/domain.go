@@ -117,11 +117,17 @@ const (
 
 type DomainOption func(tenant *public_v1.Domain)
 
+func WithDomainConfig(cfg DomainConfig) DomainOption {
+	return func(domain *public_v1.Domain) {
+		domain.Config = UnwrapDomainConfig(cfg)
+	}
+}
+
 type Domain struct {
 	pb *public_v1.Domain
 }
 
-func NewDomain(name QualifiedDomainName, t DomainType, now time.Time, opts ...DomainOption) Domain {
+func NewDomain(name QualifiedDomainName, t DomainType, now time.Time, opts ...DomainOption) (Domain, error) {
 	pb := &public_v1.Domain{
 		Name:    name.ToProto(),
 		Type:    t,
@@ -132,15 +138,26 @@ func NewDomain(name QualifiedDomainName, t DomainType, now time.Time, opts ...Do
 	for _, fn := range opts {
 		fn(pb)
 	}
-	return WrapDomain(pb)
+	return ParseDomain(pb)
 }
 
-func UpdateDomain(domain Domain, opts ...DomainOption) Domain {
+func ParseDomain(pb *public_v1.Domain) (Domain, error) {
+	if err := validateDomain(pb); err != nil {
+		return Domain{}, fmt.Errorf("invalid domain: %w", err)
+	}
+	return Domain{pb: proto.Clone(pb).(*public_v1.Domain)}, nil
+}
+
+func validateDomain(pb *public_v1.Domain) error {
+	return nil // TODO(jhhurwitz): 08/18/2023 Actually validate
+}
+
+func UpdateDomain(domain Domain, opts ...DomainOption) (Domain, error) {
 	upd := proto.Clone(domain.pb).(*public_v1.Domain)
 	for _, fn := range opts {
 		fn(upd)
 	}
-	return WrapDomain(upd)
+	return ParseDomain(upd)
 }
 
 func WrapDomain(pb *public_v1.Domain) Domain {
@@ -156,6 +173,10 @@ func (t Domain) Name() QualifiedDomainName {
 	return ret
 }
 
+func (t Domain) Config() DomainConfig {
+	return WrapDomainConfig(t.pb.GetConfig())
+}
+
 func (t Domain) Type() DomainType {
 	return t.pb.GetType()
 }
@@ -169,6 +190,109 @@ func (t Domain) Equals(t1 Domain) bool {
 }
 
 func (t Domain) String() string {
+	return proto.MarshalTextString(t.pb)
+}
+
+type DomainConfigOption func(cfg *public_v1.Domain_Config)
+
+func WithDomainPlacement(placement string) DomainConfigOption {
+	return func(cfg *public_v1.Domain_Config) {
+		cfg.Placement = placement
+	}
+}
+
+func WithDomainRegions(regions ...string) DomainConfigOption {
+	return func(cfg *public_v1.Domain_Config) {
+		cfg.Regions = regions
+	}
+}
+
+func WithDomainShardingPolicy(policy ShardingPolicy) DomainConfigOption {
+	return func(cfg *public_v1.Domain_Config) {
+		cfg.ShardingPolicy = UnwrapShardingPolicy(policy)
+	}
+}
+
+func WithDomainAntiAffinity(domains ...QualifiedDomainName) DomainConfigOption {
+	return func(cfg *public_v1.Domain_Config) {
+		cfg.AntiAffinity = slicex.Map(domains, QualifiedDomainName.ToProto)
+	}
+}
+
+// DomainConfig holds domain configuration.
+type DomainConfig struct {
+	pb *public_v1.Domain_Config
+}
+
+func NewDomainConfig(opts ...DomainConfigOption) DomainConfig {
+	pb := &public_v1.Domain_Config{}
+	for _, fn := range opts {
+		fn(pb)
+	}
+	return WrapDomainConfig(pb)
+}
+
+func UpdateDomainConfig(domain Domain, opts ...DomainConfigOption) (DomainConfig, error) {
+	pb := UnwrapDomain(domain).Config
+	if pb == nil {
+		pb = &public_v1.Domain_Config{}
+	}
+	pb = proto.Clone(pb).(*public_v1.Domain_Config)
+	for _, fn := range opts {
+		fn(pb)
+	}
+	if _, err := UpdateDomain(domain, WithDomainConfig(WrapDomainConfig(pb))); err != nil {
+		return DomainConfig{}, err
+	}
+	return WrapDomainConfig(pb), nil
+}
+
+func WrapDomainConfig(pb *public_v1.Domain_Config) DomainConfig {
+	return DomainConfig{pb: pb}
+}
+
+func UnwrapDomainConfig(cfg DomainConfig) *public_v1.Domain_Config {
+	return cfg.pb
+}
+
+// DomainInfo captures the full domain information.
+type DomainInfo struct {
+	pb *public_v1.DomainInfo
+}
+
+func WrapDomainInfo(pb *public_v1.DomainInfo) DomainInfo {
+	return DomainInfo{pb: pb}
+}
+
+func UnwrapDomainInfo(t DomainInfo) *public_v1.DomainInfo {
+	return t.pb
+}
+
+func NewDomainInfo(domain Domain, version Version, now time.Time) DomainInfo {
+	return WrapDomainInfo(&public_v1.DomainInfo{
+		Domain:    UnwrapDomain(domain),
+		Version:   int64(version),
+		Timestamp: timestamppb.New(now),
+	})
+}
+
+func (t DomainInfo) Name() QualifiedDomainName {
+	return t.Domain().Name()
+}
+
+func (t DomainInfo) Domain() Domain {
+	return WrapDomain(t.pb.GetDomain())
+}
+
+func (t DomainInfo) Version() Version {
+	return Version(t.pb.GetVersion())
+}
+
+func (t DomainInfo) Timestamp() time.Time {
+	return t.pb.GetTimestamp().AsTime()
+}
+
+func (t DomainInfo) String() string {
 	return proto.MarshalTextString(t.pb)
 }
 

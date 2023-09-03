@@ -27,6 +27,13 @@ func init() {
 	tenantCmd.AddCommand(makeUpdateTenantCmd())
 	tenantCmd.AddCommand(makeDeleteTenantCmd())
 
+	rootCmd.AddCommand(domainCmd)
+	domainCmd.AddCommand(makeListDomainCmd())
+	domainCmd.AddCommand(makeNewDomainCmd())
+	domainCmd.AddCommand(makeReadDomainCmd())
+	domainCmd.AddCommand(makeUpdateDomainCmd())
+	domainCmd.AddCommand(makeDeleteDomainCmd())
+
 	rootCmd.AddCommand(placementCmd)
 	placementCmd.AddCommand(makeListPlacementCmd())
 	placementCmd.AddCommand(makeNewPlacementCmd())

@@ -10,7 +10,7 @@ import "proto/internal_v1/placement.proto";
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
 
-message TenantCommand {
+message TenantRaftCommand {
   message New {
     atoms.splitter.Tenant tenant = 1;
   };
@@ -21,12 +21,32 @@ message TenantCommand {
   message Delete {
     string name = 1;
   };
-  New new = 1;
-  Update update = 2;
-  Delete delete = 3;
+  oneof tenant {
+    New new = 1;
+    Update update = 2;
+    Delete delete = 3;
+  }
 }
 
-message PlacementCommand {
+message DomainRaftCommand {
+  message New {
+    atoms.splitter.Domain domain = 1;
+  };
+  message Update {
+    atoms.splitter.Domain domain = 1;
+    int64 version = 2;
+  };
+  message Delete {
+    atoms.splitter.QualifiedDomainName name = 1;
+  };
+  oneof domain {
+    New new = 1;
+    Update update = 2;
+    Delete delete = 3;
+  }
+}
+
+message PlacementRaftCommand {
   message New {
     atoms.splitter.private.InternalPlacement placement = 1;
   };
@@ -35,26 +55,82 @@ message PlacementCommand {
     int64 version = 2;
   };
   message Delete {
-    string name = 1;
+    atoms.splitter.QualifiedPlacementName name = 1;
   };
-  New new = 1;
-  Update update = 2;
-  Delete delete = 3;
+  oneof placement {
+    New new = 1;
+    Update update = 2;
+    Delete delete = 3;
+  }
 }
+
+message TenantRaftResponse {
+  message New {
+  };
+  message Update {
+    atoms.splitter.TenantInfo tenant = 1;
+  };
+  message Delete {
+  };
+  oneof tenant {
+    New new = 1;
+    Update update = 2;
+    Delete delete = 3;
+  }
+}
+
+message DomainRaftResponse {
+  message New {
+  };
+  message Update {
+    atoms.splitter.DomainInfo domain = 1;
+  };
+  message Delete {
+  };
+  oneof domain {
+    New new = 1;
+    Update update = 2;
+    Delete delete = 3;
+  }
+}
+
+message PlacementRaftResponse {
+  message New {
+    atoms.splitter.private.InternalPlacementInfo placement = 1;
+  };
+  message Update {
+    atoms.splitter.private.InternalPlacementInfo placement = 1;
+  };
+  message Delete {
+  };
+  oneof placement {
+    New new = 1;
+    Update update = 2;
+    Delete delete = 3;
+  }
+}
+
 
 message RaftCommand {
-  oneof update {
-    TenantCommand tenant = 1;
-    PlacementCommand placement = 2;
+  oneof command {
+    TenantRaftCommand tenant = 1;
+    DomainRaftCommand domain = 2;
+    PlacementRaftCommand placement = 3;
   }
 }
 
 message RaftResponse {
-  bool succeeded = 1;
-  string error = 2;
+  oneof resp {
+    TenantRaftResponse tenant = 1;
+    DomainRaftResponse domain = 2;
+    PlacementRaftResponse placement = 3;
+  }
+  bool failed = 4;
+  string error = 5;
 }
 
 message RaftSnapshot {
   repeated atoms.splitter.TenantInfo tenants = 1;
-  repeated atoms.splitter.private.InternalPlacementInfo placements = 2;
+  repeated atoms.splitter.DomainInfo domains = 2;
+  repeated atoms.splitter.private.InternalPlacementInfo placements = 3;
 }
