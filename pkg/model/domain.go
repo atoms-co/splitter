@@ -327,7 +327,32 @@ func (k Key) String() string {
 	return uuid.UUID(k).String()
 }
 
-type QualifiedKey struct {
+// DomainKey specifies a domain element for an implicit domain.
+type DomainKey struct {
+	Region Region // if REGIONAL domain
+	Key    Key    // if REGIONAL/GLOBAL
+}
+
+var (
+	ZeroDomainKey = DomainKey{}
+)
+
+func (k DomainKey) String() string {
+	if k.Region != "" {
+		return fmt.Sprintf("%v/%v", k.Region, k.Key)
+	}
+	if k.Key != ZeroKey {
+		return k.Key.String()
+	}
+	return "*"
+}
+
+// QualifiedDomainKey fully specifies a domain element.
+type QualifiedDomainKey struct {
 	Domain QualifiedDomainName
-	Key    Key
+	Key    DomainKey
+}
+
+func (k QualifiedDomainKey) String() string {
+	return fmt.Sprintf("%v:%v", k.Domain, k.Key)
 }

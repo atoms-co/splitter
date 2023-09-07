@@ -20,7 +20,7 @@ var (
 type tenantInfo struct {
 	info       model.TenantInfo
 	domains    map[model.QualifiedDomainName]model.DomainInfo
-	placements map[model.QualifiedPlacementName]core.InternalPlacementInfo
+	placements map[model.PlacementName]core.InternalPlacementInfo
 }
 
 // Storage is an in-memory management storage and provider. Intended for single-node installations with no need for
@@ -61,14 +61,14 @@ func (s *Storage) Restore(tenants []model.TenantInfo, domains []model.DomainInfo
 		upd[tenant.Name()] = &tenantInfo{
 			info:       tenant,
 			domains:    make(map[model.QualifiedDomainName]model.DomainInfo),
-			placements: make(map[model.QualifiedPlacementName]core.InternalPlacementInfo),
+			placements: make(map[model.PlacementName]core.InternalPlacementInfo),
 		}
 	}
 	for _, domain := range domains {
 		upd[domain.Name().Service.Tenant].domains[domain.Name()] = domain
 	}
 	for _, placement := range placements {
-		upd[placement.Name().Tenant].placements[placement.Name()] = placement
+		upd[placement.InternalPlacement().Name().Tenant].placements[placement.Name()] = placement
 	}
 
 	s.tenants = upd
@@ -96,7 +96,7 @@ func (t *tenants) New(ctx context.Context, tenant model.Tenant) error {
 	t.tenants[tenant.Name()] = &tenantInfo{
 		info:       model.NewTenantInfo(tenant, 1, t.cl.Now()),
 		domains:    map[model.QualifiedDomainName]model.DomainInfo{},
-		placements: map[model.QualifiedPlacementName]core.InternalPlacementInfo{},
+		placements: map[model.PlacementName]core.InternalPlacementInfo{},
 	}
 	return nil
 }
@@ -251,12 +251,12 @@ func (p *placements) Create(ctx context.Context, placement core.InternalPlacemen
 	if !ok {
 		return core.InternalPlacementInfo{}, model.ErrNotFound
 	}
-	if _, ok := info.placements[name]; ok {
+	if _, ok := info.placements[name.Placement]; ok {
 		return core.InternalPlacementInfo{}, model.ErrAlreadyExists
 	}
 
 	ret := core.NewInternalPlacementInfo(placement, 1, p.cl.Now())
-	info.placements[name] = ret
+	info.placements[name.Placement] = ret
 	return ret, nil
 }
 
@@ -268,7 +268,7 @@ func (p *placements) Read(ctx context.Context, name model.QualifiedPlacementName
 	if !ok {
 		return core.InternalPlacementInfo{}, model.ErrNotFound
 	}
-	ret, ok := info.placements[name]
+	ret, ok := info.placements[name.Placement]
 	if !ok {
 		return core.InternalPlacementInfo{}, model.ErrNotFound
 	}
@@ -286,7 +286,7 @@ func (p *placements) Update(ctx context.Context, placement core.InternalPlacemen
 	if !ok {
 		return core.InternalPlacementInfo{}, model.ErrNotFound
 	}
-	old, ok := info.placements[name]
+	old, ok := info.placements[name.Placement]
 	if !ok {
 		return core.InternalPlacementInfo{}, model.ErrNotFound
 	}
@@ -295,7 +295,7 @@ func (p *placements) Update(ctx context.Context, placement core.InternalPlacemen
 	}
 
 	ret := core.NewInternalPlacementInfo(placement, old.Version()+1, p.cl.Now())
-	info.placements[name] = ret
+	info.placements[name.Placement] = ret
 	return ret, nil
 }
 
@@ -304,12 +304,11 @@ func (p *placements) Delete(ctx context.Context, name model.QualifiedPlacementNa
 	defer p.mu.Unlock()
 
 	if info, ok := p.tenants[name.Tenant]; ok {
-		if placement, ok := info.placements[name]; ok {
+		if placement, ok := info.placements[name.Placement]; ok {
 			if placement.InternalPlacement().State() != core.PlacementDecommissioned {
 				return model.ErrNotAllowed
 			}
-
-			delete(info.placements, name)
+			delete(info.placements, name.Placement)
 			return nil
 		}
 	}
