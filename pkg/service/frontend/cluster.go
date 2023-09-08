@@ -19,13 +19,13 @@ func NewClusterService(cl clock.Clock, cluster *cluster.Cluster) *ClusterService
 	}
 }
 
-func (r ClusterService) Notify(ctx context.Context, req *internal_v1.ClusterNotifyRequest) (*internal_v1.ClusterNotifyResponse, error) {
+func (r *ClusterService) Notify(ctx context.Context, req *internal_v1.ClusterNotifyRequest) (*internal_v1.ClusterNotifyResponse, error) {
 	if err := r.cluster.Notify(ctx, req.GetId(), req.GetAddress()); err != nil {
 		return nil, err
 	}
 	return &internal_v1.ClusterNotifyResponse{}, nil
 }
 
-func (r ClusterService) Handle(ctx context.Context, request *internal_v1.ClusterHandleRequest) (*internal_v1.ClusterHandleResponse, error) {
-	return nil, nil
+func (r *ClusterService) Handle(ctx context.Context, request *internal_v1.ClusterHandleRequest) (*internal_v1.ClusterHandleResponse, error) {
+	return r.cluster.Handle(ctx, request)
 }

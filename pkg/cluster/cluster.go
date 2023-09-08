@@ -31,12 +31,6 @@ var (
 	numState        = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_state", "RAFT state iota", core.RaftServerIdKey))
 )
 
-// Leader connection details
-type Leader struct {
-	ID   string
-	Addr string
-}
-
 // Cluster represents a RAFT cluster where initial bootstrapping is determined by a static set of peers
 type Cluster struct {
 	iox.AsyncCloser
@@ -48,7 +42,7 @@ type Cluster struct {
 	peers []string
 
 	observer *raft.Observer
-	leaderCh <-chan *Leader
+	leaderCh <-chan raft.LeaderObservation
 
 	drain, initialized iox.AsyncCloser
 
@@ -57,7 +51,7 @@ type Cluster struct {
 	notified     map[raft.ServerID]raft.ServerAddress
 }
 
-func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, peers []string) (*Cluster, <-chan *Leader) {
+func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, peers []string) (*Cluster, <-chan raft.LeaderObservation) {
 	ret := &Cluster{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
@@ -79,15 +73,12 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 	r.RegisterObserver(observer)
 	ret.observer = observer
 
-	leaderCh := chanx.Map(observeCh, func(o raft.Observation) *Leader {
+	leaderCh := chanx.Map(observeCh, func(o raft.Observation) raft.LeaderObservation {
 		leader, _ := o.Data.(raft.LeaderObservation)
-		return &Leader{
-			ID:   string(leader.LeaderID),
-			Addr: string(leader.LeaderAddr),
-		}
+		return leader
 	})
 
-	broadcast := chanx.NewBroadcaster[*Leader]()
+	broadcast := chanx.NewBroadcaster[raft.LeaderObservation]()
 	out1, _ := broadcast.Connect()
 	out2, _ := broadcast.Connect()
 	ret.leaderCh = out2

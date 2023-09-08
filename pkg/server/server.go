@@ -40,27 +40,21 @@ type Server struct {
 	location location.Location
 	cluster  *cluster.Cluster
 	storage  storage.Storage
+	manager  *cluster.LeaderManager
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cluster.Cluster, leaders <-chan *cluster.Leader, s storage.Storage, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cluster.Cluster, storage storage.Storage, manager *cluster.LeaderManager, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
 	}
 
-	// TODO(jhhurwitz): 08/01/2023 Use leader for forwarding
-	go func() {
-		for l := range leaders {
-			// Initialize leader -> leader.New(s)
-			log.Infof(ctx, "Leader info: %v", l)
-		}
-	}()
-
 	return &Server{
 		cl:       cl,
 		location: loc,
 		cluster:  cluster,
-		storage:  s,
+		storage:  storage,
+		manager:  manager,
 	}
 }
 
@@ -69,7 +63,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(metrics.WithGrpcStatsHandler(), statshandlerx.WithServerGRPCStatsHandler())
 	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.cl, s.storage))
 	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService())
-	internal_v1.RegisterPlacementManagementServiceServer(gs, frontend.NewInternalPlacementService())
+	internal_v1.RegisterPlacementManagementServiceServer(gs, frontend.NewInternalPlacementService(s.manager, s.manager))
 
 	return grpcx.Serve(ctx, gs, listener)
 }
@@ -77,7 +71,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 // ServeInternal starts the internal grpc server on the given port. Blocking.
 func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(metrics.WithGrpcStatsHandler(), statshandlerx.WithServerGRPCStatsHandler())
-	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl))
+	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.manager))
 	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cl, s.cluster))
 
 	return grpcx.Serve(ctx, gs, listener)

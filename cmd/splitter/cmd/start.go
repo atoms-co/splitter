@@ -14,6 +14,7 @@ import (
 	"go.atoms.co/lib/yamlx"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/server"
+	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/storage/memory"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
 	"go.atoms.co/splitter/pkg/util/raftx"
@@ -128,7 +129,12 @@ func makeStartCommand() *cobra.Command {
 		storage := raftstorage.New(cl, raft.ServerID(*raftID), r, fsm)
 		c, leaders := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *joinPeers)
 
-		s := server.New(ctx, cl, loc, c, leaders, storage)
+		manager := cluster.NewLeaderManager(cl, raft.ServerID(*raftID), leaders, func(ctx context.Context) (iox.AsyncCloser, leader.Proxy) {
+			ret := leader.New(ctx, cl, loc, storage)
+			return ret, ret
+		})
+
+		s := server.New(ctx, cl, loc, c, storage, manager)
 
 		// (4) Start server and await termination
 

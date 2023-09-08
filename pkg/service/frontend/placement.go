@@ -2,22 +2,22 @@ package frontend
 
 import (
 	"context"
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/mapx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pkg/storage"
-	memorystorage "go.atoms.co/splitter/pkg/storage/memory"
+	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
-	"fmt"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"time"
 )
 
 // TODO(herohde) 7/27/2023: redirect all calls to leader instead
+
+const (
+	handleTimeout = 20 * time.Second
+)
 
 type PlacementService struct {
 	fixed map[model.QualifiedPlacementName]model.PlacementInfo
@@ -62,72 +62,89 @@ func (p *PlacementService) Info(ctx context.Context, request *public_v1.InfoPlac
 }
 
 type InternalPlacementService struct {
-	db storage.Placements // replace with leader client
+	resolver leader.Resolver
+	proxy    leader.Proxy
 }
 
-func NewInternalPlacementService() *InternalPlacementService {
-	db := memorystorage.New(clock.New())
-	return &InternalPlacementService{db: db.Placements()}
+func NewInternalPlacementService(proxy leader.Proxy, resolver leader.Resolver) *InternalPlacementService {
+	return &InternalPlacementService{proxy: proxy, resolver: resolver}
 }
 
 func (i *InternalPlacementService) List(ctx context.Context, request *internal_v1.ListPlacementsRequest) (*internal_v1.ListPlacementsResponse, error) {
-	tenant := model.TenantName(request.GetTenant())
-
-	list, err := i.db.List(ctx, tenant)
-	if err != nil {
-		return nil, model.WrapError(err)
+	if request.GetTenant() == "" {
+		return nil, status.Error(codes.InvalidArgument, "empty tenant")
 	}
-	return &internal_v1.ListPlacementsResponse{
-		Info: slicex.Map(list, core.UnwrapInternalPlacementInfo),
-	}, nil
 
+	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
+		Req: &internal_v1.PlacementRequest_List{
+			List: request,
+		},
+	})
+	return resp.GetList(), err
 }
 
 func (i *InternalPlacementService) New(ctx context.Context, request *internal_v1.NewPlacementRequest) (*internal_v1.NewPlacementResponse, error) {
-	name, err := model.ParseQualifiedPlacementName(request.GetName())
-	if err != nil {
+	if _, err := model.ParseQualifiedPlacementName(request.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	cfg, err := core.ParseInternalPlacementConfig(request.GetConfig())
-	if err != nil {
+	if _, err := core.ParseInternalPlacementConfig(request.GetConfig()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	ret, err := i.db.Create(ctx, core.NewInternalPlacement(name, cfg, time.Now()))
-	if err != nil {
-		return nil, model.WrapError(err)
-	}
-	return &internal_v1.NewPlacementResponse{
-		Info: core.UnwrapInternalPlacementInfo(ret),
-	}, nil
+	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
+		Req: &internal_v1.PlacementRequest_New{
+			New: request,
+		},
+	})
+	return resp.GetNew(), err
 }
 
 func (i *InternalPlacementService) Info(ctx context.Context, request *internal_v1.InfoPlacementRequest) (*internal_v1.InfoPlacementResponse, error) {
-	name, err := model.ParseQualifiedPlacementName(request.GetName())
-	if err != nil {
+	if _, err := model.ParseQualifiedPlacementName(request.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	ret, err := i.db.Read(ctx, name)
-	if err != nil {
-		return nil, model.WrapError(err)
-	}
-	return &internal_v1.InfoPlacementResponse{
-		Info: core.UnwrapInternalPlacementInfo(ret),
-	}, nil
+
+	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
+		Req: &internal_v1.PlacementRequest_Info{
+			Info: request,
+		},
+	})
+	return resp.GetInfo(), err
 }
 
 func (i *InternalPlacementService) Update(ctx context.Context, request *internal_v1.UpdatePlacementRequest) (*internal_v1.UpdatePlacementResponse, error) {
-	return nil, model.WrapError(fmt.Errorf("not implemented"))
-}
-
-func (i *InternalPlacementService) Delete(ctx context.Context, request *internal_v1.DeletePlacementRequest) (*internal_v1.DeletePlacementResponse, error) {
-	name, err := model.ParseQualifiedPlacementName(request.GetName())
-	if err != nil {
+	if _, err := model.ParseQualifiedPlacementName(request.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	if err := i.db.Delete(ctx, name); err != nil {
-		return nil, model.WrapError(err)
+	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
+		Req: &internal_v1.PlacementRequest_Update{
+			Update: request,
+		},
+	})
+	return resp.GetUpdate(), err
+}
+
+func (i *InternalPlacementService) Delete(ctx context.Context, request *internal_v1.DeletePlacementRequest) (*internal_v1.DeletePlacementResponse, error) {
+	if _, err := model.ParseQualifiedPlacementName(request.GetName()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &internal_v1.DeletePlacementResponse{}, nil
+
+	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
+		Req: &internal_v1.PlacementRequest_Delete{
+			Delete: request,
+		},
+	})
+	return resp.GetDelete(), err
+}
+
+func (i *InternalPlacementService) invoke(ctx context.Context, request *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
+	req := leader.NewHandlePlacementRequest(request)
+
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
+		return model.InvokeEx0(ctx, i.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+			return i.proxy.Handle(ctx, req)
+		})
+	})
+	return resp.GetPlacement(), err
 }

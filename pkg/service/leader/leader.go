@@ -99,7 +99,6 @@ func (l *Leader) Handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 		return nil, model.WrapError(err)
 	}
 	return resp, nil
-
 }
 
 func (l *Leader) init(ctx context.Context) {
@@ -299,4 +298,8 @@ func (l *Leader) txn(ctx context.Context, fn func() error) error {
 
 func (l *Leader) recordAction(ctx context.Context, action, result string) {
 	numActions.Increment(ctx, 1, core.ActionTag(action), core.ResultTag(result))
+}
+
+func (l *Leader) String() string {
+	return l.id.String()
 }
