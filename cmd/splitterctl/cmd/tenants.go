@@ -30,7 +30,7 @@ func makeListTenantCmd() *cobra.Command {
 				return err
 			}
 			for _, info := range list {
-				printJson(model.UnwrapTenantInfo(info), false)
+				printJson(model.UnwrapTenantInfo(info), true)
 			}
 			return nil
 		})
