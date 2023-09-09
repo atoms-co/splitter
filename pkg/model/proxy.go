@@ -2,11 +2,16 @@ package model
 
 import (
 	"context"
+	"errors"
 	"google.golang.org/grpc"
 )
 
+var (
+	ErrNoResolution = errors.New("no resolution")
+)
+
 // Resolver resolves ownership of a key of type K to a proxy object of type T. Each proxy is typically instantiated
-// with a grpc service client, such as Proxy[v1.FooServiceClient] for remote invocation only. Returns ErrNotFound
+// with a grpc service client, such as Proxy[v1.FooServiceClient] for remote invocation only. Returns ErrNoResolution
 // if resolution fails (possibly due to local ownership) and ErrInvalid if the key is not valid.
 type Resolver[T, K any] interface {
 	Resolve(ctx context.Context, key K) (T, error)
@@ -28,15 +33,15 @@ func Invoke[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn fun
 	return fn(t, ctx, a)
 }
 
-// Invoke0 is an Invoke convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
-func Invoke0[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A) (B, error) {
+// InvokeZero is an Invoke convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
+func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A) (B, error) {
 	return Invoke(ctx, p, ZeroDomainKey, fn, a)
 }
 
 // InvokeEx makes a grpc invocation to the owner of the given key, if remote, and calls the
 // given fallback function if resolution fails (likely due to local owner). The fallback function
-// may use a different signature and by unrelated to grpc. It is called only if the proxy function
-// is not: any retry -- notably on ErrNotOwned -- should re-resolve the owner.
+// may use a different signature and by unrelated to grpc. It is called only on no resolution.
+// Any retry -- notably on ErrNotOwned -- should re-resolve the owner.
 //
 // For example, using Proxy[v1.FooServiceClient], the extended call looks like the following:
 //
@@ -48,7 +53,7 @@ func Invoke0[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn func
 func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A, local func() (B, error)) (B, error) {
 	t, err := p.Resolve(ctx, key)
 	if err != nil {
-		if err == ErrNotFound {
+		if err == ErrNoResolution {
 			return local()
 		}
 		var b B
@@ -57,8 +62,8 @@ func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn f
 	return fn(t, ctx, a)
 }
 
-// InvokeEx0 is an InvokeEx convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
-func InvokeEx0[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A, local func() (B, error)) (B, error) {
+// InvokeExZero is an InvokeEx convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
+func InvokeExZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A, local func() (B, error)) (B, error) {
 	return InvokeEx(ctx, p, ZeroDomainKey, fn, a, local)
 }
 

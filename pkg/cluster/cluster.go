@@ -11,9 +11,12 @@ import (
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pb/private"
+	"fmt"
 	"github.com/hashicorp/raft"
 	"math/rand"
+	"net"
 	"sync"
 	"time"
 )
@@ -42,7 +45,7 @@ type Cluster struct {
 	peers []string
 
 	observer *raft.Observer
-	leaderCh <-chan raft.LeaderObservation
+	leaderCh <-chan leader.Directive
 
 	drain, initialized iox.AsyncCloser
 
@@ -51,7 +54,7 @@ type Cluster struct {
 	notified     map[raft.ServerID]raft.ServerAddress
 }
 
-func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, peers []string) (*Cluster, <-chan raft.LeaderObservation) {
+func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, peers []string, port int) (*Cluster, <-chan leader.Directive) {
 	ret := &Cluster{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
@@ -73,12 +76,35 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 	r.RegisterObserver(observer)
 	ret.observer = observer
 
-	leaderCh := chanx.Map(observeCh, func(o raft.Observation) raft.LeaderObservation {
-		leader, _ := o.Data.(raft.LeaderObservation)
-		return leader
+	leaderCh := chanx.Map(observeCh, func(o raft.Observation) leader.Directive {
+		obs, _ := o.Data.(raft.LeaderObservation)
+
+		log.Debugf(context.Background(), "New leader observation: %v", obs)
+
+		if obs.LeaderID == id {
+			return leader.Directive{
+				Type: leader.Lead,
+				ID:   string(id),
+			}
+		}
+
+		host, _, err := net.SplitHostPort(string(obs.LeaderAddr))
+		if err != nil {
+			log.Errorf(context.Background(), "Internal: unexpected leader %v endpoint: %v", obs.LeaderID, obs.LeaderAddr)
+
+			return leader.Directive{
+				Type: leader.Disconnect,
+			}
+		}
+
+		return leader.Directive{
+			Type:     leader.Follow,
+			ID:       string(id),
+			Endpoint: fmt.Sprintf("%v:%v", host, port),
+		}
 	})
 
-	broadcast := chanx.NewBroadcaster[raft.LeaderObservation]()
+	broadcast := chanx.NewBroadcaster[leader.Directive]()
 	out1, _ := broadcast.Connect()
 	out2, _ := broadcast.Connect()
 	ret.leaderCh = out2

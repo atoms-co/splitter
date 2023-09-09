@@ -1,4 +1,4 @@
-package cluster
+package leader
 
 import (
 	"context"
@@ -9,34 +9,58 @@ import (
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pb/private"
-	"github.com/hashicorp/raft"
+	"fmt"
 	"sync"
 	"time"
 )
 
-type LeaderFactory func(ctx context.Context) (iox.AsyncCloser, leader.Proxy)
+type DirectiveType string
 
-type LeaderManager struct {
+const (
+	Lead       DirectiveType = "lead"
+	Follow     DirectiveType = "follow"
+	Disconnect DirectiveType = "disconnect"
+)
+
+// Directive is a leadership directive used by the manager.
+type Directive struct {
+	Type     DirectiveType
+	ID       string
+	Endpoint string // if follow
+}
+
+func (d Directive) String() string {
+	switch d.Type {
+	case Lead:
+		return fmt.Sprintf("%v[%v]", d.Type, d.ID)
+	case Disconnect:
+		return fmt.Sprintf("%v", d.Type)
+	default:
+		return fmt.Sprintf("%v[%v @%v]", d.Type, d.ID, d.Endpoint)
+	}
+}
+
+type Factory func(ctx context.Context) (iox.AsyncCloser, Proxy)
+
+// Manager handles a proxy lifecycle and remote resolution. It is controlled by a stream
+// of leadership change directives.
+type Manager struct {
 	iox.AsyncCloser
 
-	cl clock.Clock
-	id raft.ServerID
-
-	factory LeaderFactory
+	cl      clock.Clock
+	factory Factory
 
 	remote internal_v1.LeaderServiceClient // nil if local
-	local  leader.Proxy                    // nil if remote
+	local  Proxy                           // nil if remote
 	halt   iox.AsyncCloser                 // stop signal for local/remote re-creation if active
 	mu     sync.Mutex
 }
 
-func NewLeaderManager(cl clock.Clock, id raft.ServerID, in <-chan raft.LeaderObservation, factory LeaderFactory) *LeaderManager {
-	ret := &LeaderManager{
+func NewManager(cl clock.Clock, in <-chan Directive, factory Factory) *Manager {
+	ret := &Manager{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
-		id:          id,
 		factory:     factory,
 	}
 	go ret.process(context.Background(), in)
@@ -44,34 +68,34 @@ func NewLeaderManager(cl clock.Clock, id raft.ServerID, in <-chan raft.LeaderObs
 	return ret
 }
 
-func (m *LeaderManager) Resolve(ctx context.Context, key model.DomainKey) (internal_v1.LeaderServiceClient, error) {
+func (m *Manager) Resolve(ctx context.Context, key model.DomainKey) (internal_v1.LeaderServiceClient, error) {
 	if client, ok := m.tryRemote(); ok {
 		return client, nil
 	}
-	return nil, model.ErrNotFound
+	return nil, model.ErrNoResolution
 }
 
-func (m *LeaderManager) Join(ctx context.Context, sid session.ID, id model.Instance, grants []leader.Grant, in <-chan leader.JoinMessage) (<-chan leader.JoinMessage, error) {
+func (m *Manager) Join(ctx context.Context, sid session.ID, id model.Instance, grants []Grant, in <-chan JoinMessage) (<-chan JoinMessage, error) {
 	if l, ok := m.tryLocal(); ok {
 		return l.Join(ctx, sid, id, grants, in)
 	}
 	return nil, model.ErrNotOwned
 }
 
-func (m *LeaderManager) Handle(ctx context.Context, request leader.HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (m *Manager) Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	if l, ok := m.tryLocal(); ok {
 		return l.Handle(ctx, request)
 	}
 	return nil, model.ErrNotOwned
 }
 
-func (m *LeaderManager) process(ctx context.Context, in <-chan raft.LeaderObservation) {
+func (m *Manager) process(ctx context.Context, in <-chan Directive) {
 	defer m.Close()
 	defer m.reset()
 
 	for {
 		select {
-		case msg, ok := <-in:
+		case directive, ok := <-in:
 			if !ok {
 				return
 			}
@@ -81,12 +105,20 @@ func (m *LeaderManager) process(ctx context.Context, in <-chan raft.LeaderObserv
 			// the leader has not changed again, re-creation may be necessary. The 'halt'
 			// signal delimits that.
 
-			if msg.LeaderID == m.id {
-				log.Infof(ctx, "Leader elected: %v", msg.LeaderID)
-				go m.lead(ctx, halt)
-			} else {
-				log.Infof(ctx, "Leader observed: %v:%v", msg.LeaderID, msg.LeaderAddr)
-				go m.follow(ctx, halt, msg.LeaderID, msg.LeaderAddr)
+			switch directive.Type {
+			case Lead:
+				log.Infof(ctx, "Leader elected: %v", directive.ID)
+				go m.lead(ctx, halt, directive.ID)
+
+			case Follow:
+				log.Infof(ctx, "Leader observed: %v @%v", directive.ID, directive.Endpoint)
+				go m.follow(ctx, halt, directive.ID, directive.Endpoint)
+
+			case Disconnect:
+				log.Errorf(ctx, "Leader disconnected")
+
+			default:
+				log.Errorf(ctx, "Internal: invalid directive type: %v", directive)
 			}
 
 		case <-m.Closed():
@@ -95,7 +127,7 @@ func (m *LeaderManager) process(ctx context.Context, in <-chan raft.LeaderObserv
 	}
 }
 
-func (m *LeaderManager) lead(ctx context.Context, halt iox.AsyncCloser) {
+func (m *Manager) lead(ctx context.Context, halt iox.AsyncCloser, id string) {
 	wctx, cancel := contextx.WithQuitCancel(ctx, halt.Closed())
 	defer cancel()
 
@@ -125,18 +157,18 @@ func (m *LeaderManager) lead(ctx context.Context, halt iox.AsyncCloser) {
 	}
 }
 
-func (m *LeaderManager) follow(ctx context.Context, halt iox.AsyncCloser, id raft.ServerID, addr raft.ServerAddress) {
+func (m *Manager) follow(ctx context.Context, halt iox.AsyncCloser, id, endpoint string) {
 	for !halt.IsClosed() {
 		// (1) Dial leader. If it (unexpectedly) fails, re-try until leader change.
 
-		cc, err := grpcx.DialNonBlocking(ctx, string(addr), grpcx.WithInsecure())
+		cc, err := grpcx.DialNonBlocking(ctx, endpoint, grpcx.WithInsecure())
 		if err != nil {
-			log.Errorf(ctx, "Failed to dial leader %v:%v: %v", id, addr, err)
+			log.Errorf(ctx, "Failed to dial leader %v @%v: %v", id, endpoint, err)
 			time.Sleep(4 * time.Second)
 			continue
 		}
 
-		log.Debugf(ctx, "Connected to remote leader %v:%v", id, addr)
+		log.Debugf(ctx, "Connected to remote leader %v @%v", id, endpoint)
 
 		// (2) Once connected, wire in.
 
@@ -154,21 +186,21 @@ func (m *LeaderManager) follow(ctx context.Context, halt iox.AsyncCloser, id raf
 	}
 }
 
-func (m *LeaderManager) tryRemote() (internal_v1.LeaderServiceClient, bool) {
+func (m *Manager) tryRemote() (internal_v1.LeaderServiceClient, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	return m.remote, m.remote != nil
 }
 
-func (m *LeaderManager) tryLocal() (leader.Proxy, bool) {
+func (m *Manager) tryLocal() (Proxy, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	return m.local, m.local != nil
 }
 
-func (m *LeaderManager) reset() iox.AsyncCloser {
+func (m *Manager) reset() iox.AsyncCloser {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

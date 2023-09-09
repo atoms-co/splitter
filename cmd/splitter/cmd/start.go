@@ -102,7 +102,7 @@ func makeStartCommand() *cobra.Command {
 
 		bindAddr := fmt.Sprintf("0.0.0.0:%v", *raftPort)
 
-		tcpAddr, err := net.ResolveTCPAddr("tcp", bindAddr)
+		tcpAddr, err := net.ResolveTCPAddr("tcp", *raftServer)
 		if err != nil {
 			log.Fatalf(ctx, "failed to resolve TCP addr", err)
 		}
@@ -127,9 +127,9 @@ func makeStartCommand() *cobra.Command {
 		// (3) Initialize Server components and Server
 
 		storage := raftstorage.New(cl, raft.ServerID(*raftID), r, fsm)
-		c, leaders := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *joinPeers)
+		c, directives := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *joinPeers, *internalPort)
 
-		manager := cluster.NewLeaderManager(cl, raft.ServerID(*raftID), leaders, func(ctx context.Context) (iox.AsyncCloser, leader.Proxy) {
+		manager := leader.NewManager(cl, directives, func(ctx context.Context) (iox.AsyncCloser, leader.Proxy) {
 			ret := leader.New(ctx, cl, loc, storage)
 			return ret, ret
 		})

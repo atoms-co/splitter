@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -142,9 +143,14 @@ func (i *InternalPlacementService) invoke(ctx context.Context, request *internal
 	req := leader.NewHandlePlacementRequest(request)
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return model.InvokeEx0(ctx, i.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+		return model.InvokeExZero(ctx, i.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
 			return i.proxy.Handle(ctx, req)
 		})
 	})
-	return resp.GetPlacement(), err
+
+	if err != nil {
+		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
+		return nil, err
+	}
+	return resp.GetPlacement(), nil
 }

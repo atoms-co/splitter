@@ -149,7 +149,7 @@ func (l *Leader) init(ctx context.Context) {
 		return
 	}
 
-	log.Infof(ctx, "Leader initialized: %v", l.id)
+	log.Infof(ctx, "Leader initialized: %v, #tenants=%v", l.id, len(l.tenants))
 	l.recordAction(ctx, "init", "ok")
 	l.initialized.Close()
 

@@ -11,6 +11,7 @@ import (
 	"go.atoms.co/lib/statshandlerx"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/service/frontend"
+	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
@@ -40,10 +41,10 @@ type Server struct {
 	location location.Location
 	cluster  *cluster.Cluster
 	storage  storage.Storage
-	manager  *cluster.LeaderManager
+	manager  *leader.Manager
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cluster.Cluster, storage storage.Storage, manager *cluster.LeaderManager, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cluster.Cluster, storage storage.Storage, manager *leader.Manager, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
