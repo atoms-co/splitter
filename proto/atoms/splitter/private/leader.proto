@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
-import "proto/public_v1/management.proto";
-import "proto/public_v1/managementapi.proto";
+import "proto/public_v1/tenant.proto";
+import "proto/public_v1/tenantapi.proto";
 import "proto/public_v1/placement.proto";
 import "proto/public_v1/consumer.proto";
 import "proto/internal_v1/placement.proto";

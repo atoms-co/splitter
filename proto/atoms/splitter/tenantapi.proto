@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package atoms.splitter;
 
-import "proto/public_v1/management.proto";
+import "proto/public_v1/tenant.proto";
 import "google/protobuf/timestamp.proto";
 
 option java_multiple_files = true;
