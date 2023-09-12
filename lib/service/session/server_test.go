@@ -75,13 +75,13 @@ func TestServer_ExpirationEstablished(t *testing.T) {
 	read(t, out) // Establish
 
 	server.Observe(ctx, session.NewHeartbeatMessage(cl.Now()))
-	read(t, out)
+	read(t, out) // Establish
 
 	cl.Add(15 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	assert.False(t, server.IsClosed())
 
-	cl.Add(15 * time.Second)
+	cl.Add(20 * time.Second) // 35s > 30s lease timeout
 	time.Sleep(100 * time.Millisecond)
 	assert.True(t, server.IsClosed())
 }
