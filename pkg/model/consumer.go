@@ -12,6 +12,14 @@ type Instance struct {
 	pb *public_v1.Instance
 }
 
+func WrapInstance(pb *public_v1.Instance) Instance {
+	return Instance{pb: pb}
+}
+
+func UnwrapInstance(instance Instance) *public_v1.Instance {
+	return instance.pb
+}
+
 func (i Instance) Location() location.Instance {
 	return location.WrapInstance(i.pb.GetClient())
 }

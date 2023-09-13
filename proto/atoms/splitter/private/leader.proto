@@ -76,7 +76,8 @@ message LeaderHandleResponse {
 message Grant {
   string id = 1;
   string tenant = 2;
-  google.protobuf.Timestamp assigned = 3; // informational
+  google.protobuf.Timestamp lease = 3;
+  google.protobuf.Timestamp assigned = 4; // informational
 }
 
 message WorkerMessage {
