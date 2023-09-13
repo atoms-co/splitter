@@ -22,8 +22,8 @@ const (
 )
 
 var (
-	serverHeartbeatLag = metrics.NewHistogram("atoms.co/libs/go/session/server_heartbeat_lag", "Heartbeat lag", metrics.JavaBucketOptions, sessionIDKey)
-	numServerMessages  = metrics.NewCounter("atoms.co/libs/go/session/server_messages", "Number of messages", sessionIDKey, messageTypeKey)
+	serverHeartbeatLag = metrics.NewHistogram("atoms.co/libs/go/session/server_heartbeat_lag", "Heartbeat lag", metrics.JavaBucketOptions)
+	numServerMessages  = metrics.NewCounter("atoms.co/libs/go/session/server_messages", "Number of messages", messageTypeKey)
 )
 
 // Server represents the server-side component of session-scoped keepalive. Can be used agnostic of transport protocol.
@@ -118,11 +118,7 @@ func (s *Server) process(ctx context.Context) {
 
 			case msg.IsHeartbeat():
 				now, _ := msg.Heartbeat()
-				serverHeartbeatLag.Observe(
-					ctx,
-					s.cl.Now().Sub(now),
-					metrics.Tag{Key: sessionIDKey, Value: fmt.Sprintf("%v", s.sid)},
-				)
+				serverHeartbeatLag.Observe(ctx, s.cl.Now().Sub(now))
 				expirationTime := s.cl.Now().Add(leaseDuration)
 				s.send(ctx, NewEstablishedMessage(expirationTime))
 				expiration.Reset(s.cl.Until(expirationTime))
@@ -153,12 +149,7 @@ func (s *Server) process(ctx context.Context) {
 func (s *Server) send(ctx context.Context, msg Message) {
 	select {
 	case s.out <- msg:
-		numServerMessages.Increment(
-			ctx,
-			1,
-			metrics.Tag{Key: sessionIDKey, Value: fmt.Sprintf("%v", s.sid)},
-			metrics.Tag{Key: messageTypeKey, Value: fmt.Sprintf("%v", msg.MessageType())},
-		)
+		numServerMessages.Increment(ctx, 1, metrics.Tag{Key: messageTypeKey, Value: fmt.Sprintf("%v", msg.MessageType())})
 	case <-s.Closed():
 	}
 }

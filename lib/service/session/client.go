@@ -19,7 +19,7 @@ const (
 )
 
 var (
-	numClientMessages = metrics.NewCounter("atoms.co/libs/go/session/client_messages", "Number of messages", sessionIDKey, messageTypeKey)
+	numClientMessages = metrics.NewCounter("atoms.co/libs/go/session/client_messages", "Number of messages", messageTypeKey)
 )
 
 // Client represents the client-side component of session-scoped keepalive. Can be used agnostic of transport protocol.
@@ -115,7 +115,7 @@ func (c *Client) process(ctx context.Context) {
 func (c *Client) send(ctx context.Context, msg Message) {
 	select {
 	case c.out <- msg:
-		numClientMessages.Increment(ctx, 1, sessionIDTag(c.sid), messageTypeTag(msg.MessageType()))
+		numClientMessages.Increment(ctx, 1, messageTypeTag(msg.MessageType()))
 	case <-c.Closed():
 	}
 }
