@@ -31,6 +31,16 @@ func NewHandleTenantRequest(req *internal_v1.TenantRequest) HandleRequest {
 	}
 }
 
+func NewHandleDomainRequest(req *internal_v1.DomainRequest) HandleRequest {
+	return HandleRequest{
+		Proto: &internal_v1.LeaderHandleRequest{
+			Req: &internal_v1.LeaderHandleRequest_Domain{
+				Domain: req,
+			},
+		},
+	}
+}
+
 func NewHandlePlacementRequest(req *internal_v1.PlacementRequest) HandleRequest {
 	return HandleRequest{
 		Proto: &internal_v1.LeaderHandleRequest{
@@ -41,6 +51,50 @@ func NewHandlePlacementRequest(req *internal_v1.PlacementRequest) HandleRequest 
 	}
 }
 
+func (m HandleRequest) IsMutation() bool {
+	switch {
+	case m.Proto.GetTenant() != nil:
+		pb := m.Proto.GetTenant()
+		return pb.GetNew() != nil || pb.GetUpdate() != nil || pb.GetDelete() != nil
+
+	case m.Proto.GetDomain() != nil:
+		pb := m.Proto.GetDomain()
+		return pb.GetNew() != nil || pb.GetUpdate() != nil || pb.GetDelete() != nil
+
+	case m.Proto.GetPlacement() != nil:
+		pb := m.Proto.GetPlacement()
+		return pb.GetNew() != nil || pb.GetUpdate() != nil || pb.GetDelete() != nil
+
+	default:
+		return false
+	}
+
+}
+
 func (m HandleRequest) String() string {
 	return proto.CompactTextString(m.Proto)
+}
+
+func NewHandleTenantResponse(req *internal_v1.TenantResponse) *internal_v1.LeaderHandleResponse {
+	return &internal_v1.LeaderHandleResponse{
+		Resp: &internal_v1.LeaderHandleResponse_Tenant{
+			Tenant: req,
+		},
+	}
+}
+
+func NewHandleDomainResponse(req *internal_v1.DomainResponse) *internal_v1.LeaderHandleResponse {
+	return &internal_v1.LeaderHandleResponse{
+		Resp: &internal_v1.LeaderHandleResponse_Domain{
+			Domain: req,
+		},
+	}
+}
+
+func NewHandlePlacementResponse(req *internal_v1.PlacementResponse) *internal_v1.LeaderHandleResponse {
+	return &internal_v1.LeaderHandleResponse{
+		Resp: &internal_v1.LeaderHandleResponse_Placement{
+			Placement: req,
+		},
+	}
 }

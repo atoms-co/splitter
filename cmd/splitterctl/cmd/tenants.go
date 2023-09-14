@@ -56,7 +56,7 @@ func makeNewTenantCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printJson(splitter.UnwrapTenant(tenant), true)
+			printJson(splitter.UnwrapTenantInfo(tenant), true)
 			return nil
 		})
 	}
@@ -76,7 +76,7 @@ func makeReadTenantCmd() *cobra.Command {
 		name := splitter.TenantName(args[0])
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			info, err := client.ReadTenant(ctx, name)
+			info, err := client.InfoTenant(ctx, name)
 			if err != nil {
 				return err
 			}
@@ -102,7 +102,7 @@ func makeUpdateTenantCmd() *cobra.Command {
 		name := splitter.TenantName(args[0])
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			info, err := client.ReadTenant(ctx, name)
+			info, err := client.InfoTenant(ctx, name)
 			if err != nil {
 				return err
 			}

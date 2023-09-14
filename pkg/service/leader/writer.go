@@ -1,0 +1,430 @@
+package leader
+
+import (
+	"context"
+	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/iox"
+	"go.atoms.co/lib/workqueue"
+	"go.atoms.co/splitter/pkg/core"
+	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pkg/storage"
+	"go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pb"
+	"fmt"
+)
+
+const (
+	// pendingApplyCapacity is a limit for how many pending updates we allow (which is lost in a crash).
+	// If exceeded, we reject the update with ErrOverloaded.
+	pendingApplyCapacity = 20
+)
+
+// Writer validates and serializes updates to storage. Not thread-safe.
+type Writer struct {
+	cl clock.Clock
+
+	db     storage.Storage
+	writer *storage.Writer
+	cache  *storage.Cache       // pre-commit cache
+	pool   *workqueue.WorkQueue // single-threaded async apply
+
+	upd chan<- storage.Update
+	del chan<- storage.Delete
+
+	quit iox.AsyncCloser
+}
+
+func NewWriter(cl clock.Clock, db storage.Storage) (*Writer, <-chan storage.Update, <-chan storage.Delete) {
+	upd := make(chan storage.Update)
+	del := make(chan storage.Delete)
+
+	ret := &Writer{
+		cl:    cl,
+		db:    db,
+		cache: storage.NewCache(),
+		pool:  workqueue.New(1, pendingApplyCapacity),
+		upd:   upd,
+		del:   del,
+		quit:  iox.NewAsyncCloser(),
+	}
+
+	return ret, upd, del
+}
+
+func (w *Writer) Init(ctx context.Context) (storage.Snapshot, error) {
+	snapshot, err := w.db.Read(ctx)
+	if err != nil {
+		return storage.Snapshot{}, err
+	}
+	w.writer = storage.NewWriter(w.cl, snapshot)
+	w.cache.Restore(snapshot)
+
+	return snapshot, nil
+}
+
+// HandleAsync attempts to update the state as requested. If the request is accepted, it is applied to the writer
+// and (tentative) result available. The caller should delay returning the result until it has been successfully
+// applied. A write failure is a total leader failure.
+func (w *Writer) HandleAsync(ctx context.Context, req HandleRequest) (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
+	if len(w.pool.Chan()) == pendingApplyCapacity {
+		log.Warnf(ctx, "Internal: pending applies reached internal limit: %v", pendingApplyCapacity)
+		return nil, nil, model.ErrOverloaded
+	}
+	return w.handle(ctx, req)
+}
+
+func (w *Writer) handle(ctx context.Context, req HandleRequest) (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
+	switch {
+	case req.Proto.GetTenant() != nil:
+		done, ret, err := w.handleTenantRequest(ctx, req.Proto.GetTenant())
+		if err != nil {
+			return nil, nil, err
+		}
+		return done, NewHandleTenantResponse(ret), nil
+
+	case req.Proto.GetDomain() != nil:
+		done, ret, err := w.handleDomainRequest(ctx, req.Proto.GetDomain())
+		if err != nil {
+			return nil, nil, err
+		}
+		return done, NewHandleDomainResponse(ret), nil
+
+	case req.Proto.GetPlacement() != nil:
+		done, ret, err := w.handlePlacementRequest(ctx, req.Proto.GetPlacement())
+		if err != nil {
+			return nil, nil, err
+		}
+		return done, NewHandlePlacementResponse(ret), nil
+
+	default:
+		return nil, nil, model.ErrInvalid
+	}
+}
+
+func (w *Writer) handleTenantRequest(ctx context.Context, req *internal_v1.TenantRequest) (iox.AsyncCloser, *internal_v1.TenantResponse, error) {
+	switch {
+	case req.GetNew() != nil:
+		return w.handleNewTenantRequest(ctx, req.GetNew())
+	case req.GetUpdate() != nil:
+		return w.handleUpdateTenantRequest(ctx, req.GetUpdate())
+	case req.GetDelete() != nil:
+		return w.handleDeleteTenantRequest(ctx, req.GetDelete())
+	default:
+		return nil, nil, fmt.Errorf("invalid mutation")
+	}
+}
+
+func (w *Writer) handleNewTenantRequest(ctx context.Context, req *public_v1.NewTenantRequest) (iox.AsyncCloser, *internal_v1.TenantResponse, error) {
+	name := model.TenantName(req.GetName())
+
+	var opts []model.TenantOption
+	if cfg := req.GetConfig(); cfg != nil {
+		opts = append(opts, model.WithTenantConfig(model.WrapTenantConfig(cfg)))
+	}
+	tenant, err := model.NewTenant(name, w.cl.Now(), opts...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	upd, info, err := w.writer.Tenants.Create(tenant)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.TenantResponse{
+		Resp: &internal_v1.TenantResponse_New{
+			New: &public_v1.NewTenantResponse{
+				Tenant: model.UnwrapTenantInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (w *Writer) handleUpdateTenantRequest(ctx context.Context, req *public_v1.UpdateTenantRequest) (iox.AsyncCloser, *internal_v1.TenantResponse, error) {
+	name := model.TenantName(req.GetName())
+	guard := model.Version(req.GetVersion())
+
+	info, ok := w.cache.Tenant(name)
+	if !ok {
+		return nil, nil, model.ErrNotFound
+	}
+
+	var opts []model.TenantOption
+	if req.GetConfig() != nil {
+		opts = append(opts, model.WithTenantConfig(model.WrapTenantConfig(req.GetConfig())))
+	}
+	if len(opts) == 0 {
+		return nil, nil, model.ErrInvalid
+	}
+	tenant, err := model.UpdateTenant(info.Tenant(), opts...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	upd, info, err := w.writer.Tenants.Update(tenant, guard)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.TenantResponse{
+		Resp: &internal_v1.TenantResponse_Update{
+			Update: &public_v1.UpdateTenantResponse{
+				Tenant: model.UnwrapTenantInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (w *Writer) handleDeleteTenantRequest(ctx context.Context, req *public_v1.DeleteTenantRequest) (iox.AsyncCloser, *internal_v1.TenantResponse, error) {
+	name := model.TenantName(req.GetName())
+
+	del, err := w.writer.Tenants.Delete(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.deleteAsync(ctx, del)
+
+	return done, &internal_v1.TenantResponse{
+		Resp: &internal_v1.TenantResponse_Delete{
+			Delete: &public_v1.DeleteTenantResponse{},
+		},
+	}, nil
+
+}
+
+func (w *Writer) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
+	switch {
+	case req.GetNew() != nil:
+		return w.handleNewDomainRequest(ctx, req.GetNew())
+	case req.GetUpdate() != nil:
+		return w.handleUpdateDomainRequest(ctx, req.GetUpdate())
+	case req.GetDelete() != nil:
+		return w.handleDeleteDomainRequest(ctx, req.GetDelete())
+	default:
+		return nil, nil, fmt.Errorf("invalid mutation")
+	}
+}
+
+func (w *Writer) handleNewDomainRequest(ctx context.Context, req *public_v1.NewDomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
+	name, err := model.ParseQualifiedDomainName(req.GetName())
+	if err != nil {
+		return nil, nil, model.ErrInvalid
+	}
+
+	var opts []model.DomainOption
+	if req.GetConfig() != nil {
+		opts = append(opts, model.WithDomainConfig(model.WrapDomainConfig(req.GetConfig())))
+	}
+	domain, err := model.NewDomain(name, req.GetType(), w.cl.Now(), opts...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	upd, info, err := w.writer.Domains.Create(domain)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.DomainResponse{
+		Resp: &internal_v1.DomainResponse_New{
+			New: &public_v1.NewDomainResponse{
+				Domain: model.UnwrapDomainInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.UpdateDomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
+	name, err := model.ParseQualifiedDomainName(req.GetName())
+	if err != nil {
+		return nil, nil, model.ErrInvalid
+	}
+	guard := model.Version(req.GetVersion())
+
+	info, ok := w.cache.Domain(name)
+	if !ok {
+		return nil, nil, model.ErrNotFound
+	}
+
+	var opts []model.DomainOption
+	if req.GetConfig() != nil {
+		opts = append(opts, model.WithDomainConfig(model.WrapDomainConfig(req.GetConfig())))
+	}
+	domain, err := model.UpdateDomain(info.Domain(), opts...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	upd, info, err := w.writer.Domains.Update(domain, guard)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.DomainResponse{
+		Resp: &internal_v1.DomainResponse_Update{
+			Update: &public_v1.UpdateDomainResponse{
+				Domain: model.UnwrapDomainInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (w *Writer) handleDeleteDomainRequest(ctx context.Context, req *public_v1.DeleteDomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
+	name, err := model.ParseQualifiedDomainName(req.GetName())
+	if err != nil {
+		return nil, nil, model.ErrInvalid
+	}
+
+	upd, err := w.writer.Domains.Delete(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.DomainResponse{
+		Resp: &internal_v1.DomainResponse_Delete{
+			Delete: &public_v1.DeleteDomainResponse{},
+		},
+	}, nil
+}
+
+func (w *Writer) handlePlacementRequest(ctx context.Context, req *internal_v1.PlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
+	switch {
+	case req.GetNew() != nil:
+		return w.handleNewPlacementRequest(ctx, req.GetNew())
+	case req.GetUpdate() != nil:
+		return w.handleUpdatePlacementRequest(ctx, req.GetUpdate())
+	case req.GetDelete() != nil:
+		return w.handleDeletePlacementRequest(ctx, req.GetDelete())
+	default:
+		return nil, nil, fmt.Errorf("invalid mutation")
+	}
+}
+
+func (w *Writer) handleNewPlacementRequest(ctx context.Context, req *internal_v1.NewPlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
+	name, err := model.ParseQualifiedPlacementName(req.GetName())
+	if err != nil {
+		return nil, nil, model.ErrInvalid
+	}
+	cfg, err := core.ParseInternalPlacementConfig(req.GetConfig())
+	if err != nil {
+		return nil, nil, err
+	}
+	placement := core.NewInternalPlacement(name, cfg, w.cl.Now())
+
+	upd, info, err := w.writer.Placements.Create(placement)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.PlacementResponse{
+		Resp: &internal_v1.PlacementResponse_New{
+			New: &internal_v1.NewPlacementResponse{
+				Info: core.UnwrapInternalPlacementInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (w *Writer) handleUpdatePlacementRequest(ctx context.Context, req *internal_v1.UpdatePlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
+	name, err := model.ParseQualifiedPlacementName(req.GetName())
+	if err != nil {
+		return nil, nil, model.ErrInvalid
+	}
+	guard := model.Version(req.GetVersion())
+
+	cfg, err := core.ParseInternalPlacementConfig(req.GetConfig())
+	if err != nil {
+		return nil, nil, err
+	}
+	placement := core.NewInternalPlacement(name, cfg, w.cl.Now())
+
+	upd, info, err := w.writer.Placements.Update(placement, guard)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.PlacementResponse{
+		Resp: &internal_v1.PlacementResponse_Update{
+			Update: &internal_v1.UpdatePlacementResponse{
+				Info: core.UnwrapInternalPlacementInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (w *Writer) handleDeletePlacementRequest(ctx context.Context, req *internal_v1.DeletePlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
+	name, err := model.ParseQualifiedPlacementName(req.GetName())
+	if err != nil {
+		return nil, nil, model.ErrInvalid
+	}
+
+	upd, err := w.writer.Placements.Delete(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.PlacementResponse{
+		Resp: &internal_v1.PlacementResponse_Delete{
+			Delete: &internal_v1.DeletePlacementResponse{},
+		},
+	}, nil
+}
+
+// TODO(hurwitz) 9/13/2023: We may want to treat raft.Apply failures more like transient DB failures.
+// In that case, retry, then returning a failure to the caller may be more appropriate.
+
+func (w *Writer) updateAsync(ctx context.Context, upd storage.Update) iox.AsyncCloser {
+	if err := w.cache.Update(upd, true); err != nil {
+		log.Fatalf(ctx, "Internal: pre-commit cache inconsistent with writer: %v", err)
+	}
+
+	done := iox.NewAsyncCloser()
+	w.pool.Chan() <- func() {
+		defer done.Close()
+
+		// Perform I/O async. If it fails, escalate.
+
+		if err := w.db.Update(ctx, upd); err != nil {
+			log.Errorf(ctx, "Failed to apply update: %v. Closing", err)
+			w.Close()
+		}
+	}
+	return done
+}
+
+func (w *Writer) deleteAsync(ctx context.Context, del storage.Delete) iox.AsyncCloser {
+	if err := w.cache.Delete(del); err != nil {
+		log.Fatalf(ctx, "Internal: pre-commit cache inconsistent with writer: %v", err)
+	}
+
+	done := iox.NewAsyncCloser()
+	w.pool.Chan() <- func() {
+		defer done.Close()
+
+		// Perform I/O async. If it fails, escalate.
+
+		if err := w.db.Delete(ctx, del); err != nil {
+			log.Errorf(ctx, "Failed to apply delete: %v. Closing", err)
+			w.Close()
+		}
+	}
+	return done
+}
+
+func (w *Writer) Close() {
+	w.pool.Close()
+	w.quit.Close()
+}
+
+func (w *Writer) Closed() <-chan struct{} {
+	return w.quit.Closed()
+}

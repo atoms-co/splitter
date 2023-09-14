@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package atoms.splitter.private;
+
+import "splitter/proto/public_v1/tenant.proto";
+import "splitter/proto/public_v1/placement.proto";
+import "splitter/proto/public_v1/consumer.proto";
+import "splitter/proto/internal_v1/placement.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb/private";
+
+// State is the complete state of a single tenant.
+message State {
+  atoms.splitter.TenantInfo tenant = 1;
+  repeated atoms.splitter.DomainInfo domains = 2;
+  repeated atoms.splitter.private.InternalPlacementInfo placements = 3;
+}
+
+// Update is an incremental update to a single tenant. Updates to multiple aspects can be made
+// atomically. New entities are identified with v1. Should not be empty.
+message Update {
+  message Tenant {
+    atoms.splitter.TenantInfo updated = 1;
+  }
+
+  message Domain {
+    repeated atoms.splitter.DomainInfo updated = 1;
+    repeated atoms.splitter.QualifiedDomainName removed = 2;
+  }
+
+  message Placement {
+    repeated atoms.splitter.private.InternalPlacementInfo updated = 1;
+    repeated atoms.splitter.QualifiedPlacementName removed = 2;
+  }
+
+  string name = 1; // tenant name
+  Tenant tenant = 2;
+  Domain domain = 3;
+  Placement placement = 4;
+}
+
+// Delete removes an entire tenant.
+message Delete {
+  string tenant = 1;
+}
+
+message Mutation {
+  oneof msg {
+    Update update = 1;
+    Delete delete = 2;
+  }
+}
+
+// Snapshot holds the complete state of all tenants.
+message Snapshot {
+  repeated State tenants = 1;
+}

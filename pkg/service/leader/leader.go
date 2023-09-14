@@ -9,8 +9,8 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/iox"
-	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/randx"
+	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -41,12 +41,6 @@ type worker struct {
 	out chan<- JoinMessage
 }
 
-type tenant struct {
-	info       model.TenantInfo
-	domains    map[model.QualifiedDomainName]model.DomainInfo
-	placements map[model.PlacementName]core.InternalPlacementInfo
-}
-
 // Leader centralizes tenant and storage coordination. All updates go through the global leader, which is
 // dynamically selected and may be present at different nodes at different times.
 type Leader struct {
@@ -54,25 +48,32 @@ type Leader struct {
 
 	cl clock.Clock
 	id location.Instance
-	db storage.Storage
+
+	writer *Writer
+	cache  *storage.Cache // post-commit cache
 
 	workers map[location.InstanceID]*worker
-	tenants map[model.TenantName]*tenant
 	alloc   *allocation.Allocation[model.TenantName]
 
+	upd    <-chan storage.Update
+	del    <-chan storage.Delete
 	inject chan func()
 
 	initialized, drain iox.AsyncCloser
 }
 
 func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.Storage) *Leader {
+	writer, upd, del := NewWriter(cl, db)
+
 	ret := &Leader{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
 		id:          location.NewInstance(loc),
-		db:          db,
+		writer:      writer,
+		cache:       storage.NewCache(),
 		workers:     map[location.InstanceID]*worker{},
-		tenants:     map[model.TenantName]*tenant{},
+		upd:         upd,
+		del:         del,
 		inject:      make(chan func()),
 		initialized: iox.NewAsyncCloser(),
 		drain:       iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()), // context cancel => drain
@@ -105,43 +106,17 @@ func (l *Leader) init(ctx context.Context) {
 	defer l.Close()
 	defer l.drain.Close()
 	defer l.initialized.Close()
+	defer l.writer.Close()
 
 	log.Infof(ctx, "Leader initializing: %v", l.id)
 
-	// With the raft implementation, the storage cache is in memory and does not fail -- by design. We
-	// do not have good options in other setups if the leader fails to load state.
-
-	tenants, err := l.db.Tenants().List(ctx)
+	snapshot, err := l.writer.Init(ctx)
 	if err != nil {
-		log.Errorf(ctx, "Failed to load tenants: %v", err)
-		l.recordAction(ctx, "init", "failed/tenants")
+		log.Errorf(ctx, "Failed to load tenant data: %v", err)
+		l.recordAction(ctx, "init", "failed")
 		return
 	}
-	for _, info := range tenants {
-		name := info.Name()
-
-		placements, err := l.db.Placements().List(ctx, name)
-		if err != nil {
-			log.Errorf(ctx, "Failed to load %v placements: %v", name, err)
-			l.recordAction(ctx, "init", "failed/placements")
-			return
-		}
-
-		domains, err := l.db.Domains().List(ctx, name)
-		if err != nil {
-			log.Errorf(ctx, "Failed to load %v domains: %v", name, err)
-			l.recordAction(ctx, "init", "failed/domains")
-			return
-		}
-
-		l.tenants[name] = &tenant{
-			info:       info,
-			domains:    mapx.New(domains, model.DomainInfo.Name),
-			placements: mapx.New(placements, core.InternalPlacementInfo.Name),
-		}
-
-		log.Infof(ctx, "Loaded tenant %v, #domains=%v, #placements=%v", name, len(domains), len(placements))
-	}
+	l.cache.Restore(snapshot)
 
 	if l.drain.IsClosed() {
 		log.Errorf(ctx, "Unexpected: leader %v lost leadership while loading", l.id)
@@ -149,7 +124,7 @@ func (l *Leader) init(ctx context.Context) {
 		return
 	}
 
-	log.Infof(ctx, "Leader initialized: %v, #tenants=%v", l.id, len(l.tenants))
+	log.Infof(ctx, "Leader initialized: %v, #tenants=%v", l.id, len(snapshot.Tenants()))
 	l.recordAction(ctx, "init", "ok")
 	l.initialized.Close()
 
@@ -177,8 +152,27 @@ steady:
 		case fn := <-l.inject:
 			fn()
 
+		case upd := <-l.upd:
+			// TODO: make changes, allocate
+
+			if err := l.cache.Update(upd, false); err != nil {
+				log.Errorf(ctx, "Internal: inconsistent tenant state: %v", err)
+				return
+			}
+
+		case del := <-l.del:
+			// TODO: remove coordinator
+
+			if err := l.cache.Delete(del); err != nil {
+				log.Errorf(ctx, "Internal: inconsistent tenant state: %v", err)
+				return
+			}
+
 		case <-l.drain.Closed():
 			break steady
+
+		case <-l.writer.Closed():
+			return
 
 		case <-l.Closed():
 			return
@@ -189,20 +183,31 @@ steady:
 }
 
 func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+	if req.IsMutation() {
+		return l.handleWrite(ctx, req)
+	}
+
 	switch {
 	case req.Proto.GetTenant() != nil:
 		ret, err := l.handleTenantRequest(ctx, req.Proto.GetTenant())
 		if err != nil {
 			return nil, err
 		}
-		return &internal_v1.LeaderHandleResponse{Resp: &internal_v1.LeaderHandleResponse_Tenant{Tenant: ret}}, nil
+		return NewHandleTenantResponse(ret), nil
+
+	case req.Proto.GetDomain() != nil:
+		ret, err := l.handleDomainRequest(ctx, req.Proto.GetDomain())
+		if err != nil {
+			return nil, err
+		}
+		return NewHandleDomainResponse(ret), nil
 
 	case req.Proto.GetPlacement() != nil:
 		ret, err := l.handlePlacementRequest(ctx, req.Proto.GetPlacement())
 		if err != nil {
 			return nil, err
 		}
-		return &internal_v1.LeaderHandleResponse{Resp: &internal_v1.LeaderHandleResponse_Placement{Placement: ret}}, nil
+		return NewHandlePlacementResponse(ret), nil
 
 	default:
 		return nil, fmt.Errorf("invalid request")
@@ -210,63 +215,171 @@ func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 }
 
 func (l *Leader) handleTenantRequest(ctx context.Context, req *internal_v1.TenantRequest) (*internal_v1.TenantResponse, error) {
-	switch {
-	case req.GetList() != nil:
-		return l.handleListTenantsRequest(ctx)
-
-	default:
-		return nil, fmt.Errorf("invalid request")
-	}
-}
-
-func (l *Leader) handleListTenantsRequest(ctx context.Context) (*internal_v1.TenantResponse, error) {
 	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.TenantResponse, error) {
-		return &internal_v1.TenantResponse{
-			Resp: &internal_v1.TenantResponse_List{
-				List: &public_v1.ListTenantsResponse{
-					Tenants: mapx.MapValues(l.tenants, func(v *tenant) *public_v1.TenantInfo {
-						return model.UnwrapTenantInfo(v.info)
-					}),
-				},
-			},
-		}, nil
+		switch {
+		case req.GetList() != nil:
+			return l.handleListTenantsRequest(ctx, req.GetList())
+		case req.GetInfo() != nil:
+			return l.handleInfoTenantRequest(ctx, req.GetInfo())
+		default:
+			return nil, fmt.Errorf("invalid request")
+		}
 	})
 }
-func (l *Leader) handlePlacementRequest(ctx context.Context, req *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
-	switch {
-	case req.GetList() != nil:
-		return l.handleListPlacementsRequest(ctx, req.GetList())
 
-	default:
-		return nil, fmt.Errorf("invalid request")
+func (l *Leader) handleListTenantsRequest(ctx context.Context, req *public_v1.ListTenantsRequest) (*internal_v1.TenantResponse, error) {
+	return &internal_v1.TenantResponse{
+		Resp: &internal_v1.TenantResponse_List{
+			List: &public_v1.ListTenantsResponse{
+				Tenants: slicex.Map(l.cache.Tenants(), model.UnwrapTenantInfo),
+			},
+		},
+	}, nil
+}
+
+func (l *Leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.InfoTenantRequest) (*internal_v1.TenantResponse, error) {
+	name := model.TenantName(req.GetName())
+
+	info, ok := l.cache.Tenant(name)
+	if !ok {
+		return nil, model.ErrNotFound
 	}
+
+	return &internal_v1.TenantResponse{
+		Resp: &internal_v1.TenantResponse_Info{
+			Info: &public_v1.InfoTenantResponse{
+				Tenant: model.UnwrapTenantInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (l *Leader) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (*internal_v1.DomainResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.DomainResponse, error) {
+		switch {
+		case req.GetList() != nil:
+			return l.handleListDomainsRequest(ctx, req.GetList())
+		case req.GetInfo() != nil:
+			return l.handleInfoDomainRequest(ctx, req.GetInfo())
+		default:
+			return nil, fmt.Errorf("invalid request")
+		}
+	})
+}
+
+func (l *Leader) handleListDomainsRequest(ctx context.Context, req *public_v1.ListDomainsRequest) (*internal_v1.DomainResponse, error) {
+	name := model.TenantName(req.GetTenant())
+
+	if _, ok := l.cache.Tenant(name); !ok {
+		return nil, model.ErrNotFound
+	}
+
+	return &internal_v1.DomainResponse{
+		Resp: &internal_v1.DomainResponse_List{
+			List: &public_v1.ListDomainsResponse{
+				Domains: slicex.Map(l.cache.Domains(name), model.UnwrapDomainInfo),
+			},
+		},
+	}, nil
+}
+
+func (l *Leader) handleInfoDomainRequest(ctx context.Context, req *public_v1.InfoDomainRequest) (*internal_v1.DomainResponse, error) {
+	name, err := model.ParseQualifiedDomainName(req.GetName())
+	if err != nil {
+		return nil, model.ErrInvalid
+	}
+
+	info, ok := l.cache.Domain(name)
+	if !ok {
+		return nil, model.ErrNotFound
+	}
+
+	return &internal_v1.DomainResponse{
+		Resp: &internal_v1.DomainResponse_Info{
+			Info: &public_v1.InfoDomainResponse{
+				Domain: model.UnwrapDomainInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (l *Leader) handlePlacementRequest(ctx context.Context, req *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.PlacementResponse, error) {
+		switch {
+		case req.GetList() != nil:
+			return l.handleListPlacementsRequest(ctx, req.GetList())
+		case req.GetInfo() != nil:
+			return l.handleInfoPlacementRequest(ctx, req.GetInfo())
+		default:
+			return nil, fmt.Errorf("invalid request")
+		}
+	})
 }
 
 func (l *Leader) handleListPlacementsRequest(ctx context.Context, req *internal_v1.ListPlacementsRequest) (*internal_v1.PlacementResponse, error) {
 	name := model.TenantName(req.GetTenant())
 
-	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.PlacementResponse, error) {
-		t, ok := l.tenants[name]
-		if !ok {
-			return nil, model.ErrNotFound
-		}
+	if _, ok := l.cache.Tenant(name); !ok {
+		return nil, model.ErrNotFound
+	}
 
-		return &internal_v1.PlacementResponse{
-			Resp: &internal_v1.PlacementResponse_List{
-				List: &internal_v1.ListPlacementsResponse{
-					Info: mapx.MapValues(t.placements, core.UnwrapInternalPlacementInfo),
-				},
+	return &internal_v1.PlacementResponse{
+		Resp: &internal_v1.PlacementResponse_List{
+			List: &internal_v1.ListPlacementsResponse{
+				Info: slicex.Map(l.cache.Placements(name), core.UnwrapInternalPlacementInfo),
 			},
-		}, nil
+		},
+	}, nil
+}
+
+func (l *Leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v1.InfoPlacementRequest) (*internal_v1.PlacementResponse, error) {
+	name, err := model.ParseQualifiedPlacementName(req.GetName())
+	if err != nil {
+		return nil, model.ErrInvalid
+	}
+
+	info, ok := l.cache.Placement(name)
+	if !ok {
+		return nil, model.ErrNotFound
+	}
+
+	return &internal_v1.PlacementResponse{
+		Resp: &internal_v1.PlacementResponse_Info{
+			Info: &internal_v1.InfoPlacementResponse{
+				Info: core.UnwrapInternalPlacementInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (l *Leader) handleWrite(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+	// (1) Storage operation. Validate and enqueue it sync if mutation.
+
+	done, resp, err := syncx.Txn2(ctx, l.txn, func() (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
+		return l.writer.HandleAsync(ctx, req)
 	})
+	if err != nil {
+		return nil, err
+	}
+
+	// (2) Wait for commit before returning result.
+
+	select {
+	case <-done.Closed():
+		return resp, nil
+	case <-ctx.Done():
+		return nil, model.ErrOverloaded
+	case <-l.Closed():
+		return nil, model.ErrNotOwned
+	}
 }
 
 func (l *Leader) emitMetrics(ctx context.Context) {
 	l.resetMetrics(ctx)
 
 	numWorkers.Set(ctx, float64(len(l.workers)), core.StatusTag("ok"))
-	for name := range l.tenants {
-		numTenants.Set(ctx, float64(1), core.TenantTag(name), core.StatusTag("ok"))
+	for _, info := range l.cache.Tenants() {
+		numTenants.Set(ctx, float64(1), core.TenantTag(info.Name()), core.StatusTag("ok"))
 	}
 }
 

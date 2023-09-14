@@ -3,44 +3,15 @@ package storage
 
 import (
 	"context"
-	"go.atoms.co/splitter/pkg/core"
-	"go.atoms.co/splitter/pkg/model"
 )
 
-// Storage provides access to the Splitter storage. The information is expected to be small with all values cached
-// in memory by the leader. Thread-safe.
+// Storage provides low-level access to Splitter storage. The information is expected to be small with
+// all values cached in memory by the leader. It caters to log-based storage. Thread-safe.
 type Storage interface {
-	Tenants() Tenants
-	Domains() Domains
-	Placements() Placements
-}
-
-// Tenants is a versioned tenants store. Must be thread-safe.
-type Tenants interface {
-	List(ctx context.Context) ([]model.TenantInfo, error)
-
-	New(ctx context.Context, tenant model.Tenant) error
-	Read(ctx context.Context, name model.TenantName) (model.TenantInfo, error)
-	Update(ctx context.Context, tenant model.Tenant, guard model.Version) (model.TenantInfo, error)
-	Delete(ctx context.Context, name model.TenantName) error
-}
-
-// Domains is a versioned domains store. Must be thread-safe.
-type Domains interface {
-	List(ctx context.Context, tenant model.TenantName) ([]model.DomainInfo, error)
-
-	New(ctx context.Context, domain model.Domain) error
-	Read(ctx context.Context, name model.QualifiedDomainName) (model.DomainInfo, error)
-	Update(ctx context.Context, domain model.Domain, guard model.Version) (model.DomainInfo, error)
-	Delete(ctx context.Context, name model.QualifiedDomainName) error
-}
-
-// Placements is a versioned placement store. Must be thread-safe.
-type Placements interface {
-	List(ctx context.Context, tenant model.TenantName) ([]core.InternalPlacementInfo, error)
-
-	Create(ctx context.Context, placement core.InternalPlacement) (core.InternalPlacementInfo, error)
-	Read(ctx context.Context, name model.QualifiedPlacementName) (core.InternalPlacementInfo, error)
-	Update(ctx context.Context, placement core.InternalPlacement, guard model.Version) (core.InternalPlacementInfo, error)
-	Delete(ctx context.Context, name model.QualifiedPlacementName) error
+	// Read returns a strongly-consistent snapshot of all persisted data.
+	Read(ctx context.Context) (Snapshot, error)
+	// Update applies the Update. Returns ErrNotAllowed if not suitable for the current state.
+	Update(ctx context.Context, update Update) error
+	// Delete applies the Delete. Returns ErrNotFound if the tenant does not exist.
+	Delete(ctx context.Context, del Delete) error
 }

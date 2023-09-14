@@ -30,14 +30,14 @@ func WithUpdateDomainConfig(config DomainConfig) UpdateDomainOption {
 // Client is a client for querying placement information.
 type Client interface {
 	ListTenants(ctx context.Context) ([]TenantInfo, error)
-	NewTenant(ctx context.Context, name TenantName, cfg TenantConfig) (Tenant, error)
-	ReadTenant(ctx context.Context, name TenantName) (TenantInfo, error)
+	NewTenant(ctx context.Context, name TenantName, cfg TenantConfig) (TenantInfo, error)
+	InfoTenant(ctx context.Context, name TenantName) (TenantInfo, error)
 	UpdateTenant(ctx context.Context, tenant TenantInfo, opts ...UpdateTenantOption) (TenantInfo, error)
 	DeleteTenant(ctx context.Context, name TenantName) error
 
 	ListDomains(ctx context.Context, name TenantName) ([]DomainInfo, error)
-	NewDomain(ctx context.Context, name QualifiedDomainName, domainType DomainType, cfg DomainConfig) (Domain, error)
-	ReadDomain(ctx context.Context, name QualifiedDomainName) (DomainInfo, error)
+	NewDomain(ctx context.Context, name QualifiedDomainName, domainType DomainType, cfg DomainConfig) (DomainInfo, error)
+	InfoDomain(ctx context.Context, name QualifiedDomainName) (DomainInfo, error)
 	UpdateDomain(ctx context.Context, domain DomainInfo, opts ...UpdateDomainOption) (DomainInfo, error)
 	DeleteDomain(ctx context.Context, name QualifiedDomainName) error
 
@@ -66,21 +66,21 @@ func (c *client) ListTenants(ctx context.Context) ([]TenantInfo, error) {
 	return slicex.Map(resp.GetTenants(), WrapTenantInfo), nil
 }
 
-func (c *client) NewTenant(ctx context.Context, name TenantName, cfg TenantConfig) (Tenant, error) {
+func (c *client) NewTenant(ctx context.Context, name TenantName, cfg TenantConfig) (TenantInfo, error) {
 	req := &public_v1.NewTenantRequest{
 		Name:   string(name),
 		Config: UnwrapTenantConfig(cfg),
 	}
 	resp, err := c.management.NewTenant(ctx, req)
 	if err != nil {
-		return Tenant{}, err
+		return TenantInfo{}, err
 	}
-	return WrapTenant(resp.GetTenant()), nil
+	return WrapTenantInfo(resp.GetTenant()), nil
 }
 
-func (c *client) ReadTenant(ctx context.Context, name TenantName) (TenantInfo, error) {
-	req := &public_v1.ReadTenantRequest{Name: string(name)}
-	resp, err := c.management.ReadTenant(ctx, req)
+func (c *client) InfoTenant(ctx context.Context, name TenantName) (TenantInfo, error) {
+	req := &public_v1.InfoTenantRequest{Name: string(name)}
+	resp, err := c.management.InfoTenant(ctx, req)
 	if err != nil {
 		return TenantInfo{}, err
 	}
@@ -121,7 +121,7 @@ func (c *client) ListDomains(ctx context.Context, name TenantName) ([]DomainInfo
 	return slicex.Map(resp.GetDomains(), WrapDomainInfo), nil
 }
 
-func (c *client) NewDomain(ctx context.Context, name QualifiedDomainName, domainType DomainType, cfg DomainConfig) (Domain, error) {
+func (c *client) NewDomain(ctx context.Context, name QualifiedDomainName, domainType DomainType, cfg DomainConfig) (DomainInfo, error) {
 	req := &public_v1.NewDomainRequest{
 		Name:   name.ToProto(),
 		Type:   domainType,
@@ -129,14 +129,14 @@ func (c *client) NewDomain(ctx context.Context, name QualifiedDomainName, domain
 	}
 	resp, err := c.management.NewDomain(ctx, req)
 	if err != nil {
-		return Domain{}, err
+		return DomainInfo{}, err
 	}
-	return WrapDomain(resp.GetDomain()), nil
+	return WrapDomainInfo(resp.GetDomain()), nil
 }
 
-func (c *client) ReadDomain(ctx context.Context, name QualifiedDomainName) (DomainInfo, error) {
-	req := &public_v1.ReadDomainRequest{Name: name.ToProto()}
-	resp, err := c.management.ReadDomain(ctx, req)
+func (c *client) InfoDomain(ctx context.Context, name QualifiedDomainName) (DomainInfo, error) {
+	req := &public_v1.InfoDomainRequest{Name: name.ToProto()}
+	resp, err := c.management.InfoDomain(ctx, req)
 	if err != nil {
 		return DomainInfo{}, err
 	}

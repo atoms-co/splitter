@@ -4,8 +4,6 @@ import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
-	"go.atoms.co/splitter/pkg/core"
-	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pb/private"
 	"fmt"
@@ -17,26 +15,22 @@ import (
 var (
 	ErrNotLeader = fmt.Errorf("not the raft leader")
 
-	_ storage.Tenants    = (*tenants)(nil)
-	_ storage.Domains    = (*domains)(nil)
-	_ storage.Placements = (*placements)(nil)
+	_ storage.Storage = (*Storage)(nil)
 )
 
 const (
-	DefaultCommandDeadline = 15 * time.Second
+	// applyDeadline is the deadline for apply I/O. If an apply takes longer, we time out
+	// and are unsure whether it was applied or not.
+	applyDeadline = 15 * time.Second
 )
 
+// Storage provides raft-based Storage. It can be used on the raft leader only.
 type Storage struct {
 	cl clock.Clock
 
-	// raftID is the ID of the raft instance in the cluster
 	raftID raft.ServerID
-
-	// fsm is the state store for Splitter data
-	fsm *FSM
-
-	// raft is the instance of raft we will operate on.
-	raft *raft.Raft
+	raft   *raft.Raft
+	fsm    *FSM
 }
 
 func New(cl clock.Clock, raftID raft.ServerID, raft *raft.Raft, fsm *FSM) *Storage {
@@ -50,178 +44,66 @@ func New(cl clock.Clock, raftID raft.ServerID, raft *raft.Raft, fsm *FSM) *Stora
 	return s
 }
 
-func (s *Storage) Tenants() storage.Tenants {
-	return (*tenants)(s)
-}
-
-func (s *Storage) Domains() storage.Domains {
-	return (*domains)(s)
-}
-
-func (s *Storage) Placements() storage.Placements {
-	return (*placements)(s)
-}
-
-type tenants Storage
-
-func (t *tenants) List(ctx context.Context) ([]model.TenantInfo, error) {
-	if !isLeader(t.raftID, t.raft) {
-		return nil, ErrNotLeader
+func (s *Storage) Read(ctx context.Context) (storage.Snapshot, error) {
+	if !s.isLeader() {
+		return storage.Snapshot{}, ErrNotLeader
 	}
-	return t.fsm.storage.Tenants().List(ctx)
+
+	// Read is called only on the leader. We want to ensure that there are no
+	// outstanding updates before the Splitter leader takes control over the state
+	// in-memory, causing (potential) data corruption. Barrier provides that guarantee.
+
+	if err := s.raft.Barrier(applyDeadline).Error(); err != nil {
+		return storage.Snapshot{}, fmt.Errorf("failed to create barrier: %v", err)
+	}
+	return s.fsm.Read(), nil
 }
 
-func (t *tenants) New(ctx context.Context, tenant model.Tenant) error {
-	if !isLeader(t.raftID, t.raft) {
+func (s *Storage) Update(ctx context.Context, update storage.Update) error {
+	if !s.isLeader() {
 		return ErrNotLeader
 	}
-	_, err := applyRaft(ctx, core.NewRaftCommandNewTenant(tenant), t.cl, t.raft)
-	return err
+
+	return s.apply(ctx, &internal_v1.Mutation{
+		Msg: &internal_v1.Mutation_Update{
+			Update: storage.UnwrapUpdate(update),
+		},
+	})
 }
 
-func (t *tenants) Read(ctx context.Context, name model.TenantName) (model.TenantInfo, error) {
-	if !isLeader(t.raftID, t.raft) {
-		return model.TenantInfo{}, ErrNotLeader
-	}
-	return t.fsm.storage.Tenants().Read(ctx, name)
-}
-
-func (t *tenants) Update(ctx context.Context, tenant model.Tenant, guard model.Version) (model.TenantInfo, error) {
-	if !isLeader(t.raftID, t.raft) {
-		return model.TenantInfo{}, ErrNotLeader
-	}
-	resp, err := applyRaft(ctx, core.NewRaftCommandUpdateTenant(tenant, guard), t.cl, t.raft)
-	if err != nil {
-		return model.TenantInfo{}, err
-	}
-	return model.WrapTenantInfo(resp.GetTenant().GetUpdate().GetTenant()), nil
-}
-
-func (t *tenants) Delete(ctx context.Context, name model.TenantName) error {
-	if !isLeader(t.raftID, t.raft) {
+func (s *Storage) Delete(ctx context.Context, del storage.Delete) error {
+	if !s.isLeader() {
 		return ErrNotLeader
 	}
-	_, err := applyRaft(ctx, core.NewRaftCommandDeleteTenant(name), t.cl, t.raft)
-	return err
+
+	return s.apply(ctx, &internal_v1.Mutation{
+		Msg: &internal_v1.Mutation_Delete{
+			Delete: storage.UnwrapDelete(del),
+		},
+	})
 }
 
-type domains Storage
-
-func (d *domains) List(ctx context.Context, tenant model.TenantName) ([]model.DomainInfo, error) {
-	if !isLeader(d.raftID, d.raft) {
-		return nil, ErrNotLeader
-	}
-	return d.fsm.storage.Domains().List(ctx, tenant)
-}
-
-func (d *domains) New(ctx context.Context, domain model.Domain) error {
-	if !isLeader(d.raftID, d.raft) {
-		return ErrNotLeader
-	}
-	_, err := applyRaft(ctx, core.NewRaftCommandNewDomain(domain), d.cl, d.raft)
-	return err
-}
-
-func (d *domains) Read(ctx context.Context, name model.QualifiedDomainName) (model.DomainInfo, error) {
-	if !isLeader(d.raftID, d.raft) {
-		return model.DomainInfo{}, ErrNotLeader
-	}
-	return d.fsm.storage.Domains().Read(ctx, name)
-}
-
-func (d *domains) Update(ctx context.Context, domain model.Domain, guard model.Version) (model.DomainInfo, error) {
-	if !isLeader(d.raftID, d.raft) {
-		return model.DomainInfo{}, ErrNotLeader
-	}
-	resp, err := applyRaft(ctx, core.NewRaftCommandUpdateDomain(domain, guard), d.cl, d.raft)
+func (s *Storage) apply(ctx context.Context, mutation *internal_v1.Mutation) error {
+	buf, err := proto.Marshal(mutation)
 	if err != nil {
-		return model.DomainInfo{}, err
-	}
-	return model.WrapDomainInfo(resp.GetDomain().GetUpdate().GetDomain()), nil
-}
-
-func (d *domains) Delete(ctx context.Context, name model.QualifiedDomainName) error {
-	if !isLeader(d.raftID, d.raft) {
-		return ErrNotLeader
-	}
-	_, err := applyRaft(ctx, core.NewRaftCommandDeleteDomain(name), d.cl, d.raft)
-	return err
-}
-
-type placements Storage
-
-func (p *placements) List(ctx context.Context, tenant model.TenantName) ([]core.InternalPlacementInfo, error) {
-	if !isLeader(p.raftID, p.raft) {
-		return nil, ErrNotLeader
-	}
-	return p.fsm.storage.Placements().List(ctx, tenant)
-}
-
-func (p *placements) Create(ctx context.Context, placement core.InternalPlacement) (core.InternalPlacementInfo, error) {
-	if !isLeader(p.raftID, p.raft) {
-		return core.InternalPlacementInfo{}, ErrNotLeader
-	}
-	resp, err := applyRaft(ctx, core.NewRaftCommandNewPlacement(placement), p.cl, p.raft)
-	if err != nil {
-		return core.InternalPlacementInfo{}, err
-	}
-	return core.WrapInternalPlacementInfo(resp.GetPlacement().GetNew().GetPlacement()), nil
-}
-
-func (p *placements) Read(ctx context.Context, name model.QualifiedPlacementName) (core.InternalPlacementInfo, error) {
-	if !isLeader(p.raftID, p.raft) {
-		return core.InternalPlacementInfo{}, ErrNotLeader
-	}
-	return p.fsm.storage.Placements().Read(ctx, name)
-}
-
-func (p *placements) Update(ctx context.Context, placement core.InternalPlacement, guard model.Version) (core.InternalPlacementInfo, error) {
-	if !isLeader(p.raftID, p.raft) {
-		return core.InternalPlacementInfo{}, ErrNotLeader
-	}
-	resp, err := applyRaft(ctx, core.NewRaftCommandUpdatePlacement(placement, guard), p.cl, p.raft)
-	if err != nil {
-		return core.InternalPlacementInfo{}, err
-	}
-	return core.WrapInternalPlacementInfo(resp.GetPlacement().GetUpdate().GetPlacement()), nil
-}
-
-func (p *placements) Delete(ctx context.Context, name model.QualifiedPlacementName) error {
-	if !isLeader(p.raftID, p.raft) {
-		return ErrNotLeader
-	}
-	_, err := applyRaft(ctx, core.NewRaftCommandDeletePlacement(name), p.cl, p.raft)
-	return err
-}
-
-func applyRaft(ctx context.Context, command *internal_v1.RaftCommand, cl clock.Clock, raft *raft.Raft) (*internal_v1.RaftResponse, error) {
-	buf, err := proto.Marshal(command)
-	if err != nil {
-		return nil, err
+		log.Errorf(context.Background(), "Failed to marshal raft mutation: %v", proto.MarshalTextString(mutation), err)
+		return err
 	}
 
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		deadline = cl.Now().Add(DefaultCommandDeadline)
+		deadline = s.cl.Now().Add(applyDeadline)
 	}
 
-	resp := raft.Apply(buf, cl.Until(deadline))
-	if resp.Error() != nil {
-		return nil, resp.Error()
+	resp := s.raft.Apply(buf, s.cl.Until(deadline))
+	if err := resp.Error(); err != nil {
+		log.Errorf(context.Background(), "Failed to apply raft mutation %v: %v", proto.MarshalTextString(mutation), err)
+		return err
 	}
-
-	raftResp, ok := resp.Response().(*internal_v1.RaftResponse)
-	if !ok {
-		log.Fatalf(ctx, "Internal: invalid FSM response: %v", resp)
-	}
-	if raftResp.Failed {
-		return nil, fmt.Errorf(raftResp.Error)
-	}
-
-	return raftResp, nil
+	return nil
 }
 
-func isLeader(raftID raft.ServerID, raft *raft.Raft) bool {
-	_, leaderID := raft.LeaderWithID()
-	return raftID == leaderID
+func (s *Storage) isLeader() bool {
+	_, leaderID := s.raft.LeaderWithID()
+	return s.raftID == leaderID
 }

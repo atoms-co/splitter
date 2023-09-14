@@ -11,7 +11,7 @@ import (
 
 var (
 	placementCmd = &cobra.Command{
-		Use:   "placement",
+		Use:   "placements",
 		Short: "Manage dynamic domain placements",
 	}
 )

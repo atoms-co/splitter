@@ -59,7 +59,7 @@ func makeNewDomainCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printJson(splitter.UnwrapDomain(domain), true)
+			printJson(splitter.UnwrapDomainInfo(domain), true)
 			return nil
 		})
 	}
@@ -82,7 +82,7 @@ func makeReadDomainCmd() *cobra.Command {
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			info, err := client.ReadDomain(ctx, name)
+			info, err := client.InfoDomain(ctx, name)
 			if err != nil {
 				return err
 			}

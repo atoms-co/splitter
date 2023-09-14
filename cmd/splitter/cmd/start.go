@@ -15,7 +15,6 @@ import (
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/server"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pkg/storage/memory"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
 	"go.atoms.co/splitter/pkg/util/raftx"
 	"fmt"
@@ -80,11 +79,6 @@ func makeStartCommand() *cobra.Command {
 
 		// (2) Set up raft node
 
-		fsm, err := raftstorage.NewFSM(memory.New(cl))
-		if err != nil {
-			log.Fatalf(ctx, "failed to create FSM", err)
-		}
-
 		ldb, err := boltdb.NewBoltStore(filepath.Join(baseDir, "logs.dat"))
 		if err != nil {
 			log.Fatalf(ctx, "failed to create boltdb log store", err)
@@ -119,6 +113,8 @@ func makeStartCommand() *cobra.Command {
 		raftConf.LocalID = raft.ServerID(*raftID)
 		raftConf.Logger = hclogger
 
+		fsm := raftstorage.NewFSM()
+
 		r, err := raft.NewRaft(raftConf, fsm, ldb, sdb, fss, trans)
 		if err != nil {
 			log.Fatalf(ctx, "Failed to initialize raft instance", err)
@@ -134,7 +130,7 @@ func makeStartCommand() *cobra.Command {
 			return ret, ret
 		})
 
-		s := server.New(ctx, cl, loc, c, storage, manager)
+		s := server.New(ctx, cl, loc, c, manager)
 
 		// (4) Start server and await termination
 

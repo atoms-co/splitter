@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
-import "proto/internal_v1/info.proto";
+import "splitter/proto/internal_v1/info.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";

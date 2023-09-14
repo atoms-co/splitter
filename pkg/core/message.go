@@ -124,18 +124,6 @@ func (m Assign) Grant() Grant {
 	return WrapGrant(m.pb.GetGrant())
 }
 
-func (m Assign) Info() model.TenantInfo {
-	return model.WrapTenantInfo(m.pb.GetInfo())
-}
-
-func (m Assign) Domains() []model.DomainInfo {
-	return slicex.Map(m.pb.GetDomains(), model.WrapDomainInfo)
-}
-
-func (m Assign) Placements() []model.PlacementInfo {
-	return slicex.Map(m.pb.GetPlacements(), model.WrapPlacementInfo)
-}
-
 type Revoke struct {
 	pb *internal_v1.WorkerMessage_Revoke
 }

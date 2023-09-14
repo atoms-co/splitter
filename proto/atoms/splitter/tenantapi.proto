@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package atoms.splitter;
 
-import "proto/public_v1/tenant.proto";
+import "splitter/proto/public_v1/tenant.proto";
 import "google/protobuf/timestamp.proto";
 
 option java_multiple_files = true;
@@ -23,14 +23,14 @@ message NewTenantRequest {
 }
 
 message NewTenantResponse {
-  Tenant tenant = 1;
+  TenantInfo tenant = 1;
 }
 
-message ReadTenantRequest {
+message InfoTenantRequest {
   string name = 1;
 }
 
-message ReadTenantResponse {
+message InfoTenantResponse {
   TenantInfo tenant = 1;
 }
 
@@ -67,14 +67,14 @@ message NewDomainRequest {
 }
 
 message NewDomainResponse {
-  Domain domain = 1;
+  DomainInfo domain = 1;
 }
 
-message ReadDomainRequest {
+message InfoDomainRequest {
   QualifiedDomainName name = 1;
 }
 
-message ReadDomainResponse {
+message InfoDomainResponse {
   DomainInfo domain = 1;
 }
 
@@ -100,13 +100,13 @@ message DeleteDomainResponse {
 service ManagementService {
   rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
   rpc NewTenant (NewTenantRequest) returns (NewTenantResponse);
-  rpc ReadTenant (ReadTenantRequest) returns (ReadTenantResponse);
+  rpc InfoTenant (InfoTenantRequest) returns (InfoTenantResponse);
   rpc UpdateTenant (UpdateTenantRequest) returns (UpdateTenantResponse);
   rpc DeleteTenant (DeleteTenantRequest) returns (DeleteTenantResponse);
 
   rpc ListDomains(ListDomainsRequest) returns (ListDomainsResponse);
   rpc NewDomain (NewDomainRequest) returns (NewDomainResponse);
-  rpc ReadDomain (ReadDomainRequest) returns (ReadDomainResponse);
+  rpc InfoDomain (InfoDomainRequest) returns (InfoDomainResponse);
   rpc UpdateDomain (UpdateDomainRequest) returns (UpdateDomainResponse);
   rpc DeleteDomain (DeleteDomainRequest) returns (DeleteDomainResponse);
 }
