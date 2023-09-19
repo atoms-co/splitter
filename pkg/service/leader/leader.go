@@ -15,10 +15,10 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
+	"go.atoms.co/splitter/pkg/util/txnx"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
 	"fmt"
-	"sync"
 	"time"
 )
 
@@ -84,7 +84,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 }
 
 func (l *Leader) Join(ctx context.Context, sid session.ID, id model.Instance, grants []Grant, in <-chan JoinMessage) (<-chan JoinMessage, error) {
-	return syncx.Txn1(ctx, l.txn, func() (<-chan JoinMessage, error) {
+	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (<-chan JoinMessage, error) {
 
 		return nil, nil
 	})
@@ -215,7 +215,7 @@ func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 }
 
 func (l *Leader) handleTenantRequest(ctx context.Context, req *internal_v1.TenantRequest) (*internal_v1.TenantResponse, error) {
-	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.TenantResponse, error) {
+	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (*internal_v1.TenantResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListTenantsRequest(ctx, req.GetList())
@@ -255,7 +255,7 @@ func (l *Leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.Inf
 }
 
 func (l *Leader) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (*internal_v1.DomainResponse, error) {
-	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.DomainResponse, error) {
+	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (*internal_v1.DomainResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListDomainsRequest(ctx, req.GetList())
@@ -304,7 +304,7 @@ func (l *Leader) handleInfoDomainRequest(ctx context.Context, req *public_v1.Inf
 }
 
 func (l *Leader) handlePlacementRequest(ctx context.Context, req *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
-	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.PlacementResponse, error) {
+	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (*internal_v1.PlacementResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListPlacementsRequest(ctx, req.GetList())
@@ -355,7 +355,7 @@ func (l *Leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v
 func (l *Leader) handleWrite(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	// (1) Storage operation. Validate and enqueue it sync if mutation.
 
-	done, resp, err := syncx.Txn2(ctx, l.txn, func() (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
+	done, resp, err := syncx.Txn2(ctx, txnx.Txn(l, l.inject), func() (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
 		return l.writer.HandleAsync(ctx, req)
 	})
 	if err != nil {
@@ -386,27 +386,6 @@ func (l *Leader) emitMetrics(ctx context.Context) {
 func (l *Leader) resetMetrics(ctx context.Context) {
 	numWorkers.Reset(ctx)
 	numTenants.Reset(ctx)
-}
-
-// txn runs the given function in the main thread sync. Any signal that triggers a complex action must
-// perform I/O or expensive parts outside txn and potentially use multiple txn calls.
-func (l *Leader) txn(ctx context.Context, fn func() error) error {
-	var wg sync.WaitGroup
-	var err error
-
-	wg.Add(1)
-	select {
-	case l.inject <- func() {
-		defer wg.Done()
-		err = fn()
-	}:
-		wg.Wait()
-		return err
-	case <-l.Closed():
-		return model.ErrNotOwned
-	case <-ctx.Done():
-		return model.ErrOverloaded
-	}
 }
 
 func (l *Leader) recordAction(ctx context.Context, action, result string) {

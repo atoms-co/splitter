@@ -48,7 +48,8 @@ func makeStartCommand() *cobra.Command {
 	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "tcp port for raft traffic")
 	raftID := cmd.PersistentFlags().String("raft_id", getName(), "Node id used by Raft")
 	raftServer := cmd.PersistentFlags().String("raft_server", "", "Server address used by Raft")
-	joinPeers := cmd.PersistentFlags().StringSlice("join_peers", []string{}, "Peers to join including self")
+	raftFastBootstrap := cmd.PersistentFlags().Bool("fast_bootstrap", false, "fast bootstrap for testing")
+	raftJoinPeers := cmd.PersistentFlags().StringSlice("join_peers", []string{}, "Peers to join including self")
 
 	cmd.Run = func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
@@ -123,7 +124,12 @@ func makeStartCommand() *cobra.Command {
 		// (3) Initialize Server components and Server
 
 		storage := raftstorage.New(cl, raft.ServerID(*raftID), r, fsm)
-		c, directives := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *joinPeers, *internalPort)
+
+		var opts []cluster.Option
+		if *raftFastBootstrap {
+			opts = append(opts, cluster.WithFastBootstrap)
+		}
+		c, directives := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *raftJoinPeers, *internalPort, opts...)
 
 		manager := leader.NewManager(cl, directives, func(ctx context.Context) (iox.AsyncCloser, leader.Proxy) {
 			ret := leader.New(ctx, cl, loc, storage)

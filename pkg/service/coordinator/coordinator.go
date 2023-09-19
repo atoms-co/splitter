@@ -6,8 +6,7 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/syncx"
-	"go.atoms.co/splitter/pkg/model"
-	"sync"
+	"go.atoms.co/splitter/pkg/util/txnx"
 	"time"
 )
 
@@ -31,7 +30,7 @@ func New(ctx context.Context, cl clock.Clock) *Coordinator {
 }
 
 func (c *Coordinator) Connect(ctx context.Context) {
-	syncx.Txn0(ctx, c.txn, func() {
+	syncx.Txn0(ctx, txnx.Txn(c, c.inject), func() {
 		log.Infof(ctx, "connected!")
 	})
 }
@@ -53,26 +52,5 @@ func (c *Coordinator) process(ctx context.Context) {
 		case <-c.Closed():
 			return
 		}
-	}
-}
-
-// txn runs the given function in the main thread sync. Any signal that triggers a complex action must
-// perform I/O or expensive parts outside txn and potentially use multiple txn calls.
-func (c *Coordinator) txn(ctx context.Context, fn func() error) error {
-	var wg sync.WaitGroup
-	var err error
-
-	wg.Add(1)
-	select {
-	case c.inject <- func() {
-		defer wg.Done()
-		err = fn()
-	}:
-		wg.Wait()
-		return err
-	case <-ctx.Done():
-		return model.ErrOverloaded
-	case <-c.Closed():
-		return model.ErrDraining
 	}
 }

@@ -23,7 +23,8 @@ import (
 
 const (
 	statsInterval    = 15 * time.Second
-	notifyInterval   = 5 * time.Second
+	notifyInterval   = 30 * time.Second
+	notifyTimeout    = 10 * time.Second
 	bootstrapTimeout = 1 * time.Minute
 )
 
@@ -33,6 +34,12 @@ var (
 	numLastContact  = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_last_contact", "RAFT time since last leader contact", core.RaftServerIdKey))
 	numState        = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_state", "RAFT state iota", core.RaftServerIdKey))
 )
+
+type Option func(*Cluster)
+
+func WithFastBootstrap(cluster *Cluster) {
+	cluster.fastBootstrap = true
+}
 
 // Cluster represents a RAFT cluster where initial bootstrapping is determined by a static set of peers
 type Cluster struct {
@@ -47,15 +54,16 @@ type Cluster struct {
 	observer *raft.Observer
 	leaderCh <-chan leader.Directive
 
-	drain, initialized iox.AsyncCloser
+	fastBootstrap bool
+	drain         iox.AsyncCloser
 
 	inject       chan func()
 	bootstrapped bool
 	notified     map[raft.ServerID]raft.ServerAddress
 }
 
-func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, peers []string, port int) (*Cluster, <-chan leader.Directive) {
-	ret := &Cluster{
+func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, peers []string, port int, opts ...Option) (*Cluster, <-chan leader.Directive) {
+	c := &Cluster{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
 		id:          id,
@@ -63,9 +71,11 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 		raft:        r,
 		peers:       peers,
 		drain:       iox.NewAsyncCloser(),
-		initialized: iox.NewAsyncCloser(),
 		inject:      make(chan func()),
 		notified:    make(map[raft.ServerID]raft.ServerAddress),
+	}
+	for _, fn := range opts {
+		fn(c)
 	}
 
 	observeCh := make(chan raft.Observation)
@@ -74,7 +84,7 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 		return ok
 	})
 	r.RegisterObserver(observer)
-	ret.observer = observer
+	c.observer = observer
 
 	leaderCh := chanx.MapIf(observeCh, func(o raft.Observation) (leader.Directive, bool) {
 		obs, ok := o.Data.(raft.LeaderObservation)
@@ -103,7 +113,7 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 
 		return leader.Directive{
 			Type:     leader.Follow,
-			ID:       string(id),
+			ID:       string(obs.LeaderID),
 			Endpoint: fmt.Sprintf("%v:%v", host, port),
 		}, true
 	})
@@ -111,12 +121,12 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 	broadcast := chanx.NewBroadcaster[leader.Directive]()
 	out1, _ := broadcast.Connect()
 	out2, _ := broadcast.Connect()
-	ret.leaderCh = out2
+	c.leaderCh = out2
 	broadcast.Forward(context.Background(), leaderCh)
 
-	go ret.init(context.Background(), observeCh)
+	go c.init(context.Background(), observeCh)
 
-	return ret, out1
+	return c, out1
 }
 
 func (c *Cluster) Notify(ctx context.Context, id string, address string) error {
@@ -184,35 +194,25 @@ func (c *Cluster) init(ctx context.Context, observeCh chan raft.Observation) {
 	defer c.Close()
 	defer close(observeCh) // closes c.leaderCh
 
-	notify := c.cl.NewTicker(notifyInterval + jitter(notifyInterval))
-	defer notify.Stop()
+	notifyTicker := c.cl.NewTicker(notifyInterval)
+	defer notifyTicker.Stop()
+
+	notifyCutoff := c.cl.Now()
+	if !c.fastBootstrap {
+		notifyCutoff = notifyCutoff.Add(jitter(notifyInterval))
+	}
+
+	// Initial notify
+	c.notifyPeers(ctx, notifyCutoff)
 
 notifyLoop:
 	for !c.hasLeader() {
 		select {
-		case <-notify.C:
-			for _, peer := range c.peers {
-				go func(peer string) {
-					cc, err := grpcx.DialNonBlocking(ctx, peer, grpcx.WithInsecure())
-					if err != nil {
-						log.Warnf(ctx, "Failed to dial peer: %v", err)
-						return
-					}
-					defer cc.Close()
-
-					client := internal_v1.NewClusterServiceClient(cc)
-
-					if _, err := client.Notify(ctx, &internal_v1.ClusterNotifyRequest{
-						Id:      string(c.id),
-						Address: string(c.addr),
-					}); err != nil {
-						log.Errorf(ctx, "Notify failed, %v", err)
-					}
-				}(peer)
-			}
+		case <-notifyTicker.C:
+			// notify peers of raft address
+			c.notifyPeers(ctx, notifyCutoff)
 		case <-c.leaderCh:
-			// Stop notifying after someone is elected
-			break notifyLoop
+			break notifyLoop // stop notifying after leader is elected
 		case <-c.cl.After(bootstrapTimeout):
 			c.shutdownRaft(ctx)
 			return
@@ -226,9 +226,37 @@ notifyLoop:
 		}
 	}
 
-	c.initialized.Close()
-
 	c.process(ctx)
+}
+
+func (c *Cluster) notifyPeers(ctx context.Context, notifyCutoff time.Time) {
+	if c.cl.Now().Before(notifyCutoff) {
+		return
+	}
+	for _, endpoint := range c.peers {
+		go c.notifyPeer(ctx, endpoint)
+	}
+}
+
+func (c *Cluster) notifyPeer(ctx context.Context, endpoint string) {
+	ctx, cancel := context.WithTimeout(ctx, notifyTimeout)
+	defer cancel()
+
+	cc, err := grpcx.DialNonBlocking(ctx, endpoint, grpcx.WithInsecure())
+	if err != nil {
+		log.Warnf(ctx, "Failed to dial peer: %v", err)
+		return
+	}
+	defer cc.Close()
+
+	client := internal_v1.NewClusterServiceClient(cc)
+
+	if _, err := client.Notify(ctx, &internal_v1.ClusterNotifyRequest{
+		Id:      string(c.id),
+		Address: string(c.addr),
+	}); err != nil {
+		log.Errorf(ctx, "Notify failed, %v", err)
+	}
 }
 
 func (c *Cluster) hasLeader() bool {
