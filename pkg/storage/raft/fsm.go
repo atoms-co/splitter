@@ -3,7 +3,10 @@ package raft
 import (
 	"context"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/protox"
+	"go.atoms.co/splitter/pkg/core"
+	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pb/private"
 	"github.com/golang/protobuf/proto"
@@ -14,6 +17,10 @@ import (
 
 var (
 	_ raft.FSM = (*FSM)(nil)
+)
+
+var (
+	numActions = metrics.NewCounter("go.atoms.co/splitter/storage_raft_fsm_actions", "Raft FSM actions", core.ActionKey, core.ResultKey)
 )
 
 // FSM implements the finite state machine logic needed for deterministic state propagation. It
@@ -38,35 +45,44 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// The FSM requires logical Apply errors to be handled upstream, so we panic here if we encounter
-	// invalid updates/deletes per https://github.com/hashicorp/raft/issues/307.
+	// The FSM requires logical Apply errors to be handled upstream, so we should panic here if we encounter
+	// invalid updates/deletes per https://github.com/hashicorp/raft/issues/307. However, Splitter can re-create
+	// its data, so we skip bad updates instead.
 
 	pb, err := protox.Unmarshal[internal_v1.Mutation](l.Data)
 	if err != nil {
-		log.Fatalf(context.Background(), "Internal: invalid raft mutation: %v", err)
+		log.Errorf(context.Background(), "Internal: invalid raft mutation %v @%v: %v", l.Index, l.AppendedAt, err)
+
+		recordAction("apply/unmarshal", err)
+		return nil
 	}
 
-	// TODO(hurwitz) 9/13/2023: We may want to consider a soft failure here, to avoid a validation
-	// bug in the leader bricking Splitter.
-
 	// TODO(herohde) 9/13/2023: Should we accept duplicate applies? I.e, if we retry an apply due
-	// to timeout, say, can we see it twice?
+	// to timeout, say, can we see it twice? For now, we treat it as data corruption.
 
 	switch {
 	case pb.GetUpdate() != nil:
-		if err := f.db.Update(storage.WrapUpdate(pb.GetUpdate()), false); err != nil {
-			log.Fatalf(context.Background(), "Internal: invalid raft update %v: %v", proto.MarshalTextString(pb), err)
+		err := f.db.Update(storage.WrapUpdate(pb.GetUpdate()), false)
+		if err != nil {
+			log.Errorf(context.Background(), "Internal: invalid raft update %v @%v: %v: %v", l.Index, l.AppendedAt, proto.MarshalTextString(pb), err)
 		}
+
+		recordAction("apply/update", err)
 		return nil
 
 	case pb.GetDelete() != nil:
-		if err := f.db.Delete(storage.WrapDelete(pb.GetDelete())); err != nil {
-			log.Fatalf(context.Background(), "Internal: invalid raft delete %v: %v", proto.MarshalTextString(pb), err)
+		err := f.db.Delete(storage.WrapDelete(pb.GetDelete()))
+		if err != nil {
+			log.Errorf(context.Background(), "Internal: invalid raft delete %v @%v: %v: %v", l.Index, l.AppendedAt, proto.MarshalTextString(pb), err)
 		}
+
+		recordAction("apply/delete", err)
 		return nil
 
 	default:
-		log.Fatalf(context.Background(), "Internal: unknown raft mutation: %v", proto.MarshalTextString(pb))
+		log.Errorf(context.Background(), "Internal: unknown raft mutation %v @%v: %v", l.Index, l.AppendedAt, proto.MarshalTextString(pb))
+
+		recordAction("apply/unknown", model.ErrInvalid)
 		return nil
 	}
 }
@@ -75,6 +91,7 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
+	recordAction("snapshot", nil)
 	return &fsmSnapshot{data: f.db.Snapshot()}, nil
 }
 
@@ -85,17 +102,23 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 	buf, err := io.ReadAll(snapshot)
 	if err != nil {
 		log.Errorf(context.Background(), "Failed to read raft snapshot: %v", err)
+
+		recordAction("restore/read", err)
 		return err
 	}
 	pb, err := protox.Unmarshal[internal_v1.Snapshot](buf)
 	if err != nil {
 		log.Errorf(context.Background(), "Failed to unmarshal raft snapshot: %v", err)
+
+		recordAction("restore/unmarshal", err)
 		return err
 	}
 
 	f.db.Restore(storage.WrapSnapshot(pb))
 
 	log.Debugf(context.Background(), "Restored raft snapshot")
+
+	recordAction("restore", nil)
 	return nil
 }
 
@@ -104,6 +127,12 @@ type fsmSnapshot struct {
 }
 
 func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
+	err := f.persist(sink)
+	recordAction("persist", err)
+	return err
+}
+
+func (f *fsmSnapshot) persist(sink raft.SnapshotSink) error {
 	if err := f.tryPersist(sink); err != nil {
 		log.Errorf(context.Background(), "Failed to persist raft snapshot on sink %v: %v", sink.ID(), err)
 		_ = sink.Cancel()
@@ -126,3 +155,7 @@ func (f *fsmSnapshot) tryPersist(sink raft.SnapshotSink) error {
 }
 
 func (f *fsmSnapshot) Release() {}
+
+func recordAction(action string, err error) {
+	numActions.Increment(context.Background(), 1, core.ActionTag(action), core.ResultErrorTag(err))
+}

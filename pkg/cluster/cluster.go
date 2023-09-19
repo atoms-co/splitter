@@ -76,8 +76,12 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 	r.RegisterObserver(observer)
 	ret.observer = observer
 
-	leaderCh := chanx.Map(observeCh, func(o raft.Observation) leader.Directive {
-		obs, _ := o.Data.(raft.LeaderObservation)
+	leaderCh := chanx.MapIf(observeCh, func(o raft.Observation) (leader.Directive, bool) {
+		obs, ok := o.Data.(raft.LeaderObservation)
+		if !ok {
+			log.Errorf(context.Background(), "Internal: unexpected leader data %+v. Ignoring", o.Data)
+			return leader.Directive{}, false
+		}
 
 		log.Debugf(context.Background(), "New leader observation: %v", obs)
 
@@ -85,7 +89,7 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 			return leader.Directive{
 				Type: leader.Lead,
 				ID:   string(id),
-			}
+			}, true
 		}
 
 		host, _, err := net.SplitHostPort(string(obs.LeaderAddr))
@@ -94,14 +98,14 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 
 			return leader.Directive{
 				Type: leader.Disconnect,
-			}
+			}, true
 		}
 
 		return leader.Directive{
 			Type:     leader.Follow,
 			ID:       string(id),
 			Endpoint: fmt.Sprintf("%v:%v", host, port),
-		}
+		}, true
 	})
 
 	broadcast := chanx.NewBroadcaster[leader.Directive]()
