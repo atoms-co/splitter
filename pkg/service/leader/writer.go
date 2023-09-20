@@ -396,7 +396,14 @@ func (w *Writer) updateAsync(ctx context.Context, upd storage.Update) iox.AsyncC
 		if err := w.db.Update(ctx, upd); err != nil {
 			log.Errorf(ctx, "Failed to apply update: %v. Closing", err)
 			w.Close()
+			return
 		}
+
+		select {
+		case w.upd <- upd:
+		case <-w.Closed():
+		}
+
 	}
 	return done
 }
@@ -415,6 +422,12 @@ func (w *Writer) deleteAsync(ctx context.Context, del storage.Delete) iox.AsyncC
 		if err := w.db.Delete(ctx, del); err != nil {
 			log.Errorf(ctx, "Failed to apply delete: %v. Closing", err)
 			w.Close()
+			return
+		}
+
+		select {
+		case w.del <- del:
+		case <-w.Closed():
 		}
 	}
 	return done

@@ -115,7 +115,7 @@ func (m *Manager) process(ctx context.Context, in <-chan Directive) {
 				go m.follow(ctx, halt, directive.ID, directive.Endpoint)
 
 			case Disconnect:
-				log.Errorf(ctx, "Leader disconnected")
+				log.Infof(ctx, "Leader disconnected")
 
 			default:
 				log.Errorf(ctx, "Internal: invalid directive type: %v", directive)
