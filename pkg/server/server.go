@@ -6,7 +6,6 @@ import (
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/statshandlerx"
 	"go.atoms.co/splitter/pkg/cluster"
@@ -58,7 +57,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cl
 
 // Serve starts the public grpc server on the given port. Blocking.
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
-	gs := grpc.NewServer(metrics.WithGrpcStatsHandler(), statshandlerx.WithServerGRPCStatsHandler())
+	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
 	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.manager, s.manager))
 	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService())
 	internal_v1.RegisterPlacementManagementServiceServer(gs, frontend.NewInternalPlacementService(s.manager, s.manager))
@@ -68,7 +67,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 
 // ServeInternal starts the internal grpc server on the given port. Blocking.
 func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error {
-	gs := grpc.NewServer(metrics.WithGrpcStatsHandler(), statshandlerx.WithServerGRPCStatsHandler())
+	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
 	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.manager))
 	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cl, s.cluster))
 
