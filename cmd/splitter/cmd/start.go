@@ -8,6 +8,7 @@ import (
 	"go.atoms.co/lib/service/envoyx"
 	"go.atoms.co/lib/service/locationx"
 	"go.atoms.co/lib/service/metricsx"
+	"go.atoms.co/lib/tracing"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/signalx"
@@ -59,6 +60,11 @@ func makeStartCommand() *cobra.Command {
 
 		envoyx.EnsureReady(ctx, envoyx.WaitTimeout)
 		metricsx.Init(ctx, "splitter")
+		err := tracing.RegisterExporter("")
+		if err != nil {
+			log.Warnf(ctx, "Could not register tracer: %v", err)
+		}
+
 		go startPprofHandler(ctx, *pprofPort)
 
 		loc := locationx.New()
