@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
-import "splitter/proto/internal_v1/info.proto";
-
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
 
@@ -15,29 +13,10 @@ message ClusterNotifyRequest {
 message ClusterNotifyResponse {
 }
 
-// ClusterHandleRequest represents an info request to a raft server
-message ClusterHandleRequest {
-  string raft_id = 1;
-
-  oneof req {
-    RaftInfoRequest info = 2;
-  }
-}
-
-// ClusterHandleResponse represents an info response from a raft server
-message ClusterHandleResponse {
-  oneof resp {
-    RaftInfoResponse info = 1;
-  }
-}
-
 // ClusterService is the internal service for RAFT cluster communication.
 service ClusterService {
   // Notify is an idempotent API designed for bootstrapping a RAFT cluster. Upon startup, Splitter instances will enter a
   // bootstrapping phase in which notifications will be sent out to all instances in an initial static list. When one
   // instance receives notifications from all instances, it will attempt to Bootstrap a RAFT cluster.
   rpc Notify (ClusterNotifyRequest) returns (ClusterNotifyResponse);
-
-  // Handle sends a request to a Cluster RAFT server. It returns a matching response. Mainly for Info
-  rpc Handle (ClusterHandleRequest) returns (ClusterHandleResponse);
 }

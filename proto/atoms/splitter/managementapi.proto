@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package atoms.splitter;
 
-import "splitter/proto/public_v1/tenant.proto";
+import "splitter/proto/public_v1/management.proto";
 import "google/protobuf/timestamp.proto";
 
 option java_multiple_files = true;
@@ -96,7 +96,7 @@ message DeleteDomainResponse {
 
 }
 
-// ManagementService is the public tenant management service.
+// ManagementService is the public management service.
 service ManagementService {
   rpc ListTenants(ListTenantsRequest) returns (ListTenantsResponse);
   rpc NewTenant (NewTenantRequest) returns (NewTenantResponse);

@@ -29,15 +29,17 @@ type Writer struct {
 	cache  *storage.Cache       // pre-commit cache
 	pool   *workqueue.WorkQueue // single-threaded async apply
 
-	upd chan<- storage.Update
-	del chan<- storage.Delete
+	upd chan<- core.Update
+	del chan<- core.Delete
+	res chan<- core.Restore
 
 	quit iox.AsyncCloser
 }
 
-func NewWriter(cl clock.Clock, db storage.Storage) (*Writer, <-chan storage.Update, <-chan storage.Delete) {
-	upd := make(chan storage.Update)
-	del := make(chan storage.Delete)
+func NewWriter(cl clock.Clock, db storage.Storage) (*Writer, <-chan core.Update, <-chan core.Delete, <-chan core.Restore) {
+	upd := make(chan core.Update)
+	del := make(chan core.Delete)
+	res := make(chan core.Restore)
 
 	ret := &Writer{
 		cl:    cl,
@@ -46,16 +48,17 @@ func NewWriter(cl clock.Clock, db storage.Storage) (*Writer, <-chan storage.Upda
 		pool:  workqueue.New(1, pendingApplyCapacity),
 		upd:   upd,
 		del:   del,
+		res:   res,
 		quit:  iox.NewAsyncCloser(),
 	}
 
-	return ret, upd, del
+	return ret, upd, del, res
 }
 
-func (w *Writer) Init(ctx context.Context) (storage.Snapshot, error) {
+func (w *Writer) Init(ctx context.Context) (core.Snapshot, error) {
 	snapshot, err := w.db.Read(ctx)
 	if err != nil {
-		return storage.Snapshot{}, err
+		return core.Snapshot{}, err
 	}
 	w.writer = storage.NewWriter(w.cl, snapshot)
 	w.cache.Restore(snapshot)
@@ -96,6 +99,13 @@ func (w *Writer) handle(ctx context.Context, req HandleRequest) (iox.AsyncCloser
 			return nil, nil, err
 		}
 		return done, NewHandlePlacementResponse(ret), nil
+
+	case req.Proto.GetOperation() != nil:
+		done, ret, err := w.handleOperationRequest(ctx, req.Proto.GetOperation())
+		if err != nil {
+			return nil, nil, err
+		}
+		return done, NewHandleOperationResponse(ret), nil
 
 	default:
 		return nil, nil, model.ErrInvalid
@@ -379,10 +389,34 @@ func (w *Writer) handleDeletePlacementRequest(ctx context.Context, req *internal
 	}, nil
 }
 
+func (w *Writer) handleOperationRequest(ctx context.Context, req *internal_v1.OperationRequest) (iox.AsyncCloser, *internal_v1.OperationResponse, error) {
+	switch {
+	case req.GetRestore() != nil:
+		return w.handleNewRestoreRequest(ctx, req.GetRestore())
+	default:
+		return nil, nil, fmt.Errorf("invalid mutation")
+	}
+}
+
+func (w *Writer) handleNewRestoreRequest(ctx context.Context, req *internal_v1.RestoreRequest) (iox.AsyncCloser, *internal_v1.OperationResponse, error) {
+	nuke := req.GetNuke()
+
+	res := w.writer.Restore(nuke)
+	done := w.restoreAsync(ctx, res)
+
+	return done, &internal_v1.OperationResponse{
+		Resp: &internal_v1.OperationResponse_Restore{
+			Restore: &internal_v1.RestoreResponse{
+				Snapshot: core.UnwrapSnapshot(res.Snapshot()),
+			},
+		},
+	}, nil
+}
+
 // TODO(hurwitz) 9/13/2023: We may want to treat raft.Apply failures more like transient DB failures.
 // In that case, retry, then returning a failure to the caller may be more appropriate.
 
-func (w *Writer) updateAsync(ctx context.Context, upd storage.Update) iox.AsyncCloser {
+func (w *Writer) updateAsync(ctx context.Context, upd core.Update) iox.AsyncCloser {
 	if err := w.cache.Update(upd, true); err != nil {
 		log.Fatalf(ctx, "Internal: pre-commit cache inconsistent with writer: %v", err)
 	}
@@ -408,7 +442,7 @@ func (w *Writer) updateAsync(ctx context.Context, upd storage.Update) iox.AsyncC
 	return done
 }
 
-func (w *Writer) deleteAsync(ctx context.Context, del storage.Delete) iox.AsyncCloser {
+func (w *Writer) deleteAsync(ctx context.Context, del core.Delete) iox.AsyncCloser {
 	if err := w.cache.Delete(del); err != nil {
 		log.Fatalf(ctx, "Internal: pre-commit cache inconsistent with writer: %v", err)
 	}
@@ -427,6 +461,29 @@ func (w *Writer) deleteAsync(ctx context.Context, del storage.Delete) iox.AsyncC
 
 		select {
 		case w.del <- del:
+		case <-w.Closed():
+		}
+	}
+	return done
+}
+
+func (w *Writer) restoreAsync(ctx context.Context, res core.Restore) iox.AsyncCloser {
+	w.cache.Restore(res.Snapshot())
+
+	done := iox.NewAsyncCloser()
+	w.pool.Chan() <- func() {
+		defer done.Close()
+
+		// Perform I/O async. If it fails, escalate.
+
+		if err := w.db.Restore(ctx, res); err != nil {
+			log.Errorf(ctx, "Failed to apply restore: %v. Closing", err)
+			w.Close()
+			return
+		}
+
+		select {
+		case w.res <- res:
 		case <-w.Closed():
 		}
 	}

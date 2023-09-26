@@ -29,15 +29,20 @@ type Client interface {
 	InfoPlacement(ctx context.Context, name model.QualifiedPlacementName) (InternalPlacementInfo, error)
 	UpdatePlacement(ctx context.Context, name model.QualifiedPlacementName, guard model.Version, opts ...UpdatePlacementOption) (InternalPlacementInfo, error)
 	DeletePlacement(ctx context.Context, name model.QualifiedPlacementName) error
+
+	RaftInfo(ctx context.Context) (map[string]string, error)
+	Restore(ctx context.Context, nuke bool) (Snapshot, error)
 }
 
 type client struct {
 	placement internal_v1.PlacementManagementServiceClient
+	operation internal_v1.OperationServiceClient
 }
 
 func NewClient(cc *grpc.ClientConn) Client {
 	return &client{
 		placement: internal_v1.NewPlacementManagementServiceClient(cc),
+		operation: internal_v1.NewOperationServiceClient(cc),
 	}
 }
 
@@ -101,4 +106,20 @@ func (c *client) DeletePlacement(ctx context.Context, name model.QualifiedPlacem
 	}
 	_, err := c.placement.Delete(ctx, req)
 	return err
+}
+
+func (c *client) RaftInfo(ctx context.Context) (map[string]string, error) {
+	req := &internal_v1.RaftInfoRequest{}
+
+	resp, err := c.operation.RaftInfo(ctx, req)
+	return resp.GetRaftState(), err
+}
+
+func (c *client) Restore(ctx context.Context, nuke bool) (Snapshot, error) {
+	req := &internal_v1.RestoreRequest{
+		Nuke: nuke,
+	}
+
+	resp, err := c.operation.Restore(ctx, req)
+	return WrapSnapshot(resp.GetSnapshot()), err
 }

@@ -2,19 +2,16 @@ package frontend
 
 import (
 	"context"
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pb/private"
 )
 
 type ClusterService struct {
-	cl      clock.Clock
 	cluster *cluster.Cluster
 }
 
-func NewClusterService(cl clock.Clock, cluster *cluster.Cluster) *ClusterService {
+func NewClusterService(cluster *cluster.Cluster) *ClusterService {
 	return &ClusterService{
-		cl:      cl,
 		cluster: cluster,
 	}
 }
@@ -24,8 +21,4 @@ func (r *ClusterService) Notify(ctx context.Context, req *internal_v1.ClusterNot
 		return nil, err
 	}
 	return &internal_v1.ClusterNotifyResponse{}, nil
-}
-
-func (r *ClusterService) Handle(ctx context.Context, request *internal_v1.ClusterHandleRequest) (*internal_v1.ClusterHandleResponse, error) {
-	return r.cluster.Handle(ctx, request)
 }

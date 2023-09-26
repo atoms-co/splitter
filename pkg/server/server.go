@@ -69,7 +69,8 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
 	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.manager))
-	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cl, s.cluster))
+	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cluster))
+	internal_v1.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.manager, s.manager))
 
 	return grpcx.Serve(ctx, gs, listener)
 }

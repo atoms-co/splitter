@@ -65,13 +65,13 @@ func (c *Cache) Placement(name model.QualifiedPlacementName) (core.InternalPlace
 	return core.InternalPlacementInfo{}, false
 }
 
-func (c *Cache) Snapshot() Snapshot {
-	return NewSnapshot(mapx.MapValues(c.tenants, func(v *tenantInfo) State {
-		return NewState(v.info, mapx.Values(v.domains), mapx.Values(v.placements))
+func (c *Cache) Snapshot() core.Snapshot {
+	return core.NewSnapshot(mapx.MapValues(c.tenants, func(v *tenantInfo) core.State {
+		return core.NewState(v.info, mapx.Values(v.domains), mapx.Values(v.placements))
 	})...)
 }
 
-func (c *Cache) Restore(snapshot Snapshot) {
+func (c *Cache) Restore(snapshot core.Snapshot) {
 	c.tenants = map[model.TenantName]*tenantInfo{}
 	for _, s := range snapshot.Tenants() {
 		info := s.Tenant()
@@ -84,7 +84,7 @@ func (c *Cache) Restore(snapshot Snapshot) {
 	}
 }
 
-func (c *Cache) Update(update Update, strict bool) error {
+func (c *Cache) Update(update core.Update, strict bool) error {
 	s, err := c.cloneTenant(update, strict)
 	if err != nil {
 		return err
@@ -122,7 +122,7 @@ func (c *Cache) Update(update Update, strict bool) error {
 	return nil
 }
 
-func (c *Cache) Delete(del Delete) error {
+func (c *Cache) Delete(del core.Delete) error {
 	if _, ok := c.tenants[del.Tenant()]; !ok {
 		return fmt.Errorf("tenant %v not found", del.Tenant())
 	}
@@ -131,7 +131,7 @@ func (c *Cache) Delete(del Delete) error {
 	return nil
 }
 
-func (c *Cache) cloneTenant(update Update, strict bool) (*tenantInfo, error) {
+func (c *Cache) cloneTenant(update core.Update, strict bool) (*tenantInfo, error) {
 	s, ok := c.tenants[update.Name()]
 	if !ok {
 		info, ok := update.TenantUpdated()
@@ -164,7 +164,7 @@ func (c *Cache) cloneTenant(update Update, strict bool) (*tenantInfo, error) {
 	return cp, nil
 }
 
-func checkUpdate(update Update, name model.TenantName, current, next model.Version, strict bool) error {
+func checkUpdate(update core.Update, name model.TenantName, current, next model.Version, strict bool) error {
 	if isMismatchedTenant(update, name) {
 		return fmt.Errorf("tenant %v update included incorrect tenant %v", update.Name(), name)
 	}
@@ -183,6 +183,6 @@ func isInvalidVersion(current, next model.Version, strict bool) bool {
 }
 
 // isMismatchedTenant returns true if the tenant is not the given one.
-func isMismatchedTenant(update Update, name model.TenantName) bool {
+func isMismatchedTenant(update core.Update, name model.TenantName) bool {
 	return update.Name() != name
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pb/private"
 	"fmt"
@@ -44,9 +45,9 @@ func New(cl clock.Clock, raftID raft.ServerID, raft *raft.Raft, fsm *FSM) *Stora
 	return s
 }
 
-func (s *Storage) Read(ctx context.Context) (storage.Snapshot, error) {
+func (s *Storage) Read(ctx context.Context) (core.Snapshot, error) {
 	if !s.isLeader() {
-		return storage.Snapshot{}, ErrNotLeader
+		return core.Snapshot{}, ErrNotLeader
 	}
 
 	// Read is called only on the leader. We want to ensure that there are no
@@ -54,31 +55,43 @@ func (s *Storage) Read(ctx context.Context) (storage.Snapshot, error) {
 	// in-memory, causing (potential) data corruption. Barrier provides that guarantee.
 
 	if err := s.raft.Barrier(applyDeadline).Error(); err != nil {
-		return storage.Snapshot{}, fmt.Errorf("failed to create barrier: %v", err)
+		return core.Snapshot{}, fmt.Errorf("failed to create barrier: %v", err)
 	}
 	return s.fsm.Read(), nil
 }
 
-func (s *Storage) Update(ctx context.Context, update storage.Update) error {
+func (s *Storage) Update(ctx context.Context, update core.Update) error {
 	if !s.isLeader() {
 		return ErrNotLeader
 	}
 
 	return s.apply(ctx, &internal_v1.Mutation{
 		Msg: &internal_v1.Mutation_Update{
-			Update: storage.UnwrapUpdate(update),
+			Update: core.UnwrapUpdate(update),
 		},
 	})
 }
 
-func (s *Storage) Delete(ctx context.Context, del storage.Delete) error {
+func (s *Storage) Delete(ctx context.Context, del core.Delete) error {
 	if !s.isLeader() {
 		return ErrNotLeader
 	}
 
 	return s.apply(ctx, &internal_v1.Mutation{
 		Msg: &internal_v1.Mutation_Delete{
-			Delete: storage.UnwrapDelete(del),
+			Delete: core.UnwrapDelete(del),
+		},
+	})
+}
+
+func (s *Storage) Restore(ctx context.Context, res core.Restore) error {
+	if !s.isLeader() {
+		return ErrNotLeader
+	}
+
+	return s.apply(ctx, &internal_v1.Mutation{
+		Msg: &internal_v1.Mutation_Restore{
+			Restore: core.UnwrapRestore(res),
 		},
 	})
 }

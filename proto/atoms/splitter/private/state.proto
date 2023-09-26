@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
-import "splitter/proto/public_v1/tenant.proto";
+import "splitter/proto/public_v1/management.proto";
 import "splitter/proto/public_v1/placement.proto";
 import "splitter/proto/internal_v1/placement.proto";
 
@@ -44,10 +44,16 @@ message Delete {
   string tenant = 1;
 }
 
+// Restore restores the FSM from a snapshot.
+message Restore {
+  Snapshot snapshot = 1;
+}
+
 message Mutation {
   oneof msg {
     Update update = 1;
     Delete delete = 2;
+    Restore restore = 3;
   }
 }
 

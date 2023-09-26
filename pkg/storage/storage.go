@@ -3,15 +3,18 @@ package storage
 
 import (
 	"context"
+	"go.atoms.co/splitter/pkg/core"
 )
 
 // Storage provides low-level access to Splitter storage. The information is expected to be small with
 // all values cached in memory by the leader. It caters to log-based storage. Thread-safe.
 type Storage interface {
 	// Read returns a strongly-consistent snapshot of all persisted data.
-	Read(ctx context.Context) (Snapshot, error)
+	Read(ctx context.Context) (core.Snapshot, error)
 	// Update applies the Update. Returns ErrNotAllowed if not suitable for the current state.
-	Update(ctx context.Context, update Update) error
+	Update(ctx context.Context, update core.Update) error
 	// Delete applies the Delete. Returns ErrNotFound if the tenant does not exist.
-	Delete(ctx context.Context, del Delete) error
+	Delete(ctx context.Context, del core.Delete) error
+	// Restore applies the Restore.
+	Restore(ctx context.Context, res core.Restore) error
 }

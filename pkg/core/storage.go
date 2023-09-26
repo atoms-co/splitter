@@ -1,8 +1,7 @@
-package storage
+package core
 
 import (
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
@@ -41,11 +40,11 @@ type State struct {
 	pb *internal_v1.State
 }
 
-func NewState(tenant model.TenantInfo, domains []model.DomainInfo, placements []core.InternalPlacementInfo) State {
+func NewState(tenant model.TenantInfo, domains []model.DomainInfo, placements []InternalPlacementInfo) State {
 	return State{pb: &internal_v1.State{
 		Tenant:     model.UnwrapTenantInfo(tenant),
 		Domains:    slicex.Map(domains, model.UnwrapDomainInfo),
-		Placements: slicex.Map(placements, core.UnwrapInternalPlacementInfo),
+		Placements: slicex.Map(placements, UnwrapInternalPlacementInfo),
 	}}
 }
 
@@ -65,8 +64,8 @@ func (s State) Domains() []model.DomainInfo {
 	return slicex.Map(s.pb.GetDomains(), model.WrapDomainInfo)
 }
 
-func (s State) Placements() []core.InternalPlacementInfo {
-	return slicex.Map(s.pb.GetPlacements(), core.WrapInternalPlacementInfo)
+func (s State) Placements() []InternalPlacementInfo {
+	return slicex.Map(s.pb.GetPlacements(), WrapInternalPlacementInfo)
 }
 
 func (s State) String() string {
@@ -106,11 +105,11 @@ func NewDomainRemoval(t model.QualifiedDomainName) Update {
 	})
 }
 
-func NewPlacementUpdate(t core.InternalPlacementInfo) Update {
+func NewPlacementUpdate(t InternalPlacementInfo) Update {
 	return WrapUpdate(&internal_v1.Update{
 		Name: string(t.Name().Tenant),
 		Placement: &internal_v1.Update_Placement{
-			Updated: []*internal_v1.InternalPlacementInfo{core.UnwrapInternalPlacementInfo(t)},
+			Updated: []*internal_v1.InternalPlacementInfo{UnwrapInternalPlacementInfo(t)},
 		},
 	})
 }
@@ -154,8 +153,8 @@ func (s Update) DomainsRemoved() []model.QualifiedDomainName {
 	})
 }
 
-func (s Update) PlacementsUpdated() []core.InternalPlacementInfo {
-	return slicex.Map(s.pb.GetPlacement().GetUpdated(), core.WrapInternalPlacementInfo)
+func (s Update) PlacementsUpdated() []InternalPlacementInfo {
+	return slicex.Map(s.pb.GetPlacement().GetUpdated(), WrapInternalPlacementInfo)
 }
 
 func (s Update) PlacementsRemoved() []model.QualifiedPlacementName {
@@ -193,4 +192,26 @@ func (s Delete) Tenant() model.TenantName {
 
 func (s Delete) String() string {
 	return proto.MarshalTextString(s.pb)
+}
+
+// Restore restores the FSM to a snapshot.
+type Restore struct {
+	pb *internal_v1.Restore
+}
+
+func NewRestore(snapshot Snapshot) Restore {
+	return WrapRestore(&internal_v1.Restore{
+		Snapshot: UnwrapSnapshot(snapshot),
+	})
+}
+func WrapRestore(pb *internal_v1.Restore) Restore {
+	return Restore{pb: pb}
+}
+
+func UnwrapRestore(t Restore) *internal_v1.Restore {
+	return t.pb
+}
+
+func (s Restore) Snapshot() Snapshot {
+	return WrapSnapshot(s.pb.GetSnapshot())
 }

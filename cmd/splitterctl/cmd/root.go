@@ -40,8 +40,12 @@ func init() {
 	placementCmd.AddCommand(makeInfoPlacementCmd())
 	placementCmd.AddCommand(makeUpdatePlacementCmd())
 	placementCmd.AddCommand(makeDeletePlacementCmd())
-
 	placementCmd.AddCommand(makePublicInfoPlacementCmd())
+
+	rootCmd.AddCommand(operationCmd)
+	operationCmd.AddCommand(makeRaftInfoCmd())
+	operationCmd.AddCommand(makeRestoreCmd())
+
 }
 
 func Execute() {

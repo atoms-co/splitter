@@ -55,15 +55,16 @@ type Leader struct {
 	workers map[location.InstanceID]*worker
 	alloc   *allocation.Allocation[model.TenantName]
 
-	upd    <-chan storage.Update
-	del    <-chan storage.Delete
+	upd    <-chan core.Update
+	del    <-chan core.Delete
+	res    <-chan core.Restore
 	inject chan func()
 
 	initialized, drain iox.AsyncCloser
 }
 
 func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.Storage) *Leader {
-	writer, upd, del := NewWriter(cl, db)
+	writer, upd, del, res := NewWriter(cl, db)
 
 	ret := &Leader{
 		AsyncCloser: iox.NewAsyncCloser(),
@@ -74,6 +75,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 		workers:     map[location.InstanceID]*worker{},
 		upd:         upd,
 		del:         del,
+		res:         res,
 		inject:      make(chan func()),
 		initialized: iox.NewAsyncCloser(),
 		drain:       iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()), // context cancel => drain
@@ -167,6 +169,10 @@ steady:
 				log.Errorf(ctx, "Internal: inconsistent tenant state: %v", err)
 				return
 			}
+
+		case res := <-l.res:
+			// TODO: make changes, allocate, remove coordinator if necessary
+			l.cache.Restore(res.Snapshot())
 
 		case <-l.drain.Closed():
 			break steady

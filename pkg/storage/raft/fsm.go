@@ -34,7 +34,7 @@ func NewFSM() *FSM {
 	return &FSM{db: storage.NewCache()}
 }
 
-func (f *FSM) Read() storage.Snapshot {
+func (f *FSM) Read() core.Snapshot {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -62,7 +62,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 
 	switch {
 	case pb.GetUpdate() != nil:
-		err := f.db.Update(storage.WrapUpdate(pb.GetUpdate()), false)
+		err := f.db.Update(core.WrapUpdate(pb.GetUpdate()), false)
 		if err != nil {
 			log.Errorf(context.Background(), "Internal: invalid raft update %v @%v: %v: %v", l.Index, l.AppendedAt, proto.MarshalTextString(pb), err)
 		}
@@ -71,12 +71,18 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		return nil
 
 	case pb.GetDelete() != nil:
-		err := f.db.Delete(storage.WrapDelete(pb.GetDelete()))
+		err := f.db.Delete(core.WrapDelete(pb.GetDelete()))
 		if err != nil {
 			log.Errorf(context.Background(), "Internal: invalid raft delete %v @%v: %v: %v", l.Index, l.AppendedAt, proto.MarshalTextString(pb), err)
 		}
 
 		recordAction("apply/delete", err)
+		return nil
+
+	case pb.GetRestore() != nil:
+		f.db.Restore(core.WrapRestore(pb.GetRestore()).Snapshot())
+
+		recordAction("apply/restore", err)
 		return nil
 
 	default:
@@ -114,7 +120,7 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 		return err
 	}
 
-	f.db.Restore(storage.WrapSnapshot(pb))
+	f.db.Restore(core.WrapSnapshot(pb))
 
 	log.Debugf(context.Background(), "Restored raft snapshot")
 
@@ -123,7 +129,7 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 }
 
 type fsmSnapshot struct {
-	data storage.Snapshot
+	data core.Snapshot
 }
 
 func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
@@ -144,7 +150,7 @@ func (f *fsmSnapshot) persist(sink raft.SnapshotSink) error {
 }
 
 func (f *fsmSnapshot) tryPersist(sink raft.SnapshotSink) error {
-	buf, err := proto.Marshal(storage.UnwrapSnapshot(f.data))
+	buf, err := proto.Marshal(core.UnwrapSnapshot(f.data))
 	if err != nil {
 		return err
 	}

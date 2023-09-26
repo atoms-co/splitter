@@ -51,6 +51,16 @@ func NewHandlePlacementRequest(req *internal_v1.PlacementRequest) HandleRequest 
 	}
 }
 
+func NewHandleOperationRequest(req *internal_v1.OperationRequest) HandleRequest {
+	return HandleRequest{
+		Proto: &internal_v1.LeaderHandleRequest{
+			Req: &internal_v1.LeaderHandleRequest_Operation{
+				Operation: req,
+			},
+		},
+	}
+}
+
 func (m HandleRequest) IsMutation() bool {
 	switch {
 	case m.Proto.GetTenant() != nil:
@@ -64,6 +74,10 @@ func (m HandleRequest) IsMutation() bool {
 	case m.Proto.GetPlacement() != nil:
 		pb := m.Proto.GetPlacement()
 		return pb.GetNew() != nil || pb.GetUpdate() != nil || pb.GetDelete() != nil
+
+	case m.Proto.GetOperation() != nil:
+		pb := m.Proto.GetOperation()
+		return pb.GetRestore() != nil
 
 	default:
 		return false
@@ -95,6 +109,14 @@ func NewHandlePlacementResponse(req *internal_v1.PlacementResponse) *internal_v1
 	return &internal_v1.LeaderHandleResponse{
 		Resp: &internal_v1.LeaderHandleResponse_Placement{
 			Placement: req,
+		},
+	}
+}
+
+func NewHandleOperationResponse(req *internal_v1.OperationResponse) *internal_v1.LeaderHandleResponse {
+	return &internal_v1.LeaderHandleResponse{
+		Resp: &internal_v1.LeaderHandleResponse_Operation{
+			Operation: req,
 		},
 	}
 }

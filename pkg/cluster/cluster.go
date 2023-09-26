@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	statsInterval    = 15 * time.Second
+	statsInterval    = 5 * time.Second
 	notifyInterval   = 30 * time.Second
 	notifyTimeout    = 10 * time.Second
 	bootstrapTimeout = 1 * time.Minute
@@ -184,8 +184,8 @@ func (c *Cluster) Notify(ctx context.Context, id string, address string) error {
 	return nil
 }
 
-func (c *Cluster) Handle(ctx context.Context, request *internal_v1.ClusterHandleRequest) (*internal_v1.ClusterHandleResponse, error) {
-	return nil, nil
+func (c *Cluster) Info(ctx context.Context) map[string]string {
+	return c.raft.Stats()
 }
 
 func (c *Cluster) Drain(timeout time.Duration) {
