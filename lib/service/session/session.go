@@ -45,14 +45,6 @@ func NewHeartbeatMessage(now time.Time) Message {
 	})
 }
 
-func NewCloseMessage() Message {
-	return WrapMessage(&session_v1.Message{
-		Request: &session_v1.Message_Close_{
-			Close: &session_v1.Message_Close{},
-		},
-	})
-}
-
 func NewEstablishedMessage(ttl time.Time) Message {
 	return WrapMessage(&session_v1.Message{
 		Request: &session_v1.Message_Established_{
@@ -89,10 +81,6 @@ func (m Message) IsEstablished() bool {
 
 func (m Message) IsHeartbeat() bool {
 	return m.pb.GetHeartbeat() != nil
-}
-
-func (m Message) IsClose() bool {
-	return m.pb.GetClose() != nil
 }
 
 func (m Message) IsClosed() bool {
@@ -135,8 +123,6 @@ func (m Message) MessageType() string {
 		return "session_establish"
 	case m.IsEstablished():
 		return "session_established"
-	case m.IsClose():
-		return "session_close"
 	case m.IsClosed():
 		return "session_closed"
 	case m.IsHeartbeat():

@@ -27,7 +27,9 @@ var (
 )
 
 // Server represents the server-side component of session-scoped keepalive. Can be used agnostic of transport protocol.
-// Server tracks session establishment and periodically extends the session lease of a corresponding Client.
+// Server tracks session establishment and periodically extends the session lease of a corresponding Client. The server
+// is closed if the lease expires or connectivity is lost. The sentinel Closed message is not emitted into the message
+// stream. Users must emit that separately to ensure it is last when merged with other messages.
 type Server struct {
 	iox.AsyncCloser
 	cl clock.Clock
@@ -37,20 +39,18 @@ type Server struct {
 	establish   chan Establish
 	established bool
 
-	in       chan Message
-	out      chan Message
-	draining iox.AsyncCloser
+	in  chan Message // never closed
+	out chan<- Message
 }
 
 func NewServer(ctx context.Context, cl clock.Clock) (*Server, <-chan Message) {
 	out := make(chan Message, serverBufChanSize)
 	s := &Server{
-		AsyncCloser: iox.NewAsyncDrainer(),
+		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
 		establish:   make(chan Establish, 1),
 		in:          make(chan Message, serverBufChanSize),
 		out:         out,
-		draining:    iox.NewAsyncCloser(),
 	}
 	go s.process(ctx)
 
@@ -59,12 +59,13 @@ func NewServer(ctx context.Context, cl clock.Clock) (*Server, <-chan Message) {
 
 // Observe observes session messages to the Server
 func (s *Server) Observe(ctx context.Context, msg Message) {
-	if s.IsClosed() || s.draining.IsClosed() {
+	if s.IsClosed() {
 		return
 	}
 
 	select {
 	case s.in <- msg:
+		// ok
 	case <-ctx.Done():
 		return
 	case <-s.Closed():
@@ -75,12 +76,6 @@ func (s *Server) Observe(ctx context.Context, msg Message) {
 // Establish returns a channel for a user to wait for the singleton Establish message from the Client
 func (s *Server) Establish() chan Establish {
 	return s.establish
-}
-
-// Drain drains the Server by sending a Closed message to the Client
-func (s *Server) Drain(timeout time.Duration) {
-	s.draining.Close()
-	s.cl.AfterFunc(timeout, s.Close)
 }
 
 func (s *Server) process(ctx context.Context) {
@@ -97,7 +92,7 @@ func (s *Server) process(ctx context.Context) {
 			// First message must be establish
 			if !s.established {
 				if !msg.IsEstablish() {
-					log.Infof(ctx, "Received message before establish %v", msg)
+					log.Errorf(ctx, "Initial session message must be establish %v", msg)
 					return
 				}
 			}
@@ -122,12 +117,14 @@ func (s *Server) process(ctx context.Context) {
 				expirationTime := s.cl.Now().Add(leaseDuration)
 				s.send(ctx, NewEstablishedMessage(expirationTime))
 				expiration.Reset(s.cl.Until(expirationTime))
-			case msg.IsClose():
-				log.Infof(ctx, "Session closed")
+
+			case msg.IsClosed():
 				return
+
 			default:
-				log.Warnf(ctx, "Received unknown message for sid %v: %v", s.sid, msg)
+				log.Warnf(ctx, "Received unknown session message for sid %v: %v", s.sid, msg)
 			}
+
 		case <-expiration.C:
 			if s.established {
 				log.Infof(ctx, "Session expired. sid: %v, client: %v", s.sid, s.client)
@@ -135,9 +132,7 @@ func (s *Server) process(ctx context.Context) {
 				log.Infof(ctx, "Session expired before establish message.")
 			}
 			return
-		case <-s.draining.Closed():
-			s.send(ctx, NewClosedMessage())
-			return
+
 		case <-s.Closed():
 			return
 		case <-ctx.Done():
@@ -147,9 +142,14 @@ func (s *Server) process(ctx context.Context) {
 }
 
 func (s *Server) send(ctx context.Context, msg Message) {
+	stuck := s.cl.NewTimer(leaseDuration)
+	defer stuck.Stop()
+
 	select {
 	case s.out <- msg:
 		numServerMessages.Increment(ctx, 1, metrics.Tag{Key: messageTypeKey, Value: fmt.Sprintf("%v", msg.MessageType())})
+	case <-stuck.C:
+		s.Close()
 	case <-s.Closed():
 	}
 }

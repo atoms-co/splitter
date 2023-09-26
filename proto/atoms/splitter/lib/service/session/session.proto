@@ -28,13 +28,8 @@ message Message {
     google.protobuf.Timestamp now = 1;
   }
 
-  // Close closes the session.
-  message Close {
-
-  }
-
-  // Closed terminates the session, because it has become defunct or in response to Close. The session lease
-  // is valid until the last established timestamp, but no new session requests can be sent.
+  // Closed is a sentinel that terminates the session by either side. The session lease is valid until the
+  // last established timestamp, but no new session requests can be sent.
   message Closed {
     string error = 1;
   }
@@ -43,7 +38,6 @@ message Message {
     Establish establish = 1;
     Established established = 2;
     Heartbeat heartbeat = 3;
-    Close close = 4;
     Closed closed = 5;
   }
 }

@@ -8,7 +8,6 @@ import (
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
-	"time"
 )
 
 const (
@@ -23,7 +22,9 @@ var (
 )
 
 // Client represents the client-side component of session-scoped keepalive. Can be used agnostic of transport protocol.
-// Client establishes a lease-based session to a server with periodic heartbeats.
+// Client establishes a lease-based session to a server with periodic heartbeats. The client is closed if the lease
+// expires or connectivity is lost. The sentinel Closed message is not emitted into the message stream. Users must
+// emit that separately to ensure it is last when merged with other messages.
 type Client struct {
 	iox.AsyncCloser
 	cl clock.Clock
@@ -31,9 +32,8 @@ type Client struct {
 	sid    ID
 	client location.Instance
 
-	in       chan Message
-	out      chan Message
-	draining iox.AsyncCloser
+	in  chan Message // never closed
+	out chan<- Message
 }
 
 func NewClient(ctx context.Context, cl clock.Clock, client location.Instance) (*Client, Message, <-chan Message) {
@@ -45,7 +45,6 @@ func NewClient(ctx context.Context, cl clock.Clock, client location.Instance) (*
 		client:      client,
 		in:          make(chan Message, clientBufChanSize),
 		out:         out,
-		draining:    iox.NewAsyncCloser(),
 	}
 	go c.process(ctx)
 
@@ -54,7 +53,7 @@ func NewClient(ctx context.Context, cl clock.Clock, client location.Instance) (*
 
 // Observe observes session messages to the Client
 func (c *Client) Observe(ctx context.Context, msg Message) {
-	if c.IsClosed() || c.draining.IsClosed() {
+	if c.IsClosed() {
 		return
 	}
 
@@ -67,12 +66,6 @@ func (c *Client) Observe(ctx context.Context, msg Message) {
 	}
 }
 
-// Drain drains the Client by sending a Close message to the Server
-func (c *Client) Drain(timeout time.Duration) {
-	c.draining.Close()
-	c.cl.AfterFunc(timeout, c.Close)
-}
-
 func (c *Client) process(ctx context.Context) {
 	defer c.Close()
 	defer close(c.out)
@@ -83,27 +76,28 @@ func (c *Client) process(ctx context.Context) {
 	expiration := clockx.NewTimer(c.cl, pendingEstablishedTimeout)
 	defer expiration.Stop()
 
-	for {
+	for !c.IsClosed() {
 		select {
 		case msg := <-c.in:
 			switch {
 			case msg.IsEstablished():
 				ttl, _ := msg.Established()
 				expiration.Reset(c.cl.Until(ttl))
+
 			case msg.IsClosed():
-				log.Infof(ctx, "Session closed. sid: %v, client: %v", c.sid, c.client)
 				return
+
 			default:
 				log.Warnf(ctx, "Received unknown message for sid %v: %v", c.sid, msg)
 			}
+
 		case <-expiration.C:
 			log.Infof(ctx, "Session expired. sid: %v, client: %v", c.sid, c.client)
 			return
+
 		case <-heartbeat.C:
 			c.send(ctx, NewHeartbeatMessage(c.cl.Now()))
-		case <-c.draining.Closed():
-			c.send(ctx, NewCloseMessage())
-			return
+
 		case <-c.Closed():
 			return
 		case <-ctx.Done():
@@ -113,9 +107,14 @@ func (c *Client) process(ctx context.Context) {
 }
 
 func (c *Client) send(ctx context.Context, msg Message) {
+	stuck := c.cl.NewTimer(leaseDuration)
+	defer stuck.Stop()
+
 	select {
 	case c.out <- msg:
 		numClientMessages.Increment(ctx, 1, messageTypeTag(msg.MessageType()))
+	case <-stuck.C:
+		c.Close()
 	case <-c.Closed():
 	}
 }
