@@ -13,10 +13,10 @@ import (
 )
 
 const (
-	// leaseDuration is the default duration of a session lease
-	leaseDuration = 30 * time.Second
-	// pendingEstablishedTimeout is timeout for a new but not established session.
-	pendingEstablishedTimeout = leaseDuration / 2
+	// keepAliveTimeout is the default duration of a session lease
+	keepAliveTimeout = 30 * time.Second
+	// establishTimeout is timeout for a new but not established session.
+	establishTimeout = keepAliveTimeout / 2
 	// serverBufChanSize is the buffer size for session messages.
 	serverBufChanSize = 20
 )
@@ -83,13 +83,13 @@ func (s *Server) process(ctx context.Context) {
 	defer close(s.out)
 	defer close(s.establish)
 
-	expiration := clockx.NewTimer(s.cl, pendingEstablishedTimeout)
+	expiration := clockx.NewTimer(s.cl, establishTimeout)
 	defer expiration.Stop()
 
 	for {
 		select {
 		case msg := <-s.in:
-			// First message must be establish
+			// First message must be an Establish
 			if !s.established {
 				if !msg.IsEstablish() {
 					log.Errorf(ctx, "Initial session message must be establish %v", msg)
@@ -107,14 +107,14 @@ func (s *Server) process(ctx context.Context) {
 				s.sid = establish.ID
 				s.establish <- establish
 
-				expirationTime := s.cl.Now().Add(leaseDuration)
+				expirationTime := s.cl.Now().Add(keepAliveTimeout)
 				s.send(ctx, NewEstablishedMessage(expirationTime))
 				expiration.Reset(s.cl.Until(expirationTime))
 
 			case msg.IsHeartbeat():
 				now, _ := msg.Heartbeat()
 				serverHeartbeatLag.Observe(ctx, s.cl.Now().Sub(now))
-				expirationTime := s.cl.Now().Add(leaseDuration)
+				expirationTime := s.cl.Now().Add(keepAliveTimeout)
 				s.send(ctx, NewEstablishedMessage(expirationTime))
 				expiration.Reset(s.cl.Until(expirationTime))
 
@@ -142,13 +142,14 @@ func (s *Server) process(ctx context.Context) {
 }
 
 func (s *Server) send(ctx context.Context, msg Message) {
-	stuck := s.cl.NewTimer(leaseDuration)
+	stuck := s.cl.NewTimer(keepAliveTimeout)
 	defer stuck.Stop()
 
 	select {
 	case s.out <- msg:
 		numServerMessages.Increment(ctx, 1, metrics.Tag{Key: messageTypeKey, Value: fmt.Sprintf("%v", msg.MessageType())})
 	case <-stuck.C:
+		log.Errorf(ctx, "Stuck server send: %v", msg)
 		s.Close()
 	case <-s.Closed():
 	}

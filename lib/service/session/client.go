@@ -8,11 +8,12 @@ import (
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
+	"time"
 )
 
 const (
 	// heartbeatDuration is a duration of the heartbeat interval.
-	heartbeatDuration = leaseDuration / 3
+	heartbeatDuration = 5 * time.Second
 	// clientBufChanSize is the buffer size for session messages.
 	clientBufChanSize = 20
 )
@@ -73,7 +74,7 @@ func (c *Client) process(ctx context.Context) {
 	heartbeat := c.cl.NewTicker(heartbeatDuration)
 	defer heartbeat.Stop()
 
-	expiration := clockx.NewTimer(c.cl, pendingEstablishedTimeout)
+	expiration := clockx.NewTimer(c.cl, keepAliveTimeout)
 	defer expiration.Stop()
 
 	for !c.IsClosed() {
@@ -107,13 +108,14 @@ func (c *Client) process(ctx context.Context) {
 }
 
 func (c *Client) send(ctx context.Context, msg Message) {
-	stuck := c.cl.NewTimer(leaseDuration)
+	stuck := c.cl.NewTimer(keepAliveTimeout)
 	defer stuck.Stop()
 
 	select {
 	case c.out <- msg:
 		numClientMessages.Increment(ctx, 1, messageTypeTag(msg.MessageType()))
 	case <-stuck.C:
+		log.Errorf(ctx, "Stuck client send: %v", msg)
 		c.Close()
 	case <-c.Closed():
 	}

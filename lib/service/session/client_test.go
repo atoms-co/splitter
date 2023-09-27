@@ -39,7 +39,7 @@ func TestClient_Heartbeat(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	for i := 0; i < 4; i++ {
-		cl.Add(10 * time.Second)
+		cl.Add(5 * time.Second)
 		time.Sleep(100 * time.Millisecond)
 		msg := read(t, out)
 		heartbeat, ok := msg.Heartbeat()
@@ -59,12 +59,12 @@ func TestClient_ExpirationPending(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Not timed out yet
-	cl.Add(10 * time.Second)
+	cl.Add(20 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	assert.False(t, client.IsClosed())
 
 	// Timed out
-	cl.Add(10 * time.Second)
+	cl.Add(15 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	assert.True(t, client.IsClosed())
 }
@@ -80,13 +80,13 @@ func TestClient_ExpirationEstablished(t *testing.T) {
 	client.Observe(ctx, session.NewEstablishedMessage(cl.Now().Add(30*time.Second)))
 	time.Sleep(100 * time.Millisecond)
 
-	cl.Add(10 * time.Second)
+	cl.Add(5 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	msg := read(t, out) // heartbeat
 	heartbeat, _ := msg.Heartbeat()
 	client.Observe(ctx, session.NewEstablishedMessage(heartbeat.Add(30*time.Second)))
 
-	cl.Add(10 * time.Second)
+	cl.Add(5 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	read(t, out) // heartbeat 2
 
