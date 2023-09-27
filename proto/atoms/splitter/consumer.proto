@@ -3,6 +3,8 @@ syntax = "proto3";
 package atoms.splitter;
 
 import "atoms/splitter/lib/service/location/location.proto";
+import "atoms/splitter/lib/service/session/session.proto";
+import "splitter/proto/public_v1/management.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
@@ -12,4 +14,35 @@ option java_package = "co.atoms.splitter.pb";
 message Instance {
   atoms.splitter.lib.service.location.Instance client = 1;
   string endpoint = 2;
+}
+
+// Register must be the first message from the consumer on connect. If a re-connect, the server may already know about
+// the consumer, in which case existing assignments are generally chosen to continue to minimize disruption (assuming
+// the consumer lease has not expired meanwhile).
+message Register {
+  atoms.splitter.lib.service.location.Instance instance = 1;
+  string tenant = 2;
+
+  atoms.splitter.QualifiedDomainName domains = 3;
+}
+
+// ConsumerMessage is a message sent from a consumer to a coordinator
+message ConsumerMessage {
+  oneof msg {
+    atoms.splitter.lib.service.service.Message session = 1;
+    Register register = 2;
+  }
+}
+
+// CoordinatorMessage is a message sent from a coordinator to a consumer
+message CoordinatorMessage {
+  // Disconnect directs the consumer to disconnect immediately. Typically send in response to Deregister after all
+  // shards have been successfully drained.
+  message Disconnect {
+  }
+
+  oneof msg {
+    atoms.splitter.lib.service.service.Message session = 1;
+    Disconnect disconnect = 2;
+  }
 }

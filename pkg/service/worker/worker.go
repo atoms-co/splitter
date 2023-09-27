@@ -3,12 +3,16 @@ package worker
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/core"
+	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/util/txnx"
+	"fmt"
 	"time"
 )
 
@@ -16,7 +20,7 @@ const (
 	statsDuration = 15 * time.Second
 )
 
-type CoordinatorFactory func(ctx context.Context) *coordinator.Coordinator
+type CoordinatorFactory func(ctx context.Context, tenant model.TenantName) (*coordinator.Coordinator, error)
 
 type Worker struct {
 	iox.AsyncCloser
@@ -25,6 +29,8 @@ type Worker struct {
 	fn     CoordinatorFactory
 	inject chan func()
 	drain  iox.AsyncCloser
+
+	coordinators map[model.TenantName]*coordinatorInfo
 }
 
 func New(cl clock.Clock, in <-chan core.WorkerMessage, fn CoordinatorFactory) *Worker {
@@ -39,10 +45,38 @@ func New(cl clock.Clock, in <-chan core.WorkerMessage, fn CoordinatorFactory) *W
 	return w
 }
 
-func (w *Worker) Connect(ctx context.Context) {
-	syncx.Txn0(ctx, txnx.Txn(w, w.inject), func() {
-		log.Infof(ctx, "connected!")
+func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.CoordinatorMessage, error) {
+	register, err := w.tryReadRegister(ctx, in)
+	if err != nil {
+		return nil, err
+	}
+	tenant := register.TenantName()
+
+	ci, err := syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (*coordinatorInfo, error) {
+		ci, ok := w.coordinators[tenant]
+		if !ok {
+			return nil, fmt.Errorf("%w: coordinator for tenant %v", model.ErrNotFound, tenant)
+		}
+		return ci, nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return ci.c.Connect(ctx, sid, register, in)
+}
+
+func (w *Worker) tryReadRegister(ctx context.Context, in <-chan model.ConsumerMessage) (model.RegisterMessage, error) {
+	msg, ok := chanx.TryRead(in, 20*time.Second)
+	if !ok {
+		log.Errorf(ctx, "No register message received")
+		return model.RegisterMessage{}, model.WrapError(model.ErrInvalid)
+	}
+	if !msg.IsRegister() {
+		log.Errorf(ctx, "Expected register message, received: %v", msg)
+		return model.RegisterMessage{}, model.WrapError(model.ErrInvalid)
+	}
+	register, _ := msg.Register()
+	return register, nil
 }
 
 func (w *Worker) Drain(timeout time.Duration) {
@@ -88,4 +122,8 @@ func handleWorkerMessage(ctx context.Context, msg core.WorkerMessage) {
 	default:
 		log.Errorf(ctx, "Invalid worker message: %v", msg)
 	}
+}
+
+type coordinatorInfo struct {
+	c *coordinator.Coordinator
 }
