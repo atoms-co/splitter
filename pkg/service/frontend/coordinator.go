@@ -58,7 +58,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 			return nil, model.WrapError(err)
 		}
 
-		joined := session.Receive(resp, out, model.NewCoordinatorSessionMessage)
+		joined := session.Receive(sess, resp, out, model.NewCoordinatorSessionMessage)
 		return chanx.Map(joined, model.UnwrapCoordinatorMessage), nil
 	})
 }

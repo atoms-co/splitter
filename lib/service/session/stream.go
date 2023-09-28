@@ -5,19 +5,21 @@ import (
 )
 
 // Connect creates a client-side session envelope for a message stream of type T, with Establish and Closed
-// delimiting the joined stream. The type T must be able to embed session messages.
-func Connect[T any](establish Message, main <-chan T, liveness <-chan Message, inject func(Message) T) <-chan T {
+// delimiting the joined stream. The type T must be able to embed session messages. Terminates the session
+// if the main chan is closed.
+func Connect[T any](c *Client, establish Message, main <-chan T, liveness <-chan Message, inject func(Message) T) <-chan T {
 	return chanx.Envelope(
 		inject(establish),
-		chanx.Join(main, chanx.Map(liveness, inject)),
+		chanx.Join(chanx.Breaker(main, c, clientBufChanSize), chanx.Map(liveness, inject)),
 		inject(NewClosedMessage()),
 	)
 }
 
 // Receive creates a server-side session output for a message stream of type T, terminated with Closed.
-func Receive[T any](main <-chan T, liveness <-chan Message, inject func(Message) T) <-chan T {
+// Terminates the session if the main chan is closed.
+func Receive[T any](s *Server, main <-chan T, liveness <-chan Message, inject func(Message) T) <-chan T {
 	return chanx.AppendLast(
-		chanx.Join(main, chanx.Map(liveness, inject)),
+		chanx.Join(chanx.Breaker(main, s, serverBufChanSize), chanx.Map(liveness, inject)),
 		inject(NewClosedMessage()),
 	)
 }
