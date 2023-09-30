@@ -45,7 +45,7 @@ func New(cl clock.Clock, in <-chan core.WorkerMessage, fn CoordinatorFactory) *W
 	return w
 }
 
-func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.CoordinatorMessage, error) {
+func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	register, err := w.tryReadRegister(ctx, in)
 	if err != nil {
 		return nil, err

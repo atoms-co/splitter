@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package atoms.splitter;
 
+import "google/protobuf/timestamp.proto";
 import "atoms/splitter/lib/service/location/location.proto";
 import "atoms/splitter/lib/service/session/session.proto";
 import "splitter/proto/public_v1/management.proto";
@@ -16,14 +17,100 @@ message Instance {
   string endpoint = 2;
 }
 
+// Shard is a unit of work. Usually it is a continuous subrange of UUIDs, but can also span the whole UUID space.
+// Shards of global and unit domain may have zero region if information about preferred region is not provided.
+// For unit domains the shard spans the whole UUID space.
+message Shard {
+  QualifiedDomainName domain = 1;
+  // Region is the optional region of the shard.
+  string region = 2;
+  string from = 3;
+  string to = 4;
+}
+
+// Grant represents a shard with a lease.
+message Grant {
+  string id = 1;
+  Shard shard = 2;
+
+  enum State {
+    UNKNOWN = 0;
+    ALLOCATED = 1;
+    ACTIVE = 2;
+    REVOKED = 3;
+  }
+  State state = 3;
+
+  google.protobuf.Timestamp lease = 4;
+  google.protobuf.Timestamp assigned = 5; // informational
+}
+
+message Assignment {
+  Instance instance = 1;
+  repeated Grant grants = 2;
+}
+
 // Register must be the first message from the consumer on connect. If a re-connect, the server may already know about
 // the consumer, in which case existing assignments are generally chosen to continue to minimize disruption (assuming
 // the consumer lease has not expired meanwhile).
 message Register {
-  atoms.splitter.lib.service.location.Instance instance = 1;
+  Instance instance = 1;
   string tenant = 2;
 
   atoms.splitter.QualifiedDomainName domains = 3;
+
+  // Active grants with non-expired leases. Revoked grants are omitted and implicitly relinquished on re-connect.
+  repeated Grant active = 4;
+}
+
+// Deregister indicates that the consumer will soon disappear, usually restarted in ~30s. The server should initiate a
+// graceful drain of responsibilities by marking all shards as revoked and wait for them to relinquish. No new work
+// should be assigned to the consumer.
+message Deregister {
+}
+
+// Released returns the voluntary exclusive lease for the given grants back to the server. It is usually sent in
+// response to REVOKE before the lease expires.
+message Released {
+  repeated string grants = 1;
+}
+
+// Extend extends all granted shard leases
+message Extend {
+  google.protobuf.Timestamp lease = 1;
+}
+
+// Grant grants shard leases to the consumer for ownership.
+// The server must explicitly re-grant unexpired shard leases for reconnected consumers.
+message Assign {
+  repeated Grant grants = 1;
+}
+
+// Revoke gracefully revokes previously granted shard leases.
+// The consumer should relinquish the shard leases instead of letting them expire for faster re-assignment.
+message Revoke {
+  repeated string grants = 1;
+}
+
+// ClusterMessage represents an update in tenant ownership. The initial update contains a full routing table.
+message ClusterMessage {
+  message Snapshot {
+    repeated Assignment assignments = 1;
+  }
+
+  message Update {
+    repeated Assignment assignments = 1;
+  }
+
+  message Remove {
+    repeated string grants = 1;
+  }
+
+  oneof msg {
+    Snapshot snapshot = 1;
+    Update update = 2;
+    Remove remove = 3;
+  }
 }
 
 // ConsumerMessage is a message sent from a consumer to a coordinator
@@ -31,18 +118,11 @@ message ConsumerMessage {
   oneof msg {
     atoms.splitter.lib.service.service.Message session = 1;
     Register register = 2;
-  }
-}
-
-// CoordinatorMessage is a message sent from a coordinator to a consumer
-message CoordinatorMessage {
-  // Disconnect directs the consumer to disconnect immediately. Typically send in response to Deregister after all
-  // shards have been successfully drained.
-  message Disconnect {
-  }
-
-  oneof msg {
-    atoms.splitter.lib.service.service.Message session = 1;
-    Disconnect disconnect = 2;
+    Deregister deregister = 3;
+    Released released = 4;
+    Extend extend = 5;
+    Assign assign = 6;
+    Revoke revoke = 7;
+    ClusterMessage cluster = 8;
   }
 }

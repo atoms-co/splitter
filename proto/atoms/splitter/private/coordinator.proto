@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
-import "atoms/splitter/lib/service/session/session.proto";
 import "splitter/proto/public_v1/consumer.proto";
 
 option java_multiple_files = true;
@@ -11,5 +10,5 @@ option go_package = "go.atoms.co/splitter/pb/private";
 // CoordinatorService is the internal service for coordinator communication.
 service CoordinatorService {
   // Connect establishes a bi-directional connection between a proxy and a coordinator.
-  rpc Connect (stream atoms.splitter.ConsumerMessage) returns (stream atoms.splitter.CoordinatorMessage);
+  rpc Connect (stream atoms.splitter.ConsumerMessage) returns (stream atoms.splitter.ConsumerMessage);
 }

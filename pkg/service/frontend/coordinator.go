@@ -34,7 +34,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 	defer sess.Close()
 	wctx, _ := contextx.WithQuitCancel(server.Context(), sess.Closed()) // cancel context if session server closes
 
-	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.ConsumerMessage) (<-chan *public_v1.CoordinatorMessage, error) {
+	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.ConsumerMessage) (<-chan *public_v1.ConsumerMessage, error) {
 		ch := chanx.MapIf(in, func(pb *public_v1.ConsumerMessage) (model.ConsumerMessage, bool) {
 			if pb.GetSession() != nil {
 				sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session client
@@ -58,7 +58,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 			return nil, model.WrapError(err)
 		}
 
-		joined := session.Receive(sess, resp, out, model.NewCoordinatorSessionMessage)
-		return chanx.Map(joined, model.UnwrapCoordinatorMessage), nil
+		joined := session.Receive(sess, resp, out, model.NewConsumerSessionMessage)
+		return chanx.Map(joined, model.UnwrapConsumerMessage), nil
 	})
 }

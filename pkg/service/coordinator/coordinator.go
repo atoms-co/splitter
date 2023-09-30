@@ -3,7 +3,6 @@ package coordinator
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/iox"
@@ -46,13 +45,13 @@ func New(ctx context.Context, cl clock.Clock, tenant model.Tenant) *Coordinator 
 	return c
 }
 
-func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.CoordinatorMessage, error) {
+func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	var consumer *consumerSession
 	syncx.Txn0(ctx, txnx.Txn(c, c.inject), func() {
 		var ok bool
 		consumer, ok = c.consumers[sid]
 		if ok {
-			consumer.disconnect(ctx)
+			consumer.Close()
 		}
 		consumer = newConsumerSession(c.cl, c.Closed(), sid, register.Instance())
 		c.consumers[sid] = consumer
@@ -116,7 +115,6 @@ func (c *Coordinator) tearDown(ctx context.Context, sid session.ID) {
 		return
 	}
 	log.Infof(ctx, "Coordinator %v is disconnecting consumer %v", c, consumer)
-	consumer.disconnect(ctx)
 	delete(c.consumers, sid)
 	consumer.Close()
 }
@@ -127,28 +125,22 @@ type consumerSession struct {
 	cl clock.Clock
 
 	sid      session.ID
-	location location.Instance
+	location model.Instance
 
-	out chan model.CoordinatorMessage
+	out chan model.ConsumerMessage
 }
 
-func newConsumerSession(cl clock.Clock, quit <-chan struct{}, sid session.ID, loc location.Instance) *consumerSession {
+func newConsumerSession(cl clock.Clock, quit <-chan struct{}, sid session.ID, loc model.Instance) *consumerSession {
 	return &consumerSession{
 		AsyncCloser: iox.WithQuit(quit, iox.NewAsyncCloser()), // quit => closer
 		cl:          cl,
 		sid:         sid,
 		location:    loc,
-		out:         make(chan model.CoordinatorMessage, 100),
+		out:         make(chan model.ConsumerMessage, 100),
 	}
 }
 
-func (c *consumerSession) disconnect(ctx context.Context) {
-	if !c.trySend(ctx, model.NewCoordinatorDisconnectMessage()) {
-		log.Infof(ctx, "Unable to disconnect consumer session %v", c)
-	}
-}
-
-func (c *consumerSession) trySend(ctx context.Context, msg model.CoordinatorMessage) bool {
+func (c *consumerSession) trySend(ctx context.Context, msg model.ConsumerMessage) bool {
 	timer := c.cl.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
