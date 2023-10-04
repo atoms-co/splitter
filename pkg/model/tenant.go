@@ -136,6 +136,10 @@ func UnwrapTenantConfig(cfg TenantConfig) *public_v1.Tenant_Config {
 	return cfg.pb
 }
 
+func (c TenantConfig) DefaultShardingPolicy() ShardingPolicy {
+	return WrapShardingPolicy(c.pb.GetDefaultShardingPolicy())
+}
+
 // TenantInfo captures the full tenant information.
 type TenantInfo struct {
 	pb *public_v1.TenantInfo

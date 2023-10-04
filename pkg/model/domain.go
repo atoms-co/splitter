@@ -262,6 +262,18 @@ func UnwrapDomainConfig(cfg DomainConfig) *public_v1.Domain_Config {
 	return cfg.pb
 }
 
+func (c DomainConfig) Placement() (PlacementName, bool) {
+	return PlacementName(c.pb.GetPlacement()), c.pb.GetPlacement() != ""
+}
+
+func (c DomainConfig) ShardingPolicy() ShardingPolicy {
+	return WrapShardingPolicy(c.pb.GetShardingPolicy())
+}
+
+func (c DomainConfig) Regions() []Region {
+	return slicex.Map(c.pb.GetRegions(), func(r string) Region { return Region(r) })
+}
+
 // DomainInfo captures the full domain information.
 type DomainInfo struct {
 	pb *public_v1.DomainInfo
@@ -307,7 +319,8 @@ func (t DomainInfo) String() string {
 type Key uuid.UUID
 
 var (
-	ZeroKey = Key(uuid.Nil)
+	ZeroKey = Key(uuidx.Min)
+	MaxKey  = Key(uuidx.Max)
 )
 
 func ParseKey(key string) (Key, error) {
