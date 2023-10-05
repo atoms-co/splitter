@@ -7,10 +7,8 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/randx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/core"
-	"go.atoms.co/splitter/pkg/core/distribution"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/txnx"
 	"fmt"
@@ -33,14 +31,13 @@ type Coordinator struct {
 
 	tenant model.TenantName
 
-	state        core.State
-	distribution *distribution.Distribution[model.Shard, model.Grant]
-	consumers    map[session.ID]*consumerSession
-	in           chan consumerMessage
+	state    core.State
+	shards   *ShardManager
+	sessions map[session.ID]*consumerSession
+	in       chan consumerMessage
 }
 
 func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state core.State, stateUpdates <-chan core.Update) *Coordinator {
-	shards := createShards(ctx, state)
 	c := &Coordinator{
 		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
 		cl:          cl,
@@ -49,10 +46,10 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 
 		tenant: tenant,
 
-		state:        state,
-		distribution: distribution.NewDistribution[model.Shard, model.Grant](shardManager{}, cl.Now().Add(leaseDuration), shards),
-		consumers:    map[session.ID]*consumerSession{},
-		in:           make(chan consumerMessage, 1000),
+		state:    state,
+		shards:   NewShardManager(ctx, cl, state),
+		sessions: map[session.ID]*consumerSession{},
+		in:       make(chan consumerMessage, 1000),
 	}
 	ctx = log.NewContext(ctx, log.String("tenant", string(tenant)))
 	go c.process(ctx, stateUpdates)
@@ -60,34 +57,41 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 }
 
 func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+	var snapshot model.ClusterSnapshot
 	consumer, err := syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (*consumerSession, error) {
-		consumer, ok := c.consumers[sid]
+		s, ok := c.sessions[sid]
 		if ok {
-			consumer.Close()
+			s.Close()
 		}
-		consumer = newConsumerSession(c.cl, c.Closed(), sid, register.Instance(), c.cl.Now())
+		consumer := NewConsumer(sid, register.Instance(), c.cl.Now())
 
-		err := c.distribution.Connect(consumer, 1, c.cl.Now().Add(time.Minute*10))
+		err := c.shards.Connect(consumer, 1, c.cl.Now().Add(time.Minute*10))
 		if err != nil {
-			log.Errorf(ctx, "Coordination %v is unable to connect a consumer %v: %v", c, register, err)
+			log.Errorf(ctx, "Coordination %v is unable to connect a consumer %v: %v", c, consumer, err)
 			return nil, err
 		}
+
+		s = newConsumerSession(c.cl, c.Closed(), sid, consumer)
 
 		go func() {
 			select {
 			case <-c.Closed():
-				consumer.Close()
-			case <-consumer.Closed():
-				_, _, _ = c.distribution.Disconnect(c.cl.Now(), consumer.location.Location().ID())
+				s.Close()
+			case <-s.Closed():
+				_ = c.shards.Disconnect(consumer)
 			}
 		}()
 
-		c.consumers[sid] = consumer
-		log.Infof(ctx, "%v connected consumer %v", c, consumer)
-		return consumer, nil
+		c.sessions[sid] = s
+		log.Infof(ctx, "%v connected consumer %v", c, s)
+		snapshot = c.shards.Snapshot()
+		return s, nil
 	})
 	if err != nil {
 		return nil, err
+	}
+	if !consumer.trySend(ctx, model.NewConsumerClusterMessage(model.NewClusterSnapshotMessage(snapshot))) {
+		return nil, fmt.Errorf("unable to send initial cluster message to consumer %v", register)
 	}
 	go c.forward(ctx, in, consumer)
 	return consumer.out, nil
@@ -133,6 +137,14 @@ func (c *Coordinator) process(ctx context.Context, stateUpdates <-chan core.Upda
 		case msg := <-c.in:
 			c.handleConsumerMessage(ctx, msg.sid, msg.msg)
 		case <-ticker.C:
+			update, ok := c.shards.DiscardClusterUpdate(ctx)
+			if ok {
+				for _, s := range c.sessions {
+					if !s.trySend(ctx, model.NewConsumerClusterMessage(model.NewClusterUpdateMessage(update))) {
+						log.Errorf(ctx, "Cannot send cluster updates to session %v", s)
+					}
+				}
+			}
 			// TODO (styurin, 9/29/23): emit metrics
 		case fn := <-c.inject:
 			fn()
@@ -150,18 +162,18 @@ func (c *Coordinator) process(ctx context.Context, stateUpdates <-chan core.Upda
 }
 
 func (c *Coordinator) handleConsumerMessage(ctx context.Context, sid session.ID, msg model.ConsumerMessage) {
-	consumer, ok := c.consumers[sid]
+	s, ok := c.sessions[sid]
 	if !ok {
-		log.Errorf(ctx, "Unable to find consumer session for message %v", msg)
+		log.Errorf(ctx, "Unable to find session for message %v", msg)
 		return
 	}
 	switch {
 	case msg.IsDeregister():
-		log.Infof(ctx, "Coordinator %v is disconnecting consumer %v", c, consumer)
+		log.Infof(ctx, "Coordinator %v is disconnecting session %v", c, s)
 		c.tearDown(ctx, sid)
 	case msg.IsReleased():
 		released, _ := msg.Released()
-		c.handleReleased(ctx, consumer, released)
+		c.handleReleased(ctx, s, released)
 	}
 }
 
@@ -171,13 +183,12 @@ func (c *Coordinator) handleReleased(ctx context.Context, consumer *consumerSess
 		log.Errorf(ctx, "Unable to parse grants from %v: %v", msg, err)
 		return
 	}
-	var updated bool
 	for _, g := range grants {
-		released, err := c.distribution.Release(consumer.ID(), distribution.GrantID(g), c.cl.Now())
+		err := c.shards.Release(consumer.consumer, g)
 		if err != nil {
 			log.Errorf(ctx, "Coordinator %v is unable to release a grant %v for consumer %v: %v", c, g, consumer, err)
+			continue
 		}
-		updated = updated || released
 	}
 	log.Infof(ctx, "Coordinator %v released %v grants from consumer %s", c, len(grants), consumer)
 }
@@ -235,77 +246,13 @@ func (c *Coordinator) notifyConsumers() {
 }
 
 func (c *Coordinator) tearDown(ctx context.Context, sid session.ID) {
-	consumer, ok := c.consumers[sid]
+	s, ok := c.sessions[sid]
 	if !ok {
 		return
 	}
-	log.Infof(ctx, "Coordinator %v is disconnecting consumer %v", c, consumer)
-	delete(c.consumers, sid)
-	consumer.Close()
-}
-
-func createShards(ctx context.Context, state core.State) []model.Shard {
-	tenant := state.Tenant().Tenant()
-	placements := state.Placements()
-	return slicex.FlatMap(state.Domains(), func(info model.DomainInfo) []model.Shard {
-		return createDomainShards(ctx, tenant, info.Domain(), placements)
-	})
-}
-
-func createDomainShards(ctx context.Context, tenant model.Tenant, domain model.Domain, placements []core.InternalPlacementInfo) []model.Shard {
-	var shards []model.Shard
-
-	if domain.State() == model.DomainSuspended {
-		return shards
-	}
-
-	switch domain.Type() {
-	case model.Unit:
-		r, _ := tenant.Region()
-		shards = append(shards, model.Shard{
-			Region: r,
-			Domain: domain.Name(),
-			To:     model.ZeroKey,
-			From:   model.MaxKey,
-		})
-	case model.Global:
-		if name, ok := domain.Config().Placement(); ok {
-			placement, ok := slicex.First(placements, func(info core.InternalPlacementInfo) bool {
-				pname := info.InternalPlacement().Name()
-				return pname.Tenant == tenant.Name() && pname.Placement == name
-			})
-			if ok {
-				if placement.InternalPlacement().State() == core.PlacementActive {
-					shards = append(shards, createPlacementShards(domain, placement.InternalPlacement())...)
-				}
-			}
-		} else {
-			r, _ := tenant.Region()
-			shards = append(shards, model.NewShards(r, domain.Name(), shardingPolicy(tenant, domain).Shards())...)
-		}
-	case model.Regional:
-		domainShards := slicex.FlatMap(domain.Config().Regions(), func(r model.Region) []model.Shard {
-			return model.NewShards(r, domain.Name(), domain.Config().ShardingPolicy().Shards())
-		})
-		shards = append(shards, domainShards...)
-	default:
-		log.Errorf(ctx, "Ignoring unsupported domain type for domain: %v", domain)
-	}
-
-	return shards
-}
-
-func createPlacementShards(domain model.Domain, placement core.InternalPlacement) []model.Shard {
-	var shards []model.Shard
-	// TODO: implement
-	return shards
-}
-
-func shardingPolicy(tenant model.Tenant, domain model.Domain) model.ShardingPolicy {
-	if domain.Config().ShardingPolicy() == model.WrapShardingPolicy(nil) {
-		return tenant.Config().DefaultShardingPolicy()
-	}
-	return domain.Config().ShardingPolicy()
+	log.Infof(ctx, "Coordinator %v is disconnecting session %v", c, s)
+	delete(c.sessions, sid)
+	s.Close()
 }
 
 type consumerSession struct {
@@ -313,39 +260,20 @@ type consumerSession struct {
 
 	cl clock.Clock
 
-	sid        session.ID
-	location   model.Instance
-	joined     time.Time
-	expiration time.Time
+	sid      session.ID
+	consumer Consumer
 
 	out chan model.ConsumerMessage
 }
 
-func newConsumerSession(cl clock.Clock, quit <-chan struct{}, sid session.ID, loc model.Instance, joined time.Time) *consumerSession {
+func newConsumerSession(cl clock.Clock, quit <-chan struct{}, sid session.ID, consumer Consumer) *consumerSession {
 	return &consumerSession{
 		AsyncCloser: iox.WithQuit(quit, iox.NewAsyncCloser()), // quit => closer
 		cl:          cl,
 		sid:         sid,
-		location:    loc,
-		joined:      joined,
+		consumer:    consumer,
 		out:         make(chan model.ConsumerMessage, 100),
 	}
-}
-
-func (c *consumerSession) ID() model.InstanceID {
-	return c.location.Location().ID()
-}
-
-func (c *consumerSession) Region() model.Region {
-	return model.Region(c.location.Location().Location().Region)
-}
-
-func (c *consumerSession) Joined() time.Time {
-	return c.joined
-}
-
-func (c *consumerSession) Expiration() time.Time {
-	return c.expiration
 }
 
 func (c *consumerSession) trySend(ctx context.Context, msg model.ConsumerMessage) bool {
@@ -365,7 +293,7 @@ func (c *consumerSession) trySend(ctx context.Context, msg model.ConsumerMessage
 }
 
 func (c *consumerSession) String() string {
-	return fmt.Sprintf("consumer{session=%v, location=%v}", c.sid, c.location)
+	return fmt.Sprintf("session{id=%v, consumer=%v}", c.sid, c.consumer)
 }
 
 type consumerMessage struct {
@@ -375,73 +303,4 @@ type consumerMessage struct {
 
 func newConsumerMessage(sid session.ID, msg model.ConsumerMessage) consumerMessage {
 	return consumerMessage{sid: sid, msg: msg}
-}
-
-type shardManager struct {
-}
-
-func (m shardManager) NewGrant(shard model.Shard, state distribution.GrantState, assigned time.Time, expiration time.Time) model.Grant {
-	return model.Grant{
-		ID:       model.NewGrantID(),
-		Shard:    shard,
-		Assigned: assigned,
-		Lease:    expiration,
-	}
-}
-
-func (m shardManager) GrantWithShard(g model.Grant, shard model.Shard) model.Grant {
-	g.Shard = shard
-	return g
-}
-
-func (m shardManager) GrantWithExpiration(g model.Grant, expiration time.Time) model.Grant {
-	g.Lease = expiration
-	return g
-}
-
-func (m shardManager) GrantWithState(g model.Grant, state distribution.GrantState) model.Grant {
-	newState := model.InvalidGrant
-	switch state {
-	case distribution.AllocatedGrant:
-		newState = model.AllocatedGrant
-	case distribution.ActiveGrant:
-		newState = model.ActiveGrant
-	case distribution.RevokedGrant:
-		newState = model.RevokedGrant
-	}
-	g.State = newState
-	return g
-}
-
-func (m shardManager) GrantShard(g model.Grant) model.Shard {
-	return g.Shard
-}
-
-func (m shardManager) GrantAssigned(g model.Grant) time.Time {
-	return g.Assigned
-}
-
-func (m shardManager) GrantExpiration(g model.Grant) time.Time {
-	return g.Lease
-}
-
-func (m shardManager) GrantState(g model.Grant) distribution.GrantState {
-	switch g.State {
-	case model.AllocatedGrant:
-		return distribution.AllocatedGrant
-	case model.ActiveGrant:
-		return distribution.ActiveGrant
-	case model.RevokedGrant:
-		return distribution.RevokedGrant
-	default:
-		return distribution.UnknownGrant
-	}
-}
-
-func (m shardManager) GrantID(g model.Grant) distribution.GrantID {
-	return distribution.GrantID(g.ID)
-}
-
-func (m shardManager) ShardsEqual(s1 model.Shard, s2 model.Shard) bool {
-	return s1 == s2
 }

@@ -194,6 +194,15 @@ func UnwrapAssignment(a Assignment) *public_v1.Assignment {
 	return a.pb
 }
 
+func NewAssignment(instance Instance, grants []Grant) Assignment {
+	return Assignment{
+		pb: &public_v1.Assignment{
+			Instance: UnwrapInstance(instance),
+			Grants:   slicex.Map(grants, Grant.ToProto),
+		},
+	}
+}
+
 func (a Assignment) Instance() Instance {
 	return WrapInstance(a.pb.GetInstance())
 }
@@ -266,6 +275,14 @@ func NewConsumerSessionMessage(m session.Message) ConsumerMessage {
 	})
 }
 
+func NewConsumerClusterMessage(m ClusterMessage) ConsumerMessage {
+	return WrapConsumerMessage(&public_v1.ConsumerMessage{
+		Msg: &public_v1.ConsumerMessage_Cluster{
+			Cluster: UnwrapClusterMessage(m),
+		},
+	})
+}
+
 func (m ConsumerMessage) IsRegister() bool {
 	return m.pb.GetRegister() != nil
 }
@@ -293,5 +310,120 @@ func (m ConsumerMessage) Released() (ReleasedMessage, bool) {
 }
 
 func (m ConsumerMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
+type ClusterSnapshot struct {
+	pb *public_v1.ClusterMessage_Snapshot
+}
+
+func WrapClusterSnapshot(pb *public_v1.ClusterMessage_Snapshot) ClusterSnapshot {
+	return ClusterSnapshot{pb: pb}
+}
+
+func UnwrapClusterSnapshot(s ClusterSnapshot) *public_v1.ClusterMessage_Snapshot {
+	return s.pb
+}
+
+func NewClusterSnapshot(assignments []Assignment) ClusterSnapshot {
+	return ClusterSnapshot{
+		pb: &public_v1.ClusterMessage_Snapshot{
+			Assignments: slicex.Map(assignments, UnwrapAssignment),
+		},
+	}
+}
+
+func (s ClusterSnapshot) Assignments() []Assignment {
+	return slicex.Map(s.pb.GetAssignments(), WrapAssignment)
+}
+
+func (s ClusterSnapshot) String() string {
+	return proto.MarshalTextString(s.pb)
+}
+
+type ClusterUpdate struct {
+	pb *public_v1.ClusterMessage_Update
+}
+
+func WrapClusterUpdate(pb *public_v1.ClusterMessage_Update) ClusterUpdate {
+	return ClusterUpdate{pb: pb}
+}
+
+func UnwrapClusterUpdate(u ClusterUpdate) *public_v1.ClusterMessage_Update {
+	return u.pb
+}
+
+func NewClusterUpdate(assignments []Assignment, removed []GrantID) ClusterUpdate {
+	return ClusterUpdate{
+		pb: &public_v1.ClusterMessage_Update{
+			Assignments: slicex.Map(assignments, UnwrapAssignment),
+			Removed:     slicex.Map(removed, GrantID.String),
+		},
+	}
+}
+
+func (u ClusterUpdate) Assignments() []Assignment {
+	return slicex.Map(u.pb.GetAssignments(), WrapAssignment)
+}
+
+func (u ClusterUpdate) Removed() ([]GrantID, error) {
+	return slicex.TryMap(u.pb.GetRemoved(), ParseGrantID)
+}
+
+func (u ClusterUpdate) String() string {
+	return proto.MarshalTextString(u.pb)
+}
+
+type ClusterMessage struct {
+	pb *public_v1.ClusterMessage
+}
+
+func NewClusterSnapshotMessage(snapshot ClusterSnapshot) ClusterMessage {
+	return WrapClusterMessage(&public_v1.ClusterMessage{
+		Msg: &public_v1.ClusterMessage_Snapshot_{
+			Snapshot: UnwrapClusterSnapshot(snapshot),
+		},
+	})
+}
+
+func NewClusterUpdateMessage(update ClusterUpdate) ClusterMessage {
+	return WrapClusterMessage(&public_v1.ClusterMessage{
+		Msg: &public_v1.ClusterMessage_Update_{
+			Update: UnwrapClusterUpdate(update),
+		},
+	})
+}
+
+func WrapClusterMessage(pb *public_v1.ClusterMessage) ClusterMessage {
+	return ClusterMessage{pb: pb}
+}
+
+func UnwrapClusterMessage(m ClusterMessage) *public_v1.ClusterMessage {
+	return m.pb
+}
+
+func (m ClusterMessage) IsSnapshot() bool {
+	return m.pb.GetSnapshot() != nil
+}
+
+func (m ClusterMessage) Snapshot() (ClusterSnapshot, bool) {
+	if !m.IsSnapshot() {
+		return ClusterSnapshot{}, false
+	}
+	return WrapClusterSnapshot(m.pb.GetSnapshot()), true
+}
+
+func (m ClusterMessage) IsUpdate() bool {
+	return m.pb.GetUpdate() != nil
+}
+
+func (m ClusterMessage) Update() (ClusterUpdate, bool) {
+	if !m.IsSnapshot() {
+		return ClusterUpdate{}, false
+	}
+	return WrapClusterUpdate(m.pb.GetUpdate()), true
+}
+
+func (m ClusterMessage) String() string {
 	return proto.MarshalTextString(m.pb)
 }

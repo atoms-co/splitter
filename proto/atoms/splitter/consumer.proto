@@ -42,7 +42,8 @@ message Grant {
   State state = 3;
 
   google.protobuf.Timestamp lease = 4;
-  google.protobuf.Timestamp assigned = 5; // informational
+  // Assigned is the time when this grant was assigned to the shard with the status
+  google.protobuf.Timestamp assigned = 5;
 }
 
 message Assignment {
@@ -100,16 +101,12 @@ message ClusterMessage {
 
   message Update {
     repeated Assignment assignments = 1;
-  }
-
-  message Remove {
-    repeated string grants = 1;
+    repeated string removed = 2;
   }
 
   oneof msg {
     Snapshot snapshot = 1;
     Update update = 2;
-    Remove remove = 3;
   }
 }
 

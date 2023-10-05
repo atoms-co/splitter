@@ -21,6 +21,7 @@ var (
 // A consumer can be located in a single region and can handle shards from multiple domains.
 type Consumer interface {
 	ID() model.InstanceID
+	Instance() model.Instance
 	Region() model.Region
 	Joined() time.Time
 	Expiration() time.Time
@@ -33,6 +34,8 @@ type Adapter[S comparable, G comparable] interface {
 
 	// GrantWithShard create a new grant by copying an existing grant and replacing its shard
 	GrantWithShard(g G, shard S) G
+	// GrantWithAssigned create a new grant by copying an existing grant and replacing its assigned time
+	GrantWithAssigned(g G, assigned time.Time) G
 	// GrantWithExpiration create a new grant by copying an existing grant and replacing its expiration time
 	GrantWithExpiration(g G, expiration time.Time) G
 	// GrantWithState create a new grant by copying an existing grant and replacing its state
@@ -115,6 +118,11 @@ func (d *Distribution[S, G]) Assigned(consumer model.InstanceID) []G {
 		grants = append(grants, d.grants[id])
 	}
 	return grants
+}
+
+func (d *Distribution[S, G]) Grant(id GrantID) (G, bool) {
+	g, ok := d.grants[id]
+	return g, ok
 }
 
 // Unassigned returns the list of unassigned shards with activation time.
@@ -272,7 +280,8 @@ func (d *Distribution[S, G]) Release(consumer model.InstanceID, grantID GrantID,
 		if allocated == empty {
 			return false, fmt.Errorf("%w: %v is revoked, but has no allocated grant", ErrInvalidGrant, grantID)
 		}
-		allocated = d.adapter.NewGrant(d.adapter.GrantShard(allocated), ActiveGrant, now, d.adapter.GrantExpiration(allocated))
+		allocated = d.adapter.GrantWithState(allocated, ActiveGrant)
+		allocated = d.adapter.GrantWithAssigned(allocated, now)
 		d.grants[d.adapter.GrantID(allocated)] = allocated
 
 		// Remove revoked grant
@@ -312,8 +321,8 @@ func (d *Distribution[S, G]) ReplaceShard(old S, new S) error {
 	return nil
 }
 
-// Grant assigns an unallocated shard to the given consumer, ignoring activation time.
-func (d *Distribution[S, G]) Grant(consumer model.InstanceID, shard S, now time.Time) error {
+// Assign assigns an unallocated shard to the given consumer, ignoring activation time.
+func (d *Distribution[S, G]) Assign(consumer model.InstanceID, shard S, now time.Time) error {
 	c, ok := d.consumers[consumer]
 	if !ok {
 		return fmt.Errorf("%w: consumer %v", ErrNotFound, consumer)
@@ -391,10 +400,10 @@ func (d *Distribution[S, G]) Expire(now time.Time) map[model.InstanceID][]G {
 	return grants
 }
 
-// Assign distributes unassigned shards to consumers for optimal balance. The shards are allocated
+// AssignAll distributes unassigned shards to consumers for optimal balance. The shards are allocated
 // with the Assigned state.
 // Changes the distribution of shards.
-func (d *Distribution[S, G]) Assign(now time.Time) map[model.InstanceID][]G {
+func (d *Distribution[S, G]) AssignAll(now time.Time) map[model.InstanceID][]G {
 	assigned := map[model.InstanceID][]G{}
 	if len(d.consumers) == 0 {
 		return assigned
