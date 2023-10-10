@@ -5,6 +5,7 @@ import (
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/lib/syncx"
@@ -57,43 +58,34 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 }
 
 func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	var snapshot model.ClusterSnapshot
 	consumer, err := syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (*consumerSession, error) {
 		s, ok := c.sessions[sid]
 		if ok {
 			s.Close()
 		}
-		consumer := NewConsumer(sid, register.Instance(), c.cl.Now())
 
-		err := c.shards.Connect(consumer, 1, c.cl.Now().Add(time.Minute*10))
+		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
+		s, err := c.connectConsumer(wctx, sid, register, in)
 		if err != nil {
-			log.Errorf(ctx, "Coordination %v is unable to connect a consumer %v: %v", c, consumer, err)
 			return nil, err
 		}
 
-		s = newConsumerSession(c.cl, c.Closed(), sid, consumer)
-
 		go func() {
-			select {
-			case <-c.Closed():
-				s.Close()
-			case <-s.Closed():
-				_ = c.shards.Disconnect(consumer)
-			}
-		}()
+			defer cancel()
+			<-s.Closed()
 
-		c.sessions[sid] = s
-		log.Infof(ctx, "%v connected consumer %v", c, s)
-		snapshot = c.shards.Snapshot()
+			syncx.AsyncTxn(txnx.Txn(c, c.inject), func() {
+				s, ok := c.sessions[sid]
+				if ok && s.sid == sid { // guard against race
+					c.disconnectConsumer(wctx, s)
+				}
+			})
+		}()
 		return s, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	if !consumer.trySend(ctx, model.NewConsumerClusterMessage(model.NewClusterSnapshotMessage(snapshot))) {
-		return nil, fmt.Errorf("unable to send initial cluster message to consumer %v", register)
-	}
-	go c.forward(ctx, in, consumer)
 	return consumer.out, nil
 }
 
@@ -104,6 +96,34 @@ func (c *Coordinator) Drain(timeout time.Duration) {
 
 func (c *Coordinator) String() string {
 	return fmt.Sprintf("coordinator{tenant=%v}", c.tenant)
+}
+
+func (c *Coordinator) connectConsumer(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, error) {
+	consumer := NewConsumer(sid, register.Instance(), c.cl.Now())
+	err := c.shards.Connect(consumer, 1, c.cl.Now().Add(time.Minute*10))
+	if err != nil {
+		log.Errorf(ctx, "Coordination %v is unable to connect a consumer %v: %v", c, consumer, err)
+		return nil, err
+	}
+	s := newConsumerSession(c.cl, c.Closed(), sid, consumer)
+	c.sessions[sid] = s
+
+	log.Infof(ctx, "%v connected consumer %v", c, s)
+	snapshot := c.shards.Snapshot()
+
+	if !s.trySend(ctx, model.NewConsumerClusterMessage(model.NewClusterSnapshotMessage(snapshot))) {
+		return nil, fmt.Errorf("unable to send initial cluster message to consumer %v", register)
+	}
+	go c.forward(ctx, in, s)
+	return s, nil
+}
+
+func (c *Coordinator) disconnectConsumer(ctx context.Context, s *consumerSession) {
+	delete(c.sessions, s.sid)
+	err := c.shards.Disconnect(s.consumer)
+	if err != nil {
+		log.Errorf(ctx, "Error when disconnecting a consumer %v from allocations: %v", s.consumer, err)
+	}
 }
 
 func (c *Coordinator) forward(ctx context.Context, in <-chan model.ConsumerMessage, consumer *consumerSession) {
