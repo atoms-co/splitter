@@ -59,12 +59,12 @@ func TestClient_ExpirationPending(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Not timed out yet
-	cl.Add(20 * time.Second)
+	cl.Add(5 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	assert.False(t, client.IsClosed())
 
 	// Timed out
-	cl.Add(15 * time.Second)
+	cl.Add(10 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	assert.True(t, client.IsClosed())
 }

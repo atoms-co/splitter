@@ -14,7 +14,7 @@ import (
 
 const (
 	// keepAliveTimeout is the default duration of a session lease
-	keepAliveTimeout = 30 * time.Second
+	keepAliveTimeout = 10 * time.Second
 	// establishTimeout is timeout for a new but not established session.
 	establishTimeout = keepAliveTimeout / 2
 	// serverBufChanSize is the buffer size for session messages.

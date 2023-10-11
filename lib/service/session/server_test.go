@@ -27,7 +27,7 @@ func TestServer_Established(t *testing.T) {
 	msg := read(t, out)
 	established, ok := msg.Established()
 	assert.True(t, ok)
-	assert.Equal(t, cl.Now().Add(30*time.Second).UTC(), established)
+	assert.Equal(t, cl.Now().Add(10*time.Second).UTC(), established)
 }
 
 func TestServer_Heartbeat(t *testing.T) {
@@ -44,7 +44,7 @@ func TestServer_Heartbeat(t *testing.T) {
 	msg := read(t, out)
 	established, ok := msg.Established()
 	assert.True(t, ok)
-	assert.Equal(t, cl.Now().Add(30*time.Second).UTC(), established)
+	assert.Equal(t, cl.Now().Add(10*time.Second).UTC(), established)
 }
 
 func TestServer_ExpirationPending(t *testing.T) {
@@ -55,11 +55,11 @@ func TestServer_ExpirationPending(t *testing.T) {
 	defer server.Close()
 
 	time.Sleep(100 * time.Millisecond)
-	cl.Add(10 * time.Second)
+	cl.Add(4 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	assert.False(t, server.IsClosed())
 
-	cl.Add(10 * time.Second)
+	cl.Add(4 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	assert.True(t, server.IsClosed())
 }
@@ -77,11 +77,11 @@ func TestServer_ExpirationEstablished(t *testing.T) {
 	server.Observe(ctx, session.NewHeartbeatMessage(cl.Now()))
 	read(t, out) // Establish
 
-	cl.Add(15 * time.Second)
+	cl.Add(8 * time.Second)
 	time.Sleep(100 * time.Millisecond)
 	assert.False(t, server.IsClosed())
 
-	cl.Add(20 * time.Second) // 35s > 30s lease timeout
+	cl.Add(8 * time.Second) // 16s > 10s keepalive
 	time.Sleep(100 * time.Millisecond)
 	assert.True(t, server.IsClosed())
 }
