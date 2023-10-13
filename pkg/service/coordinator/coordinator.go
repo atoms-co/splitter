@@ -11,6 +11,7 @@ import (
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pkg/util/sessionx"
 	"go.atoms.co/splitter/pkg/util/txnx"
 	"fmt"
 	"time"
@@ -35,7 +36,16 @@ type Coordinator struct {
 	state    core.State
 	shards   *ShardManager
 	sessions map[session.ID]*consumerSession
-	in       chan consumerMessage
+	messages chan *sessionx.Message[model.ConsumerMessage]
+}
+
+type consumerSession struct {
+	consumer   Consumer
+	connection sessionx.Connection[model.ConsumerMessage]
+}
+
+func (c *consumerSession) String() string {
+	return fmt.Sprintf("session{consumer=%v, connection=%v}", c.consumer, c.connection)
 }
 
 func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state core.State, stateUpdates <-chan core.Update) *Coordinator {
@@ -50,7 +60,7 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 		state:    state,
 		shards:   NewShardManager(ctx, cl, state),
 		sessions: map[session.ID]*consumerSession{},
-		in:       make(chan consumerMessage, 1000),
+		messages: make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 	}
 	ctx = log.NewContext(ctx, log.String("tenant", string(tenant)))
 	go c.process(ctx, stateUpdates)
@@ -58,35 +68,34 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 }
 
 func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	consumer, err := syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (*consumerSession, error) {
+	out, err := syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (<-chan model.ConsumerMessage, error) {
 		s, ok := c.sessions[sid]
 		if ok {
-			s.Close()
+			s.connection.Close()
 		}
 
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
-		s, err := c.connectConsumer(wctx, sid, register, in)
+		s, out, err := c.connectConsumer(wctx, sid, register, in)
 		if err != nil {
 			return nil, err
 		}
 
 		go func() {
 			defer cancel()
-			<-s.Closed()
+			<-s.connection.Closed()
 
 			syncx.AsyncTxn(txnx.Txn(c, c.inject), func() {
-				s, ok := c.sessions[sid]
-				if ok && s.sid == sid { // guard against race
+				if s, ok := c.sessions[sid]; ok {
 					c.disconnectConsumer(wctx, s)
 				}
 			})
 		}()
-		return s, nil
+		return out, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return consumer.out, nil
+	return out, nil
 }
 
 func (c *Coordinator) Drain(timeout time.Duration) {
@@ -98,51 +107,33 @@ func (c *Coordinator) String() string {
 	return fmt.Sprintf("coordinator{tenant=%v}", c.tenant)
 }
 
-func (c *Coordinator) connectConsumer(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, error) {
+func (c *Coordinator) connectConsumer(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage, error) {
 	consumer := NewConsumer(sid, register.Instance(), c.cl.Now())
 	err := c.shards.Connect(consumer, 1, c.cl.Now().Add(time.Minute*10))
 	if err != nil {
 		log.Errorf(ctx, "Coordination %v is unable to connect a consumer %v: %v", c, consumer, err)
-		return nil, err
+		return nil, nil, err
 	}
-	s := newConsumerSession(c.cl, c.Closed(), sid, consumer)
-	c.sessions[sid] = s
+	connection, out := sessionx.NewConnection[model.ConsumerMessage](c.cl, sid, c, in, c.messages)
+	c.sessions[sid] = &consumerSession{
+		consumer:   consumer,
+		connection: connection,
+	}
 
-	log.Infof(ctx, "%v connected consumer %v", c, s)
+	log.Infof(ctx, "%v connected consumer %v", c, consumer)
 	snapshot := c.shards.Snapshot()
 
-	if !s.trySend(ctx, model.NewConsumerClusterMessage(model.NewClusterSnapshotMessage(snapshot))) {
-		return nil, fmt.Errorf("unable to send initial cluster message to consumer %v", register)
+	if !connection.Send(ctx, model.NewConsumerClusterMessage(model.NewClusterSnapshotMessage(snapshot))) {
+		return nil, nil, fmt.Errorf("unable to send initial cluster message to consumer %v", register)
 	}
-	go c.forward(ctx, in, s)
-	return s, nil
+	return c.sessions[sid], out, nil
 }
 
 func (c *Coordinator) disconnectConsumer(ctx context.Context, s *consumerSession) {
-	delete(c.sessions, s.sid)
+	delete(c.sessions, s.consumer.sid)
 	err := c.shards.Disconnect(s.consumer)
 	if err != nil {
 		log.Errorf(ctx, "Error when disconnecting a consumer %v from allocations: %v", s.consumer, err)
-	}
-}
-
-func (c *Coordinator) forward(ctx context.Context, in <-chan model.ConsumerMessage, consumer *consumerSession) {
-	defer consumer.Close()
-	for {
-		select {
-		case msg, ok := <-in:
-			if !ok {
-				return
-			}
-			select {
-			case c.in <- newConsumerMessage(consumer.sid, msg):
-			case <-c.Closed():
-				log.Warnf(ctx, "Coordinator %v is closed. Dropping message %v", c, msg)
-				return
-			}
-		case <-c.Closed():
-			return
-		}
 	}
 }
 
@@ -154,13 +145,13 @@ func (c *Coordinator) process(ctx context.Context, stateUpdates <-chan core.Upda
 
 	for {
 		select {
-		case msg := <-c.in:
-			c.handleConsumerMessage(ctx, msg.sid, msg.msg)
+		case msg := <-c.messages:
+			c.handleConsumerMessage(ctx, msg.Sid, msg.Msg)
 		case <-ticker.C:
 			update, ok := c.shards.DiscardClusterUpdate(ctx)
 			if ok {
 				for _, s := range c.sessions {
-					if !s.trySend(ctx, model.NewConsumerClusterMessage(model.NewClusterUpdateMessage(update))) {
+					if !s.connection.Send(ctx, model.NewConsumerClusterMessage(model.NewClusterUpdateMessage(update))) {
 						log.Errorf(ctx, "Cannot send cluster updates to session %v", s)
 					}
 				}
@@ -197,20 +188,20 @@ func (c *Coordinator) handleConsumerMessage(ctx context.Context, sid session.ID,
 	}
 }
 
-func (c *Coordinator) handleReleased(ctx context.Context, consumer *consumerSession, msg model.ReleasedMessage) {
+func (c *Coordinator) handleReleased(ctx context.Context, s *consumerSession, msg model.ReleasedMessage) {
 	grants, err := msg.ParseGrants()
 	if err != nil {
 		log.Errorf(ctx, "Unable to parse grants from %v: %v", msg, err)
 		return
 	}
 	for _, g := range grants {
-		err := c.shards.Release(consumer.consumer, g)
+		err := c.shards.Release(s.consumer, g)
 		if err != nil {
-			log.Errorf(ctx, "Coordinator %v is unable to release a grant %v for consumer %v: %v", c, g, consumer, err)
+			log.Errorf(ctx, "Coordinator %v is unable to release a grant %v for consumer %v: %v", c, g, s.consumer, err)
 			continue
 		}
 	}
-	log.Infof(ctx, "Coordinator %v released %v grants from consumer %s", c, len(grants), consumer)
+	log.Infof(ctx, "Coordinator %v released %v grants from consumer %s", c, len(grants), s.consumer)
 }
 
 func (c *Coordinator) handleStateUpdate(ctx context.Context, update core.Update) {
@@ -272,48 +263,7 @@ func (c *Coordinator) tearDown(ctx context.Context, sid session.ID) {
 	}
 	log.Infof(ctx, "Coordinator %v is disconnecting session %v", c, s)
 	delete(c.sessions, sid)
-	s.Close()
-}
-
-type consumerSession struct {
-	iox.AsyncCloser
-
-	cl clock.Clock
-
-	sid      session.ID
-	consumer Consumer
-
-	out chan model.ConsumerMessage
-}
-
-func newConsumerSession(cl clock.Clock, quit <-chan struct{}, sid session.ID, consumer Consumer) *consumerSession {
-	return &consumerSession{
-		AsyncCloser: iox.WithQuit(quit, iox.NewAsyncCloser()), // quit => closer
-		cl:          cl,
-		sid:         sid,
-		consumer:    consumer,
-		out:         make(chan model.ConsumerMessage, 100),
-	}
-}
-
-func (c *consumerSession) trySend(ctx context.Context, msg model.ConsumerMessage) bool {
-	timer := c.cl.NewTimer(5 * time.Second)
-	defer timer.Stop()
-
-	select {
-	case c.out <- msg:
-		return true
-	case <-c.Closed():
-		return false
-	case <-timer.C:
-		log.Errorf(ctx, "Consumer connection %v is stuck. Closing", c)
-		c.Close()
-		return false
-	}
-}
-
-func (c *consumerSession) String() string {
-	return fmt.Sprintf("session{id=%v, consumer=%v}", c.sid, c.consumer)
+	s.connection.Close()
 }
 
 type consumerMessage struct {
