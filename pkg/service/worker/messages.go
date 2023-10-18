@@ -1,7 +1,8 @@
-package core
+package worker
 
 import (
 	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"time"
@@ -96,8 +97,8 @@ func (m Register) Worker() model.Instance {
 	return model.WrapInstance(m.pb.GetWorker())
 }
 
-func (m Register) Active() []Grant {
-	return slicex.Map(m.pb.GetActive(), WrapGrant)
+func (m Register) Active() []core.Grant {
+	return slicex.Map(m.pb.GetActive(), core.WrapGrant)
 }
 
 type Deregister struct {
@@ -120,22 +121,22 @@ type Assign struct {
 	pb *internal_v1.WorkerMessage_Assign
 }
 
-func (m Assign) Grant() Grant {
-	return WrapGrant(m.pb.GetGrant())
+func (m Assign) Grant() core.Grant {
+	return core.WrapGrant(m.pb.GetGrant())
 }
 
 type Revoke struct {
 	pb *internal_v1.WorkerMessage_Revoke
 }
 
-func (m Revoke) Grants() []Grant {
-	return slicex.Map(m.pb.GetGrants(), WrapGrant)
+func (m Revoke) Grants() []core.Grant {
+	return slicex.Map(m.pb.GetGrants(), core.WrapGrant)
 }
 
 type Relinquished struct {
 	pb *internal_v1.WorkerMessage_Relinquished
 }
 
-func (m Relinquished) Grants() []Grant {
-	return slicex.Map(m.pb.GetGrants(), WrapGrant)
+func (m Relinquished) Grants() []core.Grant {
+	return slicex.Map(m.pb.GetGrants(), core.WrapGrant)
 }

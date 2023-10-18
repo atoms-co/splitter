@@ -8,7 +8,6 @@ import (
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/syncx"
-	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/util/txnx"
@@ -33,7 +32,7 @@ type Worker struct {
 	coordinators map[model.TenantName]*coordinatorInfo
 }
 
-func New(cl clock.Clock, in <-chan core.WorkerMessage, fn CoordinatorFactory) *Worker {
+func New(cl clock.Clock, in <-chan WorkerMessage, fn CoordinatorFactory) *Worker {
 	w := &Worker{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
@@ -84,7 +83,7 @@ func (w *Worker) Drain(timeout time.Duration) {
 	w.cl.AfterFunc(timeout, w.Close)
 }
 
-func (w *Worker) process(ctx context.Context, in <-chan core.WorkerMessage) {
+func (w *Worker) process(ctx context.Context, in <-chan WorkerMessage) {
 	defer w.Close()
 
 	statsTimer := w.cl.NewTicker(statsDuration)
@@ -109,7 +108,7 @@ func (w *Worker) process(ctx context.Context, in <-chan core.WorkerMessage) {
 	}
 }
 
-func handleWorkerMessage(ctx context.Context, msg core.WorkerMessage) {
+func handleWorkerMessage(ctx context.Context, msg WorkerMessage) {
 	switch {
 	case msg.IsAssign():
 		// create coordinators

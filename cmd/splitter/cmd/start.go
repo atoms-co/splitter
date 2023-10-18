@@ -17,7 +17,6 @@ import (
 	"go.atoms.co/splitter/pkg/server"
 	"go.atoms.co/splitter/pkg/service/leader"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
-	"go.atoms.co/splitter/pkg/util/raftx"
 	"fmt"
 	"github.com/hashicorp/raft"
 	boltdb "github.com/hashicorp/raft-boltdb/v2"
@@ -110,8 +109,7 @@ func makeStartCommand() *cobra.Command {
 
 		hclogger := hclog.New(ctx, "", log.SevDebug)
 
-		// https://github.com/yusufsyaifudin/raft-sample/blob/master/cmd/api/main.go#L52
-		trans, err := raftx.NewTCPTransportWithLogger(bindAddr, tcpAddr, 3, 10*time.Second, hclogger)
+		trans, err := raft.NewTCPTransportWithLogger(bindAddr, tcpAddr, 3, 10*time.Second, hclogger)
 		if err != nil {
 			log.Fatalf(ctx, "failed to setup raft tcp transport", err)
 		}

@@ -214,7 +214,7 @@ steady:
 	log.Infof(ctx, "Leader %v draining, #workers=%v", l.id, len(l.workers))
 }
 
-func (l *Leader) connect(ctx context.Context, sid session.ID, instance model.Instance, consumers interface{}, in <-chan JoinMessage) (*worker, <-chan JoinMessage) {
+func (l *Leader) connect(ctx context.Context, sid session.ID, instance model.Instance, grants []Grant, in <-chan JoinMessage) (*worker, <-chan JoinMessage) {
 	// TODO(jhhurwitz): 10/17/23 Connect to allocations
 	return nil, nil
 }
