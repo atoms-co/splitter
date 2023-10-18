@@ -6,6 +6,7 @@ import (
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/iox"
+	"go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"time"
 )
@@ -15,26 +16,31 @@ type Connection[T any] interface {
 	iox.AsyncCloser
 
 	Send(context.Context, T) bool
+	Sid() session.ID
+	Instance() model.Instance
 }
 
 type connection[T any] struct {
 	iox.AsyncCloser
 
-	cl  clock.Clock
-	sid session.ID
-	out chan<- T
+	cl       clock.Clock
+	sid      session.ID
+	instance model.Instance
+	out      chan<- T
 }
 
 type Message[T any] struct {
-	Sid session.ID
-	Msg T
+	Sid      session.ID
+	Instance model.Instance
+	Msg      T
 }
 
-func NewConnection[T any](cl clock.Clock, sid session.ID, closer iox.AsyncCloser, in <-chan T, messages chan<- *Message[T]) (Connection[T], <-chan T) {
+func NewConnection[T any](cl clock.Clock, sid session.ID, instance model.Instance, closer iox.AsyncCloser, in <-chan T, messages chan<- *Message[T]) (Connection[T], <-chan T) {
 	out := make(chan T, 100)
 	con := &connection[T]{
 		AsyncCloser: iox.WithQuit(closer.Closed(), iox.NewAsyncCloser()),
 		sid:         sid,
+		instance:    instance,
 		cl:          cl,
 		out:         out,
 	}
@@ -58,6 +64,14 @@ func (c connection[T]) Send(ctx context.Context, msg T) bool {
 	}
 }
 
+func (c connection[T]) Sid() session.ID {
+	return c.sid
+}
+
+func (c connection[T]) Instance() model.Instance {
+	return c.instance
+}
+
 func (c connection[T]) forward(in <-chan T, messages chan<- *Message[T]) {
 	defer c.Close()
 	for {
@@ -67,7 +81,7 @@ func (c connection[T]) forward(in <-chan T, messages chan<- *Message[T]) {
 				return
 			}
 			select {
-			case messages <- &Message[T]{Sid: c.sid, Msg: msg}:
+			case messages <- &Message[T]{Sid: c.sid, Instance: c.instance, Msg: msg}:
 			case <-c.Closed():
 				return
 			}
@@ -78,5 +92,5 @@ func (c connection[T]) forward(in <-chan T, messages chan<- *Message[T]) {
 }
 
 func (c connection[T]) String() string {
-	return fmt.Sprintf("sid: %v", c.sid)
+	return fmt.Sprintf("sid: %v, instance: %v", c.sid, c.instance)
 }

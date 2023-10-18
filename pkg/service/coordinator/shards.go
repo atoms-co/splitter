@@ -3,7 +3,6 @@ package coordinator
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
-	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
@@ -15,26 +14,25 @@ import (
 )
 
 type Consumer struct {
-	sid        session.ID
-	location   model.Instance
+	instance   model.Instance
 	joined     time.Time
 	expiration time.Time
 }
 
-func NewConsumer(sid session.ID, location model.Instance, joined time.Time) Consumer {
-	return Consumer{sid: sid, location: location, joined: joined}
+func NewConsumer(instance model.Instance, joined time.Time) Consumer {
+	return Consumer{instance: instance, joined: joined}
 }
 
 func (c Consumer) ID() model.InstanceID {
-	return c.location.Location().ID()
+	return c.instance.ID()
 }
 
 func (c Consumer) Instance() model.Instance {
-	return c.location
+	return c.instance
 }
 
 func (c Consumer) Region() model.Region {
-	return model.Region(c.location.Location().Location().Region)
+	return model.Region(c.instance.Location().Region)
 }
 
 func (c Consumer) Joined() time.Time {
@@ -46,7 +44,7 @@ func (c Consumer) Expiration() time.Time {
 }
 
 func (c Consumer) String() string {
-	return fmt.Sprintf("consumer{location=%v, joined=%v, expiration=%v}", c.location, c.joined, c.expiration)
+	return fmt.Sprintf("consumer{instance=%v, joined=%v, expiration=%v}", c.instance, c.joined, c.expiration)
 }
 
 type ShardManager struct {
@@ -125,7 +123,7 @@ func (m *ShardManager) DiscardClusterUpdate(ctx context.Context) (model.ClusterU
 			log.Errorf(ctx, "Unassigned grant %v is present in the assignment to consumer %v", grant, consumer)
 			continue
 		}
-		cid := consumer.Location().ID()
+		cid := consumer.ID()
 		consumers[cid] = consumer
 		consumerGrants[cid] = append(consumerGrants[cid], grant)
 	}

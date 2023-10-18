@@ -33,10 +33,10 @@ type Coordinator struct {
 
 	tenant model.TenantName
 
-	state    core.State
-	shards   *ShardManager
-	sessions map[session.ID]*consumerSession
-	messages chan *sessionx.Message[model.ConsumerMessage]
+	state     core.State
+	shards    *ShardManager
+	consumers map[model.InstanceID]*consumerSession
+	messages  chan *sessionx.Message[model.ConsumerMessage]
 }
 
 type consumerSession struct {
@@ -57,10 +57,10 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 
 		tenant: tenant,
 
-		state:    state,
-		shards:   NewShardManager(ctx, cl, state),
-		sessions: map[session.ID]*consumerSession{},
-		messages: make(chan *sessionx.Message[model.ConsumerMessage], 1000),
+		state:     state,
+		shards:    NewShardManager(ctx, cl, state),
+		consumers: map[model.InstanceID]*consumerSession{},
+		messages:  make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 	}
 	ctx = log.NewContext(ctx, log.String("tenant", string(tenant)))
 	go c.process(ctx, stateUpdates)
@@ -69,9 +69,10 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 
 func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	out, err := syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (<-chan model.ConsumerMessage, error) {
-		s, ok := c.sessions[sid]
+		id := register.Instance().ID()
+		existing, ok := c.consumers[id]
 		if ok {
-			s.connection.Close()
+			existing.connection.Close()
 		}
 
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
@@ -85,8 +86,10 @@ func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register mode
 			<-s.connection.Closed()
 
 			syncx.AsyncTxn(txnx.Txn(c, c.inject), func() {
-				if s, ok := c.sessions[sid]; ok {
-					c.disconnectConsumer(wctx, s)
+				if cur, ok := c.consumers[id]; ok {
+					if ok && cur.connection.Sid() == sid { // guard against race
+						c.disconnectConsumer(wctx, cur)
+					}
 				}
 			})
 		}()
@@ -108,14 +111,14 @@ func (c *Coordinator) String() string {
 }
 
 func (c *Coordinator) connectConsumer(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage, error) {
-	consumer := NewConsumer(sid, register.Instance(), c.cl.Now())
+	consumer := NewConsumer(register.Instance(), c.cl.Now())
 	err := c.shards.Connect(consumer, 1, c.cl.Now().Add(time.Minute*10))
 	if err != nil {
 		log.Errorf(ctx, "Coordination %v is unable to connect a consumer %v: %v", c, consumer, err)
 		return nil, nil, err
 	}
-	connection, out := sessionx.NewConnection[model.ConsumerMessage](c.cl, sid, c, in, c.messages)
-	c.sessions[sid] = &consumerSession{
+	connection, out := sessionx.NewConnection[model.ConsumerMessage](c.cl, sid, consumer.Instance(), c, in, c.messages)
+	c.consumers[consumer.ID()] = &consumerSession{
 		consumer:   consumer,
 		connection: connection,
 	}
@@ -126,11 +129,11 @@ func (c *Coordinator) connectConsumer(ctx context.Context, sid session.ID, regis
 	if !connection.Send(ctx, model.NewConsumerClusterMessage(model.NewClusterSnapshotMessage(snapshot))) {
 		return nil, nil, fmt.Errorf("unable to send initial cluster message to consumer %v", register)
 	}
-	return c.sessions[sid], out, nil
+	return c.consumers[consumer.ID()], out, nil
 }
 
 func (c *Coordinator) disconnectConsumer(ctx context.Context, s *consumerSession) {
-	delete(c.sessions, s.consumer.sid)
+	delete(c.consumers, s.consumer.ID())
 	err := c.shards.Disconnect(s.consumer)
 	if err != nil {
 		log.Errorf(ctx, "Error when disconnecting a consumer %v from allocations: %v", s.consumer, err)
@@ -146,11 +149,16 @@ func (c *Coordinator) process(ctx context.Context, stateUpdates <-chan core.Upda
 	for {
 		select {
 		case msg := <-c.messages:
-			c.handleConsumerMessage(ctx, msg.Sid, msg.Msg)
+			s, ok := c.consumers[msg.Instance.ID()]
+			if !ok || msg.Sid != s.connection.Sid() {
+				log.Debugf(ctx, "Ignoring stale message from consumer session %v: %v", msg.Sid, msg)
+				break
+			}
+			c.handleConsumerMessage(ctx, s, msg.Msg)
 		case <-ticker.C:
 			update, ok := c.shards.DiscardClusterUpdate(ctx)
 			if ok {
-				for _, s := range c.sessions {
+				for _, s := range c.consumers {
 					if !s.connection.Send(ctx, model.NewConsumerClusterMessage(model.NewClusterUpdateMessage(update))) {
 						log.Errorf(ctx, "Cannot send cluster updates to session %v", s)
 					}
@@ -172,16 +180,11 @@ func (c *Coordinator) process(ctx context.Context, stateUpdates <-chan core.Upda
 	}
 }
 
-func (c *Coordinator) handleConsumerMessage(ctx context.Context, sid session.ID, msg model.ConsumerMessage) {
-	s, ok := c.sessions[sid]
-	if !ok {
-		log.Errorf(ctx, "Unable to find session for message %v", msg)
-		return
-	}
+func (c *Coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, msg model.ConsumerMessage) {
 	switch {
 	case msg.IsDeregister():
 		log.Infof(ctx, "Coordinator %v is disconnecting session %v", c, s)
-		c.tearDown(ctx, sid)
+		c.tearDown(ctx, s.consumer.ID())
 	case msg.IsReleased():
 		released, _ := msg.Released()
 		c.handleReleased(ctx, s, released)
@@ -256,21 +259,12 @@ func (c *Coordinator) notifyConsumers() {
 	// TODO: send cluster updates to consumers
 }
 
-func (c *Coordinator) tearDown(ctx context.Context, sid session.ID) {
-	s, ok := c.sessions[sid]
+func (c *Coordinator) tearDown(ctx context.Context, id model.InstanceID) {
+	s, ok := c.consumers[id]
 	if !ok {
 		return
 	}
 	log.Infof(ctx, "Coordinator %v is disconnecting session %v", c, s)
-	delete(c.sessions, sid)
+	delete(c.consumers, id)
 	s.connection.Close()
-}
-
-type consumerMessage struct {
-	sid session.ID
-	msg model.ConsumerMessage
-}
-
-func newConsumerMessage(sid session.ID, msg model.ConsumerMessage) consumerMessage {
-	return consumerMessage{sid: sid, msg: msg}
 }

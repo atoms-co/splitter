@@ -8,6 +8,7 @@ import (
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/slicex"
@@ -15,6 +16,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
+	"go.atoms.co/splitter/pkg/util/sessionx"
 	"go.atoms.co/splitter/pkg/util/txnx"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
@@ -35,10 +37,12 @@ var (
 )
 
 type worker struct {
-	id  model.Instance
-	sid session.ID
+	instance   model.Instance
+	connection sessionx.Connection[JoinMessage]
+}
 
-	out chan<- JoinMessage
+func (w *worker) String() string {
+	return fmt.Sprintf("session{instance=%v, connection=%v}", w.instance, w.connection)
 }
 
 // Leader centralizes tenant and storage coordination. All updates go through the global leader, which is
@@ -72,7 +76,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 		id:          location.NewInstance(loc),
 		writer:      writer,
 		cache:       storage.NewCache(),
-		workers:     map[location.InstanceID]*worker{},
+		workers:     map[model.InstanceID]*worker{},
 		upd:         upd,
 		del:         del,
 		res:         res,
@@ -85,10 +89,28 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 	return ret
 }
 
-func (l *Leader) Join(ctx context.Context, sid session.ID, id model.Instance, grants []Grant, in <-chan JoinMessage) (<-chan JoinMessage, error) {
+func (l *Leader) Join(ctx context.Context, sid session.ID, instance model.Instance, grants []Grant, in <-chan JoinMessage) (<-chan JoinMessage, error) {
 	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (<-chan JoinMessage, error) {
+		existing, ok := l.workers[instance.ID()]
+		if ok {
+			existing.connection.Close()
+		}
 
-		return nil, nil
+		wctx, cancel := contextx.WithQuitCancel(context.Background(), l.Closed())
+		worker, out := l.connect(wctx, sid, instance, grants, in)
+
+		go func() {
+			defer cancel()
+			<-worker.connection.Closed()
+
+			syncx.AsyncTxn(txnx.Txn(l, l.inject), func() {
+				cur, ok := l.workers[instance.ID()]
+				if ok && cur.connection.Sid() == sid { // guard against race
+					l.disconnect(wctx, cur)
+				}
+			})
+		}()
+		return out, nil
 	})
 }
 
@@ -102,6 +124,10 @@ func (l *Leader) Handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 		return nil, model.WrapError(err)
 	}
 	return resp, nil
+}
+
+func (l *Leader) String() string {
+	return l.id.String()
 }
 
 func (l *Leader) init(ctx context.Context) {
@@ -186,6 +212,18 @@ steady:
 	}
 
 	log.Infof(ctx, "Leader %v draining, #workers=%v", l.id, len(l.workers))
+}
+
+func (l *Leader) connect(ctx context.Context, sid session.ID, instance model.Instance, consumers interface{}, in <-chan JoinMessage) (*worker, <-chan JoinMessage) {
+	// TODO(jhhurwitz): 10/17/23 Connect to allocations
+	return nil, nil
+}
+
+func (l *Leader) disconnect(ctx context.Context, workers ...*worker) {
+	for _, w := range workers {
+		log.Infof(ctx, "Disconnecting worker: %v", w)
+		// TODO(jhhurwitz): 10/17/23 Disconnect from allocations
+	}
 }
 
 func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
@@ -396,8 +434,4 @@ func (l *Leader) resetMetrics(ctx context.Context) {
 
 func (l *Leader) recordAction(ctx context.Context, action, result string) {
 	numActions.Increment(ctx, 1, core.ActionTag(action), core.ResultTag(result))
-}
-
-func (l *Leader) String() string {
-	return l.id.String()
 }

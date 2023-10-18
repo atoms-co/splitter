@@ -27,8 +27,12 @@ func UnwrapInstance(instance Instance) *public_v1.Instance {
 	return instance.pb
 }
 
-func (i Instance) Location() location.Instance {
-	return location.WrapInstance(i.pb.GetClient())
+func (i Instance) ID() InstanceID {
+	return InstanceID(i.pb.GetClient().GetId())
+}
+
+func (i Instance) Location() location.Location {
+	return location.Parse(i.pb.GetClient().GetLocation())
 }
 
 func (i Instance) Endpoint() string {
