@@ -5,7 +5,6 @@ import (
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/model"
@@ -44,11 +43,8 @@ func New(cl clock.Clock, in <-chan WorkerMessage, fn CoordinatorFactory) *Worker
 	return w
 }
 
-func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	register, err := w.tryReadRegister(ctx, in)
-	if err != nil {
-		return nil, err
-	}
+// Connect handles connection of a consumer to a local coordinator
+func (w *Worker) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	tenant := register.TenantName()
 
 	ci, err := syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (*coordinatorInfo, error) {
@@ -62,20 +58,6 @@ func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.Co
 		return nil, err
 	}
 	return ci.c.Connect(ctx, sid, register, in)
-}
-
-func (w *Worker) tryReadRegister(ctx context.Context, in <-chan model.ConsumerMessage) (model.RegisterMessage, error) {
-	msg, ok := chanx.TryRead(in, 20*time.Second)
-	if !ok {
-		log.Errorf(ctx, "No register message received")
-		return model.RegisterMessage{}, model.WrapError(model.ErrInvalid)
-	}
-	if !msg.IsRegister() {
-		log.Errorf(ctx, "Expected register message, received: %v", msg)
-		return model.RegisterMessage{}, model.WrapError(model.ErrInvalid)
-	}
-	register, _ := msg.Register()
-	return register, nil
 }
 
 func (w *Worker) Drain(timeout time.Duration) {

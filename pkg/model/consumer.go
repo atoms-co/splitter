@@ -19,6 +19,13 @@ type Instance struct {
 	pb *public_v1.Instance
 }
 
+func NewInstance(instance location.Instance, endpoint string) Instance {
+	return WrapInstance(&public_v1.Instance{
+		Client:   location.UnwrapInstance(instance),
+		Endpoint: endpoint,
+	})
+}
+
 func WrapInstance(pb *public_v1.Instance) Instance {
 	return Instance{pb: pb}
 }
@@ -275,6 +282,14 @@ func NewConsumerSessionMessage(m session.Message) ConsumerMessage {
 	return WrapConsumerMessage(&public_v1.ConsumerMessage{
 		Msg: &public_v1.ConsumerMessage_Session{
 			Session: session.UnwrapMessage(m),
+		},
+	})
+}
+
+func NewConsumerRegisterMessage(m RegisterMessage) ConsumerMessage {
+	return WrapConsumerMessage(&public_v1.ConsumerMessage{
+		Msg: &public_v1.ConsumerMessage_Register{
+			Register: UnwrapRegisterMessage(m),
 		},
 	})
 }

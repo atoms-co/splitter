@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/log/hclog"
 	"go.atoms.co/lib/service/envoyx"
@@ -14,6 +15,8 @@ import (
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/lib/yamlx"
 	"go.atoms.co/splitter/pkg/cluster"
+	"go.atoms.co/splitter/pkg/core"
+	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/server"
 	"go.atoms.co/splitter/pkg/service/leader"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
@@ -140,7 +143,11 @@ func makeStartCommand() *cobra.Command {
 			return ret, ret
 		})
 
-		s := server.New(ctx, cl, loc, c, manager)
+		// TODO (styurin, 10/20/23): reuse location in worker
+		self := model.NewInstance(location.NewInstance(loc), fmt.Sprintf("%v:%v", *instance, *port))
+		resolver := core.NewTenantResolver(ctx, self, make(chan core.Cluster))
+
+		s := server.New(ctx, cl, loc, c, manager, resolver)
 
 		// (4) Start server and await termination
 

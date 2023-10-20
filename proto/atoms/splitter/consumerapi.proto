@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package atoms.splitter;
+
+import "splitter/proto/public_v1/consumer.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb";
+option java_package = "co.atoms.splitter.pb";
+
+// ConsumerService is used by clients to participate in the work distribution process.
+// By using this service a client joins the work distribution process during which it receives
+// assigned grants and, separately, grants assigned to all consumers.
+service ConsumerService {
+  rpc Join (stream ConsumerMessage) returns (stream ConsumerMessage);
+}

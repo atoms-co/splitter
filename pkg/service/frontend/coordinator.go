@@ -50,9 +50,14 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 			return nil, model.WrapError(model.ErrInvalid)
 		}
 
+		register, err := tryReadRegister(ctx, ch)
+		if err != nil {
+			return nil, err
+		}
+
 		// Let worker handle connect
 
-		resp, err := c.worker.Connect(ctx, establish.ID, ch)
+		resp, err := c.worker.Connect(ctx, establish.ID, register, ch)
 		if err != nil {
 			log.Errorf(ctx, "Connect rejected: %v", err)
 			return nil, model.WrapError(err)
