@@ -20,7 +20,7 @@ func NewTenantResolver(ctx context.Context, self model.Instance, clusters <-chan
 		self:  self,
 		peers: map[string]*grpc.ClientConn{},
 	}
-	r.process(ctx, clusters, opts)
+	go r.process(ctx, clusters, opts)
 	return r
 }
 
