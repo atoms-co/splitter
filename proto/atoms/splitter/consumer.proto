@@ -57,11 +57,8 @@ message Assignment {
 message Register {
   Instance instance = 1;
   string tenant = 2;
-
   atoms.splitter.QualifiedDomainName domains = 3;
-
-  // Active grants with non-expired leases. Revoked grants are omitted and implicitly relinquished on re-connect.
-  repeated Grant active = 4;
+  repeated Grant active = 4; // Active grants with non-expired leases.
 }
 
 // Deregister indicates that the consumer will soon disappear, usually restarted in ~30s. The server should initiate a

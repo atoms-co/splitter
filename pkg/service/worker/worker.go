@@ -31,7 +31,7 @@ type Worker struct {
 	coordinators map[model.TenantName]*coordinatorInfo
 }
 
-func New(cl clock.Clock, in <-chan WorkerMessage, fn CoordinatorFactory) *Worker {
+func New(cl clock.Clock, in <-chan Message, fn CoordinatorFactory) *Worker {
 	w := &Worker{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
@@ -65,7 +65,7 @@ func (w *Worker) Drain(timeout time.Duration) {
 	w.cl.AfterFunc(timeout, w.Close)
 }
 
-func (w *Worker) process(ctx context.Context, in <-chan WorkerMessage) {
+func (w *Worker) process(ctx context.Context, in <-chan Message) {
 	defer w.Close()
 
 	statsTimer := w.cl.NewTicker(statsDuration)
@@ -90,7 +90,7 @@ func (w *Worker) process(ctx context.Context, in <-chan WorkerMessage) {
 	}
 }
 
-func handleWorkerMessage(ctx context.Context, msg WorkerMessage) {
+func handleWorkerMessage(ctx context.Context, msg Message) {
 	switch {
 	case msg.IsAssign():
 		// create coordinators

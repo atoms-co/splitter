@@ -210,14 +210,19 @@ message ClusterMessage {
   }
 }
 
-message JoinMessage {
+message LeaderMessage {
   oneof msg {
-    atoms.splitter.lib.service.service.Message session = 1;
-    WorkerMessage worker = 2;
-    ClusterMessage cluster = 3;
+    WorkerMessage worker = 1;
+    ClusterMessage cluster = 2;
   }
 }
 
+message JoinMessage {
+  oneof msg {
+    atoms.splitter.lib.service.service.Message session = 1;
+    LeaderMessage leader = 2;
+  }
+}
 
 // LeaderService is the internal service for leader communication.
 service LeaderService {

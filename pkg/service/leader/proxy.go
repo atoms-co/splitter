@@ -12,7 +12,7 @@ type Resolver = model.Resolver[internal_v1.LeaderServiceClient, model.DomainKey]
 
 // Proxy is a local proxy for accessing the leader, if present. Returns ErrNotOwned if not.
 type Proxy interface {
-	Join(ctx context.Context, sid session.ID, id model.Instance, grants []Grant, in <-chan JoinMessage) (<-chan JoinMessage, error)
+	Join(ctx context.Context, sid session.ID, id model.Instance, grants []Grant, in <-chan Message) (<-chan Message, error)
 	Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error)
 }
 

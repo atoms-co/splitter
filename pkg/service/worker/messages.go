@@ -5,84 +5,131 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
+	"google.golang.org/protobuf/types/known/timestamppb"
 	"time"
 )
 
-type WorkerMessage struct {
+type Message struct {
 	pb *internal_v1.WorkerMessage
 }
 
-func (m *WorkerMessage) IsRegister() bool {
+func NewDisconnect() Message {
+	return Message{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Disconnect_{
+			Disconnect: &internal_v1.WorkerMessage_Disconnect{},
+		},
+	}}
+}
+func NewLeaseUpdateMessage(ttl time.Time) Message {
+	return Message{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Lease{
+			Lease: &internal_v1.WorkerMessage_LeaseUpdate{
+				Ttl: timestamppb.New(ttl),
+			},
+		},
+	}}
+}
+
+func NewAssign(grant core.Grant, state core.State) Message {
+	return Message{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Assign_{
+			Assign: &internal_v1.WorkerMessage_Assign{
+				Grant: core.UnwrapGrant(grant),
+				State: core.UnwrapState(state),
+			},
+		},
+	}}
+}
+
+func NewRevoke(grants ...core.Grant) Message {
+	return Message{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Revoke_{
+			Revoke: &internal_v1.WorkerMessage_Revoke{
+				Grants: slicex.Map(grants, core.UnwrapGrant),
+			},
+		},
+	}}
+}
+
+func WrapMessage(pb *internal_v1.WorkerMessage) Message {
+	return Message{pb: pb}
+}
+
+func UnwrapMessage(m Message) *internal_v1.WorkerMessage {
+	return m.pb
+}
+
+func (m *Message) IsRegister() bool {
 	return m.pb.GetRegister() != nil
 }
 
-func (m *WorkerMessage) Register() (Register, bool) {
+func (m *Message) Register() (Register, bool) {
 	if !m.IsRegister() {
 		return Register{}, false
 	}
 	return Register{pb: m.pb.GetRegister()}, true
 }
 
-func (m *WorkerMessage) IsDeregister() bool {
+func (m *Message) IsDeregister() bool {
 	return m.pb.GetDeregister() != nil
 }
 
-func (m *WorkerMessage) Deregister() (Deregister, bool) {
+func (m *Message) Deregister() (Deregister, bool) {
 	if !m.IsDeregister() {
 		return Deregister{}, false
 	}
 	return Deregister{pb: m.pb.GetDeregister()}, true
 }
 
-func (m *WorkerMessage) IsLeaseUpdate() bool {
+func (m *Message) IsLeaseUpdate() bool {
 	return m.pb.GetLease() != nil
 }
 
-func (m *WorkerMessage) LeaseUpdate() (LeaseUpdate, bool) {
+func (m *Message) LeaseUpdate() (LeaseUpdate, bool) {
 	if !m.IsLeaseUpdate() {
 		return LeaseUpdate{}, false
 	}
 	return LeaseUpdate{pb: m.pb.GetLease()}, true
 }
 
-func (m *WorkerMessage) IsDisconnect() bool {
+func (m *Message) IsDisconnect() bool {
 	return m.pb.GetDisconnect() != nil
 }
 
-func (m *WorkerMessage) Disconnect() (Disconnect, bool) {
+func (m *Message) Disconnect() (Disconnect, bool) {
 	if !m.IsDisconnect() {
 		return Disconnect{}, false
 	}
 	return Disconnect{pb: m.pb.GetDisconnect()}, true
 }
 
-func (m *WorkerMessage) IsAssign() bool {
+func (m *Message) IsAssign() bool {
 	return m.pb.GetAssign() != nil
 }
 
-func (m *WorkerMessage) Assign() (Assign, bool) {
+func (m *Message) Assign() (Assign, bool) {
 	if !m.IsAssign() {
 		return Assign{}, false
 	}
 	return Assign{pb: m.pb.GetAssign()}, true
 }
 
-func (m *WorkerMessage) IsRevoke() bool {
+func (m *Message) IsRevoke() bool {
 	return m.pb.GetRevoke() != nil
 }
 
-func (m *WorkerMessage) Revoke() (Revoke, bool) {
+func (m *Message) Revoke() (Revoke, bool) {
 	if !m.IsRevoke() {
 		return Revoke{}, false
 	}
 	return Revoke{pb: m.pb.GetRevoke()}, true
 }
 
-func (m *WorkerMessage) IsRelinquished() bool {
+func (m *Message) IsRelinquished() bool {
 	return m.pb.GetRelinquished() != nil
 }
 
-func (m *WorkerMessage) Relinquished() (Relinquished, bool) {
+func (m *Message) Relinquished() (Relinquished, bool) {
 	if !m.IsRelinquished() {
 		return Relinquished{}, false
 	}

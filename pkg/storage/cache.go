@@ -65,6 +65,13 @@ func (c *Cache) Placement(name model.QualifiedPlacementName) (core.InternalPlace
 	return core.InternalPlacementInfo{}, false
 }
 
+func (c *Cache) State(name model.TenantName) (core.State, bool) {
+	if t, ok := c.tenants[name]; ok {
+		return core.NewState(t.info, mapx.Values(t.domains), mapx.Values(t.placements)), ok
+	}
+	return core.State{}, false
+}
+
 func (c *Cache) Snapshot() core.Snapshot {
 	return core.NewSnapshot(mapx.MapValues(c.tenants, func(v *tenantInfo) core.State {
 		return core.NewState(v.info, mapx.Values(v.domains), mapx.Values(v.placements))

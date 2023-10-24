@@ -54,13 +54,11 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 		cl:          cl,
 		inject:      make(chan func()),
 		drain:       iox.NewAsyncCloser(),
-
-		tenant: tenant,
-
-		state:     state,
-		shards:    NewShardManager(ctx, cl, state),
-		consumers: map[model.InstanceID]*consumerSession{},
-		messages:  make(chan *sessionx.Message[model.ConsumerMessage], 1000),
+		tenant:      tenant,
+		state:       state,
+		shards:      NewShardManager(ctx, cl, state),
+		consumers:   map[model.InstanceID]*consumerSession{},
+		messages:    make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 	}
 	ctx = log.NewContext(ctx, log.String("tenant", string(tenant)))
 	go c.process(ctx, stateUpdates)

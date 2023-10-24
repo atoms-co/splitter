@@ -75,7 +75,7 @@ func (m *Manager) Resolve(ctx context.Context, key model.DomainKey) (internal_v1
 	return nil, model.ErrNoResolution
 }
 
-func (m *Manager) Join(ctx context.Context, sid session.ID, id model.Instance, grants []Grant, in <-chan JoinMessage) (<-chan JoinMessage, error) {
+func (m *Manager) Join(ctx context.Context, sid session.ID, id model.Instance, grants []Grant, in <-chan Message) (<-chan Message, error) {
 	if l, ok := m.tryLocal(); ok {
 		return l.Join(ctx, sid, id, grants, in)
 	}
