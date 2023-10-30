@@ -67,7 +67,7 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 
 func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	out, err := syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (<-chan model.ConsumerMessage, error) {
-		id := register.Instance().ID()
+		id := register.Consumer().ID()
 		existing, ok := c.consumers[id]
 		if ok {
 			existing.connection.Close()
@@ -109,7 +109,7 @@ func (c *Coordinator) String() string {
 }
 
 func (c *Coordinator) connectConsumer(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage, error) {
-	consumer := NewConsumer(register.Instance(), c.cl.Now())
+	consumer := NewConsumer(register.Consumer(), c.cl.Now())
 	err := c.shards.Connect(consumer, 1, c.cl.Now().Add(time.Minute*10))
 	if err != nil {
 		log.Errorf(ctx, "Coordination %v is unable to connect a consumer %v: %v", c, consumer, err)

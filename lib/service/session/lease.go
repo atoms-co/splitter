@@ -1,6 +1,7 @@
 package session
 
 import (
+	"go.atoms.co/lib/iox"
 	"fmt"
 	"sync"
 	"time"
@@ -14,12 +15,16 @@ type Lease interface {
 
 // ExtendableLease is an extendable Lease. Thread-safe.
 type ExtendableLease struct {
-	exp time.Time
-	mu  sync.Mutex
+	drainer iox.AsyncCloser
+	exp     time.Time
+	mu      sync.Mutex
 }
 
-func NewExtendableLease(exp time.Time) *ExtendableLease {
-	return &ExtendableLease{exp: exp}
+func NewExtendableLease(drainer iox.AsyncCloser, exp time.Time) *ExtendableLease {
+	return &ExtendableLease{
+		drainer: drainer,
+		exp:     exp,
+	}
 }
 
 // Extend extends the lease. A nop if it would shorten it.
@@ -45,6 +50,10 @@ func (w *ExtendableLease) IsExpired(now time.Time) bool {
 	defer w.mu.Unlock()
 
 	return !now.Before(w.exp)
+}
+
+func (w *ExtendableLease) Drained() <-chan struct{} {
+	return w.drainer.Closed()
 }
 
 func (w *ExtendableLease) String() string {

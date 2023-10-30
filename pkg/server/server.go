@@ -12,6 +12,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/service/frontend"
 	"go.atoms.co/splitter/pkg/service/leader"
+	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
 	"google.golang.org/grpc"
@@ -41,9 +42,10 @@ type Server struct {
 	cluster  *cluster.Cluster
 	manager  *leader.Manager
 	resolver core.TenantResolver
+	worker   *worker.Worker
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cluster.Cluster, manager *leader.Manager, resolver core.TenantResolver, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cluster.Cluster, manager *leader.Manager, resolver core.TenantResolver, w *worker.Worker, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
@@ -55,13 +57,14 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cl
 		cluster:  cluster,
 		manager:  manager,
 		resolver: resolver,
+		worker:   w,
 	}
 }
 
 // Serve starts the public grpc server on the given port. Blocking.
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
-	public_v1.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.cl, s.location, nil /* worker */, s.resolver))
+	public_v1.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.cl, s.location, s.worker, s.resolver))
 	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.manager, s.manager))
 	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService())
 	internal_v1.RegisterPlacementManagementServiceServer(gs, frontend.NewInternalPlacementService(s.manager, s.manager))

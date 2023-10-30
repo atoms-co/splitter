@@ -47,7 +47,7 @@ message Grant {
 }
 
 message Assignment {
-  Instance instance = 1;
+  Instance consumer = 1;
   repeated Grant grants = 2;
 }
 
@@ -55,9 +55,9 @@ message Assignment {
 // the consumer, in which case existing assignments are generally chosen to continue to minimize disruption (assuming
 // the consumer lease has not expired meanwhile).
 message Register {
-  Instance instance = 1;
+  Instance consumer = 1;
   string tenant = 2;
-  atoms.splitter.QualifiedDomainName domains = 3;
+  repeated atoms.splitter.QualifiedDomainName domains = 3;
   repeated Grant active = 4; // Active grants with non-expired leases.
 }
 

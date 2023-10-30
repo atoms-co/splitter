@@ -1,7 +1,6 @@
 package model
 
 import (
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
@@ -13,42 +12,8 @@ import (
 	"time"
 )
 
-type InstanceID = location.InstanceID
-
-type Instance struct {
-	pb *public_v1.Instance
-}
-
-func NewInstance(instance location.Instance, endpoint string) Instance {
-	return WrapInstance(&public_v1.Instance{
-		Client:   location.UnwrapInstance(instance),
-		Endpoint: endpoint,
-	})
-}
-
-func WrapInstance(pb *public_v1.Instance) Instance {
-	return Instance{pb: pb}
-}
-
-func UnwrapInstance(instance Instance) *public_v1.Instance {
-	return instance.pb
-}
-
-func (i Instance) ID() InstanceID {
-	return InstanceID(i.pb.GetClient().GetId())
-}
-
-func (i Instance) Location() location.Location {
-	return location.Parse(i.pb.GetClient().GetLocation())
-}
-
-func (i Instance) Endpoint() string {
-	return i.pb.GetEndpoint()
-}
-
-func (i Instance) String() string {
-	return fmt.Sprintf("%v=%v", i.Location(), i.Endpoint())
-}
+type ConsumerID = InstanceID
+type Consumer = Instance
 
 type Shard struct {
 	Region Region
@@ -205,17 +170,17 @@ func UnwrapAssignment(a Assignment) *public_v1.Assignment {
 	return a.pb
 }
 
-func NewAssignment(instance Instance, grants []Grant) Assignment {
+func NewAssignment(consumer Consumer, grants []Grant) Assignment {
 	return Assignment{
 		pb: &public_v1.Assignment{
-			Instance: UnwrapInstance(instance),
+			Consumer: UnwrapInstance(consumer),
 			Grants:   slicex.Map(grants, Grant.ToProto),
 		},
 	}
 }
 
-func (a Assignment) Instance() Instance {
-	return WrapInstance(a.pb.GetInstance())
+func (a Assignment) Consumer() Consumer {
+	return WrapInstance(a.pb.GetConsumer())
 }
 
 func (a Assignment) ParseGrants() ([]Grant, error) {
@@ -234,12 +199,21 @@ func UnwrapRegisterMessage(m RegisterMessage) *public_v1.Register {
 	return m.pb
 }
 
+func NewRegisterMessage(consumer Consumer, tenant TenantName, domains []QualifiedDomainName, grants []Grant) RegisterMessage {
+	return WrapRegisterMessage(&public_v1.Register{
+		Consumer: UnwrapInstance(consumer),
+		Tenant:   string(tenant),
+		Domains:  slicex.Map(domains, QualifiedDomainName.ToProto),
+		Active:   slicex.Map(grants, Grant.ToProto),
+	})
+}
+
 func (m RegisterMessage) TenantName() TenantName {
 	return TenantName(m.pb.Tenant)
 }
 
-func (m RegisterMessage) Instance() Instance {
-	return WrapInstance(m.pb.GetInstance())
+func (m RegisterMessage) Consumer() Consumer {
+	return WrapInstance(m.pb.GetConsumer())
 }
 
 func (m RegisterMessage) ParseActive() ([]Grant, error) {
@@ -247,6 +221,26 @@ func (m RegisterMessage) ParseActive() ([]Grant, error) {
 }
 
 func (m RegisterMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
+type DeregisterMessage struct {
+	pb *public_v1.Deregister
+}
+
+func WrapDeregisterMessage(pb *public_v1.Deregister) DeregisterMessage {
+	return DeregisterMessage{pb: pb}
+}
+
+func UnwrapDeregisterMessage(m DeregisterMessage) *public_v1.Deregister {
+	return m.pb
+}
+
+func NewDeregisterMessage() DeregisterMessage {
+	return WrapDeregisterMessage(&public_v1.Deregister{})
+}
+
+func (m DeregisterMessage) String() string {
 	return proto.MarshalTextString(m.pb)
 }
 
@@ -262,8 +256,78 @@ func UnwrapReleasedMessage(m ReleasedMessage) *public_v1.Released {
 	return m.pb
 }
 
+func NewReleasedMessage(grants ...GrantID) ReleasedMessage {
+	return WrapReleasedMessage(&public_v1.Released{
+		Grants: slicex.Map(grants, GrantID.String),
+	})
+}
+
 func (m ReleasedMessage) ParseGrants() ([]GrantID, error) {
 	return slicex.TryMap(m.pb.GetGrants(), ParseGrantID)
+}
+
+func (m ReleasedMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
+type ExtendMessage struct {
+	pb *public_v1.Extend
+}
+
+func WrapExtendMessage(pb *public_v1.Extend) ExtendMessage {
+	return ExtendMessage{pb: pb}
+}
+
+func UnwrapExtendMessage(m ExtendMessage) *public_v1.Extend {
+	return m.pb
+}
+
+func (m ExtendMessage) GetLease() time.Time {
+	return m.pb.GetLease().AsTime()
+}
+
+func (m ExtendMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
+type AssignMessage struct {
+	pb *public_v1.Assign
+}
+
+func WrapAssignMessage(pb *public_v1.Assign) AssignMessage {
+	return AssignMessage{pb: pb}
+}
+
+func UnwrapAssignMessage(m AssignMessage) *public_v1.Assign {
+	return m.pb
+}
+
+func (m AssignMessage) Grants() ([]Grant, error) {
+	return slicex.TryMap(m.pb.GetGrants(), ParseGrant)
+}
+
+func (m AssignMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
+type RevokeMessage struct {
+	pb *public_v1.Revoke
+}
+
+func WrapRevokeMessage(pb *public_v1.Revoke) RevokeMessage {
+	return RevokeMessage{pb: pb}
+}
+
+func UnwrapRevokeMessage(m RevokeMessage) *public_v1.Revoke {
+	return m.pb
+}
+
+func (m RevokeMessage) Grants() ([]GrantID, error) {
+	return slicex.TryMap(m.pb.GetGrants(), ParseGrantID)
+}
+
+func (m RevokeMessage) String() string {
+	return proto.MarshalTextString(m.pb)
 }
 
 type ConsumerMessage struct {
@@ -290,6 +354,22 @@ func NewConsumerRegisterMessage(m RegisterMessage) ConsumerMessage {
 	return WrapConsumerMessage(&public_v1.ConsumerMessage{
 		Msg: &public_v1.ConsumerMessage_Register{
 			Register: UnwrapRegisterMessage(m),
+		},
+	})
+}
+
+func NewConsumerDeregisterMessage() ConsumerMessage {
+	return WrapConsumerMessage(&public_v1.ConsumerMessage{
+		Msg: &public_v1.ConsumerMessage_Deregister{
+			Deregister: UnwrapDeregisterMessage(NewDeregisterMessage()),
+		},
+	})
+}
+
+func NewConsumerReleasedMessage(m ReleasedMessage) ConsumerMessage {
+	return WrapConsumerMessage(&public_v1.ConsumerMessage{
+		Msg: &public_v1.ConsumerMessage_Released{
+			Released: UnwrapReleasedMessage(m),
 		},
 	})
 }
@@ -326,6 +406,50 @@ func (m ConsumerMessage) Released() (ReleasedMessage, bool) {
 		return ReleasedMessage{}, false
 	}
 	return WrapReleasedMessage(m.pb.GetReleased()), true
+}
+
+func (m ConsumerMessage) IsExtend() bool {
+	return m.pb.GetExtend() != nil
+}
+
+func (m ConsumerMessage) GetExtend() (ExtendMessage, bool) {
+	if !m.IsExtend() {
+		return ExtendMessage{}, false
+	}
+	return WrapExtendMessage(m.pb.GetExtend()), true
+}
+
+func (m ConsumerMessage) IsAssign() bool {
+	return m.pb.GetAssign() != nil
+}
+
+func (m ConsumerMessage) GetAssign() (AssignMessage, bool) {
+	if !m.IsAssign() {
+		return AssignMessage{}, false
+	}
+	return WrapAssignMessage(m.pb.GetAssign()), true
+}
+
+func (m ConsumerMessage) IsRevoke() bool {
+	return m.pb.GetRevoke() != nil
+}
+
+func (m ConsumerMessage) GetRevoke() (RevokeMessage, bool) {
+	if !m.IsRevoke() {
+		return RevokeMessage{}, false
+	}
+	return WrapRevokeMessage(m.pb.GetRevoke()), true
+}
+
+func (m ConsumerMessage) IsCluster() bool {
+	return m.pb.GetCluster() != nil
+}
+
+func (m ConsumerMessage) GetCluster() (ClusterMessage, bool) {
+	if !m.IsCluster() {
+		return ClusterMessage{}, false
+	}
+	return WrapClusterMessage(m.pb.GetCluster()), true
 }
 
 func (m ConsumerMessage) String() string {

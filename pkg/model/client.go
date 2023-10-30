@@ -2,10 +2,26 @@ package model
 
 import (
 	"context"
+	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/iox"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
 	"google.golang.org/grpc"
+	"time"
 )
+
+type Lease interface {
+	// Expiration returns the expiration time of the lease. The expiration is updated periodically by the server under
+	// normal circumstances. When the expiration time is past the current moment the grant is no longer assigned
+	// to the current consumer and the consumer must abort processing immediately.
+	Expiration() time.Time
+
+	// Drained returns a channel that is closed when the grant under this lease is being reassigned to another
+	// consumer. This signal means that the lease will not be extended and the current consumer must finish
+	// processing as soon as possible.
+	Drained() <-chan struct{}
+}
 
 // UpdateTenantOption represents an option to NewTenant.
 type UpdateTenantOption func(*public_v1.UpdateTenantRequest)
@@ -27,7 +43,11 @@ func WithUpdateDomainConfig(config DomainConfig) UpdateDomainOption {
 	}
 }
 
-// Client is a client for querying placement information.
+// Handler processes grants. Must be concurrency-safe.
+// If the lease expires, the context is cancelled and the handler must return immediately.
+type Handler func(ctx context.Context, shard Shard, lease Lease)
+
+// Client is a client for interacting with Splitter.
 type Client interface {
 	ListTenants(ctx context.Context) ([]TenantInfo, error)
 	NewTenant(ctx context.Context, name TenantName, cfg TenantConfig) (TenantInfo, error)
@@ -43,15 +63,25 @@ type Client interface {
 
 	ListPlacements(ctx context.Context, name TenantName) ([]PlacementInfo, error)
 	InfoPlacement(ctx context.Context, name QualifiedPlacementName) (PlacementInfo, error)
+
+	// Join adds the consumer to the work distribution process. During this process the consumer receives
+	// assigned grants and, separately, grants assigned to all consumers.
+	// Non-blocking.
+	// Returns a channel with clusters and a closer to signal the closure of the consumer.
+	Join(ctx context.Context, consumer Consumer, tenant TenantName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.AsyncCloser)
 }
 
 type client struct {
+	clock      clock.Clock
+	consumer   public_v1.ConsumerServiceClient
 	management public_v1.ManagementServiceClient
 	placement  public_v1.PlacementServiceClient
 }
 
 func NewClient(cc *grpc.ClientConn) Client {
 	return &client{
+		clock:      clock.New(),
+		consumer:   public_v1.NewConsumerServiceClient(cc),
 		management: public_v1.NewManagementServiceClient(cc),
 		placement:  public_v1.NewPlacementServiceClient(cc),
 	}
@@ -186,4 +216,31 @@ func (c *client) InfoPlacement(ctx context.Context, name QualifiedPlacementName)
 		return PlacementInfo{}, err
 	}
 	return WrapPlacementInfo(resp.GetInfo()), nil
+}
+
+func (c *client) Join(ctx context.Context, consumer Consumer, tenant TenantName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.AsyncCloser) {
+	ctx = consumerCtx(ctx, consumer, tenant)
+
+	quit := iox.NewAsyncCloser()
+	pool, cluster := NewWorkPool(ctx, c.clock, consumer, tenant, domains, c.consumer.Join, handler)
+
+	go func() {
+		defer quit.Close()
+		<-pool.Drained()
+
+		now := c.clock.Now()
+		select {
+		case <-pool.Closed():
+			log.Infof(ctx, "Successfully drained work pool in %v", time.Since(now))
+		case <-time.After(1 * time.Minute):
+			log.Warnf(ctx, "Failed to drain work pool in %v", time.Since(now))
+			pool.Close()
+		}
+	}()
+
+	return cluster, quit
+}
+
+func consumerCtx(ctx context.Context, consumer Consumer, tenant TenantName) context.Context {
+	return log.NewContext(ctx, log.String("consumer_id", consumer.ID()), log.String("tenant", tenant))
 }

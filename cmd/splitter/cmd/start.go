@@ -18,7 +18,9 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/server"
+	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
+	"go.atoms.co/splitter/pkg/service/worker"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
 	"fmt"
 	"github.com/hashicorp/raft"
@@ -146,8 +148,11 @@ func makeStartCommand() *cobra.Command {
 		// TODO (styurin, 10/20/23): reuse location in worker
 		self := model.NewInstance(location.NewInstance(loc), fmt.Sprintf("%v:%v", *instance, *port))
 		resolver := core.NewTenantResolver(ctx, self, make(chan core.Cluster))
+		w := worker.New(cl, nil, func(ctx context.Context, tenant model.TenantName, state core.State) (*coordinator.Coordinator, error) {
+			return coordinator.New(ctx, cl, tenant, state, nil /* stateUpdates */), nil
+		})
 
-		s := server.New(ctx, cl, loc, c, manager, resolver)
+		s := server.New(ctx, cl, loc, c, manager, resolver, w)
 
 		// (4) Start server and await termination
 

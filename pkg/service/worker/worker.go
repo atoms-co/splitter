@@ -7,10 +7,10 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/util/txnx"
-	"fmt"
 	"time"
 )
 
@@ -18,7 +18,7 @@ const (
 	statsDuration = 15 * time.Second
 )
 
-type CoordinatorFactory func(ctx context.Context, tenant model.TenantName) (*coordinator.Coordinator, error)
+type CoordinatorFactory func(ctx context.Context, tenant model.TenantName, state core.State) (*coordinator.Coordinator, error)
 
 type Worker struct {
 	iox.AsyncCloser
@@ -50,7 +50,10 @@ func (w *Worker) Connect(ctx context.Context, sid session.ID, register model.Reg
 	ci, err := syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (*coordinatorInfo, error) {
 		ci, ok := w.coordinators[tenant]
 		if !ok {
-			return nil, fmt.Errorf("%w: coordinator for tenant %v", model.ErrNotFound, tenant)
+			coord, _ := w.fn(ctx, tenant, core.State{})
+			ci = &coordinatorInfo{c: coord}
+			w.coordinators[tenant] = ci
+			//return nil, fmt.Errorf("%w: coordinator for tenant %v", model.ErrNotFound, tenant)
 		}
 		return ci, nil
 	})
