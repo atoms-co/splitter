@@ -11,6 +11,7 @@ import (
 	"go.atoms.co/lib/service/metricsx"
 	"go.atoms.co/lib/tracing"
 	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/lib/yamlx"
@@ -145,12 +146,14 @@ func makeStartCommand() *cobra.Command {
 			return ret, ret
 		})
 
-		// TODO (styurin, 10/20/23): reuse location in worker
 		self := model.NewInstance(location.NewInstance(loc), fmt.Sprintf("%v:%v", *instance, *port))
 		resolver := core.NewTenantResolver(ctx, self, make(chan core.Cluster))
-		w := worker.New(cl, nil, func(ctx context.Context, tenant model.TenantName, state core.State) (*coordinator.Coordinator, error) {
-			return coordinator.New(ctx, cl, tenant, state, nil /* stateUpdates */), nil
-		})
+		w := worker.New(cl, self,
+			func(ctx context.Context, handler grpcx.Handler[leader.WorkerMessage, leader.WorkerMessage]) error {
+				return nil
+			}, func(ctx context.Context, tenant model.TenantName, state core.State) coordinator.Coordinator {
+				return coordinator.New(ctx, cl, tenant, state, nil /* stateUpdates */)
+			})
 
 		s := server.New(ctx, cl, loc, c, manager, resolver, w)
 

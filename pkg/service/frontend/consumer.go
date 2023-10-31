@@ -11,10 +11,11 @@ import (
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
-	"google.golang.org/grpc"
+	"errors"
 	"time"
 )
 
@@ -25,7 +26,7 @@ type ConsumerService struct {
 	cl       clock.Clock
 	instance location.Instance
 	worker   *worker.Worker
-	resolver model.Resolver[*grpc.ClientConn, model.TenantName]
+	resolver core.TenantResolver
 }
 
 func NewConsumerService(cl clock.Clock, loc location.Location, worker *worker.Worker, resolver core.TenantResolver) *ConsumerService {
@@ -69,7 +70,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		// Get a shared gRPC connection to the tenant's coordinator
 		cc, err := s.resolver.Resolve(ctx, register.TenantName())
 		// model.ErrNoResolution indicates a local coordinator
-		if err != nil && err != model.ErrNoResolution {
+		if err != nil && !errors.Is(err, model.ErrNoResolution) {
 			log.Debugf(ctx, "Unable to forward tenant %v: %v", register.TenantName(), err)
 			return nil, err
 		}
@@ -82,7 +83,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 				return nil, err
 			}
 		} else {
-			coordinatorOut, err = s.worker.Connect(ctx, establish.ID, register, consumerIn)
+			coordinatorOut, err = s.worker.Connect(ctx, establish.ID, cc.GID, register, consumerIn)
 			if err != nil {
 				return nil, err
 			}
@@ -94,7 +95,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 	})
 }
 
-func (s *ConsumerService) forwardRemote(ctx context.Context, cc *grpc.ClientConn, register model.RegisterMessage, consumerIn <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (s *ConsumerService) forwardRemote(ctx context.Context, cc core.Connection, register model.RegisterMessage, consumerIn <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	// Create a client session with the coordinator instance
 	coordinatorSession, establish, sessionOut := session.NewClient(ctx, s.cl, s.instance)
 	wctx, _ := contextx.WithQuitCancel(ctx, coordinatorSession.Closed()) // cancel context if session closes
@@ -105,7 +106,7 @@ func (s *ConsumerService) forwardRemote(ctx context.Context, cc *grpc.ClientConn
 	out := make(chan model.ConsumerMessage, 100)
 	go func() {
 		defer coordinatorSession.Close()
-		err := grpcx.Connect(wctx, internal_v1.NewCoordinatorServiceClient(cc).Connect, func(ctx context.Context, coordinatorIn <-chan *public_v1.ConsumerMessage) (<-chan *public_v1.ConsumerMessage, error) {
+		err := grpcx.Connect(wctx, internal_v1.NewCoordinatorServiceClient(cc.Conn).Connect, func(ctx context.Context, coordinatorIn <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
 			// Process incoming messages by either copying to the output buffer or sending to the session
 			go func() {
 				for pb := range coordinatorIn {
@@ -113,17 +114,22 @@ func (s *ConsumerService) forwardRemote(ctx context.Context, cc *grpc.ClientConn
 						coordinatorSession.Observe(ctx, session.WrapMessage(pb.GetSession()))
 						// Do not propagate coordinator session messages to the consumer
 					} else {
-						out <- model.WrapConsumerMessage(pb)
+						out <- model.WrapConsumerMessage(pb.GetConsumer())
 					}
 				}
 			}()
 			// Send register message first, it was read from consumer messages earlier
 			consumerIn = chanx.Prepend(consumerIn, model.NewConsumerRegisterMessage(register))
+
+			// Turn it into connect
+			coordinatorOut := chanx.Map(consumerIn, coordinator.NewConnectConsumerMessage)
+
 			// Inject session messages into the messages sent to the coordinator
-			joined := session.Connect(coordinatorSession, establish, consumerIn, sessionOut, model.NewConsumerSessionMessage)
+			joined := session.Connect(coordinatorSession, establish, coordinatorOut, sessionOut, coordinator.NewConnectSessionMessage)
+
 			// Signal that connection is established
 			errChan <- nil
-			return chanx.Map(joined, model.UnwrapConsumerMessage), nil
+			return chanx.Map(joined, coordinator.UnwrapConnectMessage), nil
 		})
 		if err != nil {
 			log.Warnf(ctx, "Error in a stream from %v to a coordinator %v: %v", s.instance, register.TenantName(), err)

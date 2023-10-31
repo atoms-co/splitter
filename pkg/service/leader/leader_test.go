@@ -8,7 +8,6 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pkg/storage/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,12 +47,12 @@ func TestLeader(t *testing.T) {
 	l.Close()
 }
 
-func isAssign(msg leader.Message) (worker.Assign, bool) {
+func isAssign(msg leader.Message) (leader.AssignMessage, bool) {
 	if msg.IsWorkerMessage() {
 		w, _ := msg.WorkerMessage()
 		return w.Assign()
 	}
-	return worker.Assign{}, false
+	return leader.AssignMessage{}, false
 }
 func readFn[T any](t *testing.T, in <-chan leader.Message, fn func(message leader.Message) (T, bool)) T {
 	t.Helper()

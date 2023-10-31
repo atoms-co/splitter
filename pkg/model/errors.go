@@ -42,7 +42,7 @@ func IsOwnershipError(err error) bool {
 	if st, ok := status.FromError(err); ok && st.Code() == codes.Unavailable {
 		return true
 	}
-	return err == ErrDraining || err == ErrNotOwned
+	return errors.Is(err, ErrDraining) || errors.Is(err, ErrNotOwned)
 }
 
 // BackoffError wraps permanent errors as such for backoffx to avoid further retries.
@@ -58,22 +58,22 @@ func WrapError(err error) error {
 	if err == nil {
 		return nil
 	}
-	switch err {
-	case ErrNotFound:
+	switch {
+	case errors.Is(err, ErrNotFound):
 		return status.Error(codes.NotFound, err.Error())
-	case ErrAlreadyExists:
+	case errors.Is(err, ErrAlreadyExists):
 		return status.Error(codes.AlreadyExists, err.Error())
-	case ErrVersionMismatch:
+	case errors.Is(err, ErrVersionMismatch):
 		fallthrough
-	case ErrNotAllowed:
+	case errors.Is(err, ErrNotAllowed):
 		return status.Error(codes.FailedPrecondition, err.Error())
-	case ErrInvalid:
+	case errors.Is(err, ErrInvalid):
 		return status.Error(codes.InvalidArgument, err.Error())
-	case ErrOverloaded:
+	case errors.Is(err, ErrOverloaded):
 		return status.Error(codes.ResourceExhausted, err.Error())
-	case ErrNotOwned:
+	case errors.Is(err, ErrNotOwned):
 		return status.Error(codes.OutOfRange, err.Error()) // code used internally for serialization only
-	case ErrDraining:
+	case errors.Is(err, ErrDraining):
 		return status.Error(codes.Aborted, err.Error()) // code used internally for serialization only
 	default:
 		if _, ok := status.FromError(err); ok {

@@ -22,9 +22,17 @@ var (
 	leaseDuration = 90 * time.Second
 )
 
-// Coordinator is responsible for managing a single tenant. It accepts incoming connections from consumers and
+// Coordinator handles consumer connection and work allocation.
+type Coordinator interface {
+	iox.AsyncCloser
+
+	Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
+	Drain(timeout time.Duration)
+}
+
+// coordinator is responsible for managing a single tenant. It accepts incoming connections from consumers and
 // distributes work among the consumers by assigning shards with leases.
-type Coordinator struct {
+type coordinator struct {
 	iox.AsyncCloser
 
 	cl     clock.Clock
@@ -48,8 +56,8 @@ func (c *consumerSession) String() string {
 	return fmt.Sprintf("session{consumer=%v, connection=%v}", c.consumer, c.connection)
 }
 
-func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state core.State, stateUpdates <-chan core.Update) *Coordinator {
-	c := &Coordinator{
+func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state core.State, stateUpdates <-chan core.Update) Coordinator {
+	c := &coordinator{
 		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
 		cl:          cl,
 		inject:      make(chan func()),
@@ -65,7 +73,7 @@ func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state cor
 	return c
 }
 
-func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (c *coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	out, err := syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (<-chan model.ConsumerMessage, error) {
 		id := register.Consumer().ID()
 		existing, ok := c.consumers[id]
@@ -99,16 +107,16 @@ func (c *Coordinator) Connect(ctx context.Context, sid session.ID, register mode
 	return out, nil
 }
 
-func (c *Coordinator) Drain(timeout time.Duration) {
+func (c *coordinator) Drain(timeout time.Duration) {
 	c.drain.Close()
 	c.cl.AfterFunc(timeout, c.Close)
 }
 
-func (c *Coordinator) String() string {
+func (c *coordinator) String() string {
 	return fmt.Sprintf("coordinator{tenant=%v}", c.tenant)
 }
 
-func (c *Coordinator) connectConsumer(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage, error) {
+func (c *coordinator) connectConsumer(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage, error) {
 	consumer := NewConsumer(register.Consumer(), c.cl.Now())
 	err := c.shards.Connect(consumer, 1, c.cl.Now().Add(time.Minute*10))
 	if err != nil {
@@ -130,7 +138,7 @@ func (c *Coordinator) connectConsumer(ctx context.Context, sid session.ID, regis
 	return c.consumers[consumer.ID()], out, nil
 }
 
-func (c *Coordinator) disconnectConsumer(ctx context.Context, s *consumerSession) {
+func (c *coordinator) disconnectConsumer(ctx context.Context, s *consumerSession) {
 	delete(c.consumers, s.consumer.ID())
 	err := c.shards.Disconnect(s.consumer)
 	if err != nil {
@@ -138,7 +146,7 @@ func (c *Coordinator) disconnectConsumer(ctx context.Context, s *consumerSession
 	}
 }
 
-func (c *Coordinator) process(ctx context.Context, stateUpdates <-chan core.Update) {
+func (c *coordinator) process(ctx context.Context, stateUpdates <-chan core.Update) {
 	defer c.Close()
 
 	ticker := c.cl.NewTicker(10*time.Second + randx.Duration(time.Second))
@@ -178,10 +186,10 @@ func (c *Coordinator) process(ctx context.Context, stateUpdates <-chan core.Upda
 	}
 }
 
-func (c *Coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, msg model.ConsumerMessage) {
+func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, msg model.ConsumerMessage) {
 	switch {
 	case msg.IsDeregister():
-		log.Infof(ctx, "Coordinator %v is disconnecting session %v", c, s)
+		log.Infof(ctx, "coordinator %v is disconnecting session %v", c, s)
 		c.tearDown(ctx, s.consumer.ID())
 	case msg.IsReleased():
 		released, _ := msg.Released()
@@ -189,7 +197,7 @@ func (c *Coordinator) handleConsumerMessage(ctx context.Context, s *consumerSess
 	}
 }
 
-func (c *Coordinator) handleReleased(ctx context.Context, s *consumerSession, msg model.ReleasedMessage) {
+func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, msg model.ReleasedMessage) {
 	grants, err := msg.ParseGrants()
 	if err != nil {
 		log.Errorf(ctx, "Unable to parse grants from %v: %v", msg, err)
@@ -198,14 +206,14 @@ func (c *Coordinator) handleReleased(ctx context.Context, s *consumerSession, ms
 	for _, g := range grants {
 		err := c.shards.Release(s.consumer, g)
 		if err != nil {
-			log.Errorf(ctx, "Coordinator %v is unable to release a grant %v for consumer %v: %v", c, g, s.consumer, err)
+			log.Errorf(ctx, "coordinator %v is unable to release a grant %v for consumer %v: %v", c, g, s.consumer, err)
 			continue
 		}
 	}
-	log.Infof(ctx, "Coordinator %v released %v grants from consumer %s", c, len(grants), s.consumer)
+	log.Infof(ctx, "coordinator %v released %v grants from consumer %s", c, len(grants), s.consumer)
 }
 
-func (c *Coordinator) handleStateUpdate(ctx context.Context, update core.Update) {
+func (c *coordinator) handleStateUpdate(ctx context.Context, update core.Update) {
 	if c.tenant != update.Name() {
 		log.Errorf(ctx, "%v received an update for mismatching tenant: %v", c, update)
 	}
@@ -226,43 +234,43 @@ func (c *Coordinator) handleStateUpdate(ctx context.Context, update core.Update)
 	}
 }
 
-func (c *Coordinator) handleTenantUpdated(ctx context.Context, info model.TenantInfo) {
+func (c *coordinator) handleTenantUpdated(ctx context.Context, info model.TenantInfo) {
 	log.Debugf(ctx, "%v received tenant update: %v", c, info)
 	// TODO: detect if default region and default sharding policy are different and apply the changes
 }
 
-func (c *Coordinator) handleDomainUpdated(ctx context.Context, updated []model.DomainInfo) {
+func (c *coordinator) handleDomainUpdated(ctx context.Context, updated []model.DomainInfo) {
 	log.Debugf(ctx, "%v received domain updates: %v", c, updated)
 	// TODO: detect if a domain is added and add new shards to the distribution
 	// TODO: detect if domain's state has changed and add/remove shards
 	// TODO: detect if config has changed and update affected shards
 }
 
-func (c *Coordinator) handleDomainRemoved(ctx context.Context, removed []model.QualifiedDomainName) {
+func (c *coordinator) handleDomainRemoved(ctx context.Context, removed []model.QualifiedDomainName) {
 	log.Debugf(ctx, "%v received domain removals: %v", c, removed)
 	// TODO: remove shards of removed domain
 }
 
-func (c *Coordinator) handlePlacementsUpdated(ctx context.Context, updated []core.InternalPlacementInfo) {
+func (c *coordinator) handlePlacementsUpdated(ctx context.Context, updated []core.InternalPlacementInfo) {
 	log.Debugf(ctx, "%v received placement updates: %v", c, updated)
 	// TODO: update shards affected by updated placements
 }
 
-func (c *Coordinator) handlePlacementsRemoved(ctx context.Context, removed []model.QualifiedPlacementName) {
+func (c *coordinator) handlePlacementsRemoved(ctx context.Context, removed []model.QualifiedPlacementName) {
 	log.Debugf(ctx, "%v received placement removals: %v", c, removed)
 	// TODO: update shards affected by removed placements
 }
 
-func (c *Coordinator) notifyConsumers() {
+func (c *coordinator) notifyConsumers() {
 	// TODO: send cluster updates to consumers
 }
 
-func (c *Coordinator) tearDown(ctx context.Context, id model.InstanceID) {
+func (c *coordinator) tearDown(ctx context.Context, id model.InstanceID) {
 	s, ok := c.consumers[id]
 	if !ok {
 		return
 	}
-	log.Infof(ctx, "Coordinator %v is disconnecting session %v", c, s)
+	log.Infof(ctx, "coordinator %v is disconnecting session %v", c, s)
 	delete(c.consumers, id)
 	s.connection.Close()
 }

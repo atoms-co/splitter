@@ -8,23 +8,27 @@ import (
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
-	"go.atoms.co/splitter/pb"
+	"errors"
 	"time"
 )
 
 // CoordinatorService is a grpc frontend for the internal coordinator api.
 type CoordinatorService struct {
-	cl     clock.Clock
-	worker *worker.Worker
+	cl       clock.Clock
+	worker   *worker.Worker
+	resolver core.TenantResolver
 }
 
-func NewCoordinatorService(cl clock.Clock, worker *worker.Worker) *CoordinatorService {
+func NewCoordinatorService(cl clock.Clock, worker *worker.Worker, resolver core.TenantResolver) *CoordinatorService {
 	c := CoordinatorService{
-		cl:     cl,
-		worker: worker,
+		cl:       cl,
+		worker:   worker,
+		resolver: resolver,
 	}
 	return &c
 }
@@ -34,12 +38,12 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 	defer sess.Close()
 	wctx, _ := contextx.WithQuitCancel(server.Context(), sess.Closed()) // cancel context if session server closes
 
-	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.ConsumerMessage) (<-chan *public_v1.ConsumerMessage, error) {
-		ch := chanx.MapIf(in, func(pb *public_v1.ConsumerMessage) (model.ConsumerMessage, bool) {
+	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
+		ch := chanx.MapIf(in, func(pb *internal_v1.ConnectMessage) (model.ConsumerMessage, bool) {
 			if pb.GetSession() != nil {
 				sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session client
 			}
-			return model.WrapConsumerMessage(pb), true
+			return model.WrapConsumerMessage(pb.GetConsumer()), true
 		})
 
 		// Read session initialization message
@@ -55,15 +59,22 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 			return nil, err
 		}
 
+		// Should be local, model.ErrNoResolution indicates a local coordinator
+		cc, err := c.resolver.Resolve(ctx, register.TenantName())
+		if !errors.Is(err, model.ErrNoResolution) {
+			log.Debugf(ctx, "Tenant %v was not local: %v", register.TenantName(), err)
+			return nil, err
+		}
+
 		// Let worker handle connect
 
-		resp, err := c.worker.Connect(ctx, establish.ID, register, ch)
+		resp, err := c.worker.Connect(ctx, establish.ID, cc.GID, register, ch)
 		if err != nil {
 			log.Errorf(ctx, "Connect rejected: %v", err)
 			return nil, model.WrapError(err)
 		}
 
-		joined := session.Receive(sess, resp, out, model.NewConsumerSessionMessage)
-		return chanx.Map(joined, model.UnwrapConsumerMessage), nil
+		joined := session.Receive(sess, chanx.Map(resp, coordinator.NewConnectConsumerMessage), out, coordinator.NewConnectSessionMessage)
+		return chanx.Map(joined, coordinator.UnwrapConnectMessage), nil
 	})
 }

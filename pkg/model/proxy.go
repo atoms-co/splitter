@@ -53,7 +53,7 @@ func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn f
 func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A, local func() (B, error)) (B, error) {
 	t, err := p.Resolve(ctx, key)
 	if err != nil {
-		if err == ErrNoResolution {
+		if errors.Is(err, ErrNoResolution) {
 			return local()
 		}
 		var b B

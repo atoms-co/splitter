@@ -6,23 +6,22 @@ import (
 	"fmt"
 )
 
+type Coordinator struct {
+	instance model.Instance
+	gid      GrantID
+}
+
 // Cluster contains information about location of coordinators responsible for tenants. Immutable.
 type Cluster struct {
-	tenants map[model.TenantName]model.Instance
+	tenants map[model.TenantName]Coordinator
 }
 
-func NewCluster(tenants map[model.TenantName]model.Instance) Cluster {
-	return Cluster{
-		tenants: mapx.Clone(tenants),
-	}
+func (c Cluster) Tenant(tenant model.TenantName) (Coordinator, bool) {
+	coordinator, ok := c.tenants[tenant]
+	return coordinator, ok
 }
 
-func (c Cluster) Tenant(tenant model.TenantName) (model.Instance, bool) {
-	instance, ok := c.tenants[tenant]
-	return instance, ok
-}
-
-func (c Cluster) Tenants() map[model.TenantName]model.Instance {
+func (c Cluster) Tenants() map[model.TenantName]Coordinator {
 	return mapx.Clone(c.tenants)
 }
 

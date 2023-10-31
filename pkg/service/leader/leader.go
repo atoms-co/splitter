@@ -16,7 +16,6 @@ import (
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
 	"go.atoms.co/splitter/pkg/util/txnx"
@@ -240,7 +239,7 @@ steady:
 
 			var unhealthy []*workerSession
 			for _, w := range l.workers {
-				if !w.connection.Send(ctx, NewWorkerMessage(worker.NewLeaseUpdateMessage(lease))) {
+				if !w.connection.Send(ctx, NewWorkerMessage(NewLeaseUpdate(lease))) {
 					unhealthy = append(unhealthy, w)
 					continue
 				}
@@ -290,10 +289,7 @@ steady:
 	log.Infof(ctx, "Leader %v draining, #workers=%v", l.id, len(l.workers))
 
 	for _, w := range l.workers {
-		w.connection.Send(ctx, NewWorkerMessage(worker.NewDisconnect()))
-	}
-	l.cl.Sleep(100 * time.Millisecond) // Delay to give time to send Disconnects before closing connections
-	for _, w := range l.workers {
+		w.connection.Send(ctx, NewWorkerMessage(NewDisconnect()))
 		w.connection.Close()
 	}
 }
@@ -315,7 +311,7 @@ func (l *Leader) handleMessage(ctx context.Context, w *workerSession, m Message)
 	}
 }
 
-func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregister worker.Deregister) error {
+func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregister DeregisterMessage) error {
 	log.Infof(ctx, "Received de-register from worker %v", w)
 
 	w.draining = true
@@ -330,14 +326,14 @@ func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregis
 	// revokes to the worker. When the worker relinquishes, since it is disconnected we are able to reactivate the
 	// grant. This is an odd way to deregister.
 	log.Infof(ctx, "revoking all grants from draining worker %v", w)
-	if !w.connection.Send(ctx, NewWorkerMessage(worker.NewRevoke(mapx.Values(w.grants)...))) {
+	if !w.connection.Send(ctx, NewWorkerMessage(NewRevoke(mapx.Values(w.grants)...))) {
 		return fmt.Errorf("unable to send revoke to worker %v", w)
 	}
 
 	return nil
 }
 
-func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relinquished worker.Relinquished) error {
+func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relinquished RelinquishedMessage) error {
 	return nil
 }
 
@@ -358,7 +354,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 	// TODO(jhhurwitz): 10/19/23 Capture existing assignments + Send cluster updates
 
 	_, _ = l.alloc.Extend(demand.ID, s.lease)
-	connection.Send(ctx, NewWorkerMessage(worker.NewLeaseUpdateMessage(s.lease))) // grants will be covered under this lease
+	connection.Send(ctx, NewWorkerMessage(NewLeaseUpdate(s.lease))) // grants will be covered under this lease
 
 	return l.workers[instance.ID()], out
 }
@@ -370,7 +366,7 @@ func (l *Leader) disconnect(ctx context.Context, workers ...*workerSession) {
 		log.Infof(ctx, "Unassigned %v tenants from worker %v", len(tenants), w)
 
 		delete(l.workers, w.instance.ID())
-		w.connection.Send(ctx, NewWorkerMessage(worker.NewDisconnect()))
+		w.connection.Send(ctx, NewWorkerMessage(NewDisconnect()))
 		w.connection.Close()
 	}
 }
@@ -395,7 +391,7 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 			log.Debugf(ctx, "Allocating new grant to worker %v: %v.", w, tenant)
 
 			state, _ := l.cache.State(tenant.Tenant())
-			if !w.connection.Send(ctx, NewWorkerMessage(worker.NewAssign(tenant, state))) {
+			if !w.connection.Send(ctx, NewWorkerMessage(NewAssign(tenant, state))) {
 				log.Warnf(ctx, "Failed to send grant % to worker: %w, disconnecting", tenant, w)
 				l.disconnect(ctx, w)
 				break
@@ -413,7 +409,7 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 		if len(deficiencies) > 0 {
 			d := deficiencies[0]
 			w := l.workers[model.InstanceID(d.Demand)]
-			if w.connection.Send(ctx, NewWorkerMessage(worker.NewRevoke(fromAllocationGrant(d.Grant)))) {
+			if w.connection.Send(ctx, NewWorkerMessage(NewRevoke(fromAllocationGrant(d.Grant)))) {
 				_, _ = l.alloc.Revoke(d.Demand, d.Grant)
 			} else {
 				log.Warnf(ctx, "Failed to revoke deficiency % to worker: %w, disconnecting", d, w)

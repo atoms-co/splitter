@@ -8,9 +8,14 @@ import (
 	"sync"
 )
 
+type Connection struct {
+	GID  GrantID
+	Conn *grpc.ClientConn
+}
+
 // TenantResolver resolves a gRPC connection to an instance with tenant's coordinator. Uses model.ErrNoResolution
 // to indicate that tenant is local.
-type TenantResolver = model.Resolver[*grpc.ClientConn, model.TenantName]
+type TenantResolver = model.Resolver[Connection, model.TenantName]
 
 // NewTenantResolver creates a new resolver that finds tenant's coordinator location and returns a connection to that instance.
 // The resolver keeps connections to all known tenant instances, disconnecting instances that have no coordinators.
@@ -32,17 +37,20 @@ type resolver struct {
 	mu      sync.RWMutex
 }
 
-func (r *resolver) Resolve(ctx context.Context, tenant model.TenantName) (*grpc.ClientConn, error) {
+func (r *resolver) Resolve(ctx context.Context, tenant model.TenantName) (Connection, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	instance, ok := r.cluster.Tenant(tenant)
+	c, ok := r.cluster.Tenant(tenant)
 	if !ok {
-		return nil, model.ErrInvalid
+		return Connection{}, model.ErrInvalid
 	}
-	if instance.Endpoint() == r.self.Endpoint() {
-		return nil, model.ErrNoResolution
+	if c.instance.Endpoint() == r.self.Endpoint() {
+		return Connection{}, model.ErrNoResolution
 	}
-	return r.peers[instance.Endpoint()], nil
+	return Connection{
+		GID:  c.gid,
+		Conn: r.peers[c.instance.Endpoint()],
+	}, nil
 }
 
 func (r *resolver) process(ctx context.Context, clusters <-chan Cluster, opts []grpc.DialOption) {
@@ -57,23 +65,23 @@ func (r *resolver) process(ctx context.Context, clusters <-chan Cluster, opts []
 
 		upd := map[string]*grpc.ClientConn{}
 
-		for tenant, instance := range cluster.Tenants() {
-			if instance.ID() == r.self.ID() {
+		for tenant, c := range cluster.Tenants() {
+			if c.instance.ID() == r.self.ID() {
 				continue // ignore self
 			}
-			endpoint := instance.Endpoint()
+			endpoint := c.instance.Endpoint()
 			if cc, ok := old[endpoint]; ok {
 				upd[endpoint] = cc
 				continue
 			}
 
-			log.Debugf(ctx, "Opening connection to %v located at instance %v", tenant, instance)
+			log.Debugf(ctx, "Opening connection to %v located at coordinator %v", tenant, c)
 
 			cc, err := grpc.DialContext(ctx, endpoint, opts...)
 			if err != nil {
 				// Highly unexpected. A new cluster update will force a retry. We choose not to panic.
 
-				log.Errorf(ctx, "CRITICAL: Failed to create connection to %v: %v", instance, err)
+				log.Errorf(ctx, "CRITICAL: Failed to create connection to %v: %v", c, err)
 				continue
 			}
 			upd[endpoint] = cc
