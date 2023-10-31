@@ -551,7 +551,9 @@ func (c *connection) process(ctx context.Context) {
 		now := c.clock.Now()
 		log.Infof(ctx, "Attempting to connect to Splitter at %v", now)
 
-		grants, err := syncx.Txn(ctx, c.txn, c.state.Grants)
+		grants, err := syncx.Txn1(ctx, c.txn, func() ([]Grant, error) {
+			return c.state.Grants(), nil
+		})
 		if err != nil {
 			log.Infof(ctx, "%v closed before connecting to Splitter at %v", c, now)
 			return
@@ -676,8 +678,8 @@ func (c *connection) handleConsumerMessage(ctx context.Context, msg ConsumerMess
 
 func (c *connection) handleClusterSnapshot(ctx context.Context, snapshot ClusterSnapshot) {
 	log.Debugf(ctx, "Storing initial assignments from cluster snapshot: %v", snapshot)
-	cluster, err := syncx.Txn(ctx, c.txn, func() Cluster {
-		return c.state.SetAssignments(ctx, snapshot.Assignments())
+	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
+		return c.state.SetAssignments(ctx, snapshot.Assignments()), nil
 	})
 	if err != nil {
 		log.Warnf(ctx, "Connection %v closed while processing cluster snapshot", c)
@@ -694,8 +696,8 @@ func (c *connection) handleClusterUpdate(ctx context.Context, update ClusterUpda
 		log.Errorf(ctx, "Unable to parse removed grants in cluster update, skipping: %v", err)
 		return
 	}
-	cluster, err := syncx.Txn(ctx, c.txn, func() Cluster {
-		return c.state.UpdateAssignments(ctx, update.Assignments(), removed)
+	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
+		return c.state.UpdateAssignments(ctx, update.Assignments(), removed), nil
 	})
 	if err != nil {
 		log.Warnf(ctx, "Connection %v closed while processing cluster update", c)
