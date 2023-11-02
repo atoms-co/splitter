@@ -66,6 +66,14 @@ func (s Shard) ShardDomain() QualifiedDomainName {
 	return s.Domain
 }
 
+func (s Shard) Contains(key DomainKey) bool {
+	if s.Region != key.Region {
+		return false
+	}
+	r, _ := uuidx.NewRange(uuid.UUID(s.From), uuid.UUID(s.To))
+	return r.Contains(uuid.UUID(key.Key))
+}
+
 func (s Shard) Equals(o Shard) bool {
 	return s == o
 }

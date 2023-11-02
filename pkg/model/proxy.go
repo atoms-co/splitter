@@ -2,8 +2,11 @@ package model
 
 import (
 	"context"
+	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/metrics"
 	"errors"
 	"google.golang.org/grpc"
+	"sync"
 )
 
 var (
@@ -74,12 +77,6 @@ type RemoteFn[T any] func(grpc.ClientConnInterface) T
 // The InvokeEx is an attempt at what a unified call may look like. Use func(ctx, a) (B, error) to
 // not force a closure as a variant?
 
-// NewResolver creates a proxy to reach domain owners over grpc. Callers must check if locally owned first.
-// If an ownership failure occurs, the local check must be re-done before a retry.
-func NewResolver[T any]( /* cluster map */ pool ConnectionPool, fn RemoteFn[T]) Resolver[T, QualifiedDomainKey] {
-	return nil
-}
-
 // Connection represents an addressable instance and an optional grpc connection to its endpoint.
 type Connection struct {
 	Instance Instance
@@ -90,4 +87,63 @@ type Connection struct {
 // proxies with different service contracts can use the same resolver. Thead-safe.
 type ConnectionPool interface {
 	Connect(ctx context.Context, id InstanceID) (Connection, error)
+}
+
+var (
+	numForwards = metrics.NewCounter("go.atoms.co/splitter/forwarder_requests", "Number of forward requests", resultKey)
+)
+
+// resolver is a low-level helper for redirecting requests to the shard owner, using a connection pool. Multiple
+// proxies with different service contracts can use the same resolver.
+type resolver[T any] struct {
+	self InstanceID
+	pool ConnectionPool
+	fn   RemoteFn[T]
+
+	cluster Cluster
+	mu      sync.RWMutex
+}
+
+// NewResolver creates a resolve to reach domain owners over grpc. Callers must check if locally owned first.
+// If an ownership failure occurs, the local check must be re-done before a retry.
+func NewResolver[T any](ctx context.Context, self InstanceID, clusters <-chan Cluster, pool ConnectionPool, fn RemoteFn[T]) Resolver[T, QualifiedDomainKey] {
+	ret := &resolver[T]{
+		self:    self,
+		pool:    pool,
+		fn:      fn,
+		cluster: NewCluster(),
+	}
+	go ret.process(ctx, clusters)
+	return ret
+}
+
+func (r *resolver[T]) process(ctx context.Context, clusters <-chan Cluster) {
+	for cluster := range clusters {
+		log.Debugf(ctx, "Received cluster map: %v", cluster)
+		r.mu.Lock()
+		r.cluster = cluster
+		r.mu.Unlock()
+	}
+}
+
+// Resolve returns a shared grpc connection to the owning consumer, if remote. Returns false if local.
+func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var rt T
+	if instance, ok := r.cluster.Owner(key); ok {
+		if instance.ID() == r.self {
+			return rt, ErrNoResolution
+		}
+		con, err := r.pool.Connect(ctx, instance.ID())
+		if err != nil {
+			numForwards.Increment(ctx, 1, resultTag("no_connection"))
+			return rt, ErrInvalid
+		}
+		numForwards.Increment(ctx, 1, resultTag("ok"))
+		return r.fn(con.Conn), nil
+	}
+	numForwards.Increment(ctx, 1, resultTag("not_initialized"))
+	return rt, ErrInvalid
 }

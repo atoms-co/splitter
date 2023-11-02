@@ -7,6 +7,7 @@ import (
 const (
 	tenantKey    metrics.Key = "tenant"
 	operationKey metrics.Key = "operation"
+	resultKey    metrics.Key = "result"
 	statusKey    metrics.Key = "status"
 )
 
@@ -23,4 +24,8 @@ func statusTag(err error) metrics.Tag {
 		return metrics.Tag{Key: statusKey, Value: "fail"}
 	}
 	return metrics.Tag{Key: statusKey, Value: "ok"}
+}
+
+func resultTag(result string) metrics.Tag {
+	return metrics.Tag{Key: resultKey, Value: result}
 }
