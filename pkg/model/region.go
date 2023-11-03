@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/backoffx"
 	"go.atoms.co/lib/randx"
@@ -11,7 +12,7 @@ import (
 )
 
 // Region is a cloud region.
-type Region string
+type Region = location.Region
 
 // RegionProvider associates a region for every key. Optimized for lookup. Thread-safe.
 type RegionProvider interface {

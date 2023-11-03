@@ -27,8 +27,13 @@ func TestLeader(t *testing.T) {
 
 	tenant, err := model.NewTenant(tenant1, cl.Now())
 	require.NoError(t, err)
+	name, _ := model.ParseQualifiedDomainNameStr("tenant1/service/domain")
+	domain, err := model.NewDomain(name, model.Unit, cl.Now())
+	require.NoError(t, err)
 
 	err = db.Update(ctx, core.NewTenantUpdate(model.NewTenantInfo(tenant, 1, cl.Now())))
+	require.NoError(t, err)
+	err = db.Update(ctx, core.NewDomainUpdate(model.NewDomainInfo(domain, 1, cl.Now())))
 	require.NoError(t, err)
 
 	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())

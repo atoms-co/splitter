@@ -19,7 +19,7 @@ const (
 
 // Placement is a rule that determines the additional load from assigning the given work to the worker.
 // Returns false if such an assignment is not valid. An optimal assignment has zero extra load, excl.
-// co-location factors. Used for worker constraints and affinity. Must be semi-deterministic.
+// co-location factors. Used for worker constraints and affinity. Must be deterministic.
 type Placement[T, D comparable] interface {
 	ID() Rule
 	TryPlace(worker Worker, work Work[T, D]) (Load, bool)
@@ -58,7 +58,7 @@ type constraint[T, D comparable] struct {
 	fn   PredicateFn[T, D]
 }
 
-// NewConstraint returns a hard placement constraint based on a predicate. Predicate must be semi-deterministic.
+// NewConstraint returns a hard placement constraint based on a predicate. Predicate must be deterministic.
 func NewConstraint[T, D comparable](name Rule, fn PredicateFn[T, D]) Placement[T, D] {
 	return &constraint[T, D]{name: name, fn: fn}
 }
@@ -82,7 +82,7 @@ type preference[T, D comparable] struct {
 }
 
 // NewPreference returns placement preference (or soft constraint) based on a predicate. Penalty is
-// given if the predicate does not hold. Predicate must be semi-deterministic.
+// given if the predicate does not hold. Predicate must be deterministic.
 func NewPreference[T, D comparable](name Rule, penalty Load, fn PredicateFn[T, D]) Placement[T, D] {
 	return &preference[T, D]{name: name, penalty: penalty, fn: fn}
 }
@@ -104,8 +104,29 @@ func (p *preference[T, D]) String() string {
 
 // Colocation is a rule that determines the addition load from colocation of the given work on a worker.
 // Used for worker overload as well as affinity and anti-affinity across work, usually dependent on T.
-// Must be semi-deterministic.
+// Must be deterministic.
 type Colocation[T, D comparable] interface {
 	ID() Rule
-	CoLocate(worker Worker, work map[T]Work[T, D]) map[T]Load
+	Colocate(worker Worker, work map[T]Work[T, D]) map[T]Load
+}
+
+// Colocations is a list of Colocation rules. Evaluation convenience.
+type Colocations[T, D comparable] struct {
+	List []Colocation[T, D]
+}
+
+func (c Colocations[T, D]) Colocate(worker Worker, work map[T]Work[T, D]) (Load, map[T]Load) {
+	if len(work) == 0 {
+		return 0, nil
+	}
+
+	var sum Load
+	ret := map[T]Load{}
+	for _, rule := range c.List {
+		for k, v := range rule.Colocate(worker, work) {
+			sum += v
+			ret[k] += v
+		}
+	}
+	return sum, ret
 }

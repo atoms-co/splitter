@@ -1,7 +1,7 @@
 package core
 
 import (
-	"atoms.co/lib-go/pkg/dist/allocation"
+	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"fmt"

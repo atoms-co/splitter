@@ -6,10 +6,9 @@ import "fmt"
 type ActionKind string
 
 const (
-	Activate   ActionKind = "activate"   // * -> Active
-	Deactivate ActionKind = "deactivate" // * -> Inactive
-	Move       ActionKind = "move"       // Active -> Revoked + Allocated
-	Swap       ActionKind = "swap"       // 2x Move
+	Activate ActionKind = "activate" // * -> Active
+	Move     ActionKind = "move"     // Active -> Revoked + Allocated
+	Swap     ActionKind = "swap"     // 2x Move
 )
 
 // Action holds an allocation or load-balancing action. No grant validation is performed.
@@ -22,13 +21,6 @@ type Action[T, D comparable] struct {
 func NewActivate[T, D comparable](grant Grant[T, D]) Action[T, D] {
 	return Action[T, D]{
 		kind:  Activate,
-		grant: &grant,
-	}
-}
-
-func NewDeactivate[T, D comparable](grant Grant[T, D]) Action[T, D] {
-	return Action[T, D]{
-		kind:  Deactivate,
 		grant: &grant,
 	}
 }
@@ -54,13 +46,6 @@ func (a Action[T, D]) Kind() ActionKind {
 
 func (a Action[T, D]) Activate() (Grant[T, D], bool) {
 	if a.kind != Activate {
-		return Grant[T, D]{}, false
-	}
-	return *a.grant, true
-}
-
-func (a Action[T, D]) Deactivate() (Grant[T, D], bool) {
-	if a.kind != Deactivate {
 		return Grant[T, D]{}, false
 	}
 	return *a.grant, true

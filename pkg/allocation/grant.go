@@ -1,7 +1,6 @@
 package allocation
 
 import (
-	"go.atoms.co/lib/mapx"
 	"fmt"
 	"time"
 )
@@ -11,7 +10,8 @@ type GrantID string
 
 // GrantState describes the state of work assignment. A given work unit can have zero, one or two grants in
 // different states at the same time. Work with no assignments has no grants. Note that an Allocated grant
-// cannot be revoked, which would introduce a chain of grants for a work unit.
+// cannot be revoked, which would introduce a chain of grants for a work unit. The grant state is independent
+// of whether the worker is attached or detached.
 type GrantState string
 
 const (
@@ -22,9 +22,6 @@ const (
 	Allocated GrantState = "allocated"
 	// Revoked indicates the source location for work movement, matching an Allocated or Inactive grant.
 	Revoked GrantState = "revoked"
-	// Inactive indicates an expiring grant with no current worker. It may be recaptured to an Active or
-	// Allocated state if the worker re-connects.
-	Inactive GrantState = "inactive"
 )
 
 // Grant holds the state of work assignment to a worker.
@@ -50,38 +47,46 @@ func NewGrant[T, D comparable](id GrantID, state GrantState, unit T, domain D, w
 	}
 }
 
-func (g Grant[T, D]) Extend(expiration time.Time) Grant[T, D] {
-	return NewGrant(g.ID, g.State, g.Unit, g.Domain, g.Worker, g.Assigned, expiration)
+func (g Grant[T, D]) IsActive() bool {
+	return g.State == Active
 }
 
-func (g Grant[T, D]) ToState(state GrantState) Grant[T, D] {
+func (g Grant[T, D]) IsAllocated() bool {
+	return g.State == Allocated
+}
+
+func (g Grant[T, D]) IsRevoked() bool {
+	return g.State == Revoked
+}
+
+func (g Grant[T, D]) WithState(state GrantState) Grant[T, D] {
 	return NewGrant(g.ID, state, g.Unit, g.Domain, g.Worker, g.Assigned, g.Expiration)
+}
+
+func (g Grant[T, D]) WithExpiration(expiration time.Time) Grant[T, D] {
+	return NewGrant(g.ID, g.State, g.Unit, g.Domain, g.Worker, g.Assigned, expiration)
 }
 
 func (g Grant[T, D]) String() string {
 	return fmt.Sprintf("%v@%v[state=%v, unit=%v, domain=%v, assigned=%v, expiration=%v]", g.ID, g.Worker, g.State, g.Unit, g.Domain, g.Assigned, g.Expiration)
 }
 
-func NewGrantMap[T, D comparable](list ...Grant[T, D]) map[T]Grant[T, D] {
-	return mapx.New(list, func(v Grant[T, D]) T {
-		return v.Unit
-	})
+// Assignments holds assigned grants by status, i.e., steady, incoming and outgoing.
+type Assignments[T, D comparable] struct {
+	Active, Allocated, Revoked []Grant[T, D]
+}
+
+func (a Assignments[T, D]) IsEmpty() bool {
+	return len(a.Active) == 0 && len(a.Allocated) == 0 && len(a.Revoked) == 0
+}
+
+func (a Assignments[T, D]) String() string {
+	return fmt.Sprintf("{active=%v, allocated=%v, revoked=%v}", a.Active, a.Allocated, a.Revoked)
 }
 
 // Transition holds a grant movement with a Revoked from grant and an Allocated to grant.
 type Transition[T, D comparable] struct {
 	From, To Grant[T, D]
-}
-
-func NewTransition[T, D comparable](g Grant[T, D], id GrantID, to WorkerID, now, expiration time.Time) (Transition[T, D], bool) {
-	if g.State != Active || g.Worker == to {
-		return Transition[T, D]{}, false // not valid
-	}
-
-	return Transition[T, D]{
-		From: g.ToState(Revoked),
-		To:   NewGrant(id, Allocated, g.Unit, g.Domain, to, now, expiration),
-	}, true
 }
 
 func (m Transition[T, D]) String() string {

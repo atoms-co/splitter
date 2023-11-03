@@ -3,6 +3,7 @@ package leader
 import (
 	"context"
 	"go.atoms.co/splitter/lib/service/session"
+	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"github.com/golang/protobuf/proto"
@@ -12,7 +13,7 @@ type Resolver = model.Resolver[internal_v1.LeaderServiceClient, model.DomainKey]
 
 // Proxy is a local proxy for accessing the leader, if present. Returns ErrNotOwned if not.
 type Proxy interface {
-	Join(ctx context.Context, sid session.ID, id model.Instance, grants []Grant, in <-chan Message) (<-chan Message, error)
+	Join(ctx context.Context, sid session.ID, id model.Instance, grants []core.Grant, in <-chan Message) (<-chan Message, error)
 	Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error)
 }
 
