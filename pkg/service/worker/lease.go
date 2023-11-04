@@ -36,7 +36,7 @@ func (s *RenewableLease) Renew(ttl time.Time, expire *clock.Timer) {
 func (s *RenewableLease) stop() {
 	if s.expire != nil {
 		if s.expire.Stop() {
-			chanx.Drain(s.expire.C)
+			chanx.Clear(s.expire.C)
 		}
 	}
 	s.expire = nil
