@@ -11,13 +11,13 @@ import (
 )
 
 type (
-	Allocation = allocation.Allocation[model.QualifiedServiceName, model.TenantName]
-	Grant      = allocation.Grant[model.QualifiedServiceName, model.TenantName]
-	Work       = allocation.Work[model.QualifiedServiceName, model.TenantName]
+	Allocation = allocation.Allocation[model.QualifiedServiceName]
+	Grant      = allocation.Grant[model.QualifiedServiceName]
+	Work       = allocation.Work[model.QualifiedServiceName]
 )
 
 var (
-	regionAffinity = allocation.NewPreference(allocation.RegionAffinityRule, 20, allocation.HasRegionAffinity[model.QualifiedServiceName, model.TenantName])
+	regionAffinity = allocation.NewPreference(allocation.RegionAffinityRule, 20, allocation.HasRegionAffinity[model.QualifiedServiceName])
 )
 
 func newAllocation(id location.InstanceID, snapshot core.Snapshot, activation time.Time) *Allocation {
@@ -39,9 +39,8 @@ func findWork(snapshot core.Snapshot) []Work {
 
 		for s := range services {
 			w := Work{
-				Unit:   s,
-				Domain: s.Tenant,
-				Load:   10,
+				Unit: s,
+				Load: 10,
 			}
 			if r, ok := tenant.Tenant().Tenant().Region(); ok {
 				w.Location.Region = r

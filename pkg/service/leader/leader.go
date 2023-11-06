@@ -112,10 +112,6 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 
 func (l *Leader) Join(ctx context.Context, sid session.ID, instance model.Instance, grants []core.Grant, in <-chan Message) (<-chan Message, error) {
 	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (<-chan Message, error) {
-		if existing, ok := l.workers[instance.ID()]; ok {
-			existing.connection.Close()
-		}
-
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), l.Closed())
 
 		now := l.cl.Now()
@@ -305,23 +301,36 @@ func (l *Leader) handleMessage(ctx context.Context, w *workerSession, m Message)
 func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregister DeregisterMessage) error {
 	log.Infof(ctx, "Received de-register from worker %v", w)
 
+	// (1) Mark worker as suspended to prevent new work.
+
 	w.draining = true
 	l.alloc.Suspend(w.instance.ID())
 
-	// (1) Try to revoke all active grants. We don't use transitional states for coordinators, so the
-	// current state only is reflected in the allocation.
+	// (2) Revoke all active grants. The leader sends out new assignments only on Active grants,
+	// so Allocated grants can just be released. Revoked assignments are already in progress.
+
+	now := l.cl.Now()
 
 	assigned := l.alloc.Assigned(w.instance.ID())
+	for _, g := range assigned.Allocated {
+		l.alloc.Release(g, now) // no promotion
+	}
+	if len(assigned.Active) > 0 {
+		l.alloc.Revoke(w.instance.ID(), now, assigned.Active...)
+
+		if !w.connection.Send(ctx, NewWorkerMessage(NewRevoke(slicex.Map(assigned.Active, toGrant)...))) {
+			return fmt.Errorf("unable to send revoke to worker %v", w)
+		}
+	}
+
+	// (3) If no grants, disconnect immediately. Otherwise, wait for last release or expiration.
+
 	if assigned.IsEmpty() {
 		l.disconnect(ctx, w) // no grants, safe to disconnect
 		return nil
 	}
 
-	if active := slicex.Map(assigned.Active, toGrant); len(active) > 0 {
-		if !w.connection.Send(ctx, NewWorkerMessage(NewRevoke(active...))) {
-			return fmt.Errorf("unable to send revoke to worker %v", w)
-		}
-	}
+	log.Infof(ctx, "Deregistered worker %v with %v active grants", w, len(assigned.Active))
 	return nil
 }
 
@@ -330,14 +339,19 @@ func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relin
 }
 
 func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, instance model.Instance, grants []core.Grant, in <-chan Message) (*workerSession, <-chan Message) {
-	log.Infof(ctx, "Worker %v connected (session=%v) with #grants: %d", instance, sid, len(grants))
+	if old, ok := l.workers[instance.ID()]; ok {
+		log.Infof(ctx, "Worker %v re-connected (session=%v) with #grants: %d. Disconnecting stale session", instance, sid, len(grants))
+		l.disconnect(ctx, old)
+	} else {
+		log.Infof(ctx, "Worker %v connected (session=%v) with #grants: %d", instance, sid, len(grants))
+	}
 
 	connection, out := sessionx.NewConnection[Message](l.cl, sid, instance, l, in, l.messages)
-	s := &workerSession{
+	w := &workerSession{
 		instance:   instance,
 		connection: connection,
 	}
-	l.workers[instance.ID()] = s
+	l.workers[instance.ID()] = w
 
 	// TODO(herohde) 10/31/2023: MustSend variant needed. We may silently drop on Send
 
@@ -346,20 +360,39 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 	connection.Send(ctx, NewWorkerMessage(NewLeaseUpdate(lease))) // grants will be covered under this lease
 	// TODO: send cluster map
 
-	if _, ok := l.alloc.Attach(allocation.NewWorker(s.instance.Client()), lease /* + claimed grants */); ok {
-		// TODO: send regrants
+	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client()), lease /* + claimed grants */); ok {
+		for _, grant := range assigned.Active {
+			tenant := grant.Unit.Tenant
+			state, _ := l.cache.State(tenant)
+
+			if !w.connection.Send(ctx, NewWorkerMessage(NewAssign(toGrant(grant), state))) {
+				// TODO(herohde) 11/4/2023: The buffer is too small. We don't want that to happen. Revoke for
+				// now to avoid re-connect death loop.
+
+				log.Errorf(ctx, "Internal: failed to send regrant %v to worker: %v. Revoking", grant, w)
+				l.alloc.Revoke(w.instance.ID(), now, grant)
+			}
+		}
+
+		// NOTE(herohde) 11/4/2023: Ignore Allocated and let Revoked expire.
 	}
 
-	return l.workers[instance.ID()], out
+	return w, out
 }
 
 func (l *Leader) disconnect(ctx context.Context, workers ...*workerSession) {
 	for _, w := range workers {
 		log.Infof(ctx, "Disconnecting worker: %v", w)
 
+		now := l.cl.Now()
+
 		if l.alloc.Detach(w.instance.ID()) {
-			if assignments := l.alloc.Assigned(w.instance.ID()); !assignments.IsEmpty() {
-				log.Warnf(ctx, "Detached worker %v with dangling services: %v ", w, assignments)
+			assigned := l.alloc.Assigned(w.instance.ID())
+			for _, g := range assigned.Allocated {
+				l.alloc.Release(g, now) // no promotion
+			}
+			if len(assigned.Active) > 0 {
+				log.Warnf(ctx, "Detached worker %v with active services: %v ", w, assigned.Active)
 			}
 		} // else: already detached
 
@@ -379,28 +412,52 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 	}
 
 	// (2) Allocate and commit the assignments by sending grants. We remove the clients from the alloc
-	// on disconnect, so we know that any beneficiary of Allocate has a valid session.
+	// on disconnect, so we know that any beneficiary of Allocate has a valid session. However, workers
+	// may be disconnected _during_ grant distribution if stuck.
 
 	grants := l.alloc.Allocate(now)
 	for _, grant := range grants {
-		w := l.workers[grant.Worker]
+		if grant.IsAllocated() {
+			continue // skip: only active grants are sent
+		}
 
-		tenant := grant.Domain
+		w, ok := l.workers[grant.Worker]
+		if !ok {
+			l.alloc.Release(grant, now) // undo allocation
+			continue
+		}
+
+		tenant := grant.Unit.Tenant
 		state, _ := l.cache.State(tenant)
 
-		log.Debugf(ctx, "Allocating new grant to worker %v: %v.", w, tenant)
-
 		if !w.connection.Send(ctx, NewWorkerMessage(NewAssign(toGrant(grant), state))) {
-			log.Warnf(ctx, "Failed to send grant % to worker: %w, disconnecting", tenant, w)
+			log.Errorf(ctx, "Failed to send grant %v to worker: %v. Disconnecting", grant, w)
+
+			l.alloc.Release(grant, now) // undo allocation. Safe because it was not sent
 			l.disconnect(ctx, w)
-			break
+			continue
 		}
+
+		log.Infof(ctx, "Allocated new grant to worker %v: %v.", w, tenant)
 	}
 
 	// TODO(jhhurwitz): 10/23/23 Cluster-map broadcast
 
 	// (4) Load-balance grants across workers, if needed. Free up some grants from the most overloaded workers, but
 	// only 1 tenant per allocate call.
+
+	if loadbalance {
+		if move, load, ok := l.alloc.LoadBalance(now); ok {
+			w := l.workers[move.From.Worker]
+
+			if !w.connection.Send(ctx, NewWorkerMessage(NewRevoke(toGrant(move.From)))) {
+				log.Errorf(ctx, "Failed to send move %v from worker: %v. Disconnecting", move, w)
+				l.disconnect(ctx, w)
+			} else {
+				log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
+			}
+		}
+	}
 
 	log.Debugf(ctx, "Allocation: %v", l.alloc)
 }

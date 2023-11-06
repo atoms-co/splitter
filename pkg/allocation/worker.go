@@ -49,8 +49,8 @@ func (w WorkerInfo) String() string {
 }
 
 // live is a grant with worker lease expiration.
-type live[T, D comparable] struct {
-	work     Work[T, D]
+type live[T comparable] struct {
+	work     Work[T]
 	grant    GrantID
 	state    GrantState
 	assigned time.Time
@@ -58,47 +58,47 @@ type live[T, D comparable] struct {
 
 // worker holds worker lease and grants. If a grant is revoked, the current worker lease sticks as
 // the expiration.
-type worker[T, D comparable] struct {
+type worker[T comparable] struct {
 	info WorkerInfo
 
-	live    map[T]live[T, D]  // active + allocated
-	revoked map[T]Grant[T, D] // revoked w/ expiration: load ignored
+	live    map[T]live[T]  // active + allocated
+	revoked map[T]Grant[T] // revoked w/ expiration: load ignored
 
 	load  AdjustedLoad // adjusted load
 	place map[T]Load   // placement penalty if non-zero
 	colo  map[T]Load   // colocation penalty if non-zero
 }
 
-func newWorker[T, D comparable](inst Worker, state WorkerState, lease time.Time) *worker[T, D] {
-	return &worker[T, D]{
+func newWorker[T comparable](inst Worker, state WorkerState, lease time.Time) *worker[T] {
+	return &worker[T]{
 		info: WorkerInfo{
 			Instance: inst,
 			State:    state,
 			Lease:    lease,
 		},
-		live:    map[T]live[T, D]{},
-		revoked: map[T]Grant[T, D]{},
+		live:    map[T]live[T]{},
+		revoked: map[T]Grant[T]{},
 		place:   map[T]Load{},
 		colo:    map[T]Load{},
 	}
 }
 
-func (w *worker[T, D]) Assignments() Assignments[T, D] {
+func (w *worker[T]) Assignments() Assignments[T] {
 	live := mapx.MapValues(w.live, w.ToGrant)
-	return Assignments[T, D]{
-		Active:    slicex.Filter(live, Grant[T, D].IsActive),
-		Allocated: slicex.Filter(live, Grant[T, D].IsAllocated),
+	return Assignments[T]{
+		Active:    slicex.Filter(live, Grant[T].IsActive),
+		Allocated: slicex.Filter(live, Grant[T].IsAllocated),
 		Revoked:   mapx.Values(w.revoked),
 	}
 }
 
-func (w *worker[T, D]) Live() map[T]Work[T, D] {
-	return mapx.Map(w.live, func(k T, v live[T, D]) (T, Work[T, D]) {
+func (w *worker[T]) Live() map[T]Work[T] {
+	return mapx.Map(w.live, func(k T, v live[T]) (T, Work[T]) {
 		return k, v.work
 	})
 }
 
-func (w *worker[T, D]) LiveWith(list ...Work[T, D]) map[T]Work[T, D] {
+func (w *worker[T]) LiveWith(list ...Work[T]) map[T]Work[T] {
 	ret := w.Live()
 	for _, work := range list {
 		ret[work.Unit] = work
@@ -106,7 +106,7 @@ func (w *worker[T, D]) LiveWith(list ...Work[T, D]) map[T]Work[T, D] {
 	return ret
 }
 
-func (w *worker[T, D]) LiveWithout(list ...T) map[T]Work[T, D] {
+func (w *worker[T]) LiveWithout(list ...T) map[T]Work[T] {
 	ret := w.Live()
 	for _, t := range list {
 		delete(ret, t)
@@ -114,21 +114,29 @@ func (w *worker[T, D]) LiveWithout(list ...T) map[T]Work[T, D] {
 	return ret
 }
 
-func (w *worker[T, D]) ToGrant(l live[T, D]) Grant[T, D] {
-	return NewGrant(l.grant, l.state, l.work.Unit, l.work.Domain, w.info.Instance.ID, l.assigned, w.info.Lease)
+func (w *worker[T]) Grant(t T) (Grant[T], bool) {
+	if l, ok := w.live[t]; ok {
+		return w.ToGrant(l), true
+	}
+	g, ok := w.revoked[t]
+	return g, ok
 }
 
-func (w *worker[T, D]) Less(o *worker[T, D]) bool {
+func (w *worker[T]) ToGrant(l live[T]) Grant[T] {
+	return NewGrant(l.grant, l.state, l.work.Unit, w.info.Instance.ID, l.assigned, w.info.Lease)
+}
+
+func (w *worker[T]) Less(o *worker[T]) bool {
 	if a, b := w.load.Total(), o.load.Total(); a != b {
 		return a < b
 	}
 	return len(w.live) < len(o.live)
 }
 
-func (w *worker[T, D]) String() string {
+func (w *worker[T]) String() string {
 	return fmt.Sprintf("%v[load=%v]", w.info, w.load)
 }
 
-func newWorkerHeap[T, D comparable]() *container.Heap[*worker[T, D]] {
-	return container.NewHeap[*worker[T, D]](func(a, b *worker[T, D]) bool { return a.Less(b) })
+func newWorkerHeap[T comparable]() *container.Heap[*worker[T]] {
+	return container.NewHeap[*worker[T]](func(a, b *worker[T]) bool { return a.Less(b) })
 }

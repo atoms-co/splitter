@@ -4,9 +4,26 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/container"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/lib/mathx"
 	"fmt"
 	"time"
 )
+
+// unassigned holds unassigned work or grant in any state. For revoked grants, the activation time is
+// the promotion time for the corresponding Allocated grant. If both legs of a transition ends up
+// unassigned, they combine to Active w/ the expiration time of the revoke.
+type unassigned struct {
+	state      GrantState
+	activation time.Time
+}
+
+func newUnassigned(state GrantState, activation time.Time) unassigned {
+	return unassigned{state: state, activation: activation}
+}
+
+func (u unassigned) String() string {
+	return fmt.Sprintf("%v@%v", u.state, u.activation.Unix())
+}
 
 // Allocation assigns work of type T to a changeable workers under various constraint and preference
 // rules. An allocation aim to minimize the adjusted total load of the work using a greedy algorithm.
@@ -15,39 +32,38 @@ import (
 //
 // Penalty rules must be deterministic. If they change, a new allocation must be created and data
 // transferred as possible. Update functions make the convenient.
-type Allocation[T, D comparable] struct {
+type Allocation[T comparable] struct {
 	id location.InstanceID
 
-	place Placements[T, D]
-	colo  Colocations[T, D]
+	place Placements[T]
+	colo  Colocations[T]
 
-	work    map[T]Work[T, D] // work data
-	domains map[D]Load       // intrinsic load per domain
-	load    Load             // total intrinsic load
+	work map[T]Work[T] // work data
+	load Load          // total intrinsic load
 
-	workers    map[WorkerID]*worker[T, D] // workers w/ assigned grants
-	unassigned map[T]time.Time            // unassigned with future allocation time
-	live       map[T]WorkerID             // worker index for active + allocated grants (but not revoked)
-	seqno      int64                      // grant id seqno (for debuggability)
+	workers    map[WorkerID]*worker[T] // workers w/ assigned grants
+	unassigned map[T]unassigned        // unassigned work with future activation time
+	live       map[T]WorkerID          // worker index for live (active + allocated) grants
+	seqno      int64                   // grant id seqno (for debuggability)
 }
 
-func New[T, D comparable](id location.InstanceID, place []Placement[T, D], colo []Colocation[T, D], work []Work[T, D], activation time.Time) *Allocation[T, D] {
-	ret := &Allocation[T, D]{
+func New[T comparable](id location.InstanceID, place []Placement[T], colo []Colocation[T], work []Work[T], activation time.Time) *Allocation[T] {
+	ret := &Allocation[T]{
 		id:         id,
-		place:      Placements[T, D]{List: place},
-		colo:       Colocations[T, D]{List: colo},
-		work:       map[T]Work[T, D]{},
-		domains:    map[D]Load{},
-		workers:    map[WorkerID]*worker[T, D]{},
+		place:      Placements[T]{List: place},
+		colo:       Colocations[T]{List: colo},
+		work:       map[T]Work[T]{},
+		workers:    map[WorkerID]*worker[T]{},
 		live:       map[T]WorkerID{},
-		unassigned: map[T]time.Time{},
+		unassigned: map[T]unassigned{},
 	}
 
 	for _, w := range work {
+		w.Load = mathx.Max(w.Load, 1)
+
 		ret.work[w.Unit] = w
-		ret.domains[w.Domain] += w.Load
 		ret.load += w.Load
-		ret.unassigned[w.Unit] = activation
+		ret.unassigned[w.Unit] = newUnassigned(Active, activation)
 	}
 
 	return ret
@@ -56,75 +72,74 @@ func New[T, D comparable](id location.InstanceID, place []Placement[T, D], colo 
 // Update updates the work and allows re-evaluation of all rules, preserving existing assignments, expirations
 // and state of workers as best possible. Returns the updated allocation and any prior unassignable or now
 // invalid grants.
-func Update[T, D comparable](a *Allocation[T, D], work []Work[T, D], activation time.Time) (*Allocation[T, D], []Grant[T, D]) {
+func Update[T comparable](a *Allocation[T], work []Work[T], activation time.Time) (*Allocation[T], []Grant[T]) {
 	ret := New(a.id, a.place.List, a.colo.List, work, activation)
 	ret.seqno = a.seqno
 
-	// (1) Attach all workers and collect revokes. We can't simply Attach with grants, because transitional
-	// grants will then be lost.
+	// (1) Attach all workers and try to assign all old grants. That will preserve what grants can be preserved.
 
-	revoked := map[T]Grant[T, D]{}
-	for id, w := range a.workers {
-		ret.workers[id] = newWorker[T, D](w.info.Instance, w.info.State, w.info.Lease)
-		for k, v := range w.revoked {
-			revoked[k] = v
-		}
-	}
+	var bad []Grant[T]
 
-	var unassignable []Grant[T, D]
+	for id, old := range a.workers {
+		w := newWorker[T](old.info.Instance, old.info.State, old.info.Lease)
+		ret.workers[id] = w
 
-	// (2) Try assign live work. If successful, assign the revoke as needed.
-
-	for id, w := range ret.workers {
-		old := a.workers[id]
-
-		for t, l := range old.live {
+		for _, l := range old.live {
 			g := old.ToGrant(l)
-
-			if _, ok := ret.work[t]; !ok {
-				unassignable = append(unassignable, g)
-				continue
-			}
-
 			if ret.tryAssign(w, g) {
-				delete(ret.unassigned, g.Unit)
-
-				if revoke, ok := revoked[g.Unit]; ok {
-					_ = ret.tryAssign(ret.workers[revoke.Worker], revoke)
-					delete(revoked, g.Unit)
-				} // else: active
+				u := ret.unassigned[g.Unit]
+				if g.IsAllocated() {
+					ret.unassigned[g.Unit] = newUnassigned(Revoked, u.activation) // other half
+				} else {
+					delete(ret.unassigned, g.Unit)
+				}
 			} else {
-				unassignable = append(unassignable, g)
+				bad = append(bad, g)
 			}
 		}
+
+		for _, g := range old.revoked {
+			if ret.tryAssign(w, g) {
+				u := ret.unassigned[g.Unit]
+				if u.state == Active {
+					ret.unassigned[g.Unit] = newUnassigned(Allocated, u.activation) // other half
+				} else {
+					delete(ret.unassigned, g.Unit)
+				}
+			} else {
+				bad = append(bad, g)
+			}
+		}
+
+		w.load.Colo, w.colo = ret.colo.Colocate(w.info.Instance, w.Live())
 	}
 
-	// (3) Update expiration of unassigned work
+	// (2) Preserve expiration of unassigned work
 
-	for t, expiration := range a.unassigned {
-		if _, ok := ret.unassigned[t]; ok {
-			ret.unassigned[t] = expiration
+	for t, old := range a.unassigned {
+		if u, ok := ret.unassigned[t]; ok && old.state == u.state {
+			ret.unassigned[t] = newUnassigned(u.state, old.activation)
 		}
 	}
 
-	return ret, append(unassignable, mapx.Values(revoked)...)
+	return ret, bad
 }
 
-func (a *Allocation[T, D]) ID() location.InstanceID {
+func (a *Allocation[T]) ID() location.InstanceID {
 	return a.id
 }
 
-func (a *Allocation[T, D]) Work() []Work[T, D] {
+func (a *Allocation[T]) Work() []Work[T] {
 	return mapx.Values(a.work)
 }
 
-func (a *Allocation[T, D]) Workers() []WorkerInfo {
-	return mapx.MapValues(a.workers, func(w *worker[T, D]) WorkerInfo {
+func (a *Allocation[T]) Workers() []WorkerInfo {
+	return mapx.MapValues(a.workers, func(w *worker[T]) WorkerInfo {
 		return w.info
 	})
 }
 
-func (a *Allocation[T, D]) Worker(id WorkerID) (WorkerInfo, bool) {
+func (a *Allocation[T]) Worker(id WorkerID) (WorkerInfo, bool) {
 	if ret, ok := a.workers[id]; ok {
 		return ret.info, true
 	}
@@ -133,14 +148,14 @@ func (a *Allocation[T, D]) Worker(id WorkerID) (WorkerInfo, bool) {
 
 // Attach connects or re-connects a worker. If the latter, it includes a list of claimed existing grants.
 // Any known existing grants exist are revived to their prior state. Additionally, if the allocation has no
-// prior record of the worker, if the claimed grants are _unassigned_ and not in a transitional state, they
-// are activated to the claimed state to allow an allocation restart.
+// prior record of the worker, if the claimed grants are _unassigned_, they are activated regardless of
+// expiration  to the claimed state to allow an allocation restart.
 //
 // Returns assigned grants. Returns false if worker is already attached.
-func (a *Allocation[T, D]) Attach(inst Worker, lease time.Time, grants ...Grant[T, D]) (Assignments[T, D], bool) {
+func (a *Allocation[T]) Attach(inst Worker, lease time.Time, grants ...Grant[T]) (Assignments[T], bool) {
 	if w, ok := a.workers[inst.ID]; ok {
 		if w.info.State != Detached {
-			return Assignments[T, D]{}, false
+			return Assignments[T]{}, false
 		}
 
 		// Case 1: Re-attach. Ignore claimed grants and restore prior known state. We don't re-compute
@@ -150,24 +165,32 @@ func (a *Allocation[T, D]) Attach(inst Worker, lease time.Time, grants ...Grant[
 		return w.Assignments(), true
 	}
 
-	// Case 2: Fresh attach. Revive claimed grants, if Active and unassigned.
+	// Case 2: Fresh attach. Revive claimed grants, if unassigned.
 
-	w := newWorker[T, D](inst, Attached, lease)
+	w := newWorker[T](inst, Attached, lease)
 	a.workers[inst.ID] = w
 
 	for _, g := range grants {
-		if _, ok := a.unassigned[g.Unit]; ok && g.State == Active {
-			g.Expiration = w.info.Lease
-			if a.tryAssign(w, g) {
+		if u, ok := a.unassigned[g.Unit]; ok && (u.state == Active || g.State == u.state) {
+			if !g.IsRevoked() {
+				g.Expiration = w.info.Lease
+			}
+			if !a.tryAssign(w, g) {
+				continue // ignore: not assignable
+			}
+
+			if u.state == Active && !g.IsActive() {
+				a.unassigned[g.Unit] = newUnassigned(g.State.InvertIfTransitional(), u.activation) // other half
+			} else {
 				delete(a.unassigned, g.Unit)
-			} // else ignore: not assignable
-		}
+			}
+		} // else ignore: stale grant
 	}
 	w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
 	return w.Assignments(), true
 }
 
-func (a *Allocation[T, D]) tryAssign(w *worker[T, D], g Grant[T, D]) bool {
+func (a *Allocation[T]) tryAssign(w *worker[T], g Grant[T]) bool {
 	if g.Worker != w.info.Instance.ID {
 		return false // skip: incorrect worker for grant
 	}
@@ -178,11 +201,15 @@ func (a *Allocation[T, D]) tryAssign(w *worker[T, D], g Grant[T, D]) bool {
 		return false // skip: already present
 	}
 
+	work, ok := a.work[g.Unit]
+	if !ok {
+		return false
+	}
+
 	switch g.State {
 	case Active, Allocated:
-		work := a.work[g.Unit]
 		if load, ok := a.place.TryPlace(w.info.Instance, work); ok {
-			w.live[g.Unit] = live[T, D]{
+			w.live[g.Unit] = live[T]{
 				work:     a.work[g.Unit],
 				grant:    g.ID,
 				state:    g.State,
@@ -211,8 +238,18 @@ func (a *Allocation[T, D]) tryAssign(w *worker[T, D], g Grant[T, D]) bool {
 	}
 }
 
+// Suspend marks the worker as suspended. Returns the updated worker. Returns false if not found
+// or detached.
+func (a *Allocation[T]) Suspend(id WorkerID) (WorkerInfo, bool) {
+	if w, ok := a.workers[id]; ok && w.info.State != Detached {
+		w.info.State = Suspended
+		return w.info, true
+	}
+	return WorkerInfo{}, false
+}
+
 // Detach removes the worker from consideration. Returns false if not found or already detached.
-func (a *Allocation[T, D]) Detach(id WorkerID) bool {
+func (a *Allocation[T]) Detach(id WorkerID) bool {
 	if w, ok := a.workers[id]; ok {
 		if w.info.State == Detached {
 			return false
@@ -224,108 +261,92 @@ func (a *Allocation[T, D]) Detach(id WorkerID) bool {
 }
 
 // Assigned returns the currently assigned grants -- incl revoked grants -- for a worker.
-func (a *Allocation[T, D]) Assigned(id WorkerID) Assignments[T, D] {
+func (a *Allocation[T]) Assigned(id WorkerID) Assignments[T] {
 	if w, ok := a.workers[id]; ok {
 		return w.Assignments()
 	}
-	return Assignments[T, D]{}
+	return Assignments[T]{}
 }
 
-// Revoke revokes the given Active grants from the worker, if destination can be found. Returns
-// transitions for the successful case as well as the rejected grants.
-func (a *Allocation[T, D]) Revoke(id WorkerID, now time.Time, grants ...Grant[T, D]) ([]Transition[T, D], []Grant[T, D]) {
+// Revoke revokes the given Active grants from the worker. The counterparts become immediately assignable.
+// Returns successfully revoked grants. Returns false if worker not present.
+func (a *Allocation[T]) Revoke(id WorkerID, now time.Time, grants ...Grant[T]) ([]Grant[T], bool) {
 	w, ok := a.workers[id]
 	if !ok {
-		return nil, grants
+		return nil, false
 	}
 
-	// (1) Find other, attached workers. We cannot move work to the same worker.
-
-	workers := newWorkerHeap[T, D]()
-	for _, o := range a.workers {
-		if o.info.State == Attached && o != w {
-			workers.Push(o)
-		}
-	}
-	if workers.Len() == 0 {
-		return nil, grants // no other workers
-	}
-
-	// (2) Find best fit for moves, if any.
-
-	var ret []Transition[T, D]
-	var rejects []Grant[T, D]
-
+	var ret []Grant[T]
 	for _, grant := range grants {
-		g, ok := w.live[grant.Unit]
-		if !ok || g.state != Active {
-			rejects = append(rejects, grant)
+		t := grant.Unit
+
+		g, ok := w.live[t]
+		if !ok || g.grant != grant.ID || g.state != Active {
 			continue
 		}
 
-		if dest, ok := a.tryAllocate(g.work, Allocated, workers, now); ok {
-			// Update worker and re-compute load.
-
-			revoked := w.ToGrant(g).WithState(Revoked)
-
-			w.revoked[g.work.Unit] = revoked
-			delete(w.live, g.work.Unit)
-
-			w.load.Load -= g.work.Load
-			w.load.Place -= w.place[g.work.Unit]
-			delete(w.place, g.work.Unit)
-			w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
-
-			move := Transition[T, D]{
-				From: revoked,
-				To:   dest,
-			}
-			ret = append(ret, move)
-		} else {
-			rejects = append(rejects, grant)
-		}
+		revoked := a.revoke(w, now, g)
+		ret = append(ret, revoked)
 	}
 
-	return ret, rejects
+	return ret, true
 }
 
-// Release releases a revoked grant. It completes a move and the returned grant promotes the
-// Allocated destination grant to Assigned. Returns false if grant no longer valid.
-func (a *Allocation[T, D]) Release(grant Grant[T, D]) (Grant[T, D], bool) {
-	if w, ok := a.workers[grant.Worker]; ok {
-		if g, ok := w.revoked[grant.Unit]; ok && g.ID == grant.ID {
-			delete(w.revoked, grant.Unit)
-			return a.tryPromote(g.Unit) // must exist
-		}
-	}
-	return Grant[T, D]{}, false
+func (a *Allocation[T]) revoke(w *worker[T], now time.Time, g live[T]) Grant[T] {
+	t := g.work.Unit
+
+	// (1) Update worker and re-compute load.
+
+	revoked := w.ToGrant(g).WithState(Revoked)
+
+	w.revoked[t] = revoked
+	delete(w.live, t)
+	delete(a.live, t)
+
+	w.load.Load -= g.work.Load
+	w.load.Place -= w.place[t]
+	delete(w.place, t)
+	w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
+
+	// (2) Add counterpart to unassigned
+
+	a.unassigned[t] = newUnassigned(Allocated, now)
+
+	return revoked
 }
 
-// Unassign directly unassigns an active grant. Returns false if grant no longer valid.
-func (a *Allocation[T, D]) Unassign(grant Grant[T, D], expiration time.Time) bool {
+// Release releases a grant in any state. If Revoked, it may complete a move with the returned grant promoting
+// the Allocated destination grant to Active. Returns false if no promotion or if grant is no longer valid.
+func (a *Allocation[T]) Release(grant Grant[T], now time.Time) (Grant[T], bool) {
 	t := grant.Unit
 
 	if w, ok := a.workers[grant.Worker]; ok {
-		if l, ok := w.live[t]; ok && l.state == Active && l.grant == grant.ID {
+		if g, ok := w.revoked[t]; ok && g.ID == grant.ID {
+			delete(w.revoked, t)
+			return a.tryPromote(t, now)
+		}
+		if l, ok := w.live[t]; ok && l.grant == grant.ID {
 			delete(w.live, t)
+			delete(a.live, t)
 
 			w.load.Load -= l.work.Load
 			w.load.Place -= w.place[t]
 			delete(w.place, t)
 			w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
 
-			a.unassigned[t] = expiration
-			delete(a.live, t)
-
-			return true
+			if u, ok := a.unassigned[t]; ok {
+				a.unassigned[t] = newUnassigned(Active, u.activation) // combine with unassigned Revoke
+			} else {
+				a.unassigned[t] = newUnassigned(l.state, w.info.Lease)
+			}
 		}
 	}
-	return false
+	return Grant[T]{}, false
 }
 
 // Extend extends the worker lease and thereby the expiration of any Active or Allocated grants.
 // Returns the updated worker. Returns false if not found or detached.
-func (a *Allocation[T, D]) Extend(id WorkerID, expiration time.Time) (WorkerInfo, bool) {
+func (a *Allocation[T]) Extend(id WorkerID, expiration time.Time) (WorkerInfo, bool) {
 	if w, ok := a.workers[id]; ok && w.info.State != Detached {
 		w.info.Lease = expiration
 		return w.info, true
@@ -333,20 +354,10 @@ func (a *Allocation[T, D]) Extend(id WorkerID, expiration time.Time) (WorkerInfo
 	return WorkerInfo{}, false
 }
 
-// Suspend marks the worker as suspended. Returns the updated worker. Returns false if not found
-// or detached.
-func (a *Allocation[T, D]) Suspend(id WorkerID) (WorkerInfo, bool) {
-	if w, ok := a.workers[id]; ok && w.info.State != Detached {
-		w.info.State = Suspended
-		return w.info, true
-	}
-	return WorkerInfo{}, false
-}
-
-// Expire expires any revoked and inactive grants and workers. If a Revoked grant is expired, it promotes
-// the Allocated counterpart to Active. Returns promoted grants.
-func (a *Allocation[T, D]) Expire(now time.Time) []Grant[T, D] {
-	var ret []Grant[T, D]
+// Expire expires any revoked and inactive grants and workers. If a Revoked grant or unassigned work expires,
+// it promotes the Allocated counterpart to Active. Returns promoted grants.
+func (a *Allocation[T]) Expire(now time.Time) []Grant[T] {
+	var ret []Grant[T]
 
 	for _, w := range a.workers {
 		for t, g := range w.revoked {
@@ -354,10 +365,10 @@ func (a *Allocation[T, D]) Expire(now time.Time) []Grant[T, D] {
 				continue // skip: not expired
 			}
 
-			if promo, ok := a.tryPromote(g.Unit); ok {
+			if promo, ok := a.tryPromote(g.Unit, now); ok {
 				ret = append(ret, promo)
-				delete(w.revoked, t)
 			}
+			delete(w.revoked, t)
 		}
 	}
 
@@ -375,13 +386,14 @@ func (a *Allocation[T, D]) Expire(now time.Time) []Grant[T, D] {
 					continue
 				}
 
+				delete(w.live, t)
+				delete(a.live, t)
+
 				w.load.Load -= l.work.Load
 				w.load.Place -= w.place[l.work.Unit]
 				delete(w.place, l.work.Unit)
 
-				a.unassigned[t] = w.info.Lease
-				delete(w.live, t)
-				delete(a.live, t)
+				a.unassigned[t] = newUnassigned(Active, w.info.Lease)
 			}
 			w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
 		}
@@ -394,8 +406,9 @@ func (a *Allocation[T, D]) Expire(now time.Time) []Grant[T, D] {
 	return ret
 }
 
-// tryPromote promotes corresponding Allocated grant of the given work unit. Returns false if not revoked.
-func (a *Allocation[T, D]) tryPromote(t T) (Grant[T, D], bool) {
+// tryPromote promotes corresponding Allocated grant of the given work unit. Returns the promotion grant
+// if present.
+func (a *Allocation[T]) tryPromote(t T, now time.Time) (Grant[T], bool) {
 	if wid, ok := a.live[t]; ok {
 		if w, ok := a.workers[wid]; ok && w.live[t].state == Allocated {
 			other := w.live[t]
@@ -404,24 +417,31 @@ func (a *Allocation[T, D]) tryPromote(t T) (Grant[T, D], bool) {
 
 			return w.ToGrant(other), true
 		}
+		return Grant[T]{}, false
 	}
-	return Grant[T, D]{}, false
+
+	if u, ok := a.unassigned[t]; ok && u.state == Allocated {
+		a.unassigned[t] = newUnassigned(Active, now)
+	}
+
+	return Grant[T]{}, false
 }
 
-type pending[T, D comparable] struct {
-	work Work[T, D]
+type pending[T comparable] struct {
+	work  Work[T]
+	state GrantState
 }
 
-func (p pending[T, D]) Less(o pending[T, D]) bool {
+func (p pending[T]) Less(o pending[T]) bool {
 	return p.work.Load > o.work.Load // highest intrinsic load
 }
 
-type candidate[T, D comparable] struct {
-	w    *worker[T, D]
+type candidate[T comparable] struct {
+	w    *worker[T]
 	diff AdjustedLoad
 }
 
-func (p *candidate[T, D]) Less(o *candidate[T, D]) bool {
+func (p *candidate[T]) Less(o *candidate[T]) bool {
 	if a, b := p.diff.Total(), o.diff.Total(); a != b {
 		return a < b
 	}
@@ -430,30 +450,43 @@ func (p *candidate[T, D]) Less(o *candidate[T, D]) bool {
 
 // Allocate assigns all ready, unassigned work. It does not move or expire any assigned work. Returns
 // new grants with worker lease expiration times.
-func (a *Allocation[T, D]) Allocate(now time.Time) []Grant[T, D] {
+func (a *Allocation[T]) Allocate(now time.Time) []Grant[T] {
 	if len(a.workers) == 0 || len(a.unassigned) == 0 {
 		return nil // no assignment possible
 	}
 
+	var ret []Grant[T]
+
 	// (1) Find assignable work and determine placement order. For now, place high load work first.
 
-	assignable := container.NewHeap[pending[T, D]](pending[T, D].Less)
-	for t, activation := range a.unassigned {
-		if now.Before(activation) {
+	assignable := container.NewHeap[pending[T]](pending[T].Less)
+	for t, u := range a.unassigned {
+		if now.Before(u.activation) {
 			continue // skip: not ready
 		}
-		assignable.Push(pending[T, D]{work: a.work[t]})
+
+		if u.state == Revoked {
+			// Unassigned revoked work yields a promotion, not a new assignment.
+
+			if g, ok := a.tryPromote(t, now); ok {
+				ret = append(ret, g)
+			}
+			delete(a.unassigned, t)
+			continue
+		}
+
+		assignable.Push(pending[T]{work: a.work[t], state: u.state})
 	}
 
 	if assignable.Len() == 0 {
-		return nil // no assignable work
+		return ret // no assignable work
 	}
 
 	// (2) Order (likely) best worker by current adjusted load (assuming uniform penalty) and #work as tie-breaker.
 	// Find the least penalty. If zero penalty then assign. This may miss a colocation affinity reduction for other
 	// work, but will greatly speed up allocation in the normal case where penalties are sparse.
 
-	workers := newWorkerHeap[T, D]()
+	workers := newWorkerHeap[T]()
 	for _, w := range a.workers {
 		if w.info.State == Attached {
 			workers.Push(w)
@@ -461,14 +494,13 @@ func (a *Allocation[T, D]) Allocate(now time.Time) []Grant[T, D] {
 	}
 
 	if workers.Len() == 0 {
-		return nil // no eligible workers
+		return ret // no eligible workers
 	}
 
-	var ret []Grant[T, D]
 	for assignable.Len() > 0 {
 		next := assignable.Pop()
 
-		if g, ok := a.tryAllocate(next.work, Active, workers, now); ok {
+		if g, ok := a.tryAllocate(next.work, next.state, workers, now); ok {
 			delete(a.unassigned, next.work.Unit)
 			ret = append(ret, g)
 		}
@@ -477,9 +509,9 @@ func (a *Allocation[T, D]) Allocate(now time.Time) []Grant[T, D] {
 	return ret
 }
 
-func (a *Allocation[T, D]) tryAllocate(work Work[T, D], state GrantState, workers *container.Heap[*worker[T, D]], now time.Time) (Grant[T, D], bool) {
-	var best *candidate[T, D]
-	var buffer []*worker[T, D]
+func (a *Allocation[T]) tryAllocate(work Work[T], state GrantState, workers *container.Heap[*worker[T]], now time.Time) (Grant[T], bool) {
+	var best *candidate[T]
+	var buffer []*worker[T]
 
 	// (a) Find best place for next. Assign early if possible.
 
@@ -487,13 +519,16 @@ func (a *Allocation[T, D]) tryAllocate(work Work[T, D], state GrantState, worker
 		w := workers.Pop()
 		buffer = append(buffer, w)
 
+		if _, ok := w.Grant(work.Unit); ok {
+			continue // skip: holds other half of transitional grant
+		}
 		load, ok := a.place.TryPlace(w.info.Instance, work)
 		if !ok {
-			continue
+			continue // skip: invalid placement
 		}
 		colo, m := a.colo.Colocate(w.info.Instance, w.LiveWith(work))
 
-		cur := &candidate[T, D]{w: w, diff: AdjustedLoad{Load: work.Load, Place: load, Colo: colo - w.load.Colo}}
+		cur := &candidate[T]{w: w, diff: AdjustedLoad{Load: work.Load, Place: load, Colo: colo - w.load.Colo}}
 		if best == nil || cur.Less(best) {
 			best = cur
 		}
@@ -506,11 +541,11 @@ func (a *Allocation[T, D]) tryAllocate(work Work[T, D], state GrantState, worker
 
 	// (b) Assign work to the best candidate.
 
-	var ret *Grant[T, D]
+	var ret *Grant[T]
 	if best != nil {
 		w := best.w
 
-		fresh := NewGrant(a.newGrantID(), state, work.Unit, work.Domain, w.info.Instance.ID, now, w.info.Lease)
+		fresh := NewGrant(a.newGrantID(), state, work.Unit, w.info.Instance.ID, now, w.info.Lease)
 		if a.tryAssign(w, fresh) {
 			w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
 			ret = &fresh
@@ -524,30 +559,170 @@ func (a *Allocation[T, D]) tryAllocate(work Work[T, D], state GrantState, worker
 	}
 
 	if ret == nil {
-		return Grant[T, D]{}, false
+		return Grant[T]{}, false
 	}
 	return *ret, true
 }
 
-func (a *Allocation[T, D]) LoadBalance(now time.Time) (Load, Action[T, D], bool) {
-	// (1) consider work by placement penalty then co-location penalty in pq.
-	// We can ignore work with zero penalty.
+type penalized[T comparable] struct {
+	w     *worker[T]
+	grant live[T]
+	load  AdjustedLoad
+}
 
-	// (2) consider swaps if no penalty- or skew-decreasing moves are possible
+func (p penalized[T]) Less(o penalized[T]) bool {
+	// Sort penalized work by penalty first then overload needs:
+	//
+	//  (1) highest current placement penalty
+	//  (2) highest current colocation penalty
+	//  (3) highest current overload skew penalty
+	//  (4) highest worker load
+	//  (5) highest number of live grants (tiebreaker if intrinsic load is zero)
 
-	return 0, Action[T, D]{}, false
+	if p.load.Place != o.load.Place {
+		return p.load.Place > o.load.Place
+	}
+	if p.load.Colo != o.load.Colo {
+		return p.load.Colo > o.load.Colo
+	}
+	if p.load.Load != o.load.Load {
+		return p.load.Load > o.load.Load
+	}
+	if p.w.load.Load != o.w.load.Load {
+		return p.w.load.Load > o.w.load.Load
+	}
+	return len(p.w.live) > len(o.w.live)
+}
+
+// TODO(herohde) 11/6/2023: maybe add a work filter to select which work is eligible. For
+// example, avoid recently assigned work, specific domains or similar. It would be an addition
+// placement rule?
+
+// TODO(herohde) 11/5/2023: how aggressively should we even laod? Stability is also desirable.
+// OTOH we also want upscaling to help. Maybe best done as a separate function?
+
+// LoadBalance attempts to make a move that improves total adjusted load, or worker load balance as
+// a secondary concern. Returns the move and load improvement, if successful.
+func (a *Allocation[T]) LoadBalance(now time.Time) (Move[T], AdjustedLoad, bool) {
+
+	// (1) Find attached workers and compute effective load skew. Ignore disconnected and
+	// suspended workers. We allow the average unit load as slack.
+
+	workers := mapx.ValuesIf(a.workers, func(w *worker[T]) bool {
+		return w.info.State == Attached // skip: don't touch non-attached workers, even as a source
+	})
+	if len(workers) == 0 || len(a.work) == 0 {
+		return Move[T]{}, AdjustedLoad{}, false
+	}
+
+	slack := Load(mathx.CeilDivInt(int(a.load), len(a.work)))
+	expected := Load(mathx.CeilDivInt(int(a.load), len(workers)))
+	cutoff := expected + slack
+
+	// (2) Find largest penalty reductions, incl. effective load skew penalty. Consider active work
+	// by placement penalty then co-location penalty in pq. Ignore work with zero penalties.
+
+	movable := container.NewHeap[penalized[T]](penalized[T].Less)
+
+	overload := map[WorkerID]Load{}
+	for _, w := range workers {
+		overload[w.info.Instance.ID] = mathx.Max(w.load.Load-cutoff, 0)
+
+		for t, l := range w.live {
+			if l.state != Active {
+				continue // skip: cannot revoke Allocated grant
+			}
+
+			load := AdjustedLoad{
+				Load:  (overload[w.info.Instance.ID] * l.work.Load) / w.load.Load,
+				Place: w.place[t],
+				Colo:  w.colo[t],
+			}
+
+			if load.Total() > 0 {
+				movable.Push(penalized[T]{w: w, grant: l, load: load})
+			} // else skip: fine where it is
+		}
+	}
+
+	if movable.Len() == 0 || len(workers) < 2 {
+		return Move[T]{}, AdjustedLoad{}, false
+	}
+
+	// (2) Evaluate a move to the least-loaded worker possible. Note that other work on that worker may
+	// see a penalty increase if they favor affinity with the candidate work, so the actual gain may be
+	// different from what is attributed to the candidate. It may even be a loss for the worker.
+	//
+	// However, any move an improvement to total adjusted load.
+
+	for movable.Len() > 0 {
+		next := movable.Pop()
+		work := next.grant.work
+
+		src, _ := a.colo.Colocate(next.w.info.Instance, next.w.LiveWithout(work.Unit))
+		bonus := next.w.load.Colo - src // co-location penalty bonus at source (may be negative)
+
+		// (a) Find penalty-improving move, if any.
+
+		var best *candidate[T]
+		for _, w := range workers {
+			if w == next.w {
+				continue // skip: self-move
+			}
+
+			intrin := w.load.Load + work.Load
+			place, ok := a.place.TryPlace(w.info.Instance, work)
+			if !ok {
+				continue // skip: invalid placement
+			}
+			colo, _ := a.colo.Colocate(w.info.Instance, w.LiveWith(work))
+
+			diff := AdjustedLoad{
+				Load:  (mathx.Max(intrin-cutoff, 0)*work.Load)/intrin - next.load.Load,
+				Place: place - next.load.Place,
+				Colo:  colo - w.load.Colo - bonus,
+			}
+
+			if diff.Total() >= 0 {
+				continue // skip: no penalty reduction
+			}
+
+			cur := &candidate[T]{w: w, diff: diff}
+			if best == nil || cur.Less(best) {
+				best = cur
+			}
+		}
+
+		// (b) Perform move if found
+
+		if best != nil {
+			return a.move(next.w, next.grant, best.w, now), best.diff, true
+		}
+	}
+
+	return Move[T]{}, AdjustedLoad{}, false
+}
+
+func (a *Allocation[T]) move(from *worker[T], grant live[T], to *worker[T], now time.Time) Move[T] {
+	work := grant.work
+
+	revoked := a.revoke(from, now, grant)
+	allocated := NewGrant(a.newGrantID(), Allocated, work.Unit, to.info.Instance.ID, now, to.info.Lease)
+	_ = a.tryAssign(to, allocated)
+
+	return Move[T]{From: revoked, To: allocated}
 }
 
 // Load returns the total intrinsic load and current penalties by domain and rule.
-func (a *Allocation[T, D]) Load() Load /* + more details */ {
+func (a *Allocation[T]) Load() Load /* + more details */ {
 	return a.load
 }
 
-func (a *Allocation[T, D]) String() string {
+func (a *Allocation[T]) String() string {
 	return fmt.Sprintf("%v[#work=%v, #workers=%v, load=%v]", a.id, len(a.work), len(a.workers), a.load)
 }
 
-func (a *Allocation[T, D]) newGrantID() GrantID {
+func (a *Allocation[T]) newGrantID() GrantID {
 	a.seqno++
 	return GrantID(fmt.Sprintf("%v:%v", a.id, a.seqno))
 }
