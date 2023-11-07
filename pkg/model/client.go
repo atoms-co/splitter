@@ -33,6 +33,16 @@ func WithUpdateTenantConfig(config TenantConfig) UpdateTenantOption {
 	}
 }
 
+// UpdateServiceOption represents an option to NewService.
+type UpdateServiceOption func(*public_v1.UpdateServiceRequest)
+
+// WithUpdateServiceConfig defines config for a tenant.
+func WithUpdateServiceConfig(config ServiceConfig) UpdateServiceOption {
+	return func(request *public_v1.UpdateServiceRequest) {
+		request.Config = UnwrapServiceConfig(config)
+	}
+}
+
 // UpdateDomainOption represents an option to NewDomain.
 type UpdateDomainOption func(*public_v1.UpdateDomainRequest)
 
@@ -55,10 +65,15 @@ type Client interface {
 	UpdateTenant(ctx context.Context, tenant TenantInfo, opts ...UpdateTenantOption) (TenantInfo, error)
 	DeleteTenant(ctx context.Context, name TenantName) error
 
-	ListDomains(ctx context.Context, name TenantName) ([]DomainInfo, error)
-	NewDomain(ctx context.Context, name QualifiedDomainName, domainType DomainType, cfg DomainConfig) (DomainInfo, error)
-	InfoDomain(ctx context.Context, name QualifiedDomainName) (DomainInfo, error)
-	UpdateDomain(ctx context.Context, domain DomainInfo, opts ...UpdateDomainOption) (DomainInfo, error)
+	ListServices(ctx context.Context, tenant TenantName) ([]ServiceInfo, error)
+	NewService(ctx context.Context, name QualifiedServiceName, cfg ServiceConfig) (ServiceInfo, error)
+	InfoService(ctx context.Context, name QualifiedServiceName) (ServiceInfoEx, error)
+	UpdateService(ctx context.Context, tenant ServiceInfo, opts ...UpdateServiceOption) (ServiceInfo, error)
+	DeleteService(ctx context.Context, name QualifiedServiceName) error
+
+	ListDomains(ctx context.Context, service QualifiedServiceName) ([]Domain, error)
+	NewDomain(ctx context.Context, name QualifiedDomainName, domainType DomainType, cfg DomainConfig) (Domain, error)
+	UpdateDomain(ctx context.Context, domain Domain, guard Version, opts ...UpdateDomainOption) (Domain, error)
 	DeleteDomain(ctx context.Context, name QualifiedDomainName) error
 
 	ListPlacements(ctx context.Context, name TenantName) ([]PlacementInfo, error)
@@ -140,18 +155,73 @@ func (c *client) DeleteTenant(ctx context.Context, name TenantName) error {
 	return err
 }
 
-func (c *client) ListDomains(ctx context.Context, name TenantName) ([]DomainInfo, error) {
+func (c *client) ListServices(ctx context.Context, tenant TenantName) ([]ServiceInfo, error) {
+	req := &public_v1.ListServicesRequest{
+		Tenant: string(tenant),
+	}
+	resp, err := c.management.ListServices(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return slicex.Map(resp.GetServices(), WrapServiceInfo), nil
+}
+
+func (c *client) NewService(ctx context.Context, name QualifiedServiceName, cfg ServiceConfig) (ServiceInfo, error) {
+	req := &public_v1.NewServiceRequest{
+		Name:   name.ToProto(),
+		Config: UnwrapServiceConfig(cfg),
+	}
+	resp, err := c.management.NewService(ctx, req)
+	if err != nil {
+		return ServiceInfo{}, err
+	}
+	return WrapServiceInfo(resp.GetService()), nil
+}
+
+func (c *client) InfoService(ctx context.Context, name QualifiedServiceName) (ServiceInfoEx, error) {
+	req := &public_v1.InfoServiceRequest{Name: name.ToProto()}
+	resp, err := c.management.InfoService(ctx, req)
+	if err != nil {
+		return ServiceInfoEx{}, err
+	}
+	return WrapServiceInfoEx(resp.GetService()), nil
+}
+
+func (c *client) UpdateService(ctx context.Context, service ServiceInfo, opts ...UpdateServiceOption) (ServiceInfo, error) {
+	req := &public_v1.UpdateServiceRequest{
+		Name:    service.Name().ToProto(),
+		Version: int64(service.Version()),
+		Config:  UnwrapServiceConfig(service.Service().Config()),
+	}
+	for _, opt := range opts {
+		opt(req)
+	}
+
+	upd, err := c.management.UpdateService(ctx, req)
+	if err != nil {
+		return ServiceInfo{}, err
+	}
+	return WrapServiceInfo(upd.GetService()), nil
+}
+
+func (c *client) DeleteService(ctx context.Context, name QualifiedServiceName) error {
+	req := &public_v1.DeleteServiceRequest{Name: name.ToProto()}
+	_, err := c.management.DeleteService(ctx, req)
+	return err
+}
+
+func (c *client) ListDomains(ctx context.Context, service QualifiedServiceName) ([]Domain, error) {
 	req := &public_v1.ListDomainsRequest{
-		Tenant: string(name),
+		Service: service.ToProto(),
 	}
 	resp, err := c.management.ListDomains(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return slicex.Map(resp.GetDomains(), WrapDomainInfo), nil
+	return slicex.Map(resp.GetDomains(), WrapDomain), nil
 }
 
-func (c *client) NewDomain(ctx context.Context, name QualifiedDomainName, domainType DomainType, cfg DomainConfig) (DomainInfo, error) {
+func (c *client) NewDomain(ctx context.Context, name QualifiedDomainName, domainType DomainType, cfg DomainConfig) (Domain, error) {
 	req := &public_v1.NewDomainRequest{
 		Name:   name.ToProto(),
 		Type:   domainType,
@@ -159,25 +229,16 @@ func (c *client) NewDomain(ctx context.Context, name QualifiedDomainName, domain
 	}
 	resp, err := c.management.NewDomain(ctx, req)
 	if err != nil {
-		return DomainInfo{}, err
+		return Domain{}, err
 	}
-	return WrapDomainInfo(resp.GetDomain()), nil
+	return WrapDomain(resp.GetDomain()), nil
 }
 
-func (c *client) InfoDomain(ctx context.Context, name QualifiedDomainName) (DomainInfo, error) {
-	req := &public_v1.InfoDomainRequest{Name: name.ToProto()}
-	resp, err := c.management.InfoDomain(ctx, req)
-	if err != nil {
-		return DomainInfo{}, err
-	}
-	return WrapDomainInfo(resp.GetDomain()), nil
-}
-
-func (c *client) UpdateDomain(ctx context.Context, domain DomainInfo, opts ...UpdateDomainOption) (DomainInfo, error) {
+func (c *client) UpdateDomain(ctx context.Context, domain Domain, guard Version, opts ...UpdateDomainOption) (Domain, error) {
 	req := &public_v1.UpdateDomainRequest{
-		Name:    domain.Name().ToProto(),
-		Version: int64(domain.Version()),
-		Config:  UnwrapDomainConfig(domain.Domain().Config()),
+		Name:           domain.Name().ToProto(),
+		ServiceVersion: int64(guard),
+		Config:         UnwrapDomainConfig(domain.Config()),
 	}
 	for _, opt := range opts {
 		opt(req)
@@ -185,9 +246,9 @@ func (c *client) UpdateDomain(ctx context.Context, domain DomainInfo, opts ...Up
 
 	upd, err := c.management.UpdateDomain(ctx, req)
 	if err != nil {
-		return DomainInfo{}, err
+		return Domain{}, err
 	}
-	return WrapDomainInfo(upd.GetDomain()), nil
+	return WrapDomain(upd.GetDomain()), nil
 }
 
 func (c *client) DeleteDomain(ctx context.Context, name QualifiedDomainName) error {

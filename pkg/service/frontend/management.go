@@ -81,9 +81,74 @@ func (s *ManagementService) DeleteTenant(ctx context.Context, req *public_v1.Del
 	return resp.GetDelete(), err
 }
 
-func (s *ManagementService) ListDomains(ctx context.Context, req *public_v1.ListDomainsRequest) (*public_v1.ListDomainsResponse, error) {
+func (s *ManagementService) ListServices(ctx context.Context, req *public_v1.ListServicesRequest) (*public_v1.ListServicesResponse, error) {
 	if req.GetTenant() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "empty tenant name")
+	}
+
+	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
+		Req: &internal_v1.ServiceRequest_List{
+			List: req,
+		},
+	})
+	return resp.GetList(), err
+}
+
+func (s *ManagementService) NewService(ctx context.Context, req *public_v1.NewServiceRequest) (*public_v1.NewServiceResponse, error) {
+	if _, err := model.ParseQualifiedServiceName(req.GetName()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
+		Req: &internal_v1.ServiceRequest_New{
+			New: req,
+		},
+	})
+	return resp.GetNew(), err
+}
+
+func (s *ManagementService) InfoService(ctx context.Context, req *public_v1.InfoServiceRequest) (*public_v1.InfoServiceResponse, error) {
+	if _, err := model.ParseQualifiedServiceName(req.GetName()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
+		Req: &internal_v1.ServiceRequest_Info{
+			Info: req,
+		},
+	})
+	return resp.GetInfo(), err
+}
+
+func (s *ManagementService) UpdateService(ctx context.Context, req *public_v1.UpdateServiceRequest) (*public_v1.UpdateServiceResponse, error) {
+	if _, err := model.ParseQualifiedServiceName(req.GetName()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
+		Req: &internal_v1.ServiceRequest_Update{
+			Update: req,
+		},
+	})
+	return resp.GetUpdate(), err
+}
+
+func (s *ManagementService) DeleteService(ctx context.Context, req *public_v1.DeleteServiceRequest) (*public_v1.DeleteServiceResponse, error) {
+	if _, err := model.ParseQualifiedServiceName(req.GetName()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
+		Req: &internal_v1.ServiceRequest_Delete{
+			Delete: req,
+		},
+	})
+	return resp.GetDelete(), err
+}
+
+func (s *ManagementService) ListDomains(ctx context.Context, req *public_v1.ListDomainsRequest) (*public_v1.ListDomainsResponse, error) {
+	if _, err := model.ParseQualifiedServiceName(req.GetService()); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
 	resp, err := s.invokeDomain(ctx, &internal_v1.DomainRequest{
@@ -105,19 +170,6 @@ func (s *ManagementService) NewDomain(ctx context.Context, req *public_v1.NewDom
 		},
 	})
 	return resp.GetNew(), err
-}
-
-func (s *ManagementService) InfoDomain(ctx context.Context, req *public_v1.InfoDomainRequest) (*public_v1.InfoDomainResponse, error) {
-	if _, err := model.ParseQualifiedDomainName(req.GetName()); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	resp, err := s.invokeDomain(ctx, &internal_v1.DomainRequest{
-		Req: &internal_v1.DomainRequest_Info{
-			Info: req,
-		},
-	})
-	return resp.GetInfo(), err
 }
 
 func (s *ManagementService) UpdateDomain(ctx context.Context, req *public_v1.UpdateDomainRequest) (*public_v1.UpdateDomainResponse, error) {
@@ -160,6 +212,22 @@ func (s *ManagementService) invokeTenant(ctx context.Context, request *internal_
 		return nil, err
 	}
 	return resp.GetTenant(), nil
+}
+
+func (s *ManagementService) invokeService(ctx context.Context, request *internal_v1.ServiceRequest) (*internal_v1.ServiceResponse, error) {
+	req := leader.NewHandleServiceRequest(request)
+
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
+		return model.InvokeExZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+			return s.proxy.Handle(ctx, req)
+		})
+	})
+
+	if err != nil {
+		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
+		return nil, err
+	}
+	return resp.GetService(), nil
 }
 
 func (s *ManagementService) invokeDomain(ctx context.Context, request *internal_v1.DomainRequest) (*internal_v1.DomainResponse, error) {

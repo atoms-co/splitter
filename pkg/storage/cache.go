@@ -9,7 +9,7 @@ import (
 
 type tenantInfo struct {
 	info       model.TenantInfo
-	domains    map[model.QualifiedDomainName]model.DomainInfo
+	services   map[model.QualifiedServiceName]model.ServiceInfoEx
 	placements map[model.QualifiedPlacementName]core.InternalPlacementInfo
 }
 
@@ -35,19 +35,39 @@ func (c *Cache) Tenant(name model.TenantName) (model.TenantInfo, bool) {
 	return model.TenantInfo{}, false
 }
 
-func (c *Cache) Domains(name model.TenantName) []model.DomainInfo {
+func (c *Cache) Services(name model.TenantName) []model.ServiceInfo {
 	if t, ok := c.tenants[name]; ok {
-		return mapx.Values(t.domains)
+		return mapx.MapValues(t.services, func(s model.ServiceInfoEx) model.ServiceInfo {
+			return s.Info()
+		})
 	}
 	return nil
 }
 
-func (c *Cache) Domain(name model.QualifiedDomainName) (model.DomainInfo, bool) {
-	if t, ok := c.tenants[name.Service.Tenant]; ok {
-		info, ok := t.domains[name]
-		return info, ok
+func (c *Cache) Service(name model.QualifiedServiceName) (model.ServiceInfoEx, bool) {
+	if t, ok := c.tenants[name.Tenant]; ok {
+		s, ok := t.services[name]
+		return s, ok
 	}
-	return model.DomainInfo{}, false
+	return model.ServiceInfoEx{}, false
+}
+
+func (c *Cache) Domains(name model.QualifiedServiceName) []model.Domain {
+	if t, ok := c.tenants[name.Tenant]; ok {
+		if s, ok := t.services[name]; ok {
+			return s.Domains()
+		}
+	}
+	return nil
+}
+
+func (c *Cache) Domain(name model.QualifiedDomainName) (model.Domain, bool) {
+	if t, ok := c.tenants[name.Service.Tenant]; ok {
+		if s, ok := t.services[name.Service]; ok {
+			return s.Domain(name.Domain)
+		}
+	}
+	return model.Domain{}, false
 }
 
 func (c *Cache) Placements(name model.TenantName) []core.InternalPlacementInfo {
@@ -65,16 +85,25 @@ func (c *Cache) Placement(name model.QualifiedPlacementName) (core.InternalPlace
 	return core.InternalPlacementInfo{}, false
 }
 
+func (c *Cache) ServiceState(name model.QualifiedServiceName) (core.State, bool) {
+	if t, ok := c.tenants[name.Tenant]; ok {
+		if s, ok := t.services[name]; ok {
+			return core.NewState(t.info, []model.ServiceInfoEx{s}, mapx.Values(t.placements)), ok
+		}
+	}
+	return core.State{}, false
+}
+
 func (c *Cache) State(name model.TenantName) (core.State, bool) {
 	if t, ok := c.tenants[name]; ok {
-		return core.NewState(t.info, mapx.Values(t.domains), mapx.Values(t.placements)), ok
+		return core.NewState(t.info, mapx.Values(t.services), mapx.Values(t.placements)), ok
 	}
 	return core.State{}, false
 }
 
 func (c *Cache) Snapshot() core.Snapshot {
 	return core.NewSnapshot(mapx.MapValues(c.tenants, func(v *tenantInfo) core.State {
-		return core.NewState(v.info, mapx.Values(v.domains), mapx.Values(v.placements))
+		return core.NewState(v.info, mapx.Values(v.services), mapx.Values(v.placements))
 	})...)
 }
 
@@ -82,10 +111,9 @@ func (c *Cache) Restore(snapshot core.Snapshot) {
 	c.tenants = map[model.TenantName]*tenantInfo{}
 	for _, s := range snapshot.Tenants() {
 		info := s.Tenant()
-
 		c.tenants[info.Name()] = &tenantInfo{
 			info:       info,
-			domains:    mapx.New(s.Domains(), model.DomainInfo.Name),
+			services:   mapx.New(s.Services(), model.ServiceInfoEx.Name),
 			placements: mapx.New(s.Placements(), core.InternalPlacementInfo.Name),
 		}
 	}
@@ -97,23 +125,30 @@ func (c *Cache) Update(update core.Update, strict bool) error {
 		return err
 	}
 
-	for _, upd := range update.DomainsUpdated() {
-		d, _ := s.domains[upd.Name()]
-		if err := checkUpdate(update, upd.Name().Service.Tenant, d.Version(), upd.Version(), strict); err != nil {
-			return fmt.Errorf("bad domain %v info: %v", upd.Name(), err)
+	for _, upd := range update.ServicesUpdated() {
+		current, _ := s.services[upd.Service().Name()]
+		if err := checkUpdate(update, upd.Service().Name().Tenant, current.Info().Version(), upd.Service().Version(), strict); err != nil {
+			return fmt.Errorf("bad service %v info: %v", upd.Service().Name(), err)
 		}
-		s.domains[upd.Name()] = upd
+		domains := mapx.New(current.Domains(), model.Domain.Name)
+		for _, next := range upd.DomainsUpdated() {
+			domains[next.Name()] = next
+		}
+		for _, remove := range upd.DomainsRemoved() {
+			delete(domains, remove)
+		}
+		s.services[upd.Service().Name()] = model.NewServiceInfoEx(upd.Service(), mapx.Values(domains))
 	}
-	for _, rm := range update.DomainsRemoved() {
-		if _, ok := s.domains[rm]; !ok {
-			return fmt.Errorf("domain %v not found", rm)
+	for _, rm := range update.ServicesRemoved() {
+		if _, ok := s.services[rm]; !ok {
+			return fmt.Errorf("service %v not found", rm)
 		}
-		delete(s.domains, rm)
+		delete(s.services, rm)
 	}
 
 	for _, upd := range update.PlacementsUpdated() {
-		d, _ := s.placements[upd.Name()]
-		if err := checkUpdate(update, upd.Name().Tenant, d.Version(), upd.Version(), strict); err != nil {
+		current, _ := s.placements[upd.Name()]
+		if err := checkUpdate(update, upd.Name().Tenant, current.Version(), upd.Version(), strict); err != nil {
 			return fmt.Errorf("bad placement %v info: %v", upd.Name(), err)
 		}
 		s.placements[upd.Name()] = upd
@@ -151,14 +186,14 @@ func (c *Cache) cloneTenant(update core.Update, strict bool) (*tenantInfo, error
 
 		return &tenantInfo{
 			info:       info,
-			domains:    map[model.QualifiedDomainName]model.DomainInfo{},
+			services:   map[model.QualifiedServiceName]model.ServiceInfoEx{},
 			placements: map[model.QualifiedPlacementName]core.InternalPlacementInfo{},
 		}, nil
 	}
 
 	cp := &tenantInfo{
 		info:       s.info,
-		domains:    mapx.Clone(s.domains),
+		services:   mapx.Clone(s.services),
 		placements: mapx.Clone(s.placements),
 	}
 

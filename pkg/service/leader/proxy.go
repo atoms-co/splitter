@@ -32,6 +32,16 @@ func NewHandleTenantRequest(req *internal_v1.TenantRequest) HandleRequest {
 	}
 }
 
+func NewHandleServiceRequest(req *internal_v1.ServiceRequest) HandleRequest {
+	return HandleRequest{
+		Proto: &internal_v1.LeaderHandleRequest{
+			Req: &internal_v1.LeaderHandleRequest_Service{
+				Service: req,
+			},
+		},
+	}
+}
+
 func NewHandleDomainRequest(req *internal_v1.DomainRequest) HandleRequest {
 	return HandleRequest{
 		Proto: &internal_v1.LeaderHandleRequest{
@@ -68,6 +78,10 @@ func (m HandleRequest) IsMutation() bool {
 		pb := m.Proto.GetTenant()
 		return pb.GetNew() != nil || pb.GetUpdate() != nil || pb.GetDelete() != nil
 
+	case m.Proto.GetService() != nil:
+		pb := m.Proto.GetService()
+		return pb.GetNew() != nil || pb.GetUpdate() != nil || pb.GetDelete() != nil
+
 	case m.Proto.GetDomain() != nil:
 		pb := m.Proto.GetDomain()
 		return pb.GetNew() != nil || pb.GetUpdate() != nil || pb.GetDelete() != nil
@@ -94,6 +108,14 @@ func NewHandleTenantResponse(req *internal_v1.TenantResponse) *internal_v1.Leade
 	return &internal_v1.LeaderHandleResponse{
 		Resp: &internal_v1.LeaderHandleResponse_Tenant{
 			Tenant: req,
+		},
+	}
+}
+
+func NewHandleServiceResponse(req *internal_v1.ServiceResponse) *internal_v1.LeaderHandleResponse {
+	return &internal_v1.LeaderHandleResponse{
+		Resp: &internal_v1.LeaderHandleResponse_Service{
+			Service: req,
 		},
 	}
 }

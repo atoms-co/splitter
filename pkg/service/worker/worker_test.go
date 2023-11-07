@@ -32,7 +32,7 @@ func TestWorker(t *testing.T) {
 		func(ctx context.Context, handler grpcx.Handler[leader.WorkerMessage, leader.WorkerMessage]) error {
 			return leaderCon.connect(ctx, handler)
 		},
-		func(ctx context.Context, tenant model.TenantName, state core.State) coordinator.Coordinator {
+		func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator {
 			c := newFakeCoordinator()
 			coordinators <- c
 			return c
@@ -62,14 +62,16 @@ func TestWorker(t *testing.T) {
 
 	t.Run("grant-revoke", func(t *testing.T) {
 		// << grant from leader --> coordinator creation
+		service1 := model.QualifiedServiceName{Tenant: "tenant1", Service: "service1"}
+		service2 := model.QualifiedServiceName{Tenant: "tenant1", Service: "service2"}
 
-		grant := core.NewGrant("grant1", "tenant1", cl.Now().Add(time.Minute), cl.Now())
+		grant := core.NewGrant("grant1", service1, cl.Now().Add(time.Minute), cl.Now())
 		leaderCon.Out <- leader.NewAssign(grant, core.State{})
 		assertx.Element(t, coordinators)
 
 		// << grant2 from leader --> coordinator creation
 
-		grant2 := core.NewGrant("grant2", "tenant2", cl.Now().Add(time.Minute), cl.Now())
+		grant2 := core.NewGrant("grant2", service2, cl.Now().Add(time.Minute), cl.Now())
 		leaderCon.Out <- leader.NewAssign(grant2, core.State{})
 		assertx.Element(t, coordinators)
 

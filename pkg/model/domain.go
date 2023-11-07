@@ -14,45 +14,6 @@ import (
 
 type Version int64
 
-type ServiceName string
-
-type QualifiedServiceName struct {
-	Tenant  TenantName
-	Service ServiceName
-}
-
-func ParseQualifiedServiceNameStr(name string) (QualifiedServiceName, bool) {
-	parts := slicex.Map(strings.Split(name, "/"), strings.TrimSpace)
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return QualifiedServiceName{}, false
-	}
-	return QualifiedServiceName{
-		Tenant:  TenantName(parts[0]),
-		Service: ServiceName(parts[1]),
-	}, true
-}
-
-func ParseQualifiedServiceName(pb *public_v1.QualifiedServiceName) (QualifiedServiceName, error) {
-	if pb.GetTenant() == "" || pb.GetService() == "" {
-		return QualifiedServiceName{}, fmt.Errorf("invalid service name: %v", proto.MarshalTextString(pb))
-	}
-	return QualifiedServiceName{
-		Tenant:  TenantName(pb.GetTenant()),
-		Service: ServiceName(pb.GetService()),
-	}, nil
-}
-
-func (n QualifiedServiceName) ToProto() *public_v1.QualifiedServiceName {
-	return &public_v1.QualifiedServiceName{
-		Tenant:  string(n.Tenant),
-		Service: string(n.Service),
-	}
-}
-
-func (n QualifiedServiceName) String() string {
-	return fmt.Sprintf("%v/%v", n.Tenant, n.Service)
-}
-
 type DomainName string
 
 type QualifiedDomainName struct {
@@ -115,7 +76,18 @@ const (
 	DomainSuspended = public_v1.Domain_SUSPENDED
 )
 
+func ParseDomainState(str string) (DomainState, bool) {
+	v, ok := public_v1.Domain_State_value[strings.ToUpper(str)]
+	return DomainState(v), ok && v != 0
+}
+
 type DomainOption func(tenant *public_v1.Domain)
+
+func WithDomainState(state public_v1.Domain_State) DomainOption {
+	return func(subscription *public_v1.Domain) {
+		subscription.State = state
+	}
+}
 
 func WithDomainConfig(cfg DomainConfig) DomainOption {
 	return func(domain *public_v1.Domain) {
@@ -272,47 +244,6 @@ func (c DomainConfig) ShardingPolicy() ShardingPolicy {
 
 func (c DomainConfig) Regions() []Region {
 	return slicex.Map(c.pb.GetRegions(), func(r string) Region { return Region(r) })
-}
-
-// DomainInfo captures the full domain information.
-type DomainInfo struct {
-	pb *public_v1.DomainInfo
-}
-
-func WrapDomainInfo(pb *public_v1.DomainInfo) DomainInfo {
-	return DomainInfo{pb: pb}
-}
-
-func UnwrapDomainInfo(t DomainInfo) *public_v1.DomainInfo {
-	return t.pb
-}
-
-func NewDomainInfo(domain Domain, version Version, now time.Time) DomainInfo {
-	return WrapDomainInfo(&public_v1.DomainInfo{
-		Domain:    UnwrapDomain(domain),
-		Version:   int64(version),
-		Timestamp: timestamppb.New(now),
-	})
-}
-
-func (t DomainInfo) Name() QualifiedDomainName {
-	return t.Domain().Name()
-}
-
-func (t DomainInfo) Domain() Domain {
-	return WrapDomain(t.pb.GetDomain())
-}
-
-func (t DomainInfo) Version() Version {
-	return Version(t.pb.GetVersion())
-}
-
-func (t DomainInfo) Timestamp() time.Time {
-	return t.pb.GetTimestamp().AsTime()
-}
-
-func (t DomainInfo) String() string {
-	return proto.MarshalTextString(t.pb)
 }
 
 // Key is a UUID key for a domain or placement.

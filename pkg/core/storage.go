@@ -40,10 +40,10 @@ type State struct {
 	pb *internal_v1.State
 }
 
-func NewState(tenant model.TenantInfo, domains []model.DomainInfo, placements []InternalPlacementInfo) State {
+func NewState(tenant model.TenantInfo, services []model.ServiceInfoEx, placements []InternalPlacementInfo) State {
 	return State{pb: &internal_v1.State{
 		Tenant:     model.UnwrapTenantInfo(tenant),
-		Domains:    slicex.Map(domains, model.UnwrapDomainInfo),
+		Services:   slicex.Map(services, model.UnwrapServiceInfoEx),
 		Placements: slicex.Map(placements, UnwrapInternalPlacementInfo),
 	}}
 }
@@ -60,8 +60,8 @@ func (s State) Tenant() model.TenantInfo {
 	return model.WrapTenantInfo(s.pb.GetTenant())
 }
 
-func (s State) Domains() []model.DomainInfo {
-	return slicex.Map(s.pb.GetDomains(), model.WrapDomainInfo)
+func (s State) Services() []model.ServiceInfoEx {
+	return slicex.Map(s.pb.GetServices(), model.WrapServiceInfoEx)
 }
 
 func (s State) Placements() []InternalPlacementInfo {
@@ -87,20 +87,48 @@ func NewTenantUpdate(t model.TenantInfo) Update {
 	})
 }
 
-func NewDomainUpdate(t model.DomainInfo) Update {
+func NewServiceUpdate(s model.ServiceInfo) Update {
 	return WrapUpdate(&internal_v1.Update{
-		Name: string(t.Name().Service.Tenant),
-		Domain: &internal_v1.Update_Domain{
-			Updated: []*public_v1.DomainInfo{model.UnwrapDomainInfo(t)},
+		Name: string(s.Name().Tenant),
+		Service: &internal_v1.Update_Service{
+			Updated: []*internal_v1.ServiceUpdate{{Service: model.UnwrapServiceInfo(s)}},
 		},
 	})
 }
 
-func NewDomainRemoval(t model.QualifiedDomainName) Update {
+func NewServiceRemoval(s model.QualifiedServiceName) Update {
 	return WrapUpdate(&internal_v1.Update{
-		Name: string(t.Service.Tenant),
-		Domain: &internal_v1.Update_Domain{
-			Removed: []*public_v1.QualifiedDomainName{t.ToProto()},
+		Name: string(s.Tenant),
+		Service: &internal_v1.Update_Service{
+			Removed: []*public_v1.QualifiedServiceName{s.ToProto()},
+		},
+	})
+}
+
+func NewDomainUpdate(s model.ServiceInfo, d model.Domain) Update {
+	return WrapUpdate(&internal_v1.Update{
+		Name: string(s.Name().Tenant),
+		Service: &internal_v1.Update_Service{
+			Updated: []*internal_v1.ServiceUpdate{
+				{
+					Service: model.UnwrapServiceInfo(s),
+					Updated: []*public_v1.Domain{model.UnwrapDomain(d)},
+				},
+			},
+		},
+	})
+}
+
+func NewDomainRemoval(s model.ServiceInfo, d model.QualifiedDomainName) Update {
+	return WrapUpdate(&internal_v1.Update{
+		Name: string(s.Name().Tenant),
+		Service: &internal_v1.Update_Service{
+			Updated: []*internal_v1.ServiceUpdate{
+				{
+					Service: model.UnwrapServiceInfo(s),
+					Removed: []*public_v1.QualifiedDomainName{d.ToProto()},
+				},
+			},
 		},
 	})
 }
@@ -142,12 +170,38 @@ func (s Update) TenantUpdated() (model.TenantInfo, bool) {
 	return model.TenantInfo{}, false
 }
 
-func (s Update) DomainsUpdated() []model.DomainInfo {
-	return slicex.Map(s.pb.GetDomain().GetUpdated(), model.WrapDomainInfo)
+func (s Update) ServicesUpdated() []ServiceUpdate {
+	return slicex.Map(s.pb.GetService().GetUpdated(), WrapServiceUpdate)
 }
 
-func (s Update) DomainsRemoved() []model.QualifiedDomainName {
-	return slicex.Map(s.pb.GetDomain().GetRemoved(), func(t *public_v1.QualifiedDomainName) model.QualifiedDomainName {
+func (s Update) ServicesRemoved() []model.QualifiedServiceName {
+	return slicex.Map(s.pb.GetService().GetRemoved(), func(t *public_v1.QualifiedServiceName) model.QualifiedServiceName {
+		ret, _ := model.ParseQualifiedServiceName(t)
+		return ret
+	})
+}
+
+// ServiceUpdate is an incremental update to a single service.
+type ServiceUpdate struct {
+	pb *internal_v1.ServiceUpdate
+}
+
+func WrapServiceUpdate(pb *internal_v1.ServiceUpdate) ServiceUpdate {
+	return ServiceUpdate{pb: pb}
+}
+
+func UnwrapServiceUpdate(t ServiceUpdate) *internal_v1.ServiceUpdate {
+	return t.pb
+}
+func (s ServiceUpdate) Service() model.ServiceInfo {
+	return model.WrapServiceInfo(s.pb.GetService())
+}
+func (s ServiceUpdate) DomainsUpdated() []model.Domain {
+	return slicex.Map(s.pb.GetUpdated(), model.WrapDomain)
+}
+
+func (s ServiceUpdate) DomainsRemoved() []model.QualifiedDomainName {
+	return slicex.Map(s.pb.GetRemoved(), func(t *public_v1.QualifiedDomainName) model.QualifiedDomainName {
 		ret, _ := model.ParseQualifiedDomainName(t)
 		return ret
 	})

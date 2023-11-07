@@ -51,12 +51,55 @@ message DeleteTenantResponse {
 
 }
 
-message ListDomainsRequest {
+message ListServicesRequest {
   string tenant = 1;
 }
 
+message ListServicesResponse {
+  repeated ServiceInfo services = 1;
+}
+
+message NewServiceRequest {
+  QualifiedServiceName name = 1;
+  Service.Config config = 2;
+}
+
+message NewServiceResponse {
+  ServiceInfo service = 1;
+}
+
+message InfoServiceRequest {
+  QualifiedServiceName name = 1;
+}
+
+message InfoServiceResponse {
+  ServiceInfoEx service = 1;
+}
+
+message UpdateServiceRequest {
+  QualifiedServiceName name = 1;
+  int64 version = 2;
+  Service.Config config = 3;
+}
+
+message UpdateServiceResponse {
+  ServiceInfo service = 1;
+}
+
+message DeleteServiceRequest {
+  QualifiedServiceName name = 1;
+}
+
+message DeleteServiceResponse {
+
+}
+
+message ListDomainsRequest {
+  QualifiedServiceName service = 1;
+}
+
 message ListDomainsResponse {
-  repeated DomainInfo domains = 1;
+  repeated Domain domains = 1;
 }
 
 message NewDomainRequest {
@@ -66,25 +109,17 @@ message NewDomainRequest {
 }
 
 message NewDomainResponse {
-  DomainInfo domain = 1;
-}
-
-message InfoDomainRequest {
-  QualifiedDomainName name = 1;
-}
-
-message InfoDomainResponse {
-  DomainInfo domain = 1;
+  Domain domain = 1;
 }
 
 message UpdateDomainRequest {
   QualifiedDomainName name = 1;
-  int64 version = 2;
+  int64 service_version = 2;
   Domain.Config config = 3;
 }
 
 message UpdateDomainResponse {
-  DomainInfo domain = 1;
+  Domain domain = 1;
 }
 
 message DeleteDomainRequest {
@@ -103,9 +138,14 @@ service ManagementService {
   rpc UpdateTenant (UpdateTenantRequest) returns (UpdateTenantResponse);
   rpc DeleteTenant (DeleteTenantRequest) returns (DeleteTenantResponse);
 
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse);
+  rpc NewService (NewServiceRequest) returns (NewServiceResponse);
+  rpc InfoService (InfoServiceRequest) returns (InfoServiceResponse);
+  rpc UpdateService (UpdateServiceRequest) returns (UpdateServiceResponse);
+  rpc DeleteService (DeleteServiceRequest) returns (DeleteServiceResponse);
+
   rpc ListDomains(ListDomainsRequest) returns (ListDomainsResponse);
   rpc NewDomain (NewDomainRequest) returns (NewDomainResponse);
-  rpc InfoDomain (InfoDomainRequest) returns (InfoDomainResponse);
   rpc UpdateDomain (UpdateDomainRequest) returns (UpdateDomainResponse);
   rpc DeleteDomain (DeleteDomainRequest) returns (DeleteDomainResponse);
 }

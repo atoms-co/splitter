@@ -225,14 +225,14 @@ func (m *ShardManager) assignGrant(g model.GrantID, consumer model.Instance) {
 }
 
 func createShards(ctx context.Context, state core.State) []model.Shard {
-	tenant := state.Tenant().Tenant()
+	service := state.Services()[0] // Guaranteed single service state
 	placements := state.Placements()
-	return slicex.FlatMap(state.Domains(), func(info model.DomainInfo) []model.Shard {
-		return createDomainShards(ctx, tenant, info.Domain(), placements)
+	return slicex.FlatMap(service.Domains(), func(d model.Domain) []model.Shard {
+		return createDomainShards(ctx, service.Info().Service(), d, placements)
 	})
 }
 
-func createDomainShards(ctx context.Context, tenant model.Tenant, domain model.Domain, placements []core.InternalPlacementInfo) []model.Shard {
+func createDomainShards(ctx context.Context, service model.Service, domain model.Domain, placements []core.InternalPlacementInfo) []model.Shard {
 	var shards []model.Shard
 
 	if domain.State() == model.DomainSuspended {
@@ -241,7 +241,7 @@ func createDomainShards(ctx context.Context, tenant model.Tenant, domain model.D
 
 	switch domain.Type() {
 	case model.Unit:
-		r, _ := tenant.Region()
+		r, _ := service.Region()
 		shards = append(shards, model.Shard{
 			Region: r,
 			Domain: domain.Name(),
@@ -252,7 +252,7 @@ func createDomainShards(ctx context.Context, tenant model.Tenant, domain model.D
 		if name, ok := domain.Config().Placement(); ok {
 			placement, ok := slicex.First(placements, func(info core.InternalPlacementInfo) bool {
 				pname := info.InternalPlacement().Name()
-				return pname.Tenant == tenant.Name() && pname.Placement == name
+				return pname.Tenant == service.Name().Tenant && pname.Placement == name
 			})
 			if ok {
 				if placement.InternalPlacement().State() == core.PlacementActive {
@@ -260,8 +260,8 @@ func createDomainShards(ctx context.Context, tenant model.Tenant, domain model.D
 				}
 			}
 		} else {
-			r, _ := tenant.Region()
-			shards = append(shards, model.NewShards(r, domain.Name(), shardingPolicy(tenant, domain).Shards())...)
+			r, _ := service.Region()
+			shards = append(shards, model.NewShards(r, domain.Name(), shardingPolicy(service, domain).Shards())...)
 		}
 	case model.Regional:
 		domainShards := slicex.FlatMap(domain.Config().Regions(), func(r model.Region) []model.Shard {
@@ -281,9 +281,9 @@ func createPlacementShards(domain model.Domain, placement core.InternalPlacement
 	return shards
 }
 
-func shardingPolicy(tenant model.Tenant, domain model.Domain) model.ShardingPolicy {
+func shardingPolicy(service model.Service, domain model.Domain) model.ShardingPolicy {
 	if domain.Config().ShardingPolicy() == model.WrapShardingPolicy(nil) {
-		return tenant.Config().DefaultShardingPolicy()
+		return service.Config().DefaultShardingPolicy()
 	}
 	return domain.Config().ShardingPolicy()
 }

@@ -17,21 +17,24 @@ var (
 
 func makeListDomainCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "list <tenant>",
+		Use:          "list <tenant>/<service>",
 		Short:        "List domains",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		tenant := splitter.TenantName(args[0])
+		service, ok := splitter.ParseQualifiedServiceNameStr(args[0])
+		if !ok {
+			return fmt.Errorf("invalid qualified service name: %v", args[0])
+		}
 		return withClient(func(ctx context.Context, client model.Client) error {
-			list, err := client.ListDomains(ctx, tenant)
+			list, err := client.ListDomains(ctx, service)
 			if err != nil {
 				return err
 			}
 			for _, info := range list {
-				printJson(model.UnwrapDomainInfo(info), false)
+				printJson(model.UnwrapDomain(info), false)
 			}
 			return nil
 		})
@@ -59,34 +62,7 @@ func makeNewDomainCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printJson(splitter.UnwrapDomainInfo(domain), true)
-			return nil
-		})
-	}
-
-	return cmd
-}
-
-func makeReadDomainCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:          "read <tenant>/<service>/<domain>",
-		Short:        "Show domain information",
-		Args:         cobra.ExactArgs(1),
-		SilenceUsage: true,
-	}
-
-	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
-		if !ok {
-			return fmt.Errorf("invalid qualified domain name: %v", args[0])
-		}
-
-		return withClient(func(ctx context.Context, client model.Client) error {
-			info, err := client.InfoDomain(ctx, name)
-			if err != nil {
-				return err
-			}
-			printJson(model.UnwrapDomainInfo(info), true)
+			printJson(splitter.UnwrapDomain(domain), true)
 			return nil
 		})
 	}
@@ -102,14 +78,41 @@ func makeUpdateDomainCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 
+	state := cmd.Flags().String("state", "", "State")
+
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		_, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
+		var opts []splitter.DomainOption
+		if state != nil && *state != "" {
+			s, ok := splitter.ParseDomainState(*state)
+			if !ok {
+				return fmt.Errorf("invalid state: %v", *state)
+			}
+			opts = append(opts, splitter.WithDomainState(s))
+		}
+
 		return withClient(func(ctx context.Context, client model.Client) error {
-			// TODO(jhhurwitz): 09/01/2023: Implement
+			service, err := client.InfoService(ctx, name.Service)
+			if err != nil {
+				return err
+			}
+			domain, ok := service.Domain(name.Domain)
+			if !ok {
+				return fmt.Errorf("subscription %v not found", name)
+			}
+			upd, err := splitter.UpdateDomain(domain, opts...)
+			if err != nil {
+				return err
+			}
+			t, err := client.UpdateDomain(ctx, upd, service.Info().Version())
+			if err != nil {
+				return fmt.Errorf("update domain failed: %v", err)
+			}
+			printJson(splitter.UnwrapDomain(t), true)
 			return nil
 		})
 	}

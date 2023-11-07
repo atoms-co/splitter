@@ -16,7 +16,9 @@ import (
 )
 
 const (
-	tenant1 model.TenantName = "tenant1"
+	tenant1  model.TenantName  = "tenant1"
+	service1 model.ServiceName = "service1"
+	domain1  model.DomainName  = "domain1"
 )
 
 func TestLeader(t *testing.T) {
@@ -27,13 +29,23 @@ func TestLeader(t *testing.T) {
 
 	tenant, err := model.NewTenant(tenant1, cl.Now())
 	require.NoError(t, err)
-	name, _ := model.ParseQualifiedDomainNameStr("tenant1/service/domain")
-	domain, err := model.NewDomain(name, model.Unit, cl.Now())
+
+	serviceName := model.QualifiedServiceName{Tenant: tenant1, Service: service1}
+	service, err := model.NewService(serviceName, cl.Now())
+	require.NoError(t, err)
+
+	domainName := model.QualifiedDomainName{Service: serviceName, Domain: domain1}
+	domain, err := model.NewDomain(domainName, model.Unit, cl.Now())
 	require.NoError(t, err)
 
 	err = db.Update(ctx, core.NewTenantUpdate(model.NewTenantInfo(tenant, 1, cl.Now())))
 	require.NoError(t, err)
-	err = db.Update(ctx, core.NewDomainUpdate(model.NewDomainInfo(domain, 1, cl.Now())))
+
+	serviceInfo := model.NewServiceInfo(service, 1, cl.Now())
+	err = db.Update(ctx, core.NewServiceUpdate(serviceInfo))
+	require.NoError(t, err)
+
+	err = db.Update(ctx, core.NewDomainUpdate(model.NewServiceInfo(service, 2, cl.Now()), domain))
 	require.NoError(t, err)
 
 	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
@@ -47,7 +59,7 @@ func TestLeader(t *testing.T) {
 	require.NoError(t, err, "worker failed to join leader")
 
 	assign := readFn(t, out, isAssign)
-	assert.Equal(t, tenant1, assign.Grant().Tenant())
+	assert.Equal(t, serviceName, assign.Grant().Service())
 
 	l.Close()
 }

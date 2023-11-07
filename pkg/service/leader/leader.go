@@ -475,6 +475,13 @@ func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 		}
 		return NewHandleTenantResponse(ret), nil
 
+	case req.Proto.GetService() != nil:
+		ret, err := l.handleServiceRequest(ctx, req.Proto.GetService())
+		if err != nil {
+			return nil, err
+		}
+		return NewHandleServiceResponse(ret), nil
+
 	case req.Proto.GetDomain() != nil:
 		ret, err := l.handleDomainRequest(ctx, req.Proto.GetDomain())
 		if err != nil {
@@ -490,7 +497,7 @@ func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 		return NewHandlePlacementResponse(ret), nil
 
 	default:
-		return nil, fmt.Errorf("invalid request")
+		return nil, fmt.Errorf("invalid handle request: %v", req)
 	}
 }
 
@@ -502,7 +509,7 @@ func (l *Leader) handleTenantRequest(ctx context.Context, req *internal_v1.Tenan
 		case req.GetInfo() != nil:
 			return l.handleInfoTenantRequest(ctx, req.GetInfo())
 		default:
-			return nil, fmt.Errorf("invalid request")
+			return nil, fmt.Errorf("invalid tenant request: %v", req)
 		}
 	})
 }
@@ -534,50 +541,74 @@ func (l *Leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.Inf
 	}, nil
 }
 
+func (l *Leader) handleServiceRequest(ctx context.Context, req *internal_v1.ServiceRequest) (*internal_v1.ServiceResponse, error) {
+	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (*internal_v1.ServiceResponse, error) {
+		switch {
+		case req.GetList() != nil:
+			return l.handleListServicesRequest(ctx, req.GetList())
+		case req.GetInfo() != nil:
+			return l.handleInfoServiceRequest(ctx, req.GetInfo())
+		default:
+			return nil, fmt.Errorf("invalid service request: %v", req)
+		}
+	})
+}
+
+func (l *Leader) handleListServicesRequest(ctx context.Context, req *public_v1.ListServicesRequest) (*internal_v1.ServiceResponse, error) {
+	return &internal_v1.ServiceResponse{
+		Resp: &internal_v1.ServiceResponse_List{
+			List: &public_v1.ListServicesResponse{
+				Services: slicex.Map(l.cache.Services(model.TenantName(req.GetTenant())), model.UnwrapServiceInfo),
+			},
+		},
+	}, nil
+}
+
+func (l *Leader) handleInfoServiceRequest(ctx context.Context, req *public_v1.InfoServiceRequest) (*internal_v1.ServiceResponse, error) {
+	name, err := model.ParseQualifiedServiceName(req.GetName())
+	if err != nil {
+		return nil, model.ErrInvalid
+	}
+
+	info, ok := l.cache.Service(name)
+	if !ok {
+		return nil, model.ErrNotFound
+	}
+
+	return &internal_v1.ServiceResponse{
+		Resp: &internal_v1.ServiceResponse_Info{
+			Info: &public_v1.InfoServiceResponse{
+				Service: model.UnwrapServiceInfoEx(info),
+			},
+		},
+	}, nil
+}
+
 func (l *Leader) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (*internal_v1.DomainResponse, error) {
 	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (*internal_v1.DomainResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListDomainsRequest(ctx, req.GetList())
-		case req.GetInfo() != nil:
-			return l.handleInfoDomainRequest(ctx, req.GetInfo())
 		default:
-			return nil, fmt.Errorf("invalid request")
+			return nil, fmt.Errorf("invalid domain request: %v", req)
 		}
 	})
 }
 
 func (l *Leader) handleListDomainsRequest(ctx context.Context, req *public_v1.ListDomainsRequest) (*internal_v1.DomainResponse, error) {
-	name := model.TenantName(req.GetTenant())
+	name, err := model.ParseQualifiedServiceName(req.GetService())
+	if err != nil {
+		return nil, model.ErrInvalid
+	}
 
-	if _, ok := l.cache.Tenant(name); !ok {
+	if _, ok := l.cache.Service(name); !ok {
 		return nil, model.ErrNotFound
 	}
 
 	return &internal_v1.DomainResponse{
 		Resp: &internal_v1.DomainResponse_List{
 			List: &public_v1.ListDomainsResponse{
-				Domains: slicex.Map(l.cache.Domains(name), model.UnwrapDomainInfo),
-			},
-		},
-	}, nil
-}
-
-func (l *Leader) handleInfoDomainRequest(ctx context.Context, req *public_v1.InfoDomainRequest) (*internal_v1.DomainResponse, error) {
-	name, err := model.ParseQualifiedDomainName(req.GetName())
-	if err != nil {
-		return nil, model.ErrInvalid
-	}
-
-	info, ok := l.cache.Domain(name)
-	if !ok {
-		return nil, model.ErrNotFound
-	}
-
-	return &internal_v1.DomainResponse{
-		Resp: &internal_v1.DomainResponse_Info{
-			Info: &public_v1.InfoDomainResponse{
-				Domain: model.UnwrapDomainInfo(info),
+				Domains: slicex.Map(l.cache.Domains(name), model.UnwrapDomain),
 			},
 		},
 	}, nil
@@ -591,7 +622,7 @@ func (l *Leader) handlePlacementRequest(ctx context.Context, req *internal_v1.Pl
 		case req.GetInfo() != nil:
 			return l.handleInfoPlacementRequest(ctx, req.GetInfo())
 		default:
-			return nil, fmt.Errorf("invalid request")
+			return nil, fmt.Errorf("invalid placement request: %v", req)
 		}
 	})
 }

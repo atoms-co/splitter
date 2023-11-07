@@ -31,18 +31,15 @@ func updateAllocation(alloc *Allocation, snapshot core.Snapshot, activation time
 func findWork(snapshot core.Snapshot) []Work {
 	var ret []Work
 	for _, tenant := range snapshot.Tenants() {
-		services := mapx.New(tenant.Domains(), func(v model.DomainInfo) model.QualifiedServiceName {
-			return v.Name().Service
+		services := mapx.New(tenant.Services(), func(v model.ServiceInfoEx) model.ServiceInfo {
+			return v.Info()
 		})
-
-		// TODO(herohde) 11/3/2023: fix when protos are in place for service allocation.
-
 		for s := range services {
 			w := Work{
-				Unit: s,
+				Unit: s.Name(),
 				Load: 10,
 			}
-			if r, ok := tenant.Tenant().Tenant().Region(); ok {
+			if r, ok := s.Service().Region(); ok {
 				w.Location.Region = r
 			}
 			ret = append(ret, w)
@@ -53,5 +50,5 @@ func findWork(snapshot core.Snapshot) []Work {
 }
 
 func toGrant(g Grant) core.Grant {
-	return core.NewGrant(g.ID, g.Unit.Tenant, g.Expiration, g.Assigned)
+	return core.NewGrant(g.ID, g.Unit, g.Expiration, g.Assigned)
 }

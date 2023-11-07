@@ -70,12 +70,6 @@ func (t Tenant) Config() TenantConfig {
 	return WrapTenantConfig(t.pb.GetConfig())
 }
 
-// Region returns a region preference for coordinator and UNIT/GLOBAL domains. Optional.
-func (t Tenant) Region() (Region, bool) {
-	r := t.pb.GetConfig().GetRegion()
-	return Region(r), r != ""
-}
-
 func (t Tenant) Equals(t1 Tenant) bool {
 	return proto.Equal(t.pb, t1.pb)
 }
@@ -86,27 +80,13 @@ func (t Tenant) String() string {
 
 type TenantConfigOption func(cfg *public_v1.Tenant_Config)
 
-func WithTenantRegion(region Region) TenantConfigOption {
-	return func(cfg *public_v1.Tenant_Config) {
-		cfg.Region = string(region)
-	}
-}
-
-func WithTenantDefaultShardingPolicy(policy ShardingPolicy) TenantConfigOption {
-	return func(cfg *public_v1.Tenant_Config) {
-		cfg.DefaultShardingPolicy = UnwrapShardingPolicy(policy)
-	}
-}
-
 // TenantConfig holds tenant configuration.
 type TenantConfig struct {
 	pb *public_v1.Tenant_Config
 }
 
-func NewTenantConfig(region Region, opts ...TenantConfigOption) TenantConfig {
-	pb := &public_v1.Tenant_Config{
-		Region: string(region),
-	}
+func NewTenantConfig(opts ...TenantConfigOption) TenantConfig {
+	pb := &public_v1.Tenant_Config{}
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -134,10 +114,6 @@ func WrapTenantConfig(pb *public_v1.Tenant_Config) TenantConfig {
 
 func UnwrapTenantConfig(cfg TenantConfig) *public_v1.Tenant_Config {
 	return cfg.pb
-}
-
-func (c TenantConfig) DefaultShardingPolicy() ShardingPolicy {
-	return WrapShardingPolicy(c.pb.GetDefaultShardingPolicy())
 }
 
 // TenantInfo captures the full tenant information.

@@ -41,18 +41,17 @@ func makeListTenantCmd() *cobra.Command {
 
 func makeNewTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "new <tenant> <region>",
+		Use:          "new <tenant>",
 		Short:        "New tenant",
-		Args:         cobra.ExactArgs(2),
+		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name := splitter.TenantName(args[0])
-		region := splitter.Region(args[1])
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			tenant, err := client.NewTenant(ctx, name, splitter.NewTenantConfig(region))
+			tenant, err := client.NewTenant(ctx, name, splitter.NewTenantConfig())
 			if err != nil {
 				return err
 			}
@@ -96,8 +95,6 @@ func makeUpdateTenantCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	region := cmd.Flags().String("region", "", "Region")
-
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name := splitter.TenantName(args[0])
 
@@ -108,9 +105,7 @@ func makeUpdateTenantCmd() *cobra.Command {
 			}
 
 			var opts []splitter.TenantConfigOption
-			if *region != "" {
-				opts = append(opts, splitter.WithTenantRegion(splitter.Region(*region)))
-			}
+			// TODO(jhhurwitz): 11/1/23 Add flags to update when something to update
 			cfg, err := splitter.UpdateTenantConfig(info.Tenant(), opts...)
 			if err != nil {
 				return err

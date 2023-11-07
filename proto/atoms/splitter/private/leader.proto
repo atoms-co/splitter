@@ -3,6 +3,7 @@ syntax = "proto3";
 package atoms.splitter.private;
 
 import "splitter/proto/public_v1/consumer.proto";
+import "splitter/proto/public_v1/management.proto";
 import "splitter/proto/public_v1/managementapi.proto";
 import "splitter/proto/internal_v1/operation.proto";
 import "splitter/proto/internal_v1/placement.proto";
@@ -33,13 +34,32 @@ message TenantResponse {
   }
 }
 
+message ServiceRequest {
+  oneof req {
+    atoms.splitter.ListServicesRequest list = 1;
+    atoms.splitter.NewServiceRequest new = 2;
+    atoms.splitter.InfoServiceRequest info = 3;
+    atoms.splitter.UpdateServiceRequest update = 4;
+    atoms.splitter.DeleteServiceRequest delete = 5;
+  }
+}
+
+message ServiceResponse {
+  oneof resp {
+    atoms.splitter.ListServicesResponse list = 1;
+    atoms.splitter.NewServiceResponse new = 2;
+    atoms.splitter.InfoServiceResponse info = 3;
+    atoms.splitter.UpdateServiceResponse update = 4;
+    atoms.splitter.DeleteServiceResponse delete = 5;
+  }
+}
+
 message DomainRequest {
   oneof req {
     atoms.splitter.ListDomainsRequest list = 1;
     atoms.splitter.NewDomainRequest new = 2;
-    atoms.splitter.InfoDomainRequest info = 3;
-    atoms.splitter.UpdateDomainRequest update = 4;
-    atoms.splitter.DeleteDomainRequest delete = 5;
+    atoms.splitter.UpdateDomainRequest update = 3;
+    atoms.splitter.DeleteDomainRequest delete = 4;
   }
 }
 
@@ -47,9 +67,8 @@ message DomainResponse {
   oneof resp {
     atoms.splitter.ListDomainsResponse list = 1;
     atoms.splitter.NewDomainResponse new = 2;
-    atoms.splitter.InfoDomainResponse info = 3;
-    atoms.splitter.UpdateDomainResponse update = 4;
-    atoms.splitter.DeleteDomainResponse delete = 5;
+    atoms.splitter.UpdateDomainResponse update = 3;
+    atoms.splitter.DeleteDomainResponse delete = 4;
   }
 }
 
@@ -90,9 +109,10 @@ message OperationResponse {
 message LeaderHandleRequest {
   oneof req {
     TenantRequest tenant = 1;
-    DomainRequest domain = 2;
-    PlacementRequest placement = 3;
-    OperationRequest operation = 4;
+    ServiceRequest service = 2;
+    DomainRequest domain = 3;
+    PlacementRequest placement = 4;
+    OperationRequest operation = 5;
   }
 }
 
@@ -100,16 +120,17 @@ message LeaderHandleRequest {
 message LeaderHandleResponse {
   oneof resp {
     TenantResponse tenant = 1;
-    DomainResponse domain = 2;
-    PlacementResponse placement = 3;
-    OperationResponse operation = 4;
+    ServiceResponse service = 2;
+    DomainResponse domain = 3;
+    PlacementResponse placement = 4;
+    OperationResponse operation = 5;
   }
 }
 
 // Grant represents a granted tenant with an implicit lease.
 message Grant {
   string id = 1;
-  string tenant = 2;
+  atoms.splitter.QualifiedServiceName service = 2;
   google.protobuf.Timestamp lease = 3;
   google.protobuf.Timestamp assigned = 4; // informational
 }

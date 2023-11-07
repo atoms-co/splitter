@@ -28,7 +28,7 @@ type Grant struct {
 }
 
 func (g *Grant) ToUpdated() core.Grant {
-	return core.NewGrant(g.Grant.ID(), g.Grant.Tenant(), g.Lease.Expiration(), g.Grant.Assigned())
+	return core.NewGrant(g.Grant.ID(), g.Grant.Service(), g.Lease.Expiration(), g.Grant.Assigned())
 }
 
 func (g *Grant) String() string {

@@ -26,7 +26,7 @@ const (
 
 type JoinFn func(ctx context.Context, handler grpcx.Handler[leader.WorkerMessage, leader.WorkerMessage]) error
 
-type CoordinatorFactory func(ctx context.Context, tenant model.TenantName, state core.State) coordinator.Coordinator
+type CoordinatorFactory func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator
 
 type joinStatus struct {
 	connected time.Time
@@ -253,7 +253,7 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 			// Grant not present, check for conflicting grants
 
 			for _, old := range w.grants {
-				if old.Grant.Tenant() == grant.Tenant() {
+				if old.Grant.Service() == grant.Service() {
 					log.Warnf(ctx, "Internal: grant %v replaces existing grant: %v", grant, old)
 				}
 			}
@@ -265,7 +265,7 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 			Lease: w.lease,
 		}
 
-		c := w.factory(ctx, grant.Tenant(), state)
+		c := w.factory(ctx, grant.Service(), state)
 		w.grants[grant.ID()].Coordinator = c // TODO(jhhurwitz) 10/31/23 Consider async Coordinator creation
 
 		go func() {

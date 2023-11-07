@@ -16,10 +16,10 @@ type Grant struct {
 	pb *internal_v1.Grant
 }
 
-func NewGrant(id GrantID, name model.TenantName, lease, assigned time.Time) Grant {
+func NewGrant(id GrantID, name model.QualifiedServiceName, lease, assigned time.Time) Grant {
 	return WrapGrant(&internal_v1.Grant{
 		Id:       string(id),
-		Tenant:   string(name),
+		Service:  name.ToProto(),
 		Lease:    timestamppb.New(lease),
 		Assigned: timestamppb.New(assigned),
 	})
@@ -37,8 +37,9 @@ func (g Grant) ID() GrantID {
 	return GrantID(g.pb.GetId())
 }
 
-func (g Grant) Tenant() model.TenantName {
-	return model.TenantName(g.pb.GetTenant())
+func (g Grant) Service() model.QualifiedServiceName {
+	ret, _ := model.ParseQualifiedServiceName(g.pb.GetService())
+	return ret
 }
 
 func (g Grant) Lease() time.Time {
@@ -50,5 +51,5 @@ func (g Grant) Assigned() time.Time {
 }
 
 func (g Grant) String() string {
-	return fmt.Sprintf("[id:%v]tenant:%v, lease: %v, assigned:%v", g.ID(), g.Tenant(), g.Lease(), g.Assigned())
+	return fmt.Sprintf("[id:%v]tenant:%v, lease: %v, assigned:%v", g.ID(), g.Service(), g.Lease(), g.Assigned())
 }

@@ -12,9 +12,15 @@ type Tenants interface {
 	Delete(name model.TenantName) (core.Delete, error)
 }
 
+type Services interface {
+	Create(service model.Service) (core.Update, model.ServiceInfo, error)
+	Update(service model.Service, guard model.Version) (core.Update, model.ServiceInfo, error)
+	Delete(name model.QualifiedServiceName) (core.Update, error)
+}
+
 type Domains interface {
-	Create(domain model.Domain) (core.Update, model.DomainInfo, error)
-	Update(domain model.Domain, guard model.Version) (core.Update, model.DomainInfo, error)
+	Create(domain model.Domain) (core.Update, model.Domain, error)
+	Update(domain model.Domain, guard model.Version) (core.Update, model.Domain, error)
 	Delete(name model.QualifiedDomainName) (core.Update, error)
 }
 
@@ -37,6 +43,7 @@ func Join(current, next core.Update) (core.Update, bool) {
 // persisted data. Not thread-safe.
 type Writer struct {
 	Tenants    Tenants
+	Services   Services
 	Domains    Domains
 	Placements Placements
 
@@ -50,6 +57,7 @@ func NewWriter(cl clock.Clock, snapshot core.Snapshot) *Writer {
 		db: NewCache(),
 	}
 	ret.Tenants = (*tenants)(ret)
+	ret.Services = (*services)(ret)
 	ret.Domains = (*domains)(ret)
 	ret.Placements = (*placements)(ret)
 
@@ -98,41 +106,89 @@ func (t *tenants) update(tenant model.Tenant, version model.Version) (core.Updat
 	return upd, info, t.db.Update(upd, true)
 }
 
-type domains Writer
+type services Writer
 
-func (d *domains) Create(domain model.Domain) (core.Update, model.DomainInfo, error) {
-	if _, ok := d.db.Tenant(domain.Name().Service.Tenant); !ok {
-		return core.Update{}, model.DomainInfo{}, model.ErrNotFound
+func (s *services) Create(service model.Service) (core.Update, model.ServiceInfo, error) {
+	if _, ok := s.db.Tenant(service.Name().Tenant); !ok {
+		return core.Update{}, model.ServiceInfo{}, model.ErrNotFound
 	}
-	if _, ok := d.db.Domain(domain.Name()); ok {
-		return core.Update{}, model.DomainInfo{}, model.ErrAlreadyExists
+	if _, ok := s.db.Service(service.Name()); ok {
+		return core.Update{}, model.ServiceInfo{}, model.ErrAlreadyExists
 	}
-	return d.update(domain, 1)
+	info := model.NewServiceInfo(service, 1, s.cl.Now())
+	upd := core.NewServiceUpdate(info)
+
+	return upd, info, s.db.Update(upd, true)
 }
 
-func (d *domains) Update(domain model.Domain, guard model.Version) (core.Update, model.DomainInfo, error) {
-	cur, ok := d.db.Domain(domain.Name())
+func (s *services) Update(service model.Service, guard model.Version) (core.Update, model.ServiceInfo, error) {
+	cur, ok := s.db.Service(service.Name())
 	if !ok {
-		return core.Update{}, model.DomainInfo{}, model.ErrNotFound
+		return core.Update{}, model.ServiceInfo{}, model.ErrNotFound
 	}
-	if cur.Version() != guard {
-		return core.Update{}, model.DomainInfo{}, model.ErrVersionMismatch
+	if cur.Info().Version() != guard {
+		return core.Update{}, model.ServiceInfo{}, model.ErrVersionMismatch
 	}
-	return d.update(domain, guard+1)
+	info := model.NewServiceInfo(service, guard+1, s.cl.Now())
+	upd := core.NewServiceUpdate(info)
+
+	return upd, info, s.db.Update(upd, true)
+}
+
+func (s *services) Delete(name model.QualifiedServiceName) (core.Update, error) {
+	if _, ok := s.db.Service(name); !ok {
+		return core.Update{}, model.ErrNotFound
+	}
+	upd := core.NewServiceRemoval(name)
+
+	return upd, s.db.Update(upd, true)
+}
+
+type domains Writer
+
+func (d *domains) Create(domain model.Domain) (core.Update, model.Domain, error) {
+	service, ok := d.db.Service(domain.Name().Service)
+	if !ok {
+		return core.Update{}, model.Domain{}, model.ErrNotFound
+	}
+	if _, ok := d.db.Domain(domain.Name()); ok {
+		return core.Update{}, model.Domain{}, model.ErrAlreadyExists
+	}
+	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, d.cl.Now())
+	upd := core.NewDomainUpdate(info, domain)
+
+	return upd, domain, d.db.Update(upd, true)
+}
+
+func (d *domains) Update(domain model.Domain, guard model.Version) (core.Update, model.Domain, error) {
+	service, ok := d.db.Service(domain.Name().Service)
+	if !ok {
+		return core.Update{}, model.Domain{}, model.ErrNotFound
+	}
+	if _, ok := d.db.Domain(domain.Name()); !ok {
+		return core.Update{}, model.Domain{}, model.ErrNotFound
+	}
+	if service.Info().Version() != guard {
+		return core.Update{}, model.Domain{}, model.ErrVersionMismatch
+	}
+	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, d.cl.Now())
+	upd := core.NewDomainUpdate(info, domain)
+
+	return upd, domain, d.db.Update(upd, true)
 }
 
 func (d *domains) Delete(name model.QualifiedDomainName) (core.Update, error) {
+	service, ok := d.db.Service(name.Service)
+	if !ok {
+		return core.Update{}, model.ErrNotFound
+	}
 	if _, ok := d.db.Domain(name); !ok {
 		return core.Update{}, model.ErrNotFound
 	}
-	upd := core.NewDomainRemoval(name)
-	return upd, d.db.Update(upd, true)
-}
+	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, d.cl.Now())
+	upd := core.NewDomainRemoval(info, name)
 
-func (d *domains) update(domain model.Domain, version model.Version) (core.Update, model.DomainInfo, error) {
-	info := model.NewDomainInfo(domain, version, d.cl.Now())
-	upd := core.NewDomainUpdate(info)
-	return upd, info, d.db.Update(upd, true)
+	return upd, d.db.Update(upd, true)
 }
 
 type placements Writer

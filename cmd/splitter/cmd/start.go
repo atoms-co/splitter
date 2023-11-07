@@ -151,8 +151,8 @@ func makeStartCommand() *cobra.Command {
 		w := worker.New(cl, self,
 			func(ctx context.Context, handler grpcx.Handler[leader.WorkerMessage, leader.WorkerMessage]) error {
 				return nil
-			}, func(ctx context.Context, tenant model.TenantName, state core.State) coordinator.Coordinator {
-				return coordinator.New(ctx, cl, tenant, state, nil /* stateUpdates */)
+			}, func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator {
+				return coordinator.New(ctx, cl, service, state, nil /* stateUpdates */)
 			})
 
 		s := server.New(ctx, cl, loc, c, manager, resolver, w)

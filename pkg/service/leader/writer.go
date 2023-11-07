@@ -86,6 +86,13 @@ func (w *Writer) handle(ctx context.Context, req HandleRequest) (iox.AsyncCloser
 		}
 		return done, NewHandleTenantResponse(ret), nil
 
+	case req.Proto.GetService() != nil:
+		done, ret, err := w.handleServiceRequest(ctx, req.Proto.GetService())
+		if err != nil {
+			return nil, nil, err
+		}
+		return done, NewHandleServiceResponse(ret), nil
+
 	case req.Proto.GetDomain() != nil:
 		done, ret, err := w.handleDomainRequest(ctx, req.Proto.GetDomain())
 		if err != nil {
@@ -202,7 +209,107 @@ func (w *Writer) handleDeleteTenantRequest(ctx context.Context, req *public_v1.D
 			Delete: &public_v1.DeleteTenantResponse{},
 		},
 	}, nil
+}
 
+func (w *Writer) handleServiceRequest(ctx context.Context, req *internal_v1.ServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
+	switch {
+	case req.GetNew() != nil:
+		return w.handleNewServiceRequest(ctx, req.GetNew())
+	case req.GetUpdate() != nil:
+		return w.handleUpdateServiceRequest(ctx, req.GetUpdate())
+	case req.GetDelete() != nil:
+		return w.handleDeleteServiceRequest(ctx, req.GetDelete())
+	default:
+		return nil, nil, fmt.Errorf("invalid mutation")
+	}
+}
+
+func (w *Writer) handleNewServiceRequest(ctx context.Context, req *public_v1.NewServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
+	name, err := model.ParseQualifiedServiceName(req.GetName())
+	if err != nil {
+		return nil, nil, model.ErrInvalid
+	}
+
+	var opts []model.ServiceOption
+	if cfg := req.GetConfig(); cfg != nil {
+		opts = append(opts, model.WithServiceConfig(model.WrapServiceConfig(cfg)))
+	}
+	service, err := model.NewService(name, w.cl.Now(), opts...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	upd, info, err := w.writer.Services.Create(service)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.ServiceResponse{
+		Resp: &internal_v1.ServiceResponse_New{
+			New: &public_v1.NewServiceResponse{
+				Service: model.UnwrapServiceInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (w *Writer) handleUpdateServiceRequest(ctx context.Context, req *public_v1.UpdateServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
+	name, err := model.ParseQualifiedServiceName(req.GetName())
+	if err != nil {
+		return nil, nil, model.ErrInvalid
+	}
+	guard := model.Version(req.GetVersion())
+
+	infoEx, ok := w.cache.Service(name)
+	if !ok {
+		return nil, nil, model.ErrNotFound
+	}
+
+	var opts []model.ServiceOption
+	if req.GetConfig() != nil {
+		opts = append(opts, model.WithServiceConfig(model.WrapServiceConfig(req.GetConfig())))
+	}
+	if len(opts) == 0 {
+		return nil, nil, model.ErrInvalid
+	}
+	service, err := model.UpdateService(infoEx.Info().Service(), opts...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	upd, info, err := w.writer.Services.Update(service, guard)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.ServiceResponse{
+		Resp: &internal_v1.ServiceResponse_Update{
+			Update: &public_v1.UpdateServiceResponse{
+				Service: model.UnwrapServiceInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (w *Writer) handleDeleteServiceRequest(ctx context.Context, req *public_v1.DeleteServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
+	name, err := model.ParseQualifiedServiceName(req.GetName())
+	if err != nil {
+		return nil, nil, model.ErrInvalid
+	}
+
+	upd, err := w.writer.Services.Delete(name)
+	if err != nil {
+		return nil, nil, err
+	}
+	done := w.updateAsync(ctx, upd)
+
+	return done, &internal_v1.ServiceResponse{
+		Resp: &internal_v1.ServiceResponse_Delete{
+			Delete: &public_v1.DeleteServiceResponse{},
+		},
+	}, nil
 }
 
 func (w *Writer) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
@@ -242,7 +349,7 @@ func (w *Writer) handleNewDomainRequest(ctx context.Context, req *public_v1.NewD
 	return done, &internal_v1.DomainResponse{
 		Resp: &internal_v1.DomainResponse_New{
 			New: &public_v1.NewDomainResponse{
-				Domain: model.UnwrapDomainInfo(info),
+				Domain: model.UnwrapDomain(info),
 			},
 		},
 	}, nil
@@ -253,9 +360,14 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.U
 	if err != nil {
 		return nil, nil, model.ErrInvalid
 	}
-	guard := model.Version(req.GetVersion())
 
-	info, ok := w.cache.Domain(name)
+	service, ok := w.cache.Service(name.Service)
+	if !ok {
+		return nil, nil, model.ErrNotFound
+	}
+	guard := service.Info().Version()
+
+	existing, ok := service.Domain(name.Domain)
 	if !ok {
 		return nil, nil, model.ErrNotFound
 	}
@@ -264,12 +376,12 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.U
 	if req.GetConfig() != nil {
 		opts = append(opts, model.WithDomainConfig(model.WrapDomainConfig(req.GetConfig())))
 	}
-	domain, err := model.UpdateDomain(info.Domain(), opts...)
+	cur, err := model.UpdateDomain(existing, opts...)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	upd, info, err := w.writer.Domains.Update(domain, guard)
+	upd, domain, err := w.writer.Domains.Update(cur, guard)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -278,7 +390,7 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.U
 	return done, &internal_v1.DomainResponse{
 		Resp: &internal_v1.DomainResponse_Update{
 			Update: &public_v1.UpdateDomainResponse{
-				Domain: model.UnwrapDomainInfo(info),
+				Domain: model.UnwrapDomain(domain),
 			},
 		},
 	}, nil

@@ -39,7 +39,7 @@ type coordinator struct {
 	inject chan func()
 	drain  iox.AsyncCloser
 
-	tenant model.TenantName
+	service model.QualifiedServiceName
 
 	state     core.State
 	shards    *ShardManager
@@ -56,19 +56,19 @@ func (c *consumerSession) String() string {
 	return fmt.Sprintf("session{consumer=%v, connection=%v}", c.consumer, c.connection)
 }
 
-func New(ctx context.Context, cl clock.Clock, tenant model.TenantName, state core.State, stateUpdates <-chan core.Update) Coordinator {
+func New(ctx context.Context, cl clock.Clock, service model.QualifiedServiceName, state core.State, stateUpdates <-chan core.Update) Coordinator {
 	c := &coordinator{
 		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
 		cl:          cl,
 		inject:      make(chan func()),
 		drain:       iox.NewAsyncCloser(),
-		tenant:      tenant,
+		service:     service,
 		state:       state,
 		shards:      NewShardManager(ctx, cl, state),
 		consumers:   map[model.InstanceID]*consumerSession{},
 		messages:    make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 	}
-	ctx = log.NewContext(ctx, log.String("tenant", string(tenant)))
+	ctx = log.NewContext(ctx, log.String("service", service.String()))
 	go c.process(ctx, stateUpdates)
 	return c
 }
@@ -113,7 +113,7 @@ func (c *coordinator) Drain(timeout time.Duration) {
 }
 
 func (c *coordinator) String() string {
-	return fmt.Sprintf("coordinator{tenant=%v}", c.tenant)
+	return fmt.Sprintf("coordinator{service=%v}", c.service)
 }
 
 func (c *coordinator) connectConsumer(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage, error) {
@@ -214,17 +214,14 @@ func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, ms
 }
 
 func (c *coordinator) handleStateUpdate(ctx context.Context, update core.Update) {
-	if c.tenant != update.Name() {
+	if c.service.Tenant != update.Name() {
 		log.Errorf(ctx, "%v received an update for mismatching tenant: %v", c, update)
 	}
 	if upd, ok := update.TenantUpdated(); ok {
 		c.handleTenantUpdated(ctx, upd)
 	}
-	if upd := update.DomainsUpdated(); len(upd) > 0 {
-		c.handleDomainUpdated(ctx, upd)
-	}
-	if upd := update.DomainsRemoved(); len(upd) > 0 {
-		c.handleDomainRemoved(ctx, upd)
+	if upd := update.ServicesUpdated(); len(upd) > 0 {
+		c.handleServiceUpdated(ctx, upd)
 	}
 	if upd := update.PlacementsUpdated(); len(upd) > 0 {
 		c.handlePlacementsUpdated(ctx, upd)
@@ -236,18 +233,15 @@ func (c *coordinator) handleStateUpdate(ctx context.Context, update core.Update)
 
 func (c *coordinator) handleTenantUpdated(ctx context.Context, info model.TenantInfo) {
 	log.Debugf(ctx, "%v received tenant update: %v", c, info)
-	// TODO: detect if default region and default sharding policy are different and apply the changes
+	// TODO: Change when Tenant has relevant metadata
 }
 
-func (c *coordinator) handleDomainUpdated(ctx context.Context, updated []model.DomainInfo) {
-	log.Debugf(ctx, "%v received domain updates: %v", c, updated)
+func (c *coordinator) handleServiceUpdated(ctx context.Context, updated []core.ServiceUpdate) {
+	log.Debugf(ctx, "%v received service updates: %v", c, updated)
+	// TODO: detect if default region and default sharding policy are different and apply the changes
 	// TODO: detect if a domain is added and add new shards to the distribution
 	// TODO: detect if domain's state has changed and add/remove shards
 	// TODO: detect if config has changed and update affected shards
-}
-
-func (c *coordinator) handleDomainRemoved(ctx context.Context, removed []model.QualifiedDomainName) {
-	log.Debugf(ctx, "%v received domain removals: %v", c, removed)
 	// TODO: remove shards of removed domain
 }
 
