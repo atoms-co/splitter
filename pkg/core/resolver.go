@@ -13,14 +13,14 @@ type Connection struct {
 	Conn *grpc.ClientConn
 }
 
-// TenantResolver resolves a gRPC connection to an instance with tenant's coordinator. Uses model.ErrNoResolution
-// to indicate that tenant is local.
-type TenantResolver = model.Resolver[Connection, model.TenantName]
+// ServiceResolver resolves a gRPC connection to an instance with service's coordinator. Uses model.ErrNoResolution
+// to indicate that service is local.
+type ServiceResolver = model.Resolver[Connection, model.QualifiedServiceName]
 
-// NewTenantResolver creates a new resolver that finds tenant's coordinator location and returns a connection to that instance.
-// The resolver keeps connections to all known tenant instances, disconnecting instances that have no coordinators.
+// NewServiceResolver creates a new resolver that finds service's coordinator location and returns a connection to that instance.
+// The resolver keeps connections to all known service instances, disconnecting instances that have no coordinators.
 // Thread-safe.
-func NewTenantResolver(ctx context.Context, self model.Instance, clusters <-chan Cluster, opts ...grpc.DialOption) TenantResolver {
+func NewServiceResolver(ctx context.Context, self model.Instance, clusters <-chan Cluster, opts ...grpc.DialOption) ServiceResolver {
 	r := &resolver{
 		self:  self,
 		peers: map[string]*grpc.ClientConn{},
@@ -37,10 +37,10 @@ type resolver struct {
 	mu      sync.RWMutex
 }
 
-func (r *resolver) Resolve(ctx context.Context, tenant model.TenantName) (Connection, error) {
+func (r *resolver) Resolve(ctx context.Context, service model.QualifiedServiceName) (Connection, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	c, ok := r.cluster.Tenant(tenant)
+	c, ok := r.cluster.Service(service)
 	if !ok {
 		return Connection{}, model.ErrInvalid
 	}
@@ -65,7 +65,7 @@ func (r *resolver) process(ctx context.Context, clusters <-chan Cluster, opts []
 
 		upd := map[string]*grpc.ClientConn{}
 
-		for tenant, c := range cluster.Tenants() {
+		for service, c := range cluster.Services() {
 			if c.instance.ID() == r.self.ID() {
 				continue // ignore self
 			}
@@ -75,7 +75,7 @@ func (r *resolver) process(ctx context.Context, clusters <-chan Cluster, opts []
 				continue
 			}
 
-			log.Debugf(ctx, "Opening connection to %v located at coordinator %v", tenant, c)
+			log.Debugf(ctx, "Opening connection to %v located at coordinator %v", service, c)
 
 			cc, err := grpc.DialContext(ctx, endpoint, opts...)
 			if err != nil {

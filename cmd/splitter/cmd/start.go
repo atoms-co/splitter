@@ -11,7 +11,6 @@ import (
 	"go.atoms.co/lib/service/metricsx"
 	"go.atoms.co/lib/tracing"
 	"go.atoms.co/lib/contextx"
-	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/lib/yamlx"
@@ -19,9 +18,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/server"
-	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pkg/service/worker"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
 	"fmt"
 	"github.com/hashicorp/raft"
@@ -147,15 +144,7 @@ func makeStartCommand() *cobra.Command {
 		})
 
 		self := model.NewInstance(location.NewInstance(loc), fmt.Sprintf("%v:%v", *instance, *port))
-		resolver := core.NewTenantResolver(ctx, self, make(chan core.Cluster))
-		w := worker.New(cl, self,
-			func(ctx context.Context, handler grpcx.Handler[leader.WorkerMessage, leader.WorkerMessage]) error {
-				return nil
-			}, func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator {
-				return coordinator.New(ctx, cl, service, state, nil /* stateUpdates */)
-			})
-
-		s := server.New(ctx, cl, loc, c, manager, resolver, w)
+		s := server.New(ctx, cl, self, c, manager, core.NewServiceResolver(ctx, self, make(chan core.Cluster)))
 
 		// (4) Start server and await termination
 

@@ -56,7 +56,7 @@ message Assignment {
 // the consumer lease has not expired meanwhile).
 message Register {
   Instance consumer = 1;
-  string tenant = 2;
+  QualifiedServiceName service = 2;
   repeated atoms.splitter.QualifiedDomainName domains = 3;
   repeated Grant active = 4; // Active grants with non-expired leases.
 }

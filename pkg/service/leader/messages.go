@@ -1,6 +1,7 @@
 package leader
 
 import (
+	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -13,6 +14,31 @@ import (
 type JoinMessage struct {
 	pb *internal_v1.JoinMessage
 }
+
+func WrapJoinMessage(pb *internal_v1.JoinMessage) JoinMessage {
+	return JoinMessage{pb: pb}
+}
+
+func UnwrapJoinMessage(m JoinMessage) *internal_v1.JoinMessage {
+	return m.pb
+}
+
+func NewJoinMessage(m Message) JoinMessage {
+	return JoinMessage{pb: &internal_v1.JoinMessage{
+		Msg: &internal_v1.JoinMessage_Leader{
+			Leader: UnwrapMessage(m),
+		},
+	}}
+}
+
+func NewJoinSessionMessage(m session.Message) JoinMessage {
+	return JoinMessage{pb: &internal_v1.JoinMessage{
+		Msg: &internal_v1.JoinMessage_Session{
+			Session: session.UnwrapMessage(m),
+		},
+	}}
+}
+
 type Message struct {
 	pb *internal_v1.LeaderMessage
 }
@@ -24,6 +50,80 @@ func NewWorkerMessage(m WorkerMessage) Message {
 		},
 	}}
 }
+
+func NewRegister(worker model.Instance, grants ...core.Grant) Message {
+	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Register_{
+			Register: &internal_v1.WorkerMessage_Register{
+				Worker: model.UnwrapInstance(worker),
+				Active: slicex.Map(grants, core.UnwrapGrant),
+			},
+		},
+	}})
+}
+func NewDeregister() Message {
+	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Deregister_{
+			Deregister: &internal_v1.WorkerMessage_Deregister{},
+		},
+	}})
+}
+
+func NewDisconnect() Message {
+	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Disconnect_{
+			Disconnect: &internal_v1.WorkerMessage_Disconnect{},
+		},
+	}})
+}
+func NewLeaseUpdate(ttl time.Time) Message {
+	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Lease{
+			Lease: &internal_v1.WorkerMessage_LeaseUpdate{
+				Ttl: timestamppb.New(ttl),
+			},
+		},
+	}})
+}
+
+func NewAssign(grant core.Grant, state core.State) Message {
+	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Assign_{
+			Assign: &internal_v1.WorkerMessage_Assign{
+				Grant: core.UnwrapGrant(grant),
+				State: core.UnwrapState(state),
+			},
+		},
+	}})
+}
+
+func NewRevoke(grants ...core.Grant) Message {
+	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Revoke_{
+			Revoke: &internal_v1.WorkerMessage_Revoke{
+				Grants: slicex.Map(grants, core.UnwrapGrant),
+			},
+		},
+	}})
+}
+
+func NewRelinquished(grants ...core.Grant) Message {
+	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Relinquished_{
+			Relinquished: &internal_v1.WorkerMessage_Relinquished{
+				Grants: slicex.Map(grants, core.UnwrapGrant),
+			},
+		},
+	}})
+}
+func WrapMessage(pb *internal_v1.LeaderMessage) Message {
+	return Message{pb: pb}
+}
+
+func UnwrapMessage(m Message) *internal_v1.LeaderMessage {
+	return m.pb
+}
+
 func (m Message) IsWorkerMessage() bool {
 	return m.pb.GetWorker() != nil
 }
@@ -31,78 +131,21 @@ func (m Message) IsWorkerMessage() bool {
 func (m Message) WorkerMessage() (WorkerMessage, bool) {
 	return WrapWorkerMessage(m.pb.GetWorker()), m.pb.GetWorker() != nil
 }
+
+func (m Message) IsClusterMessage() bool {
+	return m.pb.GetCluster() != nil
+}
+
+func (m Message) ClusterMessage() (ClusterMessage, bool) {
+	return WrapClusterMessage(m.pb.GetCluster()), m.pb.GetCluster() != nil
+}
+
 func (m Message) String() string {
 	return proto.MarshalTextString(m.pb)
 }
 
 type WorkerMessage struct {
 	pb *internal_v1.WorkerMessage
-}
-
-func NewRegister(worker model.Instance, grants ...core.Grant) WorkerMessage {
-	return WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Register_{
-			Register: &internal_v1.WorkerMessage_Register{
-				Worker: model.UnwrapInstance(worker),
-				Active: slicex.Map(grants, core.UnwrapGrant),
-			},
-		},
-	}}
-}
-func NewDeregister() WorkerMessage {
-	return WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Deregister_{
-			Deregister: &internal_v1.WorkerMessage_Deregister{},
-		},
-	}}
-}
-
-func NewDisconnect() WorkerMessage {
-	return WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Disconnect_{
-			Disconnect: &internal_v1.WorkerMessage_Disconnect{},
-		},
-	}}
-}
-func NewLeaseUpdate(ttl time.Time) WorkerMessage {
-	return WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Lease{
-			Lease: &internal_v1.WorkerMessage_LeaseUpdate{
-				Ttl: timestamppb.New(ttl),
-			},
-		},
-	}}
-}
-
-func NewAssign(grant core.Grant, state core.State) WorkerMessage {
-	return WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Assign_{
-			Assign: &internal_v1.WorkerMessage_Assign{
-				Grant: core.UnwrapGrant(grant),
-				State: core.UnwrapState(state),
-			},
-		},
-	}}
-}
-
-func NewRevoke(grants ...core.Grant) WorkerMessage {
-	return WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Revoke_{
-			Revoke: &internal_v1.WorkerMessage_Revoke{
-				Grants: slicex.Map(grants, core.UnwrapGrant),
-			},
-		},
-	}}
-}
-
-func NewRelinquished(grants ...core.Grant) WorkerMessage {
-	return WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Relinquished_{
-			Relinquished: &internal_v1.WorkerMessage_Relinquished{
-				Grants: slicex.Map(grants, core.UnwrapGrant),
-			},
-		},
-	}}
 }
 
 func WrapWorkerMessage(pb *internal_v1.WorkerMessage) WorkerMessage {
@@ -244,4 +287,16 @@ type RelinquishedMessage struct {
 
 func (m RelinquishedMessage) Grants() []core.Grant {
 	return slicex.Map(m.pb.GetGrants(), core.WrapGrant)
+}
+
+type ClusterMessage struct {
+	pb *internal_v1.ClusterMessage
+}
+
+func WrapClusterMessage(pb *internal_v1.ClusterMessage) ClusterMessage {
+	return ClusterMessage{pb: pb}
+}
+
+func UnwrapClusterMessage(m ClusterMessage) *internal_v1.ClusterMessage {
+	return m.pb
 }

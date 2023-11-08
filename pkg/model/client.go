@@ -83,7 +83,7 @@ type Client interface {
 	// assigned grants and, separately, grants assigned to all consumers.
 	// Non-blocking.
 	// Returns a channel with clusters and a closer to signal the closure of the consumer.
-	Join(ctx context.Context, consumer Consumer, tenant TenantName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.AsyncCloser)
+	Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.AsyncCloser)
 }
 
 type client struct {
@@ -279,11 +279,11 @@ func (c *client) InfoPlacement(ctx context.Context, name QualifiedPlacementName)
 	return WrapPlacementInfo(resp.GetInfo()), nil
 }
 
-func (c *client) Join(ctx context.Context, consumer Consumer, tenant TenantName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.AsyncCloser) {
-	ctx = consumerCtx(ctx, consumer, tenant)
+func (c *client) Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.AsyncCloser) {
+	ctx = consumerCtx(ctx, consumer, service)
 
 	quit := iox.NewAsyncCloser()
-	pool, cluster := NewWorkPool(ctx, c.clock, consumer, tenant, domains, c.consumer.Join, handler)
+	pool, cluster := NewWorkPool(ctx, c.clock, consumer, service, domains, c.consumer.Join, handler)
 
 	go func() {
 		defer quit.Close()
@@ -302,6 +302,6 @@ func (c *client) Join(ctx context.Context, consumer Consumer, tenant TenantName,
 	return cluster, quit
 }
 
-func consumerCtx(ctx context.Context, consumer Consumer, tenant TenantName) context.Context {
-	return log.NewContext(ctx, log.String("consumer_id", consumer.ID()), log.String("tenant", tenant))
+func consumerCtx(ctx context.Context, consumer Consumer, service QualifiedServiceName) context.Context {
+	return log.NewContext(ctx, log.String("consumer_id", consumer.ID()), log.String("service", service.String()))
 }

@@ -53,9 +53,10 @@ func TestLeader(t *testing.T) {
 
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 
-	in := make(chan leader.Message)
+	in := make(chan leader.Message, 1)
+	in <- leader.NewRegister(w)
 
-	out, err := l.Join(ctx, session.NewID(), w, nil, in)
+	out, err := l.Join(ctx, session.NewID(), in)
 	require.NoError(t, err, "worker failed to join leader")
 
 	assign := readFn(t, out, isAssign)

@@ -47,10 +47,10 @@ type WorkPool struct {
 	con   *connection
 }
 
-func NewWorkPool(ctx context.Context, cl clock.Clock, consumer Consumer, tenant TenantName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler) (*WorkPool, <-chan Cluster) {
-	ctx = consumerCtx(ctx, consumer, tenant)
+func NewWorkPool(ctx context.Context, cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler) (*WorkPool, <-chan Cluster) {
+	ctx = consumerCtx(ctx, consumer, service)
 
-	state, expiredLease, expiredGrants := newConsumerState(cl, consumer, tenant, domains, handlerFn)
+	state, expiredLease, expiredGrants := newConsumerState(cl, consumer, service, domains, handlerFn)
 
 	closer := iox.NewAsyncCloser()
 	p := &WorkPool{
@@ -68,7 +68,7 @@ func NewWorkPool(ctx context.Context, cl clock.Clock, consumer Consumer, tenant 
 	var cluster <-chan Cluster
 	p.con, cluster = newConnection(cl, p.txn, joinFn, state)
 
-	go p.process(consumerCtx(context.Background(), consumer, tenant))
+	go p.process(consumerCtx(context.Background(), consumer, service))
 
 	log.Infof(ctx, "Initialized work pool: %v", p.state.Consumer())
 	return p, cluster
@@ -145,7 +145,7 @@ type consumerState struct {
 
 	clock        clock.Clock
 	consumer     Consumer
-	tenant       TenantName
+	service      QualifiedServiceName
 	domains      []QualifiedDomainName
 	leaseExpired chan bool
 	grantExpired chan GrantID
@@ -157,7 +157,7 @@ type consumerState struct {
 	leaseTimer  *clockx.Timer
 }
 
-func newConsumerState(cl clock.Clock, consumer Consumer, tenant TenantName, domains []QualifiedDomainName, handlerFn Handler) (state *consumerState, expiredLease chan bool, expiredGrants chan GrantID) {
+func newConsumerState(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handlerFn Handler) (state *consumerState, expiredLease chan bool, expiredGrants chan GrantID) {
 	expiredLease = make(chan bool, 1)
 	expiredGrants = make(chan GrantID, 100)
 	s := &consumerState{
@@ -165,7 +165,7 @@ func newConsumerState(cl clock.Clock, consumer Consumer, tenant TenantName, doma
 
 		clock:        cl,
 		consumer:     consumer,
-		tenant:       tenant,
+		service:      service,
 		domains:      domains,
 		leaseExpired: expiredLease,
 		grantExpired: expiredGrants,
@@ -181,8 +181,8 @@ func (s *consumerState) Consumer() Consumer {
 	return s.consumer
 }
 
-func (s *consumerState) Tenant() TenantName {
-	return s.tenant
+func (s *consumerState) Service() QualifiedServiceName {
+	return s.service
 }
 
 func (s *consumerState) Domains() []QualifiedDomainName {
@@ -507,7 +507,7 @@ type connection struct {
 
 func newConnection(cl clock.Clock, txn syncx.TxnFn, joinFn JoinFn, state *consumerState) (*connection, <-chan Cluster) {
 	cluster := make(chan Cluster, 100)
-	ctx := consumerCtx(context.Background(), state.Consumer(), state.Tenant())
+	ctx := consumerCtx(context.Background(), state.Consumer(), state.Service())
 	c := &connection{
 		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
 		clock:       cl,
@@ -596,7 +596,7 @@ func (c *connection) join(ctx context.Context, grants []Grant) error {
 		go c.processSession(ctx, grants, in)
 
 		// Send register as the first message
-		register := NewRegisterMessage(c.state.Consumer(), c.state.Tenant(), c.state.Domains(), grants)
+		register := NewRegisterMessage(c.state.Consumer(), c.state.Service(), c.state.Domains(), grants)
 		out := chanx.Envelope(NewConsumerRegisterMessage(register), c.out, NewConsumerDeregisterMessage())
 
 		joined := session.Connect(sess, establish, out, sessionOut, NewConsumerSessionMessage)
@@ -734,5 +734,5 @@ func (c *connection) handleRevokedGrants(ctx context.Context, revoked RevokeMess
 }
 
 func (c *connection) String() string {
-	return fmt.Sprintf("connection{tenant=%v,consumer=%v}", c.state.Tenant(), c.state.Consumer())
+	return fmt.Sprintf("connection{service=%v,consumer=%v}", c.state.Service(), c.state.Consumer())
 }

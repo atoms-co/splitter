@@ -22,14 +22,14 @@ func TestWorker(t *testing.T) {
 	cl := mockclock.NewUnsynchronized()
 	cl.Set(time.Now())
 
-	leaderCon := newFakeCon[leader.WorkerMessage]()
+	leaderCon := newFakeCon[leader.Message]()
 	defer leaderCon.Close()
 
 	coordinators := make(chan coordinator.Coordinator)
 
 	loc := location.NewInstance(location.New("centralus", "pod1"))
 	w := worker.New(cl, model.NewInstance(loc, "endpoint"),
-		func(ctx context.Context, handler grpcx.Handler[leader.WorkerMessage, leader.WorkerMessage]) error {
+		func(ctx context.Context, handler grpcx.Handler[leader.Message, leader.Message]) error {
 			return leaderCon.connect(ctx, handler)
 		},
 		func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator {
@@ -48,8 +48,10 @@ func TestWorker(t *testing.T) {
 		msg := assertx.Element(t, leaderCon.In)
 
 		// << register
+		wMsg, ok := msg.WorkerMessage()
+		assert.True(t, ok)
 
-		register, ok := msg.Register()
+		register, ok := wMsg.Register()
 		assert.True(t, ok)
 		assert.Len(t, register.Active(), 0)
 
@@ -82,7 +84,9 @@ func TestWorker(t *testing.T) {
 		// >> relinquished
 
 		msg := assertx.Element(t, leaderCon.In)
-		assert.True(t, msg.IsRelinquished())
+		wMsg, ok := msg.WorkerMessage()
+		assert.True(t, ok)
+		assert.True(t, wMsg.IsRelinquished())
 	})
 
 	// (3) Worker disconnect and reconnect to Leader
@@ -92,7 +96,7 @@ func TestWorker(t *testing.T) {
 
 		// Shut down leader connection to force reconnect
 		oldLeaderCon := leaderCon
-		leaderCon = newFakeCon[leader.WorkerMessage]()
+		leaderCon = newFakeCon[leader.Message]()
 		oldLeaderCon.Close()
 
 		time.Sleep(50 * time.Millisecond)
@@ -101,7 +105,9 @@ func TestWorker(t *testing.T) {
 		<-leaderCon.Connected.Closed()
 
 		msg := assertx.Element(t, leaderCon.In)
-		register, ok := msg.Register()
+		wMsg, ok := msg.WorkerMessage()
+		assert.True(t, ok)
+		register, ok := wMsg.Register()
 		assert.True(t, ok)
 		assert.Len(t, register.Active(), 1)
 	})

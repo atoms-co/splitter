@@ -24,7 +24,7 @@ const (
 	statsDuration = 15 * time.Second
 )
 
-type JoinFn func(ctx context.Context, handler grpcx.Handler[leader.WorkerMessage, leader.WorkerMessage]) error
+type JoinFn func(ctx context.Context, handler grpcx.Handler[leader.Message, leader.Message]) error
 
 type CoordinatorFactory func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator
 
@@ -40,9 +40,9 @@ type Worker struct {
 	joinFn  JoinFn
 	factory CoordinatorFactory
 
-	status *joinStatus                 // leader connectivity status
-	in     <-chan leader.WorkerMessage // leader incoming messages (empty and not closed, if disconnected)
-	out    chan<- leader.WorkerMessage // leader outgoing messages (empty and not closed, if disconnected)
+	status *joinStatus           // leader connectivity status
+	in     <-chan leader.Message // leader incoming messages (empty and not closed, if disconnected)
+	out    chan<- leader.Message // leader outgoing messages (empty and not closed, if disconnected)
 
 	grants map[core.GrantID]*Grant
 	lease  *RenewableLease
@@ -60,8 +60,8 @@ func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory Coordinator
 		self:        self,
 		joinFn:      joinFn,
 		factory:     factory,
-		in:          make(chan leader.WorkerMessage),
-		out:         make(chan leader.WorkerMessage),
+		in:          make(chan leader.Message),
+		out:         make(chan leader.Message),
 		grants:      make(map[core.GrantID]*Grant),
 		expire:      make(chan bool, 1),
 		inject:      make(chan func()),
@@ -74,12 +74,12 @@ func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory Coordinator
 
 // Connect handles connection of a consumer to a local coordinator
 func (w *Worker) Connect(ctx context.Context, sid session.ID, gid core.GrantID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	tenant := register.TenantName()
+	service := register.Service()
 
 	c, err := syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (coordinator.Coordinator, error) {
 		g, ok := w.grants[gid]
 		if !ok {
-			return nil, fmt.Errorf("%w: grant %v not found for tenant %v", model.ErrNotFound, gid, tenant)
+			return nil, fmt.Errorf("%w: grant %v not found for service %v", model.ErrNotFound, gid, service)
 		}
 		return g.Coordinator, nil
 	})
@@ -103,8 +103,8 @@ func (w *Worker) join(ctx context.Context) {
 
 		log.Infof(ctx, "Worker %v attempting to join leader", w.self)
 
-		err := w.joinFn(wctx, func(ctx context.Context, in <-chan leader.WorkerMessage) (<-chan leader.WorkerMessage, error) {
-			return syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (<-chan leader.WorkerMessage, error) {
+		err := w.joinFn(wctx, func(ctx context.Context, in <-chan leader.Message) (<-chan leader.Message, error) {
+			return syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (<-chan leader.Message, error) {
 				return w.joinLeader(ctx, in)
 			})
 		})
@@ -119,7 +119,7 @@ func (w *Worker) join(ctx context.Context) {
 	}
 }
 
-func (w *Worker) joinLeader(ctx context.Context, in <-chan leader.WorkerMessage) (<-chan leader.WorkerMessage, error) {
+func (w *Worker) joinLeader(ctx context.Context, in <-chan leader.Message) (<-chan leader.Message, error) {
 	w.lostLeader(ctx) // sanity check
 
 	active := mapx.MapValuesIf(w.grants, func(g *Grant) (core.Grant, bool) {
@@ -128,7 +128,7 @@ func (w *Worker) joinLeader(ctx context.Context, in <-chan leader.WorkerMessage)
 
 	log.Debugf(ctx, "Connected to leader, #grants=%v, #active=%v", len(w.grants), len(active))
 
-	out := make(chan leader.WorkerMessage, 2_000)
+	out := make(chan leader.Message, 2_000)
 	out <- leader.NewRegister(w.self, active...)
 
 	w.in = in
@@ -150,8 +150,8 @@ func (w *Worker) lostLeader(ctx context.Context) {
 
 	close(w.out)
 
-	w.in = make(chan leader.WorkerMessage)
-	w.out = make(chan leader.WorkerMessage)
+	w.in = make(chan leader.Message)
+	w.out = make(chan leader.Message)
 	w.status = nil
 	w.lease = nil
 
@@ -174,9 +174,11 @@ steady:
 		select {
 		case msg, ok := <-w.in:
 			if !ok {
-				return
+				log.Errorf(wctx, "Leader connection unexpectedly closed")
+				w.lostLeader(ctx)
+				break
 			}
-			w.handleWorkerMessage(wctx, msg)
+			w.handleMessage(ctx, msg)
 
 		case <-w.expire:
 			w.checkExpiration(wctx)
@@ -216,7 +218,7 @@ steady:
 				w.lostLeader(ctx)
 				return
 			}
-			w.handleWorkerMessage(wctx, msg)
+			w.handleMessage(wctx, msg)
 
 		case <-w.expire:
 			w.checkExpiration(wctx)
@@ -227,6 +229,21 @@ steady:
 		case <-w.Closed():
 			return
 		}
+	}
+}
+
+func (w *Worker) handleMessage(ctx context.Context, msg leader.Message) {
+
+	switch {
+	case msg.IsWorkerMessage():
+		worker, _ := msg.WorkerMessage()
+		w.handleWorkerMessage(ctx, worker)
+
+	case msg.IsClusterMessage():
+		// TODO(jhhurwitz): 11/06/23 Something
+
+	default:
+		log.Errorf(ctx, "Internal: unexpected leader message: %v", msg)
 	}
 }
 
@@ -361,7 +378,7 @@ func (w *Worker) removeGrant(ctx context.Context, gid core.GrantID) {
 	log.Debugf(ctx, "Worker %v removed grant %v", w.self, grant)
 }
 
-func (w *Worker) trySend(ctx context.Context, msg leader.WorkerMessage) bool {
+func (w *Worker) trySend(ctx context.Context, msg leader.Message) bool {
 	select {
 	case w.out <- msg:
 		return true
@@ -370,7 +387,7 @@ func (w *Worker) trySend(ctx context.Context, msg leader.WorkerMessage) bool {
 	}
 }
 
-func (w *Worker) mustSend(ctx context.Context, msg leader.WorkerMessage) {
+func (w *Worker) mustSend(ctx context.Context, msg leader.Message) {
 	if w.status == nil {
 		return // ok: disconnected
 	}

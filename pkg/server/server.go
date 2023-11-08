@@ -5,11 +5,16 @@ import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/chanx"
+	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/statshandlerx"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/core"
+	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/frontend"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
@@ -41,19 +46,56 @@ type Server struct {
 	location location.Location
 	cluster  *cluster.Cluster
 	manager  *leader.Manager
-	resolver core.TenantResolver
+	resolver core.ServiceResolver
 	worker   *worker.Worker
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, cluster *cluster.Cluster, manager *leader.Manager, resolver core.TenantResolver, w *worker.Worker, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *cluster.Cluster, manager *leader.Manager, resolver core.ServiceResolver, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
 	}
 
+	joinFn := func(ctx context.Context, handler grpcx.Handler[leader.Message, leader.Message]) error {
+		client, err := manager.Resolve(ctx, model.ZeroDomainKey)
+		if err != nil {
+			return grpcx.ShortCircuit(ctx, handler, func(ctx context.Context, in <-chan leader.Message) (<-chan leader.Message, error) {
+				return manager.Join(ctx, session.NewID(), in)
+			})
+		}
+
+		sess, establish, out := session.NewClient(ctx, cl, self.Client())
+		defer sess.Close()
+		wctx, _ := contextx.WithQuitCancel(ctx, sess.Closed()) // cancel context if session client closes
+
+		return grpcx.Connect(wctx, client.Join, func(ctx context.Context, in <-chan *internal_v1.JoinMessage) (<-chan *internal_v1.JoinMessage, error) {
+			ch := chanx.MapIf(in, func(pb *internal_v1.JoinMessage) (leader.Message, bool) {
+				if pb.GetSession() != nil {
+					sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session client
+					return leader.Message{}, false
+				}
+				return leader.WrapMessage(pb.GetLeader()), true
+			})
+
+			resp, err := handler(ctx, ch)
+			if err != nil {
+				return nil, model.WrapError(err)
+			}
+
+			joined := session.Connect(sess, establish, chanx.Map(resp, leader.NewJoinMessage), out, leader.NewJoinSessionMessage)
+			return chanx.Map(joined, leader.UnwrapJoinMessage), nil
+		})
+	}
+
+	factoryFn := func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator {
+		return coordinator.New(ctx, cl, service, state, nil /* stateUpdates */)
+	}
+
+	w := worker.New(cl, self, joinFn, factoryFn)
+
 	return &Server{
 		cl:       cl,
-		location: loc,
+		location: self.Location(),
 		cluster:  cluster,
 		manager:  manager,
 		resolver: resolver,

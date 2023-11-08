@@ -11,20 +11,20 @@ type Coordinator struct {
 	gid      GrantID
 }
 
-// Cluster contains information about location of coordinators responsible for tenants. Immutable.
+// Cluster contains information about location of coordinators responsible for services. Immutable.
 type Cluster struct {
-	tenants map[model.TenantName]Coordinator
+	services map[model.QualifiedServiceName]Coordinator
 }
 
-func (c Cluster) Tenant(tenant model.TenantName) (Coordinator, bool) {
-	coordinator, ok := c.tenants[tenant]
+func (c Cluster) Service(service model.QualifiedServiceName) (Coordinator, bool) {
+	coordinator, ok := c.services[service]
 	return coordinator, ok
 }
 
-func (c Cluster) Tenants() map[model.TenantName]Coordinator {
-	return mapx.Clone(c.tenants)
+func (c Cluster) Services() map[model.QualifiedServiceName]Coordinator {
+	return mapx.Clone(c.services)
 }
 
 func (c Cluster) String() string {
-	return fmt.Sprintf("cluster{%v}", c.tenants)
+	return fmt.Sprintf("cluster{%v}", c.services)
 }

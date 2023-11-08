@@ -7,6 +7,7 @@ import (
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/randx"
@@ -27,6 +28,8 @@ import (
 const (
 	// handleTimeout is the timeout for handle requests.
 	handleTimeout = 10 * time.Second
+	// registrationTimeout is the timeout for observing the initial register request from a worker connection.
+	registrationTimeout = 20 * time.Second
 	// leaseDuration is the granted lease duration for tenants. It should be long enough to accommodate a reconnect,
 	// but not so long tenants are idle for too long if the connection has restarted.
 	leaseDuration = 1 * time.Minute
@@ -110,12 +113,28 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 	return l
 }
 
-func (l *Leader) Join(ctx context.Context, sid session.ID, instance model.Instance, grants []core.Grant, in <-chan Message) (<-chan Message, error) {
+func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error) {
+	msg, ok := chanx.TryRead(in, registrationTimeout)
+	if !ok {
+		log.Errorf(ctx, "No registration message received")
+		return nil, model.WrapError(model.ErrInvalid)
+	}
+
+	workerMsg, ok := msg.WorkerMessage()
+	if !ok || !workerMsg.IsRegister() {
+		log.Errorf(ctx, "expected registration message, got %v", workerMsg)
+		return nil, model.WrapError(model.ErrInvalid)
+	}
+	register, _ := workerMsg.Register()
+	worker, grants := register.Worker(), register.Active()
+
+	log.Infof(ctx, "Registration for %v: %v, #grants=%v", sid, worker, len(grants))
+
 	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (<-chan Message, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), l.Closed())
 
 		now := l.cl.Now()
-		s, out := l.connect(wctx, now, sid, instance, grants, in)
+		s, out := l.connect(wctx, now, sid, worker, grants, in)
 		l.allocate(ctx, now, false) // Allocate to assign work post connection
 
 		go func() {
@@ -123,7 +142,7 @@ func (l *Leader) Join(ctx context.Context, sid session.ID, instance model.Instan
 			<-s.connection.Closed()
 
 			syncx.AsyncTxn(txnx.Txn(l, l.inject), func() {
-				cur, ok := l.workers[instance.ID()]
+				cur, ok := l.workers[worker.ID()]
 				if ok && cur.connection.Sid() == sid { // guard against race
 					l.disconnect(wctx, cur)
 				}
@@ -226,7 +245,7 @@ steady:
 				if w.draining {
 					continue // skip: don't extend lease if draining
 				}
-				if !w.connection.Send(ctx, NewWorkerMessage(NewLeaseUpdate(lease))) {
+				if !w.connection.Send(ctx, NewLeaseUpdate(lease)) {
 					unhealthy = append(unhealthy, w)
 					continue
 				}
@@ -276,7 +295,7 @@ steady:
 	log.Infof(ctx, "Leader %v draining, #workers=%v", l.id, len(l.workers))
 
 	for _, w := range l.workers {
-		w.connection.Send(ctx, NewWorkerMessage(NewDisconnect()))
+		w.connection.Send(ctx, NewDisconnect())
 		w.connection.Close()
 	}
 }
@@ -318,7 +337,7 @@ func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregis
 	if len(assigned.Active) > 0 {
 		l.alloc.Revoke(w.instance.ID(), now, assigned.Active...)
 
-		if !w.connection.Send(ctx, NewWorkerMessage(NewRevoke(slicex.Map(assigned.Active, toGrant)...))) {
+		if !w.connection.Send(ctx, NewRevoke(slicex.Map(assigned.Active, toGrant)...)) {
 			return fmt.Errorf("unable to send revoke to worker %v", w)
 		}
 	}
@@ -357,7 +376,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 
 	lease := l.cl.Now().Add(leaseDuration)
 
-	connection.Send(ctx, NewWorkerMessage(NewLeaseUpdate(lease))) // grants will be covered under this lease
+	connection.Send(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
 	// TODO: send cluster map
 
 	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client()), lease /* + claimed grants */); ok {
@@ -365,7 +384,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 			tenant := grant.Unit.Tenant
 			state, _ := l.cache.State(tenant)
 
-			if !w.connection.Send(ctx, NewWorkerMessage(NewAssign(toGrant(grant), state))) {
+			if !w.connection.Send(ctx, NewAssign(toGrant(grant), state)) {
 				// TODO(herohde) 11/4/2023: The buffer is too small. We don't want that to happen. Revoke for
 				// now to avoid re-connect death loop.
 
@@ -396,7 +415,7 @@ func (l *Leader) disconnect(ctx context.Context, workers ...*workerSession) {
 			}
 		} // else: already detached
 
-		w.connection.Send(ctx, NewWorkerMessage(NewDisconnect()))
+		w.connection.Send(ctx, NewDisconnect())
 		w.connection.Close()
 
 		delete(l.workers, w.instance.ID())
@@ -430,7 +449,7 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 		tenant := grant.Unit.Tenant
 		state, _ := l.cache.State(tenant)
 
-		if !w.connection.Send(ctx, NewWorkerMessage(NewAssign(toGrant(grant), state))) {
+		if !w.connection.Send(ctx, NewAssign(toGrant(grant), state)) {
 			log.Errorf(ctx, "Failed to send grant %v to worker: %v. Disconnecting", grant, w)
 
 			l.alloc.Release(grant, now) // undo allocation. Safe because it was not sent
@@ -450,7 +469,7 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 		if move, load, ok := l.alloc.LoadBalance(now); ok {
 			w := l.workers[move.From.Worker]
 
-			if !w.connection.Send(ctx, NewWorkerMessage(NewRevoke(toGrant(move.From)))) {
+			if !w.connection.Send(ctx, NewRevoke(toGrant(move.From))) {
 				log.Errorf(ctx, "Failed to send move %v from worker: %v. Disconnecting", move, w)
 				l.disconnect(ctx, w)
 			} else {

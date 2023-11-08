@@ -207,17 +207,18 @@ func UnwrapRegisterMessage(m RegisterMessage) *public_v1.Register {
 	return m.pb
 }
 
-func NewRegisterMessage(consumer Consumer, tenant TenantName, domains []QualifiedDomainName, grants []Grant) RegisterMessage {
+func NewRegisterMessage(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant) RegisterMessage {
 	return WrapRegisterMessage(&public_v1.Register{
 		Consumer: UnwrapInstance(consumer),
-		Tenant:   string(tenant),
+		Service:  service.ToProto(),
 		Domains:  slicex.Map(domains, QualifiedDomainName.ToProto),
 		Active:   slicex.Map(grants, Grant.ToProto),
 	})
 }
 
-func (m RegisterMessage) TenantName() TenantName {
-	return TenantName(m.pb.Tenant)
+func (m RegisterMessage) Service() QualifiedServiceName {
+	ret, _ := ParseQualifiedServiceName(m.pb.GetService())
+	return ret
 }
 
 func (m RegisterMessage) Consumer() Consumer {

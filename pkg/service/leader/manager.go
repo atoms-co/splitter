@@ -8,7 +8,6 @@ import (
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
-	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"fmt"
@@ -76,9 +75,9 @@ func (m *Manager) Resolve(ctx context.Context, key model.DomainKey) (internal_v1
 	return nil, model.ErrNoResolution
 }
 
-func (m *Manager) Join(ctx context.Context, sid session.ID, id model.Instance, grants []core.Grant, in <-chan Message) (<-chan Message, error) {
+func (m *Manager) Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error) {
 	if l, ok := m.tryLocal(); ok {
-		return l.Join(ctx, sid, id, grants, in)
+		return l.Join(ctx, sid, in)
 	}
 	return nil, model.ErrNotOwned
 }

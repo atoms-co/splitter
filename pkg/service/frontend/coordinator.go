@@ -21,10 +21,10 @@ import (
 type CoordinatorService struct {
 	cl       clock.Clock
 	worker   *worker.Worker
-	resolver core.TenantResolver
+	resolver core.ServiceResolver
 }
 
-func NewCoordinatorService(cl clock.Clock, worker *worker.Worker, resolver core.TenantResolver) *CoordinatorService {
+func NewCoordinatorService(cl clock.Clock, worker *worker.Worker, resolver core.ServiceResolver) *CoordinatorService {
 	c := CoordinatorService{
 		cl:       cl,
 		worker:   worker,
@@ -60,9 +60,9 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 		}
 
 		// Should be local, model.ErrNoResolution indicates a local coordinator
-		cc, err := c.resolver.Resolve(ctx, register.TenantName())
+		cc, err := c.resolver.Resolve(ctx, register.Service())
 		if !errors.Is(err, model.ErrNoResolution) {
-			log.Debugf(ctx, "Tenant %v was not local: %v", register.TenantName(), err)
+			log.Debugf(ctx, "Service %v was not local: %v", register.Service(), err)
 			return nil, err
 		}
 

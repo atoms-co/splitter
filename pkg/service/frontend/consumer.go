@@ -26,10 +26,10 @@ type ConsumerService struct {
 	cl       clock.Clock
 	instance location.Instance
 	worker   *worker.Worker
-	resolver core.TenantResolver
+	resolver core.ServiceResolver
 }
 
-func NewConsumerService(cl clock.Clock, loc location.Location, worker *worker.Worker, resolver core.TenantResolver) *ConsumerService {
+func NewConsumerService(cl clock.Clock, loc location.Location, worker *worker.Worker, resolver core.ServiceResolver) *ConsumerService {
 	return &ConsumerService{
 		cl:       cl,
 		instance: location.NewInstance(loc),
@@ -61,21 +61,21 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 			return nil, model.WrapError(model.ErrInvalid)
 		}
 
-		// Read registration message to determine tenant
+		// Read registration message to determine service
 		register, err := tryReadRegister(ctx, consumerIn)
 		if err != nil {
 			return nil, err
 		}
 
-		// Get a shared gRPC connection to the tenant's coordinator
-		cc, err := s.resolver.Resolve(ctx, register.TenantName())
+		// Get a shared gRPC connection to the service's coordinator
+		cc, err := s.resolver.Resolve(ctx, register.Service())
 		// model.ErrNoResolution indicates a local coordinator
 		if err != nil && !errors.Is(err, model.ErrNoResolution) {
-			log.Debugf(ctx, "Unable to forward tenant %v: %v", register.TenantName(), err)
+			log.Debugf(ctx, "Unable to forward service %v: %v", register.Service(), err)
 			return nil, err
 		}
 
-		// Setup communication with the tenant's coordinator
+		// Setup communication with the service's coordinator
 		var coordinatorOut <-chan model.ConsumerMessage
 		if err == nil {
 			coordinatorOut, err = s.forwardRemote(ctx, cc, register, consumerIn)
@@ -132,7 +132,7 @@ func (s *ConsumerService) forwardRemote(ctx context.Context, cc core.Connection,
 			return chanx.Map(joined, coordinator.UnwrapConnectMessage), nil
 		})
 		if err != nil {
-			log.Warnf(ctx, "Error in a stream from %v to a coordinator %v: %v", s.instance, register.TenantName(), err)
+			log.Warnf(ctx, "Error in a stream from %v to a coordinator %v: %v", s.instance, register.Service(), err)
 			errChan <- err
 		}
 	}()
