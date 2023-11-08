@@ -4,7 +4,9 @@ import (
 	"context"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/net/grpcx"
 	"errors"
+	"fmt"
 	"google.golang.org/grpc"
 	"sync"
 )
@@ -100,30 +102,20 @@ type resolver[T any] struct {
 	pool ConnectionPool
 	fn   RemoteFn[T]
 
-	cluster Cluster
+	cluster ClusterProvider
 	mu      sync.RWMutex
 }
 
 // NewResolver creates a resolve to reach domain owners over grpc. Callers must check if locally owned first.
 // If an ownership failure occurs, the local check must be re-done before a retry.
-func NewResolver[T any](ctx context.Context, self InstanceID, clusters <-chan Cluster, pool ConnectionPool, fn RemoteFn[T]) Resolver[T, QualifiedDomainKey] {
+func NewResolver[T any](ctx context.Context, self InstanceID, clusterProvider ClusterProvider, pool ConnectionPool, fn RemoteFn[T]) Resolver[T, QualifiedDomainKey] {
 	ret := &resolver[T]{
 		self:    self,
 		pool:    pool,
 		fn:      fn,
-		cluster: NewCluster(),
+		cluster: clusterProvider,
 	}
-	go ret.process(ctx, clusters)
 	return ret
-}
-
-func (r *resolver[T]) process(ctx context.Context, clusters <-chan Cluster) {
-	for cluster := range clusters {
-		log.Debugf(ctx, "Received cluster map: %v", cluster)
-		r.mu.Lock()
-		r.cluster = cluster
-		r.mu.Unlock()
-	}
 }
 
 // Resolve returns a shared grpc connection to the owning consumer, if remote. Returns false if local.
@@ -132,7 +124,7 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 	defer r.mu.RUnlock()
 
 	var rt T
-	if instance, ok := r.cluster.Owner(key); ok {
+	if instance, ok := r.cluster.Cluster().Owner(key); ok {
 		if instance.ID() == r.self {
 			return rt, ErrNoResolution
 		}
@@ -146,4 +138,44 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 	}
 	numForwards.Increment(ctx, 1, resultTag("not_initialized"))
 	return rt, ErrInvalid
+}
+
+type connectionPool struct {
+	provider ClusterProvider
+	opts     []grpc.DialOption
+
+	connections map[InstanceID]Connection
+	mu          sync.RWMutex
+}
+
+func NewConnectionPool(provider ClusterProvider, opts ...grpc.DialOption) ConnectionPool {
+	p := connectionPool{provider: provider, opts: opts, connections: map[InstanceID]Connection{}}
+	return &p
+}
+
+func (p *connectionPool) Connect(ctx context.Context, id InstanceID) (Connection, error) {
+	p.mu.RLock()
+	c, ok := p.connections[id]
+	p.mu.RUnlock()
+
+	if ok {
+		return c, nil
+	}
+
+	p.mu.RLock()
+	defer p.mu.Unlock()
+
+	instance, ok := p.provider.Cluster().Consumer(id)
+	if !ok {
+		return Connection{}, fmt.Errorf("consumer %v: %w", id, ErrNotFound)
+	}
+
+	cc, err := grpcx.DialNonBlocking(ctx, instance.Endpoint(), p.opts...)
+	if err != nil {
+		log.Errorf(ctx, "Failed to create connection to %v: %v", instance, err)
+		return Connection{}, err
+	}
+	c = Connection{Instance: instance, Conn: cc}
+	p.connections[id] = c
+	return c, nil
 }
