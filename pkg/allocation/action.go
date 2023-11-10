@@ -8,5 +8,5 @@ type Move[T comparable] struct {
 }
 
 func (m Move[T]) String() string {
-	return fmt.Sprintf("%v->%v", m.From, m.To)
+	return fmt.Sprintf("%v[%v@%v->%v@%v]", m.From.Unit, m.From.ID, m.From.Worker, m.To.ID, m.To.Worker)
 }

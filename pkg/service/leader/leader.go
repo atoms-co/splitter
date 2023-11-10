@@ -425,9 +425,26 @@ func (l *Leader) disconnect(ctx context.Context, workers ...*workerSession) {
 func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) {
 	// (1) Free any expired grants to make them available for re-allocation.
 
-	freed := l.alloc.Expire(now)
-	if len(freed) > 0 {
-		log.Infof(ctx, "Expired %v grant(s): %v", len(freed), freed)
+	promo := l.alloc.Expire(now)
+	for _, grant := range promo {
+		w, ok := l.workers[grant.Worker]
+		if !ok {
+			l.alloc.Release(grant, now) // undo allocation
+			continue
+		}
+
+		tenant := grant.Unit.Tenant
+		state, _ := l.cache.State(tenant)
+
+		if !w.connection.Send(ctx, NewAssign(toGrant(grant), state)) {
+			log.Errorf(ctx, "Failed to send grant %v to worker: %v. Disconnecting", grant, w)
+
+			l.alloc.Release(grant, now) // undo allocation. Safe because it was not sent
+			l.disconnect(ctx, w)
+			continue
+		}
+
+		log.Infof(ctx, "Allocated new grant to worker %v: %v.", w, tenant)
 	}
 
 	// (2) Allocate and commit the assignments by sending grants. We remove the clients from the alloc

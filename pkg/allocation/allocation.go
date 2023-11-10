@@ -88,7 +88,7 @@ func Update[T comparable](a *Allocation[T], work []Work[T], activation time.Time
 			g := old.ToGrant(l)
 			if ret.tryAssign(w, g) {
 				u := ret.unassigned[g.Unit]
-				if g.IsAllocated() {
+				if g.IsAllocated() && u.state == Active {
 					ret.unassigned[g.Unit] = newUnassigned(Revoked, u.activation) // other half
 				} else {
 					delete(ret.unassigned, g.Unit)
@@ -131,6 +131,11 @@ func (a *Allocation[T]) ID() location.InstanceID {
 
 func (a *Allocation[T]) Work() []Work[T] {
 	return mapx.Values(a.work)
+}
+
+func (a *Allocation[T]) Unit(t T) (Work[T], bool) {
+	ret, ok := a.work[t]
+	return ret, ok
 }
 
 func (a *Allocation[T]) Workers() []WorkerInfo {
@@ -195,7 +200,7 @@ func (a *Allocation[T]) tryAssign(w *worker[T], g Grant[T]) bool {
 		return false // skip: incorrect worker for grant
 	}
 	if _, ok := w.live[g.Unit]; ok {
-		return false // skip: already present
+		return false // skip: already assigned
 	}
 	if _, ok := w.revoked[g.Unit]; ok {
 		return false // skip: already present
@@ -203,11 +208,15 @@ func (a *Allocation[T]) tryAssign(w *worker[T], g Grant[T]) bool {
 
 	work, ok := a.work[g.Unit]
 	if !ok {
-		return false
+		return false // skip: invalid
 	}
 
 	switch g.State {
 	case Active, Allocated:
+		if _, ok := a.live[g.Unit]; ok {
+			return false // skip: already present elsewhere
+		}
+
 		if load, ok := a.place.TryPlace(w.info.Instance, work); ok {
 			w.live[g.Unit] = live[T]{
 				work:     a.work[g.Unit],
@@ -713,9 +722,20 @@ func (a *Allocation[T]) move(from *worker[T], grant live[T], to *worker[T], now 
 	return Move[T]{From: revoked, To: allocated}
 }
 
-// Load returns the total intrinsic load and current penalties by domain and rule.
-func (a *Allocation[T]) Load() Load /* + more details */ {
-	return a.load
+// Load returns the total intrinsic load and current assignments/penalties.
+func (a *Allocation[T]) Load() (Load, AdjustedLoad) {
+	ret := AdjustedLoad{}
+	for _, w := range a.workers {
+		ret.Load += w.load.Load
+		ret.Place += w.load.Place
+		ret.Colo += w.load.Colo
+	}
+	return a.load, ret
+}
+
+// Size returns the number of work units.
+func (a *Allocation[T]) Size() int {
+	return len(a.work)
 }
 
 func (a *Allocation[T]) String() string {
@@ -725,4 +745,100 @@ func (a *Allocation[T]) String() string {
 func (a *Allocation[T]) newGrantID() GrantID {
 	a.seqno++
 	return GrantID(fmt.Sprintf("%v:%v", a.id, a.seqno))
+}
+
+// Check performs an internal consistency check. Debug only.
+func (a *Allocation[T]) Check() error {
+	// (1) Check grant integrity
+
+	grants := map[GrantState]map[T]Grant[T]{
+		Active:    {},
+		Allocated: {},
+		Revoked:   {},
+	}
+
+	for _, w := range a.workers {
+		for _, l := range w.live {
+			grants[l.state][l.work.Unit] = w.ToGrant(l)
+			if a.live[l.work.Unit] != w.info.Instance.ID {
+				return fmt.Errorf("missing grant index: %v", w.ToGrant(l))
+			}
+			if _, ok := a.work[l.work.Unit]; !ok {
+				return fmt.Errorf("invalid work: %v", w.ToGrant(l))
+			}
+		}
+		for _, g := range w.revoked {
+			grants[g.State][g.Unit] = g
+			if a.live[g.Unit] == w.info.Instance.ID {
+				return fmt.Errorf("invalid revoked grant index: %v", g)
+			}
+			if _, ok := a.work[g.Unit]; !ok {
+				return fmt.Errorf("invalid work: %v", g)
+			}
+		}
+	}
+
+	for t, g := range grants[Active] {
+		if bad, ok := grants[Allocated][t]; ok {
+			return fmt.Errorf("conflicting grants: %v <> %v", g, bad)
+		}
+		if bad, ok := grants[Revoked][t]; ok {
+			return fmt.Errorf("conflicting grants: %v <> %v", g, bad)
+		}
+		if bad, ok := a.unassigned[t]; ok {
+			return fmt.Errorf("bad unassigned: %v <> %v", g, bad)
+		}
+	}
+	for t, g := range grants[Allocated] {
+		if _, ok := grants[Revoked][t]; !ok {
+			u, ok := a.unassigned[t]
+			if !ok {
+				return fmt.Errorf("missing counterpart grant: %v", g)
+			}
+			if u.state != Revoked {
+				return fmt.Errorf("bad unassigned counterpart: %v <> %v", g, u)
+			}
+		}
+	}
+	for t, g := range grants[Revoked] {
+		if _, ok := grants[Allocated][t]; !ok {
+			u, ok := a.unassigned[t]
+			if !ok {
+				return fmt.Errorf("missing counterpart: %v", g)
+			}
+			if u.state != Allocated {
+				return fmt.Errorf("bad unassigned counterpart: %v <> %v", g, u)
+			}
+		}
+	}
+
+	// (2) Check incremental load
+
+	for _, w := range a.workers {
+		var load AdjustedLoad
+		for _, l := range w.live {
+			load.Load += l.work.Load
+		}
+		for _, p := range w.place {
+			load.Place += p
+		}
+		for _, c := range w.colo {
+			load.Colo += c
+		}
+		if load != w.load {
+			return fmt.Errorf("inconsistent load for %v: %v <> %v", w.info, w.load, load)
+		}
+	}
+
+	// (3) Ensure all work is accounted for
+
+	for t := range a.work {
+		_, ok := a.live[t]
+		_, ok2 := a.unassigned[t]
+		if !ok && !ok2 {
+			return fmt.Errorf("work neither live nor unassigned: %v", t)
+		}
+	}
+
+	return nil
 }

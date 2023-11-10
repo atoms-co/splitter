@@ -35,15 +35,18 @@ func TestAllocation(t *testing.T) {
 		alloc := allocation.New[string]("id", nil, nil, nil, cl.Now())
 		assert.Len(t, alloc.Work(), 0)
 		assert.Len(t, alloc.Workers(), 0)
+		require.NoError(t, alloc.Check())
 
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 0) // no workers/no work
+		require.NoError(t, alloc.Check())
 
 		assignments, ok := alloc.Attach(allocation.Worker{ID: "foo"}, cl.Now().Add(time.Minute))
 		assert.True(t, ok)
 		assert.Len(t, assignments.Active, 0)
 		assert.Len(t, assignments.Allocated, 0)
 		assert.Len(t, assignments.Revoked, 0)
+		require.NoError(t, alloc.Check())
 
 		grants = alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 0) // no work
@@ -85,14 +88,17 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, initial.Active[0].Unit, old.Unit)
 		assertx.Equal(t, initial.Active[0].Assigned, old.Assigned)
 		assertx.Equal(t, initial.Active[0].Expiration, lease) // .. but updated expiration
+		require.NoError(t, alloc.Check())
 
 		_, ok = alloc.Attach(foo, lease)
 		assert.False(t, ok) // can't attach if already attached
+		require.NoError(t, alloc.Check())
 
 		// (2) Allocate with attached worker
 
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 2)
+		require.NoError(t, alloc.Check())
 
 		for _, g := range grants {
 			assertx.Equal(t, g.State, allocation.Active)
@@ -111,9 +117,11 @@ func TestAllocation(t *testing.T) {
 
 		ok = alloc.Detach(foo.ID)
 		assert.True(t, ok)
+		require.NoError(t, alloc.Check())
 
 		ok = alloc.Detach(foo.ID)
 		assert.False(t, ok) // can't detach if not attached
+		require.NoError(t, alloc.Check())
 
 		assignments = alloc.Assigned(foo.ID)
 		assert.Len(t, assignments.Active, 3) // still assigned
@@ -127,6 +135,7 @@ func TestAllocation(t *testing.T) {
 		assert.True(t, ok)
 		require.Len(t, regrants.Active, 3)
 		require.Len(t, regrants.Revoked, 0)
+		require.NoError(t, alloc.Check())
 	})
 
 	t.Run("suspend", func(t *testing.T) {
@@ -140,13 +149,16 @@ func TestAllocation(t *testing.T) {
 		us1 := allocation.Worker{ID: "us1", Location: us}
 		_, ok := alloc.Attach(us1, cl.Now().Add(time.Minute))
 		assert.True(t, ok)
+		require.NoError(t, alloc.Check())
 
 		info, ok := alloc.Suspend(us1.ID)
 		assert.True(t, ok)
 		assertx.Equal(t, info.State, allocation.Suspended)
+		require.NoError(t, alloc.Check())
 
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 0)
+		require.NoError(t, alloc.Check())
 	})
 
 	t.Run("allocate/constraints", func(t *testing.T) {
@@ -222,14 +234,17 @@ func TestAllocation(t *testing.T) {
 
 		ok = alloc.Detach(us1.ID)
 		assert.True(t, ok)
+		require.NoError(t, alloc.Check())
 
 		cl.Add(time.Second)
 
 		promo := alloc.Expire(cl.Now())
 		assert.Len(t, promo, 0)
+		require.NoError(t, alloc.Check())
 
 		grants = alloc.Allocate(cl.Now())
 		require.Len(t, grants, 2)
+		require.NoError(t, alloc.Check())
 
 		m = newGrantMap(grants...)
 		assertx.Equal(t, m["a"].Worker, jp1.ID)
@@ -253,6 +268,7 @@ func TestAllocation(t *testing.T) {
 		assert.True(t, ok)
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 3)
+		require.NoError(t, alloc.Check())
 
 		// (2) Revoke is possible, even thought it cannot be assigned because
 		// two grants for the same work cannot be on the same worker.
@@ -262,9 +278,11 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, revoked[0].Worker, us1.ID)
 		assertx.Equal(t, revoked[0].Unit, grants[0].Unit)
 		assertx.Equal(t, revoked[0].State, allocation.Revoked)
+		require.NoError(t, alloc.Check())
 
 		grants = alloc.Allocate(cl.Now())
 		require.Len(t, grants, 0)
+		require.NoError(t, alloc.Check())
 
 		// (2) Attach another worker and it can
 
@@ -276,6 +294,7 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, grants[0].Worker, us2.ID)
 		assertx.Equal(t, grants[0].Unit, grants[0].Unit)
 		assertx.Equal(t, grants[0].State, allocation.Allocated)
+		require.NoError(t, alloc.Check())
 
 		// (3) Release and the new grant is promoted Active
 
@@ -285,6 +304,7 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, promo.Worker, us2.ID)
 		assertx.Equal(t, promo.Unit, grants[0].Unit)
 		assertx.Equal(t, promo.State, allocation.Active)
+		require.NoError(t, alloc.Check())
 	})
 
 	t.Run("update", func(t *testing.T) {
@@ -307,6 +327,7 @@ func TestAllocation(t *testing.T) {
 
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 3)
+		require.NoError(t, alloc.Check())
 
 		m := newGrantMap(grants...)
 		alloc.Revoke(m["a"].Worker, cl.Now(), m["a"])
@@ -334,6 +355,7 @@ func TestAllocation(t *testing.T) {
 		alloc2, rejects := allocation.Update(alloc, upd, cl.Now())
 		require.Len(t, rejects, 1)
 		assertx.Equal(t, rejects[0].Unit, "b")
+		require.NoError(t, alloc2.Check())
 
 		assignments = alloc2.Assigned(m["a"].Worker)
 		require.Len(t, assignments.Active, 0)
@@ -347,6 +369,7 @@ func TestAllocation(t *testing.T) {
 
 		grants = alloc2.Allocate(cl.Now())
 		require.Len(t, grants, 2)
+		require.NoError(t, alloc2.Check())
 
 		m = newGrantMap(grants...)
 		assertx.Equal(t, m["d"].Unit, "d")
@@ -389,9 +412,11 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, move.To.Unit, "c")
 		assertx.Equal(t, move.To.State, allocation.Allocated)
 		assertx.Equal(t, diff, allocation.AdjustedLoad{Load: -1, Place: -5})
+		require.NoError(t, alloc.Check())
 
 		_, _, ok = alloc.LoadBalance(cl.Now())
 		assert.False(t, ok) // region-optimal
+		require.NoError(t, alloc.Check())
 	})
 
 	t.Run("load-balance/skew", func(t *testing.T) {
@@ -426,6 +451,7 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, move.To.Unit, "a")
 		assertx.Equal(t, move.To.State, allocation.Allocated)
 		assertx.Equal(t, diff, allocation.AdjustedLoad{Load: -3})
+		require.NoError(t, alloc.Check())
 
 		_, _, ok = alloc.LoadBalance(cl.Now())
 		assert.False(t, ok)
