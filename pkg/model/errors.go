@@ -28,8 +28,8 @@ var (
 
 // IsPermanentError returns true iff the error is one of the defined permanent errors.
 func IsPermanentError(err error) bool {
-	switch err {
-	case ErrNotFound, ErrAlreadyExists, ErrVersionMismatch, ErrNotAllowed, ErrInvalid:
+	switch {
+	case errors.Is(err, ErrNotFound), errors.Is(err, ErrAlreadyExists), errors.Is(err, ErrVersionMismatch), errors.Is(err, ErrNotAllowed), errors.Is(err, ErrInvalid):
 		return true
 	default:
 		return false

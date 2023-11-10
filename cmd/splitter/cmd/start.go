@@ -15,7 +15,6 @@ import (
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/lib/yamlx"
 	"go.atoms.co/splitter/pkg/cluster"
-	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/server"
 	"go.atoms.co/splitter/pkg/service/leader"
@@ -40,19 +39,20 @@ func makeStartCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 
-	instance := cmd.PersistentFlags().String("instance", getInstance(), "instance IP to publish")
+	instance := cmd.PersistentFlags().String("instance", getInstance(), "Instance IP to publish")
 	configPath := cmd.PersistentFlags().String("config_path", "/app_config/splitter.yaml", "Base config file")
 	dataPath := cmd.PersistentFlags().String("data_path", "/data", "Data path")
-	port := cmd.PersistentFlags().Int("port", 50051, "grpc server port")
-	internalPort := cmd.PersistentFlags().Int("internal_port", 50052, "grpc server port for pod-to-pod traffic")
-	healthPort := cmd.PersistentFlags().Int("health_port", 8081, "http port for health check traffic")
-	pprofPort := cmd.PersistentFlags().Int("pprof_port", 6060, "http port for pprof debug traffic")
+	port := cmd.PersistentFlags().Int("port", 50051, "Grpc server port")
+	internalPort := cmd.PersistentFlags().Int("internal_port", 50052, "Grpc server port for pod-to-pod traffic")
+	healthPort := cmd.PersistentFlags().Int("health_port", 8081, "Http port for health check traffic")
+	pprofPort := cmd.PersistentFlags().Int("pprof_port", 6060, "Http port for pprof debug traffic")
+	fastActivation := cmd.PersistentFlags().Bool("fast_activation", false, "Fast Leader activation for testing")
 
-	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "tcp port for raft traffic")
+	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "Tcp port for raft traffic")
 	raftID := cmd.PersistentFlags().String("raft_id", getName(), "Node id used by Raft")
 	raftServer := cmd.PersistentFlags().String("raft_server", "", "Server address used by Raft")
-	raftFastBootstrap := cmd.PersistentFlags().Bool("fast_bootstrap", false, "fast bootstrap for testing")
-	raftJoinPeers := cmd.PersistentFlags().StringSlice("join_peers", []string{}, "Peers to join including self")
+	raftFastBootstrap := cmd.PersistentFlags().Bool("raft_fast_bootstrap", false, "Fast Raft bootstrap for testing")
+	raftJoinPeers := cmd.PersistentFlags().StringSlice("raft_join_peers", []string{}, "Raft peers to join including self")
 
 	cmd.Run = func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
@@ -134,17 +134,21 @@ func makeStartCommand() *cobra.Command {
 
 		var opts []cluster.Option
 		if *raftFastBootstrap {
-			opts = append(opts, cluster.WithFastBootstrap)
+			opts = append(opts, cluster.WithFastBootstrap())
 		}
 		c, directives := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *raftJoinPeers, *internalPort, opts...)
 
+		var lopts []leader.Option
+		if *fastActivation {
+			lopts = append(lopts, leader.WithFastActivation())
+		}
 		manager := leader.NewManager(cl, directives, func(ctx context.Context) (iox.AsyncCloser, leader.Proxy) {
-			ret := leader.New(ctx, cl, loc, storage)
+			ret := leader.New(ctx, cl, loc, storage, lopts...)
 			return ret, ret
 		})
 
-		self := model.NewInstance(location.NewInstance(loc), fmt.Sprintf("%v:%v", *instance, *port))
-		s := server.New(ctx, cl, self, c, manager, core.NewServiceResolver(ctx, self, make(chan core.Cluster)))
+		self := model.NewInstance(location.NewInstance(loc), fmt.Sprintf("%v:%v", *instance, *internalPort))
+		s := server.New(ctx, cl, self, c, manager)
 
 		// (4) Start server and await termination
 

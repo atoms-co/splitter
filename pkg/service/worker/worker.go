@@ -5,6 +5,7 @@ import (
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
@@ -44,6 +45,9 @@ type Worker struct {
 	in     <-chan leader.Message // leader incoming messages (empty and not closed, if disconnected)
 	out    chan<- leader.Message // leader outgoing messages (empty and not closed, if disconnected)
 
+	cluster  core.Cluster
+	clusters chan core.Cluster
+
 	grants map[core.GrantID]*Grant
 	lease  *RenewableLease
 
@@ -53,7 +57,7 @@ type Worker struct {
 	drain iox.AsyncCloser
 }
 
-func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory CoordinatorFactory) *Worker {
+func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory CoordinatorFactory) (*Worker, <-chan core.Cluster) {
 	w := &Worker{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
@@ -62,6 +66,7 @@ func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory Coordinator
 		factory:     factory,
 		in:          make(chan leader.Message),
 		out:         make(chan leader.Message),
+		clusters:    make(chan core.Cluster, 1),
 		grants:      make(map[core.GrantID]*Grant),
 		expire:      make(chan bool, 1),
 		inject:      make(chan func()),
@@ -69,7 +74,7 @@ func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory Coordinator
 	}
 	go w.join(context.Background())
 	go w.process(context.Background())
-	return w
+	return w, w.clusters
 }
 
 // Connect handles connection of a consumer to a local coordinator
@@ -240,7 +245,8 @@ func (w *Worker) handleMessage(ctx context.Context, msg leader.Message) {
 		w.handleWorkerMessage(ctx, worker)
 
 	case msg.IsClusterMessage():
-		// TODO(jhhurwitz): 11/06/23 Something
+		cluster, _ := msg.ClusterMessage()
+		w.handleClusterMessage(ctx, cluster)
 
 	default:
 		log.Errorf(ctx, "Internal: unexpected leader message: %v", msg)
@@ -341,6 +347,28 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 	default:
 		log.Errorf(ctx, "Invalid worker message: %v", msg)
 	}
+}
+
+func (w *Worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMessage) {
+	switch {
+	case msg.IsSnapshot():
+		snapshot, _ := msg.Snapshot()
+		w.cluster = core.NewCluster(snapshot.Assignments())
+
+	case msg.IsUpdate():
+		update, _ := msg.Update()
+		w.cluster.Update(update.Assignments())
+
+	case msg.IsRemove():
+		remove, _ := msg.Remove()
+		w.cluster.Remove(remove.Services())
+
+	default:
+		log.Errorf(ctx, "Invalid cluster message: %v", msg)
+	}
+
+	chanx.Clear(w.clusters)
+	w.clusters <- w.cluster
 }
 
 func (w *Worker) emitExpirationCheck() {

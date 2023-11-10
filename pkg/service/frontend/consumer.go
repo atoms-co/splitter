@@ -16,6 +16,7 @@ import (
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -58,13 +59,14 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		establish, ok := chanx.TryRead(consumerSession.Establish(), 20*time.Second)
 		if !ok {
 			log.Errorf(ctx, "No session establish message received")
-			return nil, model.WrapError(model.ErrInvalid)
+			return nil, model.WrapError(fmt.Errorf("no session establish message: %w", model.ErrInvalid))
 		}
 
 		// Read registration message to determine service
 		register, err := tryReadRegister(ctx, consumerIn)
+		log.Infof(ctx, "REGISTER: %v", register)
 		if err != nil {
-			return nil, err
+			return nil, model.WrapError(err)
 		}
 
 		// Get a shared gRPC connection to the service's coordinator
@@ -72,7 +74,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		// model.ErrNoResolution indicates a local coordinator
 		if err != nil && !errors.Is(err, model.ErrNoResolution) {
 			log.Debugf(ctx, "Unable to forward service %v: %v", register.Service(), err)
-			return nil, err
+			return nil, model.WrapError(err)
 		}
 
 		// Setup communication with the service's coordinator
@@ -80,12 +82,12 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		if err == nil {
 			coordinatorOut, err = s.forwardRemote(ctx, cc, register, consumerIn)
 			if err != nil {
-				return nil, err
+				return nil, model.WrapError(err)
 			}
 		} else {
 			coordinatorOut, err = s.worker.Connect(ctx, establish.ID, cc.GID, register, consumerIn)
 			if err != nil {
-				return nil, err
+				return nil, model.WrapError(err)
 			}
 		}
 
@@ -147,11 +149,11 @@ func tryReadRegister(ctx context.Context, in <-chan model.ConsumerMessage) (mode
 	msg, ok := chanx.TryRead(in, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No register message received")
-		return model.RegisterMessage{}, model.WrapError(model.ErrInvalid)
+		return model.RegisterMessage{}, fmt.Errorf("no registration message: %w", model.ErrInvalid)
 	}
 	if !msg.IsRegister() {
 		log.Errorf(ctx, "Expected register message, received: %v", msg)
-		return model.RegisterMessage{}, model.WrapError(model.ErrInvalid)
+		return model.RegisterMessage{}, fmt.Errorf("invalid registration message: %w", model.ErrInvalid)
 	}
 	register, _ := msg.Register()
 	return register, nil

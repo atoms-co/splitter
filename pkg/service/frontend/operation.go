@@ -44,7 +44,7 @@ func (o *OperationService) Restore(ctx context.Context, request *internal_v1.Res
 
 	if err != nil {
 		log.Errorf(ctx, "Restore %v failed: %v", req, err)
-		return nil, err
+		return nil, model.WrapError(err)
 	}
 	return resp.GetOperation().GetRestore(), nil
 }

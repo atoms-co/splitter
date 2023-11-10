@@ -37,8 +37,10 @@ var (
 
 type Option func(*Cluster)
 
-func WithFastBootstrap(cluster *Cluster) {
-	cluster.fastBootstrap = true
+func WithFastBootstrap() Option {
+	return func(cluster *Cluster) {
+		cluster.fastBootstrap = true
+	}
 }
 
 // Cluster represents a RAFT cluster where initial bootstrapping is determined by a static set of peers

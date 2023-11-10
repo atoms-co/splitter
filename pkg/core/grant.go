@@ -51,5 +51,5 @@ func (g Grant) Assigned() time.Time {
 }
 
 func (g Grant) String() string {
-	return fmt.Sprintf("[id:%v]tenant:%v, lease: %v, assigned:%v", g.ID(), g.Service(), g.Lease(), g.Assigned())
+	return fmt.Sprintf("[id:%v]service:%v, lease: %v, assigned:%v", g.ID(), g.Service(), g.Lease(), g.Assigned())
 }

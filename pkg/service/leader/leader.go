@@ -117,13 +117,13 @@ func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 	msg, ok := chanx.TryRead(in, registrationTimeout)
 	if !ok {
 		log.Errorf(ctx, "No registration message received")
-		return nil, model.WrapError(model.ErrInvalid)
+		return nil, model.WrapError(fmt.Errorf("no registration message: %w", model.ErrInvalid))
 	}
 
 	workerMsg, ok := msg.WorkerMessage()
 	if !ok || !workerMsg.IsRegister() {
 		log.Errorf(ctx, "expected registration message, got %v", workerMsg)
-		return nil, model.WrapError(model.ErrInvalid)
+		return nil, model.WrapError(fmt.Errorf("invalid registration message: %w", model.ErrInvalid))
 	}
 	register, _ := workerMsg.Register()
 	worker, grants := register.Worker(), register.Active()
@@ -192,6 +192,7 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 	if l.fastActivation {
 		delay = 0
 	}
+	log.Infof(ctx, "Activating at %v", now.Add(delay))
 	l.alloc = newAllocation(l.id.ID(), snapshot, now.Add(delay))
 
 	if l.drain.IsClosed() {
@@ -375,9 +376,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 	// TODO(herohde) 10/31/2023: MustSend variant needed. We may silently drop on Send
 
 	lease := l.cl.Now().Add(leaseDuration)
-
 	connection.Send(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
-	// TODO: send cluster map
 
 	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client()), lease /* + claimed grants */); ok {
 		for _, grant := range assigned.Active {
@@ -392,9 +391,20 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 				l.alloc.Revoke(w.instance.ID(), now, grant)
 			}
 		}
-
 		// NOTE(herohde) 11/4/2023: Ignore Allocated and let Revoked expire.
 	}
+
+	// Send cluster update to worker
+	assignments := l.alloc.Assignments()
+	var cluster []core.Assignment
+	for wid, assign := range assignments {
+		worker := l.workers[wid]
+		cluster = append(cluster, core.Assignment{
+			Worker: worker.instance,
+			Grants: slicex.Map(append(assign.Active, assign.Revoked...), toGrant),
+		})
+	}
+	connection.Send(ctx, NewSnapshot(cluster))
 
 	return w, out
 }
@@ -451,6 +461,7 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 	// on disconnect, so we know that any beneficiary of Allocate has a valid session. However, workers
 	// may be disconnected _during_ grant distribution if stuck.
 
+	updates := make(map[model.Instance][]core.Grant)
 	grants := l.alloc.Allocate(now)
 	for _, grant := range grants {
 		if grant.IsAllocated() {
@@ -473,11 +484,9 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 			l.disconnect(ctx, w)
 			continue
 		}
-
-		log.Infof(ctx, "Allocated new grant to worker %v: %v.", w, tenant)
+		log.Infof(ctx, "Assigned new grant to worker %v: %v.", w, tenant)
+		updates[w.instance] = append(updates[w.instance], toGrant(grant))
 	}
-
-	// TODO(jhhurwitz): 10/23/23 Cluster-map broadcast
 
 	// (4) Load-balance grants across workers, if needed. Free up some grants from the most overloaded workers, but
 	// only 1 tenant per allocate call.
@@ -496,6 +505,25 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 	}
 
 	log.Debugf(ctx, "Allocation: %v", l.alloc)
+
+	// (5) Broadcast cluster updates
+
+	var assignments []core.Assignment
+	for instance, grants := range updates {
+		assignments = append(assignments, core.Assignment{
+			Worker: instance,
+			Grants: grants,
+		})
+	}
+	for _, w := range l.workers {
+		if len(assignments) > 0 {
+			if !w.connection.Send(ctx, NewUpdate(assignments)) {
+				log.Errorf(ctx, "Failed to send cluster update to worker: %v. Disconnecting", w)
+				l.disconnect(ctx, w)
+				continue
+			}
+		}
+	}
 }
 
 func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
@@ -603,7 +631,7 @@ func (l *Leader) handleListServicesRequest(ctx context.Context, req *public_v1.L
 func (l *Leader) handleInfoServiceRequest(ctx context.Context, req *public_v1.InfoServiceRequest) (*internal_v1.ServiceResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetName())
 	if err != nil {
-		return nil, model.ErrInvalid
+		return nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
 	}
 
 	info, ok := l.cache.Service(name)
@@ -634,7 +662,7 @@ func (l *Leader) handleDomainRequest(ctx context.Context, req *internal_v1.Domai
 func (l *Leader) handleListDomainsRequest(ctx context.Context, req *public_v1.ListDomainsRequest) (*internal_v1.DomainResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetService())
 	if err != nil {
-		return nil, model.ErrInvalid
+		return nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
 	}
 
 	if _, ok := l.cache.Service(name); !ok {
@@ -667,7 +695,7 @@ func (l *Leader) handleListPlacementsRequest(ctx context.Context, req *internal_
 	name := model.TenantName(req.GetTenant())
 
 	if _, ok := l.cache.Tenant(name); !ok {
-		return nil, model.ErrNotFound
+		return nil, fmt.Errorf("tenant not found: %w", model.ErrNotFound)
 	}
 
 	return &internal_v1.PlacementResponse{
@@ -682,7 +710,7 @@ func (l *Leader) handleListPlacementsRequest(ctx context.Context, req *internal_
 func (l *Leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v1.InfoPlacementRequest) (*internal_v1.PlacementResponse, error) {
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
-		return nil, model.ErrInvalid
+		return nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
 	}
 
 	info, ok := l.cache.Placement(name)

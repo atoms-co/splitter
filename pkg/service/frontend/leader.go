@@ -11,6 +11,7 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pb/private"
+	"fmt"
 	"time"
 )
 
@@ -44,7 +45,7 @@ func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error 
 		establish, ok := chanx.TryRead(sess.Establish(), 20*time.Second)
 		if !ok {
 			log.Errorf(ctx, "No session establish message received")
-			return nil, model.WrapError(model.ErrInvalid)
+			return nil, model.WrapError(fmt.Errorf("no session establish message: %w", model.ErrInvalid))
 		}
 
 		// (2) Let leader handle join

@@ -4,6 +4,7 @@ import (
 	"context"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/splitter/pkg/model"
+	"fmt"
 	"google.golang.org/grpc"
 	"sync"
 )
@@ -40,15 +41,16 @@ type resolver struct {
 func (r *resolver) Resolve(ctx context.Context, service model.QualifiedServiceName) (Connection, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	c, ok := r.cluster.Service(service)
 	if !ok {
-		return Connection{}, model.ErrInvalid
+		return Connection{}, fmt.Errorf("no coordinator found for service %v: %w", service, model.ErrInvalid)
 	}
 	if c.instance.Endpoint() == r.self.Endpoint() {
-		return Connection{}, model.ErrNoResolution
+		return Connection{GID: c.grant.ID()}, model.ErrNoResolution
 	}
 	return Connection{
-		GID:  c.gid,
+		GID:  c.grant.ID(),
 		Conn: r.peers[c.instance.Endpoint()],
 	}, nil
 }

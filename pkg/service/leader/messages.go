@@ -6,6 +6,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pb"
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"time"
@@ -51,6 +52,14 @@ func NewWorkerMessage(m WorkerMessage) Message {
 	}}
 }
 
+func NewClusterMessage(m ClusterMessage) Message {
+	return Message{pb: &internal_v1.LeaderMessage{
+		Msg: &internal_v1.LeaderMessage_Cluster{
+			Cluster: UnwrapClusterMessage(m),
+		},
+	}}
+}
+
 func NewRegister(worker model.Instance, grants ...core.Grant) Message {
 	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
 		Msg: &internal_v1.WorkerMessage_Register_{
@@ -76,6 +85,7 @@ func NewDisconnect() Message {
 		},
 	}})
 }
+
 func NewLeaseUpdate(ttl time.Time) Message {
 	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
 		Msg: &internal_v1.WorkerMessage_Lease{
@@ -116,6 +126,37 @@ func NewRelinquished(grants ...core.Grant) Message {
 		},
 	}})
 }
+
+func NewSnapshot(assignments []core.Assignment) Message {
+	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
+		Msg: &internal_v1.ClusterMessage_Snapshot_{
+			Snapshot: &internal_v1.ClusterMessage_Snapshot{
+				Assignments: slicex.Map(assignments, core.Assignment.ToProto),
+			},
+		},
+	}})
+}
+
+func NewUpdate(assignments []core.Assignment) Message {
+	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
+		Msg: &internal_v1.ClusterMessage_Update_{
+			Update: &internal_v1.ClusterMessage_Update{
+				Assignments: slicex.Map(assignments, core.Assignment.ToProto),
+			},
+		},
+	}})
+}
+
+func NewRemove(remove []model.QualifiedServiceName) Message {
+	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
+		Msg: &internal_v1.ClusterMessage_Remove_{
+			Remove: &internal_v1.ClusterMessage_Remove{
+				Services: slicex.Map(remove, model.QualifiedServiceName.ToProto),
+			},
+		},
+	}})
+}
+
 func WrapMessage(pb *internal_v1.LeaderMessage) Message {
 	return Message{pb: pb}
 }
@@ -299,4 +340,63 @@ func WrapClusterMessage(pb *internal_v1.ClusterMessage) ClusterMessage {
 
 func UnwrapClusterMessage(m ClusterMessage) *internal_v1.ClusterMessage {
 	return m.pb
+}
+
+func (m *ClusterMessage) IsSnapshot() bool {
+	return m.pb.GetSnapshot() != nil
+}
+func (m *ClusterMessage) IsUpdate() bool {
+	return m.pb.GetUpdate() != nil
+}
+
+func (m *ClusterMessage) IsRemove() bool {
+	return m.pb.GetRemove() != nil
+}
+
+func (m *ClusterMessage) Snapshot() (SnapshotMessage, bool) {
+	if !m.IsSnapshot() {
+		return SnapshotMessage{}, false
+	}
+	return SnapshotMessage{pb: m.pb.GetSnapshot()}, true
+}
+
+func (m *ClusterMessage) Update() (UpdateMessage, bool) {
+	if !m.IsUpdate() {
+		return UpdateMessage{}, false
+	}
+	return UpdateMessage{pb: m.pb.GetUpdate()}, true
+}
+
+func (m *ClusterMessage) Remove() (RemoveMessage, bool) {
+	if !m.IsRemove() {
+		return RemoveMessage{}, false
+	}
+	return RemoveMessage{pb: m.pb.GetRemove()}, true
+}
+
+type SnapshotMessage struct {
+	pb *internal_v1.ClusterMessage_Snapshot
+}
+
+func (m SnapshotMessage) Assignments() []core.Assignment {
+	return slicex.Map(m.pb.GetAssignments(), core.ParseClusterAssignment)
+}
+
+type UpdateMessage struct {
+	pb *internal_v1.ClusterMessage_Update
+}
+
+func (m UpdateMessage) Assignments() []core.Assignment {
+	return slicex.Map(m.pb.GetAssignments(), core.ParseClusterAssignment)
+}
+
+type RemoveMessage struct {
+	pb *internal_v1.ClusterMessage_Remove
+}
+
+func (m RemoveMessage) Services() []model.QualifiedServiceName {
+	return slicex.Map(m.pb.GetServices(), func(t *public_v1.QualifiedServiceName) model.QualifiedServiceName {
+		ret, _ := model.ParseQualifiedServiceName(t)
+		return ret
+	})
 }

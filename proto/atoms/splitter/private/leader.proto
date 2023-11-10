@@ -221,7 +221,7 @@ message ClusterMessage {
   }
 
   message Remove {
-    repeated string tenants = 1;
+    repeated atoms.splitter.QualifiedServiceName services = 1;
   }
 
   oneof msg {

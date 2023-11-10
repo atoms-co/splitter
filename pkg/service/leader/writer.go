@@ -115,7 +115,7 @@ func (w *Writer) handle(ctx context.Context, req HandleRequest) (iox.AsyncCloser
 		return done, NewHandleOperationResponse(ret), nil
 
 	default:
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid handle request: %w", model.ErrInvalid)
 	}
 }
 
@@ -173,7 +173,7 @@ func (w *Writer) handleUpdateTenantRequest(ctx context.Context, req *public_v1.U
 		opts = append(opts, model.WithTenantConfig(model.WrapTenantConfig(req.GetConfig())))
 	}
 	if len(opts) == 0 {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("no tenant options: %w", model.ErrInvalid)
 	}
 	tenant, err := model.UpdateTenant(info.Tenant(), opts...)
 	if err != nil {
@@ -227,7 +227,7 @@ func (w *Writer) handleServiceRequest(ctx context.Context, req *internal_v1.Serv
 func (w *Writer) handleNewServiceRequest(ctx context.Context, req *public_v1.NewServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetName())
 	if err != nil {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
 	}
 
 	var opts []model.ServiceOption
@@ -257,7 +257,7 @@ func (w *Writer) handleNewServiceRequest(ctx context.Context, req *public_v1.New
 func (w *Writer) handleUpdateServiceRequest(ctx context.Context, req *public_v1.UpdateServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetName())
 	if err != nil {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
 	}
 	guard := model.Version(req.GetVersion())
 
@@ -271,7 +271,7 @@ func (w *Writer) handleUpdateServiceRequest(ctx context.Context, req *public_v1.
 		opts = append(opts, model.WithServiceConfig(model.WrapServiceConfig(req.GetConfig())))
 	}
 	if len(opts) == 0 {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("no service options: %w", model.ErrInvalid)
 	}
 	service, err := model.UpdateService(infoEx.Info().Service(), opts...)
 	if err != nil {
@@ -296,7 +296,7 @@ func (w *Writer) handleUpdateServiceRequest(ctx context.Context, req *public_v1.
 func (w *Writer) handleDeleteServiceRequest(ctx context.Context, req *public_v1.DeleteServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetName())
 	if err != nil {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
 	}
 
 	upd, err := w.writer.Services.Delete(name)
@@ -328,7 +328,7 @@ func (w *Writer) handleDomainRequest(ctx context.Context, req *internal_v1.Domai
 func (w *Writer) handleNewDomainRequest(ctx context.Context, req *public_v1.NewDomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
 	name, err := model.ParseQualifiedDomainName(req.GetName())
 	if err != nil {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid DQN: %w", model.ErrInvalid)
 	}
 
 	var opts []model.DomainOption
@@ -358,7 +358,7 @@ func (w *Writer) handleNewDomainRequest(ctx context.Context, req *public_v1.NewD
 func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.UpdateDomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
 	name, err := model.ParseQualifiedDomainName(req.GetName())
 	if err != nil {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid DQN: %w", model.ErrInvalid)
 	}
 
 	service, ok := w.cache.Service(name.Service)
@@ -399,7 +399,7 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.U
 func (w *Writer) handleDeleteDomainRequest(ctx context.Context, req *public_v1.DeleteDomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
 	name, err := model.ParseQualifiedDomainName(req.GetName())
 	if err != nil {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid DQN: %w", model.ErrInvalid)
 	}
 
 	upd, err := w.writer.Domains.Delete(name)
@@ -431,7 +431,7 @@ func (w *Writer) handlePlacementRequest(ctx context.Context, req *internal_v1.Pl
 func (w *Writer) handleNewPlacementRequest(ctx context.Context, req *internal_v1.NewPlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
 	}
 	cfg, err := core.ParseInternalPlacementConfig(req.GetConfig())
 	if err != nil {
@@ -457,7 +457,7 @@ func (w *Writer) handleNewPlacementRequest(ctx context.Context, req *internal_v1
 func (w *Writer) handleUpdatePlacementRequest(ctx context.Context, req *internal_v1.UpdatePlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
 	}
 	guard := model.Version(req.GetVersion())
 
@@ -485,7 +485,7 @@ func (w *Writer) handleUpdatePlacementRequest(ctx context.Context, req *internal
 func (w *Writer) handleDeletePlacementRequest(ctx context.Context, req *internal_v1.DeletePlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
-		return nil, nil, model.ErrInvalid
+		return nil, nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
 	}
 
 	upd, err := w.writer.Placements.Delete(name)

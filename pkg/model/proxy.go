@@ -118,7 +118,7 @@ func NewResolver[T any](ctx context.Context, self InstanceID, clusterProvider Cl
 	return ret
 }
 
-// Resolve returns a shared grpc connection to the owning consumer, if remote. Returns false if local.
+// Resolve returns a shared grpc connection to the owning instance, if remote. Returns false if local.
 func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -131,13 +131,13 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 		con, err := r.pool.Connect(ctx, instance.ID())
 		if err != nil {
 			numForwards.Increment(ctx, 1, resultTag("no_connection"))
-			return rt, ErrInvalid
+			return rt, fmt.Errorf("no connection: %w", ErrInvalid) // Should this be Invalid?
 		}
 		numForwards.Increment(ctx, 1, resultTag("ok"))
 		return r.fn(con.Conn), nil
 	}
 	numForwards.Increment(ctx, 1, resultTag("not_initialized"))
-	return rt, ErrInvalid
+	return rt, fmt.Errorf("not initialized: %w", ErrInvalid) // Should this be Invalid?
 }
 
 type connectionPool struct {

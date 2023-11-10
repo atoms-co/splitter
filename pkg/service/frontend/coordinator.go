@@ -14,6 +14,7 @@ import (
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -51,19 +52,19 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 		establish, ok := chanx.TryRead(sess.Establish(), 20*time.Second)
 		if !ok {
 			log.Errorf(ctx, "No session establish message received")
-			return nil, model.WrapError(model.ErrInvalid)
+			return nil, model.WrapError(fmt.Errorf("no session establish message: %w", model.ErrInvalid))
 		}
 
 		register, err := tryReadRegister(ctx, ch)
 		if err != nil {
-			return nil, err
+			return nil, model.WrapError(err)
 		}
 
 		// Should be local, model.ErrNoResolution indicates a local coordinator
 		cc, err := c.resolver.Resolve(ctx, register.Service())
 		if !errors.Is(err, model.ErrNoResolution) {
 			log.Debugf(ctx, "Service %v was not local: %v", register.Service(), err)
-			return nil, err
+			return nil, model.WrapError(err)
 		}
 
 		// Let worker handle connect

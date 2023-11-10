@@ -21,6 +21,7 @@ import (
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"net"
 	"time"
 )
@@ -50,7 +51,7 @@ type Server struct {
 	worker   *worker.Worker
 }
 
-func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *cluster.Cluster, manager *leader.Manager, resolver core.ServiceResolver, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *cluster.Cluster, manager *leader.Manager, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
@@ -91,7 +92,8 @@ func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *clus
 		return coordinator.New(ctx, cl, service, state, nil /* stateUpdates */)
 	}
 
-	w := worker.New(cl, self, joinFn, factoryFn)
+	w, out := worker.New(cl, self, joinFn, factoryFn)
+	resolver := core.NewServiceResolver(ctx, self, out, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	return &Server{
 		cl:       cl,
@@ -118,6 +120,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
 	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.manager))
+	internal_v1.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.cl, s.worker, s.resolver))
 	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cluster))
 	internal_v1.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.manager, s.manager))
 

@@ -28,7 +28,7 @@ func TestWorker(t *testing.T) {
 	coordinators := make(chan coordinator.Coordinator)
 
 	loc := location.NewInstance(location.New("centralus", "pod1"))
-	w := worker.New(cl, model.NewInstance(loc, "endpoint"),
+	w, _ := worker.New(cl, model.NewInstance(loc, "endpoint"),
 		func(ctx context.Context, handler grpcx.Handler[leader.Message, leader.Message]) error {
 			return leaderCon.connect(ctx, handler)
 		},

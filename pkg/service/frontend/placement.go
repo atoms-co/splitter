@@ -81,7 +81,7 @@ func (i *InternalPlacementService) List(ctx context.Context, request *internal_v
 			List: request,
 		},
 	})
-	return resp.GetList(), err
+	return resp.GetList(), model.WrapError(err)
 }
 
 func (i *InternalPlacementService) New(ctx context.Context, request *internal_v1.NewPlacementRequest) (*internal_v1.NewPlacementResponse, error) {
@@ -97,7 +97,7 @@ func (i *InternalPlacementService) New(ctx context.Context, request *internal_v1
 			New: request,
 		},
 	})
-	return resp.GetNew(), err
+	return resp.GetNew(), model.WrapError(err)
 }
 
 func (i *InternalPlacementService) Info(ctx context.Context, request *internal_v1.InfoPlacementRequest) (*internal_v1.InfoPlacementResponse, error) {
@@ -110,7 +110,7 @@ func (i *InternalPlacementService) Info(ctx context.Context, request *internal_v
 			Info: request,
 		},
 	})
-	return resp.GetInfo(), err
+	return resp.GetInfo(), model.WrapError(err)
 }
 
 func (i *InternalPlacementService) Update(ctx context.Context, request *internal_v1.UpdatePlacementRequest) (*internal_v1.UpdatePlacementResponse, error) {
@@ -123,7 +123,7 @@ func (i *InternalPlacementService) Update(ctx context.Context, request *internal
 			Update: request,
 		},
 	})
-	return resp.GetUpdate(), err
+	return resp.GetUpdate(), model.WrapError(err)
 }
 
 func (i *InternalPlacementService) Delete(ctx context.Context, request *internal_v1.DeletePlacementRequest) (*internal_v1.DeletePlacementResponse, error) {
@@ -136,7 +136,7 @@ func (i *InternalPlacementService) Delete(ctx context.Context, request *internal
 			Delete: request,
 		},
 	})
-	return resp.GetDelete(), err
+	return resp.GetDelete(), model.WrapError(err)
 }
 
 func (i *InternalPlacementService) invoke(ctx context.Context, request *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
@@ -150,7 +150,7 @@ func (i *InternalPlacementService) invoke(ctx context.Context, request *internal
 
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, err
+		return nil, model.WrapError(err)
 	}
 	return resp.GetPlacement(), nil
 }
