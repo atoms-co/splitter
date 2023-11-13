@@ -352,7 +352,7 @@ func TestAllocation(t *testing.T) {
 
 		cl.Add(time.Second)
 
-		alloc2, rejects := allocation.Update(alloc, upd, cl.Now())
+		alloc2, rejects := allocation.Update(alloc, nil, nil, upd, cl.Now())
 		require.Len(t, rejects, 1)
 		assertx.Equal(t, rejects[0].Unit, "b")
 		require.NoError(t, alloc2.Check())

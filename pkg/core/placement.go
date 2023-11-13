@@ -1,12 +1,22 @@
 package core
 
 import (
+	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 	"time"
 )
+
+// Block is a block number in the range [0;1023].
+type Block int
+
+// BlockDistributionSplit represents a region change in a distribution from a given block.
+type BlockDistributionSplit struct {
+	Block  Block
+	Region model.Region
+}
 
 type BlockDistribution struct {
 	pb *internal_v1.BlockDistribution
@@ -28,6 +38,25 @@ func NewSingleRegionBlockDistribution(initial model.Region) BlockDistribution {
 	return WrapBlockDistribution(&internal_v1.BlockDistribution{
 		Region: string(initial),
 	})
+}
+
+func (t BlockDistribution) ToDistribution() model.Distribution {
+	initial := model.Region(t.pb.GetRegion())
+
+	if len(t.pb.GetSplits()) == 0 {
+		return model.NewDistribution(initial)
+	}
+	var splits []model.DistributionSplit
+	for _, pb := range t.pb.GetSplits() {
+		key, _ := uuidx.Divide(pb.GetBlock(), 1024)
+		split := model.DistributionSplit{
+			Key:    model.Key(key),
+			Region: model.Region(pb.GetRegion()),
+		}
+		splits = append(splits, split)
+	}
+
+	return model.NewDistribution(initial, splits...)
 }
 
 func (t BlockDistribution) String() string {
@@ -97,6 +126,14 @@ func (t InternalPlacement) Name() model.QualifiedPlacementName {
 
 func (t InternalPlacement) State() PlacementState {
 	return t.pb.GetState()
+}
+
+func (t InternalPlacement) Target() BlockDistribution {
+	return WrapBlockDistribution(t.pb.GetConfig().GetTarget())
+}
+
+func (t InternalPlacement) Current() BlockDistribution {
+	return WrapBlockDistribution(t.pb.GetConfig().GetCurrent())
 }
 
 func (t InternalPlacement) String() string {

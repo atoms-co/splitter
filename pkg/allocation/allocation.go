@@ -72,8 +72,8 @@ func New[T comparable](id location.InstanceID, place []Placement[T], colo []Colo
 // Update updates the work and allows re-evaluation of all rules, preserving existing assignments, expirations
 // and state of workers as best possible. Returns the updated allocation and any prior unassignable or now
 // invalid grants.
-func Update[T comparable](a *Allocation[T], work []Work[T], activation time.Time) (*Allocation[T], []Grant[T]) {
-	ret := New(a.id, a.place.List, a.colo.List, work, activation)
+func Update[T comparable](a *Allocation[T], place []Placement[T], colo []Colocation[T], work []Work[T], activation time.Time) (*Allocation[T], []Grant[T]) {
+	ret := New(a.id, place, colo, work, activation)
 	ret.seqno = a.seqno
 
 	// (1) Attach all workers and try to assign all old grants. That will preserve what grants can be preserved.
@@ -123,6 +123,12 @@ func Update[T comparable](a *Allocation[T], work []Work[T], activation time.Time
 	}
 
 	return ret, bad
+}
+
+// Reset clears all work in the given allocation. It returns an updated allocation with no work and
+// all currents grants rejected.
+func Reset[T comparable](a *Allocation[T]) (*Allocation[T], []Grant[T]) {
+	return Update(a, a.place.List, a.colo.List, nil, time.Now())
 }
 
 func (a *Allocation[T]) ID() location.InstanceID {

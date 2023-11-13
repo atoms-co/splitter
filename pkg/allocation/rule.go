@@ -46,11 +46,18 @@ func (p Placements[T]) TryPlace(worker Worker, work Work[T]) (Load, bool) {
 type PredicateFn[T comparable] func(Worker, Work[T]) bool
 
 func HasNodeAffinity[T comparable](worker Worker, work Work[T]) bool {
-	return work.Location.Node != "" && worker.Location == work.Location
+	return work.Location.Node == "" || worker.Location == work.Location
 }
 
 func HasRegionAffinity[T comparable](worker Worker, work Work[T]) bool {
-	return work.Location.Region != "" && worker.Location.Region == work.Location.Region
+	return work.Location.Region == "" || worker.Location.Region == work.Location.Region
+}
+
+// Fixed returns a predicate that always returns the given value.
+func Fixed[T comparable](v bool) PredicateFn[T] {
+	return func(w Worker, w2 Work[T]) bool {
+		return v
+	}
 }
 
 type constraint[T comparable] struct {

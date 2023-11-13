@@ -3,14 +3,17 @@ package coordinator
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
 	"go.atoms.co/splitter/pkg/util/txnx"
 	"fmt"
@@ -19,7 +22,7 @@ import (
 
 var (
 	// leaseDuration is the duration of a consumer lease.
-	leaseDuration = 90 * time.Second
+	leaseDuration = 40 * time.Second
 )
 
 // Coordinator handles consumer connection and work allocation.
@@ -35,123 +38,149 @@ type Coordinator interface {
 type coordinator struct {
 	iox.AsyncCloser
 
-	cl     clock.Clock
-	inject chan func()
-	drain  iox.AsyncCloser
+	cl clock.Clock
+	id location.Instance
 
-	service model.QualifiedServiceName
+	name  model.QualifiedServiceName
+	info  model.ServiceInfoEx
+	cache *storage.Cache
 
-	state     core.State
-	shards    *ShardManager
 	consumers map[model.InstanceID]*consumerSession
+	alloc     *Allocation
 	messages  chan *sessionx.Message[model.ConsumerMessage]
+
+	inject chan func()
+
+	drain iox.AsyncCloser
 }
 
-type consumerSession struct {
-	consumer   Consumer
-	connection sessionx.Connection[model.ConsumerMessage]
-}
-
-func (c *consumerSession) String() string {
-	return fmt.Sprintf("session{consumer=%v, connection=%v}", c.consumer, c.connection)
-}
-
-func New(ctx context.Context, cl clock.Clock, service model.QualifiedServiceName, state core.State, stateUpdates <-chan core.Update) Coordinator {
+func New(ctx context.Context, loc location.Location, cl clock.Clock, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) Coordinator {
 	c := &coordinator{
 		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
+		id:          location.NewInstance(loc),
 		cl:          cl,
-		inject:      make(chan func()),
-		drain:       iox.NewAsyncCloser(),
-		service:     service,
-		state:       state,
-		shards:      NewShardManager(ctx, cl, state),
+		name:        service,
+		cache:       storage.NewCache(),
 		consumers:   map[model.InstanceID]*consumerSession{},
 		messages:    make(chan *sessionx.Message[model.ConsumerMessage], 1000),
+		inject:      make(chan func()),
+		drain:       iox.NewAsyncCloser(),
 	}
-	ctx = log.NewContext(ctx, log.String("service", service.String()))
-	go c.process(ctx, stateUpdates)
+	go c.init(core.NewServiceContext(context.Background(), service), state, updates)
+
 	return c
 }
 
 func (c *coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	out, err := syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (<-chan model.ConsumerMessage, error) {
-		id := register.Consumer().ID()
-		existing, ok := c.consumers[id]
-		if ok {
-			existing.connection.Close()
-		}
-
+	return syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (<-chan model.ConsumerMessage, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
-		s, out, err := c.connectConsumer(wctx, sid, register, in)
+
+		s, out, err := c.connect(wctx, sid, register, in)
 		if err != nil {
 			return nil, err
 		}
+
+		c.allocate(ctx, c.cl.Now(), false) // Allocate to assign work post connection
 
 		go func() {
 			defer cancel()
 			<-s.connection.Closed()
 
 			syncx.AsyncTxn(txnx.Txn(c, c.inject), func() {
-				if cur, ok := c.consumers[id]; ok {
+				if cur, ok := c.consumers[s.consumer.ID()]; ok {
 					if ok && cur.connection.Sid() == sid { // guard against race
-						c.disconnectConsumer(wctx, cur)
+						c.disconnect(wctx, cur)
 					}
 				}
 			})
 		}()
 		return out, nil
 	})
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
 }
 
-func (c *coordinator) Drain(timeout time.Duration) {
-	c.drain.Close()
-	c.cl.AfterFunc(timeout, c.Close)
-}
-
-func (c *coordinator) String() string {
-	return fmt.Sprintf("coordinator{service=%v}", c.service)
-}
-
-func (c *coordinator) connectConsumer(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage, error) {
+func (c *coordinator) connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage, error) {
 	consumer := NewConsumer(register.Consumer(), c.cl.Now())
-	err := c.shards.Connect(consumer, 1, c.cl.Now().Add(time.Minute*10))
+	grants, err := register.ParseActive()
 	if err != nil {
-		log.Errorf(ctx, "Coordination %v is unable to connect a consumer %v: %v", c, consumer, err)
 		return nil, nil, err
 	}
+
+	if old, ok := c.consumers[consumer.ID()]; ok {
+		log.Infof(ctx, "Consumer %v re-connected (session=%v) with #grants: %d. Disconnecting stale session", consumer, sid, len(grants))
+		c.disconnect(ctx, old)
+	} else {
+		log.Infof(ctx, "Consumer %v connected (session=%v) with #grants: %d", consumer, sid, len(grants))
+	}
+
 	connection, out := sessionx.NewConnection[model.ConsumerMessage](c.cl, sid, consumer.Instance(), c, in, c.messages)
-	c.consumers[consumer.ID()] = &consumerSession{
+	s := &consumerSession{
 		consumer:   consumer,
 		connection: connection,
 	}
+	c.consumers[consumer.ID()] = s
 
-	log.Infof(ctx, "%v connected consumer %v", c, consumer)
-	snapshot := c.shards.Snapshot()
+	lease := c.cl.Now().Add(leaseDuration)
+	connection.Send(ctx, model.NewConsumerExtendMessage(model.NewExtendMessage(lease)))
 
-	if !connection.Send(ctx, model.NewConsumerClusterMessage(model.NewClusterSnapshotMessage(snapshot))) {
-		return nil, nil, fmt.Errorf("unable to send initial cluster message to consumer %v", register)
+	// If consumer is present in the allocation, there is no need to broadcast assignments to other
+	// consumers. Attach will change no assignments.
+
+	_, broadcast := c.alloc.Worker(consumer.ID())
+	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Client()), lease /* + claimed grants */); ok {
+		connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Active)...)))
+		connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Allocated)...)))
 	}
-	return c.consumers[consumer.ID()], out, nil
+
+	// TODO: send existing cluster map to new consumer
+
+	if broadcast {
+		// TODO
+	}
+
+	return s, out, nil
 }
 
-func (c *coordinator) disconnectConsumer(ctx context.Context, s *consumerSession) {
-	delete(c.consumers, s.consumer.ID())
-	err := c.shards.Disconnect(s.consumer)
-	if err != nil {
-		log.Errorf(ctx, "Error when disconnecting a consumer %v from allocations: %v", s.consumer, err)
+func (c *coordinator) disconnect(ctx context.Context, list ...*consumerSession) {
+	for _, s := range list {
+		if c.alloc.Detach(s.consumer.ID()) {
+			assigned := c.alloc.Assigned(s.ID())
+			if len(assigned.Active) > 0 || len(assigned.Allocated) > 0 {
+				log.Warnf(ctx, "Detached consumer %v with %v active and %v allocated domains: %v ", s.consumer, len(assigned.Active), len(assigned.Allocated))
+			}
+		} // else: already detached
+
+		s.connection.Close()
+
+		delete(c.consumers, s.consumer.ID())
 	}
 }
 
-func (c *coordinator) process(ctx context.Context, stateUpdates <-chan core.Update) {
+func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan core.Update) {
 	defer c.Close()
+	defer c.drain.Close()
 
+	c.cache.Restore(core.NewSnapshot(state))
+
+	info, ok := c.cache.Service(c.name)
+	if !ok {
+		log.Errorf(ctx, "Internal: invalid state for coordinator %v/%v", c.name, c.id)
+		return
+	}
+	c.info = info
+	c.alloc = newAllocation(c.id.ID(), info, c.cache.Placements(c.name.Tenant), c.cl.Now().Add(leaseDuration))
+
+	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
+
+	c.process(ctx, updates)
+
+	log.Infof(ctx, "Coordinator %v/%v closed", c.name, c.id)
+}
+
+func (c *coordinator) process(ctx context.Context, updates <-chan core.Update) {
 	ticker := c.cl.NewTicker(10*time.Second + randx.Duration(time.Second))
 	defer ticker.Stop()
 
+steady:
 	for {
 		select {
 		case msg := <-c.messages:
@@ -161,110 +190,144 @@ func (c *coordinator) process(ctx context.Context, stateUpdates <-chan core.Upda
 				break
 			}
 			c.handleConsumerMessage(ctx, s, msg.Msg)
-		case <-ticker.C:
-			update, ok := c.shards.DiscardClusterUpdate(ctx)
-			if ok {
-				for _, s := range c.consumers {
-					if !s.connection.Send(ctx, model.NewConsumerClusterMessage(model.NewClusterUpdateMessage(update))) {
-						log.Errorf(ctx, "Cannot send cluster updates to session %v", s)
-					}
-				}
-			}
-			// TODO (styurin, 9/29/23): emit metrics
-		case fn := <-c.inject:
-			fn()
-		case update, ok := <-stateUpdates:
+
+		case update, ok := <-updates:
 			if !ok {
+				break steady
+			}
+			if err := c.cache.Update(update, false); err != nil {
+				log.Errorf(ctx, "Internal: invalid state update %v", err)
 				return
 			}
-			c.handleStateUpdate(ctx, update)
+			c.refresh(ctx, leaseDuration)
+
+		case <-ticker.C:
+			// Regularly send out lease updates to healthy consumers, disconnect unhealthy ones.
+
+			now := c.cl.Now()
+			lease := now.Add(leaseDuration)
+
+			var unhealthy []*consumerSession
+			for _, s := range c.consumers {
+				if !s.connection.Send(ctx, model.NewConsumerExtendMessage(model.NewExtendMessage(lease))) {
+					unhealthy = append(unhealthy, s)
+					continue
+				}
+				c.alloc.Extend(s.consumer.ID(), lease)
+			}
+			c.disconnect(ctx, unhealthy...)
+			c.allocate(ctx, now, true)
+
+			// TODO (styurin, 9/29/23): emit metrics
+
+		case fn := <-c.inject:
+			fn()
+
 		case <-c.drain.Closed():
-			// drain
+			break steady
+
 		case <-c.Closed():
 			return
 		}
 	}
+
+	log.Infof(ctx, "Coordinator %v closing, #consumer=%v", c.id, len(c.consumers))
+
+	// TODO: send out lease update to better survive coordinator restart
+
+	for _, s := range c.consumers {
+		s.connection.Close()
+	}
 }
 
+func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
+	now := c.cl.Now()
+
+	upd, rejected := updateAllocation(c.alloc, c.info, c.cache.Placements(c.name.Tenant), now.Add(delay))
+	c.alloc = upd
+
+	for _, g := range rejected {
+		c.mustSend(ctx, c.consumers[g.Worker], model.NewConsumerRevokeMessage(model.NewRevokeMessage(model.GrantID(g.ID))))
+	}
+}
+
+func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance bool) {
+	assign := map[model.ConsumerID][]Grant{}
+
+	// (1) Free any expired grants to make them available for re-allocation.
+
+	promo := c.alloc.Expire(now)
+	for _, g := range promo {
+		log.Debugf(ctx, "Promoted %v", g)
+
+		assign[g.Worker] = append(assign[g.Worker], g)
+	}
+
+	// (2) Allocate and commit the assignments by sending grants. We remove the clients from the alloc
+	// on disconnect, so we know that any beneficiary of Allocate has a valid session. However, consumers
+	// may be disconnected _during_ grant distribution if stuck.
+
+	grants := c.alloc.Allocate(now)
+	for _, g := range grants {
+		if _, ok := c.consumers[g.Worker]; !ok {
+			c.alloc.Release(g, now) // undo allocation
+			continue
+		}
+
+		log.Debugf(ctx, "Allocated %v", g)
+
+		assign[g.Worker] = append(assign[g.Worker], g)
+	}
+
+	// (4) Load-balance grants across consumers, if needed.
+
+	if loadbalance {
+		if move, load, ok := c.alloc.LoadBalance(now); ok {
+			assign[move.To.Worker] = append(assign[move.To.Worker], move.To)
+
+			c.mustSend(ctx, c.consumers[move.From.Worker], model.NewConsumerRevokeMessage(model.NewRevokeMessage(model.GrantID(move.From.ID))))
+
+			log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
+		}
+	}
+
+	// (5) Send out new assignments and broadcast updates, incl revoke
+
+	for cid, grants := range assign {
+		c.mustSend(ctx, c.consumers[cid], model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(grants)...)))
+	}
+
+	log.Debugf(ctx, "Allocation: %v/%v", c.name, c.alloc)
+
+	// TODO: broadcast
+}
+
+// mustSend attempts to send a message on a consumer connection. If it fails, disconnect the consumer
+func (c *coordinator) mustSend(ctx context.Context, s *consumerSession, message model.ConsumerMessage) bool {
+	if s == nil {
+		return false // already disconnected
+	}
+	if !s.connection.Send(ctx, message) {
+		c.disconnect(ctx, s)
+		return false
+	}
+	return true
+}
 func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, msg model.ConsumerMessage) {
 	switch {
 	case msg.IsDeregister():
-		log.Infof(ctx, "coordinator %v is disconnecting session %v", c, s)
-		c.tearDown(ctx, s.consumer.ID())
-	case msg.IsReleased():
-		released, _ := msg.Released()
-		c.handleReleased(ctx, s, released)
+		c.disconnect(ctx, s)
+
+	default:
+		log.Errorf(ctx, "Internal: unexpected consumer message: %v", msg)
 	}
 }
 
-func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, msg model.ReleasedMessage) {
-	grants, err := msg.ParseGrants()
-	if err != nil {
-		log.Errorf(ctx, "Unable to parse grants from %v: %v", msg, err)
-		return
-	}
-	for _, g := range grants {
-		err := c.shards.Release(s.consumer, g)
-		if err != nil {
-			log.Errorf(ctx, "coordinator %v is unable to release a grant %v for consumer %v: %v", c, g, s.consumer, err)
-			continue
-		}
-	}
-	log.Infof(ctx, "coordinator %v released %v grants from consumer %s", c, len(grants), s.consumer)
+func (c *coordinator) Drain(timeout time.Duration) {
+	c.drain.Close()
+	c.cl.AfterFunc(timeout, c.Close)
 }
 
-func (c *coordinator) handleStateUpdate(ctx context.Context, update core.Update) {
-	if c.service.Tenant != update.Name() {
-		log.Errorf(ctx, "%v received an update for mismatching tenant: %v", c, update)
-	}
-	if upd, ok := update.TenantUpdated(); ok {
-		c.handleTenantUpdated(ctx, upd)
-	}
-	if upd := update.ServicesUpdated(); len(upd) > 0 {
-		c.handleServiceUpdated(ctx, upd)
-	}
-	if upd := update.PlacementsUpdated(); len(upd) > 0 {
-		c.handlePlacementsUpdated(ctx, upd)
-	}
-	if upd := update.PlacementsRemoved(); len(upd) > 0 {
-		c.handlePlacementsRemoved(ctx, upd)
-	}
-}
-
-func (c *coordinator) handleTenantUpdated(ctx context.Context, info model.TenantInfo) {
-	log.Debugf(ctx, "%v received tenant update: %v", c, info)
-	// TODO: Change when Tenant has relevant metadata
-}
-
-func (c *coordinator) handleServiceUpdated(ctx context.Context, updated []core.ServiceUpdate) {
-	log.Debugf(ctx, "%v received service updates: %v", c, updated)
-	// TODO: detect if default region and default sharding policy are different and apply the changes
-	// TODO: detect if a domain is added and add new shards to the distribution
-	// TODO: detect if domain's state has changed and add/remove shards
-	// TODO: detect if config has changed and update affected shards
-	// TODO: remove shards of removed domain
-}
-
-func (c *coordinator) handlePlacementsUpdated(ctx context.Context, updated []core.InternalPlacementInfo) {
-	log.Debugf(ctx, "%v received placement updates: %v", c, updated)
-	// TODO: update shards affected by updated placements
-}
-
-func (c *coordinator) handlePlacementsRemoved(ctx context.Context, removed []model.QualifiedPlacementName) {
-	log.Debugf(ctx, "%v received placement removals: %v", c, removed)
-	// TODO: update shards affected by removed placements
-}
-
-func (c *coordinator) notifyConsumers() {
-	// TODO: send cluster updates to consumers
-}
-
-func (c *coordinator) tearDown(ctx context.Context, id model.InstanceID) {
-	s, ok := c.consumers[id]
-	if !ok {
-		return
-	}
-	log.Infof(ctx, "coordinator %v is disconnecting session %v", c, s)
-	delete(c.consumers, id)
-	s.connection.Close()
+func (c *coordinator) String() string {
+	return fmt.Sprintf("%v[alloc=%v, #consumers=%v]", c.name, c.alloc, len(c.consumers))
 }

@@ -2,7 +2,6 @@ package leader
 
 import (
 	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
@@ -25,22 +24,19 @@ func newAllocation(id location.InstanceID, snapshot core.Snapshot, activation ti
 }
 
 func updateAllocation(alloc *Allocation, snapshot core.Snapshot, activation time.Time) (*Allocation, []Grant) {
-	return allocation.Update(alloc, findWork(snapshot), activation)
+	return allocation.Update(alloc, slicex.New(regionAffinity), nil, findWork(snapshot), activation)
 }
 
 func findWork(snapshot core.Snapshot) []Work {
 	var ret []Work
 	for _, tenant := range snapshot.Tenants() {
-		services := mapx.New(tenant.Services(), func(v model.ServiceInfoEx) model.ServiceInfo {
-			return v.Info()
-		})
-		for s := range services {
+		for _, info := range tenant.Services() {
+			r, _ := info.Info().Service().Region()
+
 			w := Work{
-				Unit: s.Name(),
-				Load: 10,
-			}
-			if r, ok := s.Service().Region(); ok {
-				w.Location.Region = r
+				Unit:     info.Info().Name(),
+				Location: location.Location{Region: r},
+				Load:     10,
 			}
 			ret = append(ret, w)
 		}

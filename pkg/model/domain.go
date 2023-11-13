@@ -145,6 +145,11 @@ func (t Domain) Name() QualifiedDomainName {
 	return ret
 }
 
+func (t Domain) ShortName() DomainName {
+	ret, _ := ParseQualifiedDomainName(t.pb.GetName())
+	return ret.Domain
+}
+
 func (t Domain) Config() DomainConfig {
 	return WrapDomainConfig(t.pb.GetConfig())
 }
@@ -192,9 +197,11 @@ func WithDomainShardingPolicy(policy ShardingPolicy) DomainConfigOption {
 	}
 }
 
-func WithDomainAntiAffinity(domains ...QualifiedDomainName) DomainConfigOption {
+func WithDomainAntiAffinity(domains ...DomainName) DomainConfigOption {
 	return func(cfg *public_v1.Domain_Config) {
-		cfg.AntiAffinity = slicex.Map(domains, QualifiedDomainName.ToProto)
+		cfg.AntiAffinity = slicex.Map(domains, func(t DomainName) string {
+			return string(t)
+		})
 	}
 }
 

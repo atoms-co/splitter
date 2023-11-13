@@ -103,28 +103,7 @@ var (
 	RevokedGrant   = public_v1.Grant_REVOKED
 )
 
-type GrantID uuid.UUID
-
-func NewGrantID() GrantID {
-	return GrantID(uuid.New())
-}
-
-func ParseGrantID(id string) (GrantID, error) {
-	ret, err := uuid.Parse(id)
-	return GrantID(ret), err
-}
-
-func MustParseGrantID(id string) GrantID {
-	ret, err := uuid.Parse(id)
-	if err != nil {
-		panic(err)
-	}
-	return GrantID(ret)
-}
-
-func (a GrantID) String() string {
-	return uuid.UUID(a).String()
-}
+type GrantID string
 
 type Grant struct {
 	ID       GrantID
@@ -135,16 +114,12 @@ type Grant struct {
 }
 
 func ParseGrant(pb *public_v1.Grant) (Grant, error) {
-	allocID, err := ParseGrantID(pb.GetId())
-	if err != nil {
-		return Grant{}, fmt.Errorf("invalid grant id: %v: %w", proto.MarshalTextString(pb), err)
-	}
 	shard, err := ParseShard(pb.GetShard())
 	if err != nil {
 		return Grant{}, fmt.Errorf("invalid shard: %v: %w", proto.MarshalTextString(pb), err)
 	}
 	return Grant{
-		ID:       allocID,
+		ID:       GrantID(pb.GetId()),
 		Shard:    shard,
 		State:    pb.GetState(),
 		Lease:    pb.GetLease().AsTime(),
@@ -154,7 +129,7 @@ func ParseGrant(pb *public_v1.Grant) (Grant, error) {
 
 func (g Grant) ToProto() *public_v1.Grant {
 	return &public_v1.Grant{
-		Id:       g.ID.String(),
+		Id:       string(g.ID),
 		Shard:    g.Shard.ToProto(),
 		State:    g.State,
 		Lease:    timestamppb.New(g.Lease),
@@ -267,12 +242,12 @@ func UnwrapReleasedMessage(m ReleasedMessage) *public_v1.Released {
 
 func NewReleasedMessage(grants ...GrantID) ReleasedMessage {
 	return WrapReleasedMessage(&public_v1.Released{
-		Grants: slicex.Map(grants, GrantID.String),
+		Grants: slicex.Map(grants, serializeGrantID),
 	})
 }
 
-func (m ReleasedMessage) ParseGrants() ([]GrantID, error) {
-	return slicex.TryMap(m.pb.GetGrants(), ParseGrantID)
+func (m ReleasedMessage) Grants() []GrantID {
+	return slicex.Map(m.pb.GetGrants(), deserializeGrantID)
 }
 
 func (m ReleasedMessage) String() string {
@@ -281,6 +256,12 @@ func (m ReleasedMessage) String() string {
 
 type ExtendMessage struct {
 	pb *public_v1.Extend
+}
+
+func NewExtendMessage(lease time.Time) ExtendMessage {
+	return WrapExtendMessage(&public_v1.Extend{
+		Lease: timestamppb.New(lease),
+	})
 }
 
 func WrapExtendMessage(pb *public_v1.Extend) ExtendMessage {
@@ -303,6 +284,12 @@ type AssignMessage struct {
 	pb *public_v1.Assign
 }
 
+func NewAssignMessage(grants ...Grant) AssignMessage {
+	return WrapAssignMessage(&public_v1.Assign{
+		Grants: slicex.Map(grants, Grant.ToProto),
+	})
+}
+
 func WrapAssignMessage(pb *public_v1.Assign) AssignMessage {
 	return AssignMessage{pb: pb}
 }
@@ -311,8 +298,9 @@ func UnwrapAssignMessage(m AssignMessage) *public_v1.Assign {
 	return m.pb
 }
 
-func (m AssignMessage) Grants() ([]Grant, error) {
-	return slicex.TryMap(m.pb.GetGrants(), ParseGrant)
+func (m AssignMessage) Grants() []Grant {
+	ret, _ := slicex.TryMap(m.pb.GetGrants(), ParseGrant)
+	return ret
 }
 
 func (m AssignMessage) String() string {
@@ -323,6 +311,14 @@ type RevokeMessage struct {
 	pb *public_v1.Revoke
 }
 
+func NewRevokeMessage(grants ...GrantID) RevokeMessage {
+	return WrapRevokeMessage(&public_v1.Revoke{
+		Grants: slicex.Map(grants, func(t GrantID) string {
+			return string(t)
+		}),
+	})
+}
+
 func WrapRevokeMessage(pb *public_v1.Revoke) RevokeMessage {
 	return RevokeMessage{pb: pb}
 }
@@ -331,8 +327,8 @@ func UnwrapRevokeMessage(m RevokeMessage) *public_v1.Revoke {
 	return m.pb
 }
 
-func (m RevokeMessage) Grants() ([]GrantID, error) {
-	return slicex.TryMap(m.pb.GetGrants(), ParseGrantID)
+func (m RevokeMessage) Grants() []GrantID {
+	return slicex.Map(m.pb.GetGrants(), deserializeGrantID)
 }
 
 func (m RevokeMessage) String() string {
@@ -371,6 +367,30 @@ func NewConsumerDeregisterMessage() ConsumerMessage {
 	return WrapConsumerMessage(&public_v1.ConsumerMessage{
 		Msg: &public_v1.ConsumerMessage_Deregister{
 			Deregister: UnwrapDeregisterMessage(NewDeregisterMessage()),
+		},
+	})
+}
+
+func NewConsumerExtendMessage(m ExtendMessage) ConsumerMessage {
+	return WrapConsumerMessage(&public_v1.ConsumerMessage{
+		Msg: &public_v1.ConsumerMessage_Extend{
+			Extend: UnwrapExtendMessage(m),
+		},
+	})
+}
+
+func NewConsumerAssignMessage(m AssignMessage) ConsumerMessage {
+	return WrapConsumerMessage(&public_v1.ConsumerMessage{
+		Msg: &public_v1.ConsumerMessage_Assign{
+			Assign: UnwrapAssignMessage(m),
+		},
+	})
+}
+
+func NewConsumerRevokeMessage(m RevokeMessage) ConsumerMessage {
+	return WrapConsumerMessage(&public_v1.ConsumerMessage{
+		Msg: &public_v1.ConsumerMessage_Revoke{
+			Revoke: UnwrapRevokeMessage(m),
 		},
 	})
 }
@@ -509,7 +529,7 @@ func NewClusterUpdate(assignments []Assignment, removed []GrantID) ClusterUpdate
 	return ClusterUpdate{
 		pb: &public_v1.ClusterMessage_Update{
 			Assignments: slicex.Map(assignments, UnwrapAssignment),
-			Removed:     slicex.Map(removed, GrantID.String),
+			Removed:     slicex.Map(removed, serializeGrantID),
 		},
 	}
 }
@@ -518,8 +538,8 @@ func (u ClusterUpdate) Assignments() []Assignment {
 	return slicex.Map(u.pb.GetAssignments(), WrapAssignment)
 }
 
-func (u ClusterUpdate) Removed() ([]GrantID, error) {
-	return slicex.TryMap(u.pb.GetRemoved(), ParseGrantID)
+func (u ClusterUpdate) Removed() []GrantID {
+	return slicex.Map(u.pb.GetRemoved(), deserializeGrantID)
 }
 
 func (u ClusterUpdate) String() string {
@@ -578,4 +598,12 @@ func (m ClusterMessage) Update() (ClusterUpdate, bool) {
 
 func (m ClusterMessage) String() string {
 	return proto.MarshalTextString(m.pb)
+}
+
+func serializeGrantID(g GrantID) string {
+	return string(g)
+}
+
+func deserializeGrantID(str string) GrantID {
+	return GrantID(str)
 }

@@ -222,7 +222,6 @@ func (l *Leader) process(ctx context.Context) {
 steady:
 	for {
 		select {
-
 		case m := <-l.messages:
 			w, ok := l.workers[m.Instance.ID()]
 			if !ok || w.connection.Sid() != m.Sid {
@@ -425,7 +424,7 @@ func (l *Leader) disconnect(ctx context.Context, workers ...*workerSession) {
 			}
 		} // else: already detached
 
-		w.connection.Send(ctx, NewDisconnect())
+		w.connection.Send(ctx, NewDisconnect()) // TODO(herohde) 11/12/2023: needed with session terminated?
 		w.connection.Close()
 
 		delete(l.workers, w.instance.ID())

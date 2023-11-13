@@ -691,11 +691,7 @@ func (c *connection) handleClusterSnapshot(ctx context.Context, snapshot Cluster
 
 func (c *connection) handleClusterUpdate(ctx context.Context, update ClusterUpdate) {
 	log.Debugf(ctx, "Updating assignments from cluster update: %v", update)
-	removed, err := update.Removed()
-	if err != nil {
-		log.Errorf(ctx, "Unable to parse removed grants in cluster update, skipping: %v", err)
-		return
-	}
+	removed := update.Removed()
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
 		return c.state.UpdateAssignments(ctx, update.Assignments(), removed), nil
 	})
@@ -708,12 +704,9 @@ func (c *connection) handleClusterUpdate(ctx context.Context, update ClusterUpda
 }
 
 func (c *connection) handleAssignedGrants(ctx context.Context, assigned AssignMessage) {
-	grants, err := assigned.Grants()
-	if err != nil {
-		log.Errorf(ctx, "Error parsing assigned grants. Ignoring assignments: %v", err)
-	}
+	grants := assigned.Grants()
 
-	log.Infof(ctx, "Received assigned grants: %v, ttl: %v", grants)
+	log.Infof(ctx, "Received assigned grants: %v", grants)
 
 	syncx.Txn0(ctx, c.txn, func() {
 		c.state.AssignGrants(ctx, grants)
@@ -721,10 +714,7 @@ func (c *connection) handleAssignedGrants(ctx context.Context, assigned AssignMe
 }
 
 func (c *connection) handleRevokedGrants(ctx context.Context, revoked RevokeMessage) {
-	grants, err := revoked.Grants()
-	if err != nil {
-		log.Errorf(ctx, "Error parsing revoked grants. Ignoring assignments: %v", err)
-	}
+	grants := revoked.Grants()
 
 	log.Infof(ctx, "Received revoked grants: %v", grants)
 

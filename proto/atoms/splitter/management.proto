@@ -99,7 +99,8 @@ message Domain {
 
     // Domains to avoid shard overlap in assignments. Asymmetric: the present domain is penalized in
     // allocation and may thus be more volatile, not the targets. UNIT domains overlap with every shard.
-    repeated QualifiedDomainName anti_affinity = 4;
+    // The target domains must be for the enclosing service.
+    repeated string anti_affinity = 4;
   }
   Config config = 4;
 
