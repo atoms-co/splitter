@@ -251,8 +251,9 @@ steady:
 				}
 				l.alloc.Extend(w.instance.ID(), lease)
 			}
-			log.Debugf(ctx, "Sent heartbeat to %v/%v sessions", len(l.workers)-len(unhealthy), len(l.workers))
-
+			if len(unhealthy) > 0 {
+				log.Warnf(ctx, "Disconnecting  %v unhealthy workers: %v", len(unhealthy), unhealthy)
+			}
 			l.disconnect(ctx, unhealthy...)
 			l.allocate(ctx, now, true)
 

@@ -127,8 +127,12 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 
 	_, broadcast := c.alloc.Worker(consumer.ID())
 	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Client()), lease /* + claimed grants */); ok {
-		connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Active)...)))
-		connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Allocated)...)))
+		if len(assigned.Active) > 0 {
+			connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Active)...)))
+		}
+		if len(assigned.Allocated) > 0 {
+			connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Allocated)...)))
+		}
 	}
 
 	// TODO: send existing cluster map to new consumer
@@ -145,7 +149,7 @@ func (c *coordinator) disconnect(ctx context.Context, list ...*consumerSession) 
 		if c.alloc.Detach(s.consumer.ID()) {
 			assigned := c.alloc.Assigned(s.ID())
 			if len(assigned.Active) > 0 || len(assigned.Allocated) > 0 {
-				log.Warnf(ctx, "Detached consumer %v with %v active and %v allocated domains: %v ", s.consumer, len(assigned.Active), len(assigned.Allocated))
+				log.Warnf(ctx, "Detached consumer %v with %v active and %v allocated domains", s.consumer, len(assigned.Active), len(assigned.Allocated))
 			}
 		} // else: already detached
 
@@ -314,6 +318,8 @@ func (c *coordinator) mustSend(ctx context.Context, s *consumerSession, message 
 	return true
 }
 func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, msg model.ConsumerMessage) {
+	log.Debugf(ctx, ">> %v/%v: %v", c.name, s.ID(), msg)
+
 	switch {
 	case msg.IsDeregister():
 		c.disconnect(ctx, s)

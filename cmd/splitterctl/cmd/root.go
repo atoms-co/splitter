@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	stdlog "log"
 	"os"
 	"time"
 
@@ -16,6 +17,8 @@ var (
 )
 
 func init() {
+	stdlog.SetFlags(stdlog.Ldate | stdlog.Lmicroseconds | stdlog.Lshortfile)
+
 	rootCmd.PersistentFlags().StringVarP(&endpoint, "endpoint", "e", "localhost:50051", "Server endpoint, such as localhost:50051")
 	rootCmd.PersistentFlags().DurationVar(&dialTimeout, "dial-timeout", 5*time.Second, "Dial timeout for connections")
 	rootCmd.PersistentFlags().BoolVar(&insecure, "insecure", false, "Insecure connection")
