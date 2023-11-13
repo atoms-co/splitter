@@ -52,6 +52,7 @@ func init() {
 	operationCmd.AddCommand(makeRaftInfoCmd())
 	operationCmd.AddCommand(makeRestoreCmd())
 
+	rootCmd.AddCommand(joinCmd())
 }
 
 func Execute() {

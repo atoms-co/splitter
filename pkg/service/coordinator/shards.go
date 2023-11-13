@@ -60,6 +60,7 @@ type ShardManager struct {
 
 func NewShardManager(ctx context.Context, cl clock.Clock, state core.State) *ShardManager {
 	mgr := &ShardManager{
+		cl:       cl,
 		removed:  map[model.GrantID]bool{},
 		assigned: map[model.GrantID]model.Instance{},
 	}
