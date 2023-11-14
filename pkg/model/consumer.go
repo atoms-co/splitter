@@ -423,7 +423,7 @@ func (m ConsumerMessage) Register() (RegisterMessage, bool) {
 }
 
 func (m ConsumerMessage) IsDeregister() bool {
-	return m.pb.GetRegister() != nil
+	return m.pb.GetDeregister() != nil
 }
 
 func (m ConsumerMessage) IsReleased() bool {
@@ -431,7 +431,7 @@ func (m ConsumerMessage) IsReleased() bool {
 }
 
 func (m ConsumerMessage) Released() (ReleasedMessage, bool) {
-	if !m.IsRegister() {
+	if !m.IsReleased() {
 		return ReleasedMessage{}, false
 	}
 	return WrapReleasedMessage(m.pb.GetReleased()), true

@@ -43,6 +43,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 		ch := chanx.MapIf(in, func(pb *internal_v1.ConnectMessage) (model.ConsumerMessage, bool) {
 			if pb.GetSession() != nil {
 				sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session client
+				return model.ConsumerMessage{}, false
 			}
 			return model.WrapConsumerMessage(pb.GetConsumer()), true
 		})
