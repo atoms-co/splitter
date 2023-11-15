@@ -48,8 +48,9 @@ type Worker struct {
 	cluster  core.Cluster
 	clusters chan core.Cluster
 
-	grants map[core.GrantID]*Grant
-	lease  *RenewableLease
+	grants   map[core.GrantID]*Grant
+	services map[model.QualifiedServiceName]core.GrantID
+	lease    *RenewableLease
 
 	expire chan bool
 	inject chan func()
@@ -58,8 +59,9 @@ type Worker struct {
 }
 
 func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory CoordinatorFactory) (*Worker, <-chan core.Cluster) {
+	quit := iox.NewAsyncCloser()
 	w := &Worker{
-		AsyncCloser: iox.NewAsyncCloser(),
+		AsyncCloser: quit,
 		cl:          cl,
 		self:        self,
 		joinFn:      joinFn,
@@ -67,10 +69,11 @@ func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory Coordinator
 		in:          make(chan leader.Message),
 		out:         make(chan leader.Message),
 		clusters:    make(chan core.Cluster, 1),
-		grants:      make(map[core.GrantID]*Grant),
+		grants:      map[core.GrantID]*Grant{},
+		services:    map[model.QualifiedServiceName]core.GrantID{},
 		expire:      make(chan bool, 1),
 		inject:      make(chan func()),
-		drain:       iox.NewAsyncCloser(),
+		drain:       iox.WithQuit(quit.Closed(), iox.NewAsyncCloser()),
 	}
 	go w.join(context.Background())
 	go w.process(context.Background())
@@ -78,15 +81,21 @@ func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory Coordinator
 }
 
 // Connect handles connection of a consumer to a local coordinator
-func (w *Worker) Connect(ctx context.Context, sid session.ID, gid core.GrantID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	service := register.Service()
+func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+	msg, ok := chanx.TryRead(in, 20*time.Second)
+	if !ok || !msg.IsRegister() {
+		log.Errorf(ctx, "No registration message received: %v", msg)
+		return nil, fmt.Errorf("no registration message received %v: %w", msg, model.ErrInvalid)
+	}
+	register, _ := msg.Register()
 
+	service := register.Service()
 	c, err := syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (coordinator.Coordinator, error) {
-		g, ok := w.grants[gid]
+		gid, ok := w.services[service]
 		if !ok {
-			return nil, fmt.Errorf("%w: grant %v not found for service %v", model.ErrNotFound, gid, service)
+			return nil, fmt.Errorf("grant %v not found for service %v: %w", gid, service, model.ErrNotOwned)
 		}
-		return g.Coordinator, nil
+		return w.grants[gid].Coordinator, nil
 	})
 	if err != nil {
 		return nil, err
@@ -103,6 +112,8 @@ func (w *Worker) join(ctx context.Context) {
 	wctx, _ := contextx.WithQuitCancel(ctx, w.drain.Closed())
 
 	for !w.drain.IsClosed() {
+		// subctx here that cancels on disconnect
+
 		// Not connected. Establish connection with leader with blocking join call. The worker is either
 		// connecting or connected while in the join call.
 
@@ -168,7 +179,6 @@ func (w *Worker) lostLeader(ctx context.Context) {
 }
 
 func (w *Worker) process(ctx context.Context) {
-	wctx, _ := contextx.WithQuitCancel(ctx, w.Closed())
 	defer w.Close()
 
 	statsTimer := w.cl.NewTicker(statsDuration)
@@ -179,14 +189,14 @@ steady:
 		select {
 		case msg, ok := <-w.in:
 			if !ok {
-				log.Errorf(wctx, "Leader connection unexpectedly closed")
+				log.Errorf(ctx, "Leader connection unexpectedly closed")
 				w.lostLeader(ctx)
 				break
 			}
 			w.handleMessage(ctx, msg)
 
 		case <-w.expire:
-			w.checkExpiration(wctx)
+			w.checkExpiration(ctx)
 
 		case fn := <-w.inject:
 			fn()
@@ -219,14 +229,14 @@ steady:
 		select {
 		case msg, ok := <-w.in:
 			if !ok {
-				log.Errorf(wctx, "Leader connection unexpectedly closed while draining. Hard close")
+				log.Errorf(ctx, "Leader connection unexpectedly closed while draining. Hard close")
 				w.lostLeader(ctx)
 				return
 			}
-			w.handleMessage(wctx, msg)
+			w.handleMessage(ctx, msg)
 
 		case <-w.expire:
-			w.checkExpiration(wctx)
+			w.checkExpiration(ctx)
 
 		case fn := <-w.inject:
 			fn()
@@ -259,6 +269,7 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 		assign, _ := msg.Assign()
 		grant, state := assign.Grant(), assign.State()
 
+		w.services[grant.Service()] = grant.ID()
 		if old, ok := w.grants[grant.ID()]; ok {
 			if old.State == GrantStale {
 				old.State = GrantActive
@@ -272,24 +283,16 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 				old.Coordinator.Close()
 				delete(w.grants, grant.ID())
 			}
-		} else {
-			// Grant not present, check for conflicting grants
-
-			for _, old := range w.grants {
-				if old.Grant.Service() == grant.Service() {
-					log.Warnf(ctx, "Internal: grant %v replaces existing grant: %v", grant, old)
-				}
-			}
-		}
-
-		w.grants[grant.ID()] = &Grant{
-			Grant: grant,
-			State: GrantActive,
-			Lease: w.lease,
 		}
 
 		c := w.factory(ctx, grant.Service(), state)
-		w.grants[grant.ID()].Coordinator = c // TODO(jhhurwitz) 10/31/23 Consider async Coordinator creation
+
+		w.grants[grant.ID()] = &Grant{
+			Grant:       grant,
+			State:       GrantActive,
+			Lease:       w.lease,
+			Coordinator: c,
+		}
 
 		go func() {
 			<-c.Closed()

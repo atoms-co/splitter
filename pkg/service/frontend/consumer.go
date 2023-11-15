@@ -62,12 +62,15 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 			return nil, model.WrapError(fmt.Errorf("no session establish message: %w", model.ErrInvalid))
 		}
 
-		// Read registration message to determine service
-		register, err := tryReadRegister(ctx, consumerIn)
-		log.Infof(ctx, "REGISTER: %v", register)
-		if err != nil {
-			return nil, model.WrapError(err)
+		msg, ok := chanx.TryRead(consumerIn, 20*time.Second)
+		if !ok || !msg.IsRegister() {
+			log.Errorf(ctx, "No registration message received: %v", msg)
+			return nil, fmt.Errorf("no registration message received %v: %w", msg, model.ErrInvalid)
 		}
+		register, _ := msg.Register()
+
+		// Send register message first, it was read from consumer messages earlier
+		consumerIn = chanx.Prepend(consumerIn, model.NewConsumerRegisterMessage(register))
 
 		// Get a shared gRPC connection to the service's coordinator
 		cc, err := s.resolver.Resolve(ctx, register.Service())
@@ -80,12 +83,12 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		// Setup communication with the service's coordinator
 		var coordinatorOut <-chan model.ConsumerMessage
 		if err == nil {
-			coordinatorOut, err = s.forwardRemote(ctx, cc, register, consumerIn)
+			coordinatorOut, err = s.forwardRemote(ctx, cc, consumerIn)
 			if err != nil {
 				return nil, model.WrapError(err)
 			}
 		} else {
-			coordinatorOut, err = s.worker.Connect(ctx, establish.ID, cc.GID, register, consumerIn)
+			coordinatorOut, err = s.worker.Connect(ctx, establish.ID, consumerIn)
 			if err != nil {
 				return nil, model.WrapError(err)
 			}
@@ -97,7 +100,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 	})
 }
 
-func (s *ConsumerService) forwardRemote(ctx context.Context, cc core.Connection, register model.RegisterMessage, consumerIn <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (s *ConsumerService) forwardRemote(ctx context.Context, cc core.Connection, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	// Create a client session with the coordinator instance
 	coordinatorSession, establish, sessionOut := session.NewClient(ctx, s.cl, s.instance)
 	wctx, _ := contextx.WithQuitCancel(ctx, coordinatorSession.Closed()) // cancel context if session closes
@@ -120,21 +123,15 @@ func (s *ConsumerService) forwardRemote(ctx context.Context, cc core.Connection,
 					}
 				}
 			}()
-			// Send register message first, it was read from consumer messages earlier
-			consumerIn = chanx.Prepend(consumerIn, model.NewConsumerRegisterMessage(register))
-
-			// Turn it into connect
-			coordinatorOut := chanx.Map(consumerIn, coordinator.NewConnectConsumerMessage)
-
-			// Inject session messages into the messages sent to the coordinator
-			joined := session.Connect(coordinatorSession, establish, coordinatorOut, sessionOut, coordinator.NewConnectSessionMessage)
-
 			// Signal that connection is established
 			errChan <- nil
+
+			connect := chanx.Map(in, coordinator.NewConnectConsumerMessage)
+			joined := session.Connect(coordinatorSession, establish, connect, sessionOut, coordinator.NewConnectSessionMessage)
 			return chanx.Map(joined, coordinator.UnwrapConnectMessage), nil
 		})
 		if err != nil {
-			log.Warnf(ctx, "Error in a stream from %v to a coordinator %v: %v", s.instance, register.Service(), err)
+			log.Warnf(ctx, "Error in a stream from %v to a coordinator: %v", s.instance, err)
 			errChan <- err
 		}
 	}()
@@ -143,18 +140,4 @@ func (s *ConsumerService) forwardRemote(ctx context.Context, cc core.Connection,
 		return nil, err
 	}
 	return out, nil
-}
-
-func tryReadRegister(ctx context.Context, in <-chan model.ConsumerMessage) (model.RegisterMessage, error) {
-	msg, ok := chanx.TryRead(in, 20*time.Second)
-	if !ok {
-		log.Errorf(ctx, "No register message received")
-		return model.RegisterMessage{}, fmt.Errorf("no registration message: %w", model.ErrInvalid)
-	}
-	if !msg.IsRegister() {
-		log.Errorf(ctx, "Expected register message, received: %v", msg)
-		return model.RegisterMessage{}, fmt.Errorf("invalid registration message: %w", model.ErrInvalid)
-	}
-	register, _ := msg.Register()
-	return register, nil
 }

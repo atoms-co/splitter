@@ -6,6 +6,7 @@ import (
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
+	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/core"
@@ -13,12 +14,20 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 )
 
+var (
+	service1 = model.QualifiedServiceName{Tenant: "tenant1", Service: "service1"}
+	service2 = model.QualifiedServiceName{Tenant: "tenant1", Service: "service2"}
+)
+
 func TestWorker(t *testing.T) {
+	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 	cl.Set(time.Now())
 
@@ -33,7 +42,7 @@ func TestWorker(t *testing.T) {
 			return leaderCon.connect(ctx, handler)
 		},
 		func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator {
-			c := newFakeCoordinator()
+			c := newFakeCoordinator(service)
 			coordinators <- c
 			return c
 		},
@@ -64,9 +73,6 @@ func TestWorker(t *testing.T) {
 
 	t.Run("grant-revoke", func(t *testing.T) {
 		// << grant from leader --> coordinator creation
-		service1 := model.QualifiedServiceName{Tenant: "tenant1", Service: "service1"}
-		service2 := model.QualifiedServiceName{Tenant: "tenant1", Service: "service2"}
-
 		grant := core.NewGrant("grant1", service1, cl.Now().Add(time.Minute), cl.Now())
 		leaderCon.Out <- leader.NewAssign(grant, core.State{})
 		assertx.Element(t, coordinators)
@@ -111,19 +117,36 @@ func TestWorker(t *testing.T) {
 		assert.True(t, ok)
 		assert.Len(t, register.Active(), 1)
 	})
+
+	// (4) Consumer connects
+
+	t.Run("consumer/connect", func(t *testing.T) {
+		consumer := model.NewInstance(location.NewInstance(location.New("centralus", "node")), "endpoint")
+		in := chanx.NewFixed(model.NewConsumerRegisterMessage(model.NewRegisterMessage(consumer, service2, nil, nil)))
+
+		_, err := w.Connect(ctx, session.NewID(), in)
+		require.NoError(t, err)
+	})
+
 }
 
 type fakeCoordinator struct {
 	iox.AsyncCloser
+	t       *testing.T
+	service model.QualifiedServiceName
 }
 
-func newFakeCoordinator() coordinator.Coordinator {
+func newFakeCoordinator(service model.QualifiedServiceName) coordinator.Coordinator {
 	return &fakeCoordinator{
 		AsyncCloser: iox.NewAsyncCloser(),
+		service:     service,
 	}
 }
 
 func (f *fakeCoordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+	if register.Service() != f.service {
+		return nil, fmt.Errorf("service doesnt match: expected %v, received %v", f.service, register.Service())
+	}
 	return nil, nil
 }
 

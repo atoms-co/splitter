@@ -13,7 +13,6 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
-	"errors"
 	"fmt"
 	"time"
 )
@@ -48,7 +47,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 			return model.WrapConsumerMessage(pb.GetConsumer()), true
 		})
 
-		// Read session initialization message
+		// (1) Read session initialization message
 
 		establish, ok := chanx.TryRead(sess.Establish(), 20*time.Second)
 		if !ok {
@@ -56,23 +55,12 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 			return nil, model.WrapError(fmt.Errorf("no session establish message: %w", model.ErrInvalid))
 		}
 
-		register, err := tryReadRegister(ctx, ch)
+		// (2) Let worker handle connect
+		resp, err := c.worker.Connect(ctx, establish.ID, ch)
 		if err != nil {
-			return nil, model.WrapError(err)
-		}
-
-		// Should be local, model.ErrNoResolution indicates a local coordinator
-		cc, err := c.resolver.Resolve(ctx, register.Service())
-		if !errors.Is(err, model.ErrNoResolution) {
-			log.Debugf(ctx, "Service %v was not local: %v", register.Service(), err)
-			return nil, model.WrapError(err)
-		}
-
-		// Let worker handle connect
-
-		resp, err := c.worker.Connect(ctx, establish.ID, cc.GID, register, ch)
-		if err != nil {
-			log.Errorf(ctx, "Connect rejected: %v", err)
+			if !model.IsOwnershipError(err) {
+				log.Warnf(ctx, "Internal: connect from %v rejected: %v", establish, err)
+			}
 			return nil, model.WrapError(err)
 		}
 
