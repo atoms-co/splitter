@@ -275,15 +275,6 @@ func (a *Allocation[T, W, K, V]) Detach(id K) bool {
 	return false
 }
 
-// Assignments returns the currently assigned grants -- incl revoked grants -- for all workers.
-func (a *Allocation[T, W, K, V]) Assignments() map[K]Assignments[T, K] {
-	assignments := make(map[K]Assignments[T, K])
-	for wid, w := range a.workers {
-		assignments[wid] = w.Assignments()
-	}
-	return assignments
-}
-
 // Assigned returns the currently assigned grants -- incl revoked grants -- for a worker.
 func (a *Allocation[T, W, K, V]) Assigned(id K) Assignments[T, K] {
 	if w, ok := a.workers[id]; ok {

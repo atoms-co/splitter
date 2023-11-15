@@ -395,12 +395,12 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 	}
 
 	// Send cluster update to worker
-	assignments := l.alloc.Assignments()
+	workers := l.alloc.Workers()
 	var cluster []core.Assignment
-	for wid, assign := range assignments {
-		worker := l.workers[wid]
+	for _, worker := range workers {
+		assign := l.alloc.Assigned(worker.Instance.ID)
 		cluster = append(cluster, core.Assignment{
-			Worker: worker.instance,
+			Worker: worker.Instance.Data,
 			Grants: slicex.Map(append(assign.Active, assign.Revoked...), toGrant),
 		})
 	}
