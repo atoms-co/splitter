@@ -19,20 +19,24 @@ var (
 	jp = location.Location{Region: "jp"}
 )
 
+func hasRegionAffinity(worker allocation.Worker[string, location.Location], work allocation.Work[string, location.Location]) bool {
+	return work.Data.Region == "" || worker.Data.Region == work.Data.Region
+}
+
 func TestAllocation(t *testing.T) {
 	cl := mockclock.NewUnsynchronized()
 	cl.Set(time.Now())
 
-	work := []allocation.Work[string]{
-		{Unit: "a", Load: 20, Location: us},
-		{Unit: "b", Load: 10, Location: us},
-		{Unit: "c", Load: 10, Location: eu},
+	work := []allocation.Work[string, location.Location]{
+		{Unit: "a", Load: 20, Data: us},
+		{Unit: "b", Load: 10, Data: us},
+		{Unit: "c", Load: 10, Data: eu},
 	}
 
 	t.Run("empty", func(t *testing.T) {
 		// Empty allocation should be a nop, but valid.
 
-		alloc := allocation.New[string]("id", nil, nil, nil, cl.Now())
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, nil, cl.Now())
 		assert.Len(t, alloc.Work(), 0)
 		assert.Len(t, alloc.Workers(), 0)
 		require.NoError(t, alloc.Check())
@@ -41,7 +45,7 @@ func TestAllocation(t *testing.T) {
 		assert.Len(t, grants, 0) // no workers/no work
 		require.NoError(t, alloc.Check())
 
-		assignments, ok := alloc.Attach(allocation.Worker{ID: "foo"}, cl.Now().Add(time.Minute))
+		assignments, ok := alloc.Attach(allocation.Worker[string, location.Location]{ID: "foo", Data: us}, cl.Now().Add(time.Minute))
 		assert.True(t, ok)
 		assert.Len(t, assignments.Active, 0)
 		assert.Len(t, assignments.Allocated, 0)
@@ -55,15 +59,15 @@ func TestAllocation(t *testing.T) {
 	t.Run("attach", func(t *testing.T) {
 		// Basic allocation to single attaching/detaching worker
 
-		alloc := allocation.New[string]("id", nil, nil, work, cl.Now())
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
 		assert.Len(t, alloc.Work(), 3)
 
 		// (1) Attach with external existing grant. Bad grants are ignored
 
-		foo := allocation.Worker{ID: "foo"}
+		foo := allocation.Worker[string, location.Location]{ID: "foo", Data: us}
 		lease := cl.Now().Add(time.Minute)
 
-		old := allocation.Grant[string]{
+		old := allocation.Grant[string, string]{
 			ID:         "old:42",
 			State:      allocation.Active,
 			Unit:       "c",
@@ -71,7 +75,7 @@ func TestAllocation(t *testing.T) {
 			Assigned:   cl.Now().Add(-time.Hour),
 			Expiration: cl.Now().Add(-time.Second), // expiration time is irrelevant
 		}
-		bad := allocation.Grant[string]{
+		bad := allocation.Grant[string, string]{
 			ID:         "old:1",
 			State:      allocation.Active,
 			Unit:       "bad",
@@ -141,12 +145,12 @@ func TestAllocation(t *testing.T) {
 	t.Run("suspend", func(t *testing.T) {
 		// Suspend does not allow allocation
 
-		alloc := allocation.New[string]("id", nil, nil, work, cl.Now())
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
 		assert.Len(t, alloc.Work(), 3)
 
 		// (1) Attach 1 worker, suspend it and allocate. No grants are created
 
-		us1 := allocation.Worker{ID: "us1", Location: us}
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
 		_, ok := alloc.Attach(us1, cl.Now().Add(time.Minute))
 		assert.True(t, ok)
 		require.NoError(t, alloc.Check())
@@ -164,17 +168,17 @@ func TestAllocation(t *testing.T) {
 	t.Run("allocate/constraints", func(t *testing.T) {
 		// Single allocation with region affinity constraint in various worker situations
 
-		region := allocation.NewConstraint(allocation.RegionAffinityRule, allocation.HasRegionAffinity[string])
+		region := allocation.NewConstraint("region-affinity", hasRegionAffinity)
 
-		alloc := allocation.New[string]("id", slicex.New(region), nil, work, cl.Now())
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", slicex.New(region), nil, work, cl.Now())
 		assert.Len(t, alloc.Work(), 3)
 
 		// (1) Attach us worker only. Allocate grants only us (a+b) work.
 
 		lease := cl.Now().Add(time.Minute)
 
-		us1 := allocation.Worker{ID: "us1", Location: us}
-		eu1 := allocation.Worker{ID: "eu1", Location: eu}
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
+		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
 
 		_, ok := alloc.Attach(us1, lease)
 		assert.True(t, ok)
@@ -201,18 +205,18 @@ func TestAllocation(t *testing.T) {
 	t.Run("allocate/region-affinity", func(t *testing.T) {
 		// Single allocation with region affinity preference
 
-		region := allocation.NewPreference(allocation.RegionAffinityRule, 5, allocation.HasRegionAffinity[string])
+		region := allocation.NewPreference("region-affinity", 5, hasRegionAffinity)
 
-		alloc := allocation.New[string]("id", slicex.New(region), nil, work, cl.Now())
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", slicex.New(region), nil, work, cl.Now())
 		assert.Len(t, alloc.Work(), 3)
 
 		// (1) Allocate picks lowest penalties, even if small. So jp1 receives no work.
 
 		lease := cl.Now().Add(time.Minute)
 
-		us1 := allocation.Worker{ID: "us1", Location: us}
-		eu1 := allocation.Worker{ID: "eu1", Location: eu}
-		jp1 := allocation.Worker{ID: "jp1", Location: jp}
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
+		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
+		jp1 := allocation.Worker[string, location.Location]{ID: "jp1", Data: jp}
 
 		_, ok := alloc.Attach(us1, cl.Now())
 		assert.True(t, ok)
@@ -254,15 +258,15 @@ func TestAllocation(t *testing.T) {
 	t.Run("revoke", func(t *testing.T) {
 		// Revoke/release functionality
 
-		alloc := allocation.New[string]("id", nil, nil, work, cl.Now())
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
 		assert.Len(t, alloc.Work(), 3)
 
 		// (1) Attach 1 worker and allocate.
 
 		lease := cl.Now().Add(time.Minute)
 
-		us1 := allocation.Worker{ID: "us1", Location: us}
-		us2 := allocation.Worker{ID: "us2", Location: us}
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
+		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
 
 		_, ok := alloc.Attach(us1, lease)
 		assert.True(t, ok)
@@ -310,15 +314,15 @@ func TestAllocation(t *testing.T) {
 	t.Run("update", func(t *testing.T) {
 		// Update functionality
 
-		alloc := allocation.New[string]("id", nil, nil, work, cl.Now())
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
 		assert.Len(t, alloc.Work(), 3)
 
 		// (1) Setup a situation: a, revoked + b, c active.
 
 		lease := cl.Now().Add(time.Minute)
 
-		us1 := allocation.Worker{ID: "us1", Location: us}
-		us2 := allocation.Worker{ID: "us2", Location: us}
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
+		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
 
 		_, ok := alloc.Attach(us1, lease)
 		assert.True(t, ok)
@@ -344,10 +348,10 @@ func TestAllocation(t *testing.T) {
 
 		// (2) Update work to remove b and add d. Revoke status of a is preserved.
 
-		upd := []allocation.Work[string]{
-			{Unit: "a", Load: 20, Location: us},
-			{Unit: "c", Load: 10, Location: eu},
-			{Unit: "d", Load: 10, Location: eu},
+		upd := []allocation.Work[string, location.Location]{
+			{Unit: "a", Load: 20, Data: us},
+			{Unit: "c", Load: 10, Data: eu},
+			{Unit: "d", Load: 10, Data: eu},
 		}
 
 		cl.Add(time.Second)
@@ -381,16 +385,16 @@ func TestAllocation(t *testing.T) {
 	t.Run("load-balance/region-affinity", func(t *testing.T) {
 		// Load-balance functionality
 
-		region := allocation.NewPreference(allocation.RegionAffinityRule, 5, allocation.HasRegionAffinity[string])
+		region := allocation.NewPreference("region-affinity", 5, hasRegionAffinity)
 
-		alloc := allocation.New[string]("id", slicex.New(region), nil, work, cl.Now())
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", slicex.New(region), nil, work, cl.Now())
 		assert.Len(t, alloc.Work(), 3)
 
 		// (1) Start with 1 us worker allocated with 3 grants.
 
 		lease := cl.Now().Add(time.Minute)
 
-		us1 := allocation.Worker{ID: "us1", Location: us}
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
 
 		_, ok := alloc.Attach(us1, lease)
 		assert.True(t, ok)
@@ -399,7 +403,7 @@ func TestAllocation(t *testing.T) {
 
 		// (2) Add eu worker and load-balance. Expect eu work "c" to move to region-local worker.
 
-		eu1 := allocation.Worker{ID: "eu1", Location: eu}
+		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
 
 		_, ok = alloc.Attach(eu1, lease)
 		assert.True(t, ok)
@@ -422,14 +426,14 @@ func TestAllocation(t *testing.T) {
 	t.Run("load-balance/skew", func(t *testing.T) {
 		// Load-balance functionality for worker skew
 
-		alloc := allocation.New[string]("id", nil, nil, work, cl.Now())
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
 		assert.Len(t, alloc.Work(), 3)
 
 		// (1) Start with 1 us worker allocated with 3 grants.
 
 		lease := cl.Now().Add(time.Minute)
 
-		us1 := allocation.Worker{ID: "us1", Location: us}
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
 
 		_, ok := alloc.Attach(us1, lease)
 		assert.True(t, ok)
@@ -438,7 +442,7 @@ func TestAllocation(t *testing.T) {
 
 		// (2) Add us worker and load-balance. Expect highest load work unit "a" to move
 
-		us2 := allocation.Worker{ID: "us2", Location: us}
+		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
 
 		_, ok = alloc.Attach(us2, lease)
 		assert.True(t, ok)
@@ -458,8 +462,8 @@ func TestAllocation(t *testing.T) {
 	})
 }
 
-func newGrantMap[T comparable](list ...allocation.Grant[T]) map[T]allocation.Grant[T] {
-	return mapx.New(list, func(v allocation.Grant[T]) T {
+func newGrantMap[T, K comparable](list ...allocation.Grant[T, K]) map[T]allocation.Grant[T, K] {
+	return mapx.New(list, func(v allocation.Grant[T, K]) T {
 		return v.Unit
 	})
 }

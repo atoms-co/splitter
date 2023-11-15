@@ -1,7 +1,6 @@
 package allocation
 
 import (
-	"go.atoms.co/splitter/lib/service/location"
 	"fmt"
 )
 
@@ -10,14 +9,14 @@ import (
 type Load int64
 
 // Work is a unit of assignable work with an intrinsic load or cost.
-type Work[T comparable] struct {
-	Unit     T
-	Location location.Location
-	Load     Load // intrinsic load
+type Work[T comparable, W any] struct {
+	Unit T
+	Data W
+	Load Load // intrinsic load
 }
 
-func (w Work[T]) String() string {
-	return fmt.Sprintf("%v@%v[load=%v]", w.Unit, w.Location, w.Load)
+func (w Work[T, W]) String() string {
+	return fmt.Sprintf("%v@%v[load=%v]", w.Unit, w.Data, w.Load)
 }
 
 // AdjustedLoad holds intrinsic load w/ placement and colocation penalties.

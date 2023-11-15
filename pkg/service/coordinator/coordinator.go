@@ -126,7 +126,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	// consumers. Attach will change no assignments.
 
 	_, broadcast := c.alloc.Worker(consumer.ID())
-	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Client()), lease /* + claimed grants */); ok {
+	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Client().ID(), consumer.instance), lease /* + claimed grants */); ok {
 		if len(assigned.Active) > 0 {
 			connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Active)...)))
 		}

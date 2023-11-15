@@ -10,14 +10,19 @@ import (
 )
 
 type (
-	Allocation = allocation.Allocation[model.QualifiedServiceName]
-	Grant      = allocation.Grant[model.QualifiedServiceName]
-	Work       = allocation.Work[model.QualifiedServiceName]
+	Allocation = allocation.Allocation[model.QualifiedServiceName, location.Location, location.InstanceID, model.Instance]
+	Grant      = allocation.Grant[model.QualifiedServiceName, location.InstanceID]
+	Worker     = allocation.Worker[location.InstanceID, model.Instance]
+	Work       = allocation.Work[model.QualifiedServiceName, location.Location]
 )
 
 var (
-	regionAffinity = allocation.NewPreference(allocation.RegionAffinityRule, 20, allocation.HasRegionAffinity[model.QualifiedServiceName])
+	regionAffinity = allocation.NewPreference("region-affinity", 20, HasRegionAffinity)
 )
+
+func HasRegionAffinity(worker Worker, work Work) bool {
+	return work.Data.Region == "" || worker.Data.Location().Region == work.Data.Region
+}
 
 func newAllocation(id location.InstanceID, snapshot core.Snapshot, activation time.Time) *Allocation {
 	return allocation.New(id, slicex.New(regionAffinity), nil, findWork(snapshot), activation)
@@ -34,9 +39,9 @@ func findWork(snapshot core.Snapshot) []Work {
 			r, _ := info.Info().Service().Region()
 
 			w := Work{
-				Unit:     info.Info().Name(),
-				Location: location.Location{Region: r},
-				Load:     10,
+				Unit: info.Info().Name(),
+				Data: location.Location{Region: r},
+				Load: 10,
 			}
 			ret = append(ret, w)
 		}

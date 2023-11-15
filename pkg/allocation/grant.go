@@ -35,17 +35,17 @@ func (s GrantState) InvertIfTransitional() GrantState {
 }
 
 // Grant holds the state of work assignment to a worker.
-type Grant[T comparable] struct {
+type Grant[T, K comparable] struct {
 	ID         GrantID
 	State      GrantState
 	Unit       T
-	Worker     WorkerID
+	Worker     K
 	Assigned   time.Time
 	Expiration time.Time
 }
 
-func NewGrant[T comparable](id GrantID, state GrantState, unit T, worker WorkerID, assigned, expiration time.Time) Grant[T] {
-	return Grant[T]{
+func NewGrant[T, K comparable](id GrantID, state GrantState, unit T, worker K, assigned, expiration time.Time) Grant[T, K] {
+	return Grant[T, K]{
 		ID:         id,
 		State:      state,
 		Unit:       unit,
@@ -55,39 +55,39 @@ func NewGrant[T comparable](id GrantID, state GrantState, unit T, worker WorkerI
 	}
 }
 
-func (g Grant[T]) IsActive() bool {
+func (g Grant[T, K]) IsActive() bool {
 	return g.State == Active
 }
 
-func (g Grant[T]) IsAllocated() bool {
+func (g Grant[T, K]) IsAllocated() bool {
 	return g.State == Allocated
 }
 
-func (g Grant[T]) IsRevoked() bool {
+func (g Grant[T, K]) IsRevoked() bool {
 	return g.State == Revoked
 }
 
-func (g Grant[T]) WithState(state GrantState) Grant[T] {
+func (g Grant[T, K]) WithState(state GrantState) Grant[T, K] {
 	return NewGrant(g.ID, state, g.Unit, g.Worker, g.Assigned, g.Expiration)
 }
 
-func (g Grant[T]) WithExpiration(expiration time.Time) Grant[T] {
+func (g Grant[T, K]) WithExpiration(expiration time.Time) Grant[T, K] {
 	return NewGrant(g.ID, g.State, g.Unit, g.Worker, g.Assigned, expiration)
 }
 
-func (g Grant[T]) String() string {
+func (g Grant[T, K]) String() string {
 	return fmt.Sprintf("%v@%v[state=%v, unit=%v, assigned=%v, expiration=%v]", g.ID, g.Worker, g.State, g.Unit, g.Assigned.Unix(), g.Expiration.Unix())
 }
 
 // Assignments holds assigned grants by status, i.e., steady, incoming and outgoing.
-type Assignments[T comparable] struct {
-	Active, Allocated, Revoked []Grant[T]
+type Assignments[T, K comparable] struct {
+	Active, Allocated, Revoked []Grant[T, K]
 }
 
-func (a Assignments[T]) IsEmpty() bool {
+func (a Assignments[T, K]) IsEmpty() bool {
 	return len(a.Active) == 0 && len(a.Allocated) == 0 && len(a.Revoked) == 0
 }
 
-func (a Assignments[T]) String() string {
+func (a Assignments[T, K]) String() string {
 	return fmt.Sprintf("{active=%v, allocated=%v, revoked=%v}", a.Active, a.Allocated, a.Revoked)
 }

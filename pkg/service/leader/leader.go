@@ -378,7 +378,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 	lease := l.cl.Now().Add(leaseDuration)
 	connection.Send(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
 
-	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client()), lease /* + claimed grants */); ok {
+	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client().ID(), w.instance), lease /* + claimed grants */); ok {
 		for _, grant := range assigned.Active {
 			tenant := grant.Unit.Tenant
 			state, _ := l.cache.State(tenant)

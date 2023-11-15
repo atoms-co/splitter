@@ -13,11 +13,12 @@ import (
 )
 
 type (
-	Allocation = allocation.Allocation[model.Shard]
-	Placement  = allocation.Placement[model.Shard]
-	Colocation = allocation.Colocation[model.Shard]
-	Grant      = allocation.Grant[model.Shard]
-	Work       = allocation.Work[model.Shard]
+	Allocation = allocation.Allocation[model.Shard, location.Location, model.ConsumerID, model.Consumer]
+	Placement  = allocation.Placement[model.Shard, location.Location, model.ConsumerID, model.Consumer]
+	Colocation = allocation.Colocation[model.Shard, location.Location, model.ConsumerID, model.Consumer]
+	Grant      = allocation.Grant[model.Shard, model.ConsumerID]
+	Worker     = allocation.Worker[model.ConsumerID, model.Consumer]
+	Work       = allocation.Work[model.Shard, location.Location]
 )
 
 // TODO(herohde) 11/11/2023: need custom region-affinity that returns true if in the same region or buddy
@@ -27,8 +28,12 @@ type (
 // TODO(herohde) 11/12/2023: intra-domain anti-affinity to spread out domains evenly. Similar to general LB.
 
 var (
-	regionAffinity = allocation.NewPreference(allocation.RegionAffinityRule, 20, allocation.HasRegionAffinity[model.Shard])
+	regionAffinity = allocation.NewPreference("region-affinity", 20, HasRegionAffinity)
 )
+
+func HasRegionAffinity(worker Worker, work Work) bool {
+	return work.Data.Region == "" || worker.Data.Location().Region == work.Data.Region
+}
 
 func newAllocation(id location.InstanceID, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, activation time.Time) *Allocation {
 	return allocation.New(id, findPlacements(info), findColocations(info), findWork(info, placements), activation)
@@ -51,7 +56,7 @@ func (c *control) ID() allocation.Rule {
 	return "control"
 }
 
-func (c *control) TryPlace(worker allocation.Worker, work Work) (allocation.Load, bool) {
+func (c *control) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
 	if domain, ok := c.domains[work.Unit.Domain.Domain]; ok && domain.State() != model.DomainActive {
 		return 0, false // no placement allowed
 	}
@@ -76,7 +81,7 @@ func (c *affinity) ID() allocation.Rule {
 	return "anti-affinity"
 }
 
-func (c *affinity) Colocate(worker allocation.Worker, work map[model.Shard]Work) map[model.Shard]allocation.Load {
+func (c *affinity) Colocate(worker Worker, work map[model.Shard]Work) map[model.Shard]allocation.Load {
 	if len(c.domains) == 0 {
 		return nil
 	}
@@ -109,8 +114,8 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 				Unit: model.Shard{
 					Domain: domain.Name(),
 				},
-				Location: location.Location{Region: region},
-				Load:     50, // use higher load for unit domains
+				Data: location.Location{Region: region},
+				Load: 50, // use higher load for unit domains
 			}
 			ret = append(ret, w)
 
@@ -139,8 +144,8 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),
 						},
-						Location: location.Location{Region: region},
-						Load:     10,
+						Data: location.Location{Region: region},
+						Load: 10,
 					}
 					ret = append(ret, w)
 				}
@@ -155,8 +160,8 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),
 						},
-						Location: location.Location{Region: region},
-						Load:     10,
+						Data: location.Location{Region: region},
+						Load: 10,
 					}
 					ret = append(ret, w)
 				}
@@ -174,8 +179,8 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),
 						},
-						Location: location.Location{Region: r},
-						Load:     10,
+						Data: location.Location{Region: r},
+						Load: 10,
 					}
 					ret = append(ret, w)
 				}
