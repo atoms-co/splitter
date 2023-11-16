@@ -43,10 +43,19 @@ func makeListDomainCmd() *cobra.Command {
 	return cmd
 }
 
-func makeNewDomainCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:          "new <tenant>/<service>/<domain>",
+var (
+	newDomainCmd = &cobra.Command{
+		Use:          "new",
 		Short:        "New domain",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+	}
+)
+
+func makeNewUnitDomainCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "unit <tenant>/<service>/<domain>",
+		Short:        "New unit domain",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 	}
@@ -58,7 +67,79 @@ func makeNewDomainCmd() *cobra.Command {
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			domain, err := client.NewDomain(ctx, name, splitter.Unit, splitter.NewDomainConfig()) // TODO(jhhurwitz): 09/01/2023 Add domain customization
+			domain, err := client.NewDomain(ctx, name, splitter.Unit, splitter.NewDomainConfig())
+			if err != nil {
+				return err
+			}
+			printJson(splitter.UnwrapDomain(domain), true)
+			return nil
+		})
+	}
+
+	return cmd
+}
+
+func makeNewGlobalDomainCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "global <tenant>/<service>/<domain>",
+		Short:        "New global domain",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+	}
+
+	placement := cmd.Flags().String("placement", "", "Placement name")
+	shards := cmd.Flags().Int("shards", 4, "Target shards")
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		if !ok {
+			return fmt.Errorf("invalid qualified domain name: %v", args[0])
+		}
+
+		return withClient(func(ctx context.Context, client model.Client) error {
+			domain, err := client.NewDomain(ctx, name, splitter.Global,
+				splitter.NewDomainConfig(
+					splitter.WithDomainPlacement(*placement),
+					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
+				),
+			)
+			if err != nil {
+				return err
+			}
+			printJson(splitter.UnwrapDomain(domain), true)
+			return nil
+		})
+	}
+
+	return cmd
+}
+
+func makeNewRegionalDomainCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "regional <tenant>/<service>/<domain>",
+		Short:        "New regional domain",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+	}
+
+	placement := cmd.Flags().String("placement", "", "Placement name")
+	shards := cmd.Flags().Int("shards", 4, "Target shards")
+	regions := cmd.Flags().StringSlice("regions", []string{"centralus"}, "Regions")
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		if !ok {
+			return fmt.Errorf("invalid qualified domain name: %v", args[0])
+		}
+
+		return withClient(func(ctx context.Context, client model.Client) error {
+			domain, err := client.NewDomain(ctx, name, splitter.Regional,
+				splitter.NewDomainConfig(
+					splitter.WithDomainPlacement(*placement),
+					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
+					splitter.WithDomainRegions(*regions...),
+				),
+			)
 			if err != nil {
 				return err
 			}

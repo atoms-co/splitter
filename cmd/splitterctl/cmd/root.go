@@ -39,7 +39,10 @@ func init() {
 
 	rootCmd.AddCommand(domainCmd)
 	domainCmd.AddCommand(makeListDomainCmd())
-	domainCmd.AddCommand(makeNewDomainCmd())
+	domainCmd.AddCommand(newDomainCmd)
+	newDomainCmd.AddCommand(makeNewUnitDomainCmd())
+	newDomainCmd.AddCommand(makeNewGlobalDomainCmd())
+	newDomainCmd.AddCommand(makeNewRegionalDomainCmd())
 	domainCmd.AddCommand(makeUpdateDomainCmd())
 	domainCmd.AddCommand(makeDeleteDomainCmd())
 

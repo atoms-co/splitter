@@ -7,6 +7,10 @@ type ShardingPolicy struct {
 	pb *public_v1.ShardingPolicy
 }
 
+func NewShardingPolicy(shards int) ShardingPolicy {
+	return ShardingPolicy{pb: &public_v1.ShardingPolicy{Shards: int64(shards)}}
+}
+
 func WrapShardingPolicy(pb *public_v1.ShardingPolicy) ShardingPolicy {
 	return ShardingPolicy{pb: pb}
 }
