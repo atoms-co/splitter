@@ -232,7 +232,7 @@ steady:
 				if w.draining {
 					continue // skip: don't extend lease if draining
 				}
-				if !w.connection.Send(ctx, NewLeaseUpdate(lease)) {
+				if !w.TrySend(ctx, NewLeaseUpdate(lease)) {
 					unhealthy = append(unhealthy, w)
 					continue
 				}
@@ -295,7 +295,7 @@ steady:
 	log.Infof(ctx, "Leader %v draining, #workers=%v", l.id, len(l.workers))
 
 	for _, w := range l.workers {
-		w.connection.Send(ctx, NewDisconnect())
+		w.TrySend(ctx, NewDisconnect())
 		w.connection.Close()
 	}
 }
@@ -343,7 +343,7 @@ func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregis
 	if len(assigned.Active) > 0 {
 		l.alloc.Revoke(w.instance.ID(), now, assigned.Active...)
 
-		if !w.connection.Send(ctx, NewRevoke(slicex.Map(assigned.Active, toGrant)...)) {
+		if !w.TrySend(ctx, NewRevoke(slicex.Map(assigned.Active, toGrant)...)) {
 			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(assigned.Active), w)
 			l.disconnect(ctx, "stuck", w)
 			return
@@ -399,14 +399,14 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 	l.workers[instance.ID()] = w
 
 	lease := l.cl.Now().Add(leaseDuration)
-	connection.Send(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
+	w.TrySend(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
 
 	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client().ID(), w.instance), lease /* + claimed grants */); ok {
 		for _, grant := range assigned.Active {
 			tenant := grant.Unit.Tenant
 			state, _ := l.cache.State(tenant)
 
-			if !w.connection.Send(ctx, NewAssign(toGrant(grant), state)) {
+			if !w.TrySend(ctx, NewAssign(toGrant(grant), state)) {
 				// TODO(herohde) 11/4/2023: The buffer is too small. We don't want that to happen. Revoke for
 				// now to avoid re-connect death loop.
 
@@ -417,7 +417,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 		// NOTE(herohde) 11/4/2023: Ignore Allocated and let Revoked expire.
 	}
 
-	if !connection.Send(ctx, NewClusterSnapshot(l.snapshot())) {
+	if !w.TrySend(ctx, NewClusterSnapshot(l.snapshot())) {
 		log.Errorf(ctx, "Internal: failed to send initial cluster map to worker: %v. Closing", w)
 		connection.Close()
 	}
@@ -428,6 +428,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 func (l *Leader) disconnect(ctx context.Context, reason string, workers ...*workerSession) {
 	for _, w := range workers {
 		log.Infof(ctx, "Disconnecting worker (reason: %v): %v", reason, w)
+		recordAction(ctx, "disconnect", "ok")
 
 		now := l.cl.Now()
 
@@ -441,7 +442,7 @@ func (l *Leader) disconnect(ctx context.Context, reason string, workers ...*work
 			}
 		} // else: already detached
 
-		w.connection.Send(ctx, NewDisconnect()) // TODO(herohde) 11/12/2023: needed with session terminated?
+		w.TrySend(ctx, NewDisconnect()) // TODO(herohde) 11/12/2023: needed with session terminated?
 		w.connection.Close()
 
 		delete(l.workers, w.instance.ID())
@@ -463,6 +464,8 @@ func (l *Leader) refresh(ctx context.Context) {
 	// (2) If any are due to deleted/decommissioned services, unassign them in the cluster map.
 
 	// ...
+
+	recordAction(ctx, "refresh", "ok")
 }
 
 func (l *Leader) revoke(ctx context.Context, grants ...Grant) {
@@ -473,10 +476,13 @@ func (l *Leader) revoke(ctx context.Context, grants ...Grant) {
 			continue // skip: cannot send revoke, so let lapse
 		}
 
-		if !w.connection.Send(ctx, NewRevoke(slicex.Map(list, toGrant)...)) {
+		if !w.TrySend(ctx, NewRevoke(slicex.Map(list, toGrant)...)) {
 			log.Errorf(ctx, "Failed to send revoke to worker %v for grants: %v. Disconnecting", w, list)
 			l.disconnect(ctx, "stuck", w)
+			continue
 		}
+
+		recordActions(ctx, len(list), "revoke", "ok")
 	}
 }
 
@@ -492,12 +498,14 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 		if move, load, ok := l.alloc.LoadBalance(now); ok {
 			w := l.workers[move.From.Worker]
 
-			if !w.connection.Send(ctx, NewRevoke(toGrant(move.From))) {
+			if !w.TrySend(ctx, NewRevoke(toGrant(move.From))) {
 				log.Errorf(ctx, "Failed to send move %v from worker: %v. Disconnecting", move, w)
 				l.disconnect(ctx, "stuck", w)
 			} else {
 				log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
 			}
+
+			recordAction(ctx, "move", "ok")
 		}
 	}
 
@@ -529,13 +537,15 @@ func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
 		tenant := grant.Unit.Tenant
 		state, _ := l.cache.State(tenant)
 
-		if !w.connection.Send(ctx, NewAssign(toGrant(grant), state)) {
+		if !w.TrySend(ctx, NewAssign(toGrant(grant), state)) {
 			log.Errorf(ctx, "Failed to send grant %v to worker: %v. Disconnecting", grant, w)
 
 			l.alloc.Release(grant, now) // undo allocation. Safe because it was not sent
 			l.disconnect(ctx, "stuck", w)
+			recordAction(ctx, "assign", "failed")
 			continue
 		}
+		recordAction(ctx, "assign", "ok")
 
 		log.Infof(ctx, "Allocated new grant to worker %v: %v.", w, tenant)
 		assigned = append(assigned, grant)
@@ -556,7 +566,7 @@ func (l *Leader) update(ctx context.Context, upd core.Update) {
 
 			// TODO(herohde) 11/15/2023: send just updates relevant to the service.
 
-			if !w.connection.Send(ctx, NewUpdate(toGrant(g), upd)) {
+			if !w.TrySend(ctx, NewUpdate(toGrant(g), upd)) {
 				log.Errorf(ctx, "Failed to send state update to worker: %v. Disconnecting", w)
 				l.disconnect(ctx, "stuck", w)
 				break
@@ -581,7 +591,7 @@ func (l *Leader) broadcast(ctx context.Context, grants ...Grant) {
 	}
 
 	for _, w := range l.workers {
-		if !w.connection.Send(ctx, NewClusterUpdate(assignments)) {
+		if !w.TrySend(ctx, NewClusterUpdate(assignments)) {
 			log.Errorf(ctx, "Failed to send cluster update to worker: %v. Disconnecting", w)
 			l.disconnect(ctx, "stuck", w)
 			continue
@@ -842,4 +852,8 @@ func (l *Leader) resetMetrics(ctx context.Context) {
 
 func recordAction(ctx context.Context, action, result string) {
 	numActions.Increment(ctx, 1, core.ActionTag(action), core.ResultTag(result))
+}
+
+func recordActions(ctx context.Context, n int, action, result string) {
+	numActions.Increment(ctx, n, core.ActionTag(action), core.ResultTag(result))
 }

@@ -176,6 +176,19 @@ func UnwrapMessage(m Message) *internal_v1.LeaderMessage {
 	return m.pb
 }
 
+func (m Message) Type() string {
+	switch {
+	case m.IsWorkerMessage():
+		msg, _ := m.WorkerMessage()
+		return "worker/" + msg.Type()
+	case m.IsClusterMessage():
+		msg, _ := m.ClusterMessage()
+		return "cluster/" + msg.Type()
+	default:
+		return "unknown"
+	}
+}
+
 func (m Message) IsWorkerMessage() bool {
 	return m.pb.GetWorker() != nil
 }
@@ -206,6 +219,29 @@ func WrapWorkerMessage(pb *internal_v1.WorkerMessage) WorkerMessage {
 
 func UnwrapWorkerMessage(m WorkerMessage) *internal_v1.WorkerMessage {
 	return m.pb
+}
+
+func (m WorkerMessage) Type() string {
+	switch {
+	case m.IsRegister():
+		return "register"
+	case m.IsDeregister():
+		return "deregister"
+	case m.IsLeaseUpdate():
+		return "lease"
+	case m.IsAssign():
+		return "assign"
+	case m.IsUpdate():
+		return "update"
+	case m.IsRevoke():
+		return "revoke"
+	case m.IsRelinquished():
+		return "relinquished"
+	case m.IsDisconnect():
+		return "disconnect"
+	default:
+		return "unknown"
+	}
 }
 
 func (m WorkerMessage) IsRegister() bool {
@@ -377,6 +413,19 @@ func WrapClusterMessage(pb *internal_v1.ClusterMessage) ClusterMessage {
 
 func UnwrapClusterMessage(m ClusterMessage) *internal_v1.ClusterMessage {
 	return m.pb
+}
+
+func (m ClusterMessage) Type() string {
+	switch {
+	case m.IsSnapshot():
+		return "snapshot"
+	case m.IsUpdate():
+		return "update"
+	case m.IsRemove():
+		return "remove"
+	default:
+		return "unknown"
+	}
 }
 
 func (m ClusterMessage) IsSnapshot() bool {
