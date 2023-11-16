@@ -21,11 +21,16 @@ const (
 
 var (
 	QualifiedDomainKeys    = []metrics.Key{TenantKey, ServiceKey, DomainKey}
+	QualifiedServiceKeys   = []metrics.Key{TenantKey, ServiceKey}
 	QualifiedPlacementKeys = []metrics.Key{TenantKey, PlacementKey}
 )
 
 func QualifiedDomainTags(v model.QualifiedDomainName) []metrics.Tag {
 	return []metrics.Tag{TenantTag(v.Service.Tenant), ServiceTag(v.Service.Service), DomainTag(v.Domain)}
+}
+
+func QualifiedServiceTags(v model.QualifiedServiceName) []metrics.Tag {
+	return []metrics.Tag{TenantTag(v.Tenant), ServiceTag(v.Service)}
 }
 
 func QualifiedPlacementTags(v model.QualifiedPlacementName) []metrics.Tag {

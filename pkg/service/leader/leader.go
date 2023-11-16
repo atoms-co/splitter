@@ -10,6 +10,7 @@ import (
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
+	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
@@ -32,25 +33,15 @@ const (
 	registrationTimeout = 20 * time.Second
 	// leaseDuration is the granted lease duration for tenants. It should be long enough to accommodate a reconnect,
 	// but not so long tenants are idle for too long if the connection has restarted.
-	leaseDuration = 1 * time.Minute
+	leaseDuration = 45 * time.Second
 )
 
 var (
-	numWorkers = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/leader_workers", "Connected worker status", core.StatusKey))
-	numTenants = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/leader_tenants", "Tenant status", core.TenantKey, core.StatusKey))
+	numWorkers  = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/leader_workers", "Connected worker status", core.StatusKey))
+	numServices = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/leader_services", "Service count", core.TenantKey))
 
 	numActions = metrics.NewCounter("go.atoms.co/splitter/leader_actions", "Leader actions", core.ActionKey, core.ResultKey)
 )
-
-type workerSession struct {
-	instance   model.Instance
-	draining   bool
-	connection sessionx.Connection[Message]
-}
-
-func (w *workerSession) String() string {
-	return fmt.Sprintf("session{instance=%v, connection=%v}", w.instance, w.connection)
-}
 
 type Option func(*Leader)
 
@@ -144,7 +135,7 @@ func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 			syncx.AsyncTxn(txnx.Txn(l, l.inject), func() {
 				cur, ok := l.workers[worker.ID()]
 				if ok && cur.connection.Sid() == sid { // guard against race
-					l.disconnect(wctx, cur)
+					l.disconnect(wctx, "connection closed", cur)
 				}
 			})
 		}()
@@ -183,7 +174,7 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 	snapshot, err := l.writer.Init(ctx)
 	if err != nil {
 		log.Errorf(ctx, "Failed to load tenant data: %v", err)
-		l.recordAction(ctx, "init", "failed")
+		recordAction(ctx, "init", "failed")
 		return
 	}
 	l.cache.Restore(snapshot)
@@ -193,16 +184,16 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 		delay = 0
 	}
 	log.Infof(ctx, "Activating at %v", now.Add(delay))
-	l.alloc = newAllocation(l.id.ID(), snapshot, now.Add(delay))
+	l.alloc = NewAllocation(l.id.ID(), snapshot, now.Add(delay))
 
 	if l.drain.IsClosed() {
 		log.Errorf(ctx, "Unexpected: leader %v lost leadership while loading", l.id)
-		l.recordAction(ctx, "init", "aborted")
+		recordAction(ctx, "init", "aborted")
 		return
 	}
 
 	log.Infof(ctx, "Leader initialized: %v, #tenants=%v", l.id, len(snapshot.Tenants()))
-	l.recordAction(ctx, "init", "ok")
+	recordAction(ctx, "init", "ok")
 	l.initialized.Close()
 
 	l.process(ctx)
@@ -228,11 +219,7 @@ steady:
 				log.Debugf(ctx, "Ignoring stale message %v: %v", m.Instance, m.Msg)
 				break
 			}
-			if err := l.handleMessage(ctx, w, m.Msg); err != nil {
-				log.Errorf(ctx, "Error handling worker message %v: %v", w, err)
-				l.disconnect(ctx, w)
-				break
-			}
+			l.handleMessage(ctx, w, m.Msg)
 
 		case <-ticker.C:
 			// Regularly send out lease updates to healthy workers, disconnect unhealthy ones.
@@ -254,7 +241,7 @@ steady:
 			if len(unhealthy) > 0 {
 				log.Warnf(ctx, "Disconnecting  %v unhealthy workers: %v", len(unhealthy), unhealthy)
 			}
-			l.disconnect(ctx, unhealthy...)
+			l.disconnect(ctx, "unhealthy", unhealthy...)
 			l.allocate(ctx, now, true)
 
 			l.emitMetrics(ctx)
@@ -263,29 +250,41 @@ steady:
 			fn()
 
 		case upd := <-l.upd:
-			// TODO: 09/14/23 make changes, allocate
+			// State update. Update set of coordinators and update existing coordinator state.
 
 			if err := l.cache.Update(upd, false); err != nil {
 				log.Errorf(ctx, "Internal: inconsistent tenant state: %v", err)
 				return
 			}
 
+			l.refresh(ctx)
+			l.update(ctx, upd)
+			l.allocate(ctx, l.cl.Now(), false)
+
 		case del := <-l.del:
-			// TODO: 09/14/23 remove coordinator
+			// Tenant deletion. Remove impacted services. No need for allocation.
 
 			if err := l.cache.Delete(del); err != nil {
 				log.Errorf(ctx, "Internal: inconsistent tenant state: %v", err)
 				return
 			}
 
+			l.refresh(ctx)
+
 		case res := <-l.res:
-			// TODO: 09/25/23 make changes, allocate, remove coordinator if necessary
+			// Full state restoration. Disconnect all workers to force re-grant.
+
 			l.cache.Restore(res.Snapshot())
+
+			l.disconnect(ctx, "state reset", mapx.Values(l.workers)...)
+			l.refresh(ctx)
+			l.allocate(ctx, l.cl.Now(), false)
 
 		case <-l.drain.Closed():
 			break steady
 
 		case <-l.writer.Closed():
+			log.Errorf(ctx, "Writer closed. Exiting")
 			return
 
 		case <-l.Closed():
@@ -301,24 +300,30 @@ steady:
 	}
 }
 
-func (l *Leader) handleMessage(ctx context.Context, w *workerSession, m Message) error {
+func (l *Leader) handleMessage(ctx context.Context, w *workerSession, m Message) {
 	msg, ok := m.WorkerMessage()
 	if !ok {
-		return fmt.Errorf("invalid message from worker %v", m)
+		log.Errorf(ctx, "Internal: unexpected message: %v", m)
+		l.disconnect(ctx, "invalid message", w)
+		return
 	}
+
 	switch {
 	case msg.IsDeregister():
 		deregister, _ := msg.Deregister()
-		return l.handleDeregister(ctx, w, deregister)
+		l.handleDeregister(ctx, w, deregister)
+
 	case msg.IsRelinquished():
 		relinquished, _ := msg.Relinquished()
-		return l.handleRelinquished(ctx, w, relinquished)
+		l.handleRelinquished(ctx, w, relinquished)
+
 	default:
-		return fmt.Errorf("invalid worker message %v", msg)
+		log.Errorf(ctx, "Internal: unexpected worker message: %v", msg)
+		l.disconnect(ctx, "invalid message", w)
 	}
 }
 
-func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregister DeregisterMessage) error {
+func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregister DeregisterMessage) {
 	log.Infof(ctx, "Received de-register from worker %v", w)
 
 	// (1) Mark worker as suspended to prevent new work.
@@ -339,29 +344,49 @@ func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregis
 		l.alloc.Revoke(w.instance.ID(), now, assigned.Active...)
 
 		if !w.connection.Send(ctx, NewRevoke(slicex.Map(assigned.Active, toGrant)...)) {
-			return fmt.Errorf("unable to send revoke to worker %v", w)
+			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(assigned.Active), w)
+			l.disconnect(ctx, "stuck", w)
+			return
 		}
 	}
 
 	// (3) If no grants, disconnect immediately. Otherwise, wait for last release or expiration.
 
 	if assigned.IsEmpty() {
-		l.disconnect(ctx, w) // no grants, safe to disconnect
-		return nil
+		l.disconnect(ctx, "no grant deregister", w) // no grants, safe to disconnect
+		return
 	}
 
 	log.Infof(ctx, "Deregistered worker %v with %v active grants", w, len(assigned.Active))
-	return nil
 }
 
-func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relinquished RelinquishedMessage) error {
-	return nil
+func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relinquished RelinquishedMessage) {
+	now := l.cl.Now()
+
+	// (1) Release relinquished grants. Check deregister status
+
+	var promoted []Grant
+	for _, g := range relinquished.Grants() {
+		grant := fromGrant(w.instance.ID(), g)
+
+		if promo, ok := l.alloc.Release(grant, now); ok {
+			promoted = append(promoted, promo)
+		}
+	}
+
+	if w.draining && l.alloc.Assigned(w.instance.ID()).IsEmpty() {
+		l.disconnect(ctx, "complete deregister", w)
+	}
+
+	// (2) Assign promoted, if any
+
+	l.assign(ctx, now, promoted...)
 }
 
 func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, instance model.Instance, grants []core.Grant, in <-chan Message) (*workerSession, <-chan Message) {
 	if old, ok := l.workers[instance.ID()]; ok {
 		log.Infof(ctx, "Worker %v re-connected (session=%v) with #grants: %d. Disconnecting stale session", instance, sid, len(grants))
-		l.disconnect(ctx, old)
+		l.disconnect(ctx, "reconnect", old)
 	} else {
 		log.Infof(ctx, "Worker %v connected (session=%v) with #grants: %d", instance, sid, len(grants))
 	}
@@ -372,8 +397,6 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 		connection: connection,
 	}
 	l.workers[instance.ID()] = w
-
-	// TODO(herohde) 10/31/2023: MustSend variant needed. We may silently drop on Send
 
 	lease := l.cl.Now().Add(leaseDuration)
 	connection.Send(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
@@ -394,24 +417,17 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 		// NOTE(herohde) 11/4/2023: Ignore Allocated and let Revoked expire.
 	}
 
-	// Send cluster update to worker
-	workers := l.alloc.Workers()
-	var cluster []core.Assignment
-	for _, worker := range workers {
-		assign := l.alloc.Assigned(worker.Instance.ID)
-		cluster = append(cluster, core.Assignment{
-			Worker: worker.Instance.Data,
-			Grants: slicex.Map(append(assign.Active, assign.Revoked...), toGrant),
-		})
+	if !connection.Send(ctx, NewClusterSnapshot(l.snapshot())) {
+		log.Errorf(ctx, "Internal: failed to send initial cluster map to worker: %v. Closing", w)
+		connection.Close()
 	}
-	connection.Send(ctx, NewSnapshot(cluster))
 
 	return w, out
 }
 
-func (l *Leader) disconnect(ctx context.Context, workers ...*workerSession) {
+func (l *Leader) disconnect(ctx context.Context, reason string, workers ...*workerSession) {
 	for _, w := range workers {
-		log.Infof(ctx, "Disconnecting worker: %v", w)
+		log.Infof(ctx, "Disconnecting worker (reason: %v): %v", reason, w)
 
 		now := l.cl.Now()
 
@@ -432,37 +448,73 @@ func (l *Leader) disconnect(ctx context.Context, workers ...*workerSession) {
 	}
 }
 
+// refresh updates the allocation with the services in the latest snapshot.
+func (l *Leader) refresh(ctx context.Context) {
+	now := l.cl.Now()
+
+	// (1) Update work in allocation and revoke invalid grants. There is no mutations possible for service
+	// names, so no need to delay newly created grants.
+
+	upd, rejected := UpdateAllocation(l.alloc, l.cache.Snapshot(), now)
+	l.alloc = upd
+
+	l.revoke(ctx, rejected...)
+
+	// (2) If any are due to deleted/decommissioned services, unassign them in the cluster map.
+
+	// ...
+}
+
+func (l *Leader) revoke(ctx context.Context, grants ...Grant) {
+	for wid, list := range byWorker(grants...) {
+		w, ok := l.workers[wid]
+		if !ok {
+			log.Warnf(ctx, "Failed to send revoke to %v for grants: %v", wid, list)
+			continue // skip: cannot send revoke, so let lapse
+		}
+
+		if !w.connection.Send(ctx, NewRevoke(slicex.Map(list, toGrant)...)) {
+			log.Errorf(ctx, "Failed to send revoke to worker %v for grants: %v. Disconnecting", w, list)
+			l.disconnect(ctx, "stuck", w)
+		}
+	}
+}
+
 func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) {
-	// (1) Free any expired grants to make them available for re-allocation.
+	// (1) Expire, Allocate and LoadBalance. If any worker cannot handle the update
+	// they are disconnected. Allocated grants are ignored. If an assignment fails,
+	// the grant is immediately released.
 
 	promo := l.alloc.Expire(now)
-	for _, grant := range promo {
-		w, ok := l.workers[grant.Worker]
-		if !ok {
-			l.alloc.Release(grant, now) // undo allocation
-			continue
+	grants := l.alloc.Allocate(now)
+
+	if loadbalance {
+		if move, load, ok := l.alloc.LoadBalance(now); ok {
+			w := l.workers[move.From.Worker]
+
+			if !w.connection.Send(ctx, NewRevoke(toGrant(move.From))) {
+				log.Errorf(ctx, "Failed to send move %v from worker: %v. Disconnecting", move, w)
+				l.disconnect(ctx, "stuck", w)
+			} else {
+				log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
+			}
 		}
-
-		tenant := grant.Unit.Tenant
-		state, _ := l.cache.State(tenant)
-
-		if !w.connection.Send(ctx, NewAssign(toGrant(grant), state)) {
-			log.Errorf(ctx, "Failed to send grant %v to worker: %v. Disconnecting", grant, w)
-
-			l.alloc.Release(grant, now) // undo allocation. Safe because it was not sent
-			l.disconnect(ctx, w)
-			continue
-		}
-
-		log.Infof(ctx, "Allocated new grant to worker %v: %v.", w, tenant)
 	}
 
-	// (2) Allocate and commit the assignments by sending grants. We remove the clients from the alloc
-	// on disconnect, so we know that any beneficiary of Allocate has a valid session. However, workers
-	// may be disconnected _during_ grant distribution if stuck.
+	l.assign(ctx, now, append(promo, grants...)...)
 
-	updates := make(map[model.Instance][]core.Grant)
-	grants := l.alloc.Allocate(now)
+	log.Debugf(ctx, "Allocation: %v", l.alloc)
+
+}
+
+func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
+	if len(grants) == 0 {
+		return
+	}
+
+	// (1) Assign all grant, if possible.
+
+	var assigned []Grant
 	for _, grant := range grants {
 		if grant.IsAllocated() {
 			continue // skip: only active grants are sent
@@ -481,49 +533,73 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 			log.Errorf(ctx, "Failed to send grant %v to worker: %v. Disconnecting", grant, w)
 
 			l.alloc.Release(grant, now) // undo allocation. Safe because it was not sent
-			l.disconnect(ctx, w)
+			l.disconnect(ctx, "stuck", w)
 			continue
 		}
-		log.Infof(ctx, "Assigned new grant to worker %v: %v.", w, tenant)
-		updates[w.instance] = append(updates[w.instance], toGrant(grant))
+
+		log.Infof(ctx, "Allocated new grant to worker %v: %v.", w, tenant)
+		assigned = append(assigned, grant)
 	}
 
-	// (4) Load-balance grants across workers, if needed. Free up some grants from the most overloaded workers, but
-	// only 1 tenant per allocate call.
+	// (2) Broadcast incremental cluster updates based on the actual updates made.
 
-	if loadbalance {
-		if move, load, ok := l.alloc.LoadBalance(now); ok {
-			w := l.workers[move.From.Worker]
+	l.broadcast(ctx, assigned...)
+}
 
-			if !w.connection.Send(ctx, NewRevoke(toGrant(move.From))) {
-				log.Errorf(ctx, "Failed to send move %v from worker: %v. Disconnecting", move, w)
-				l.disconnect(ctx, w)
-			} else {
-				log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
-			}
-		}
-	}
-
-	log.Debugf(ctx, "Allocation: %v", l.alloc)
-
-	// (5) Broadcast cluster updates
-
-	var assignments []core.Assignment
-	for instance, grants := range updates {
-		assignments = append(assignments, core.Assignment{
-			Worker: instance,
-			Grants: grants,
-		})
-	}
+func (l *Leader) update(ctx context.Context, upd core.Update) {
 	for _, w := range l.workers {
-		if len(assignments) > 0 {
-			if !w.connection.Send(ctx, NewUpdate(assignments)) {
-				log.Errorf(ctx, "Failed to send cluster update to worker: %v. Disconnecting", w)
-				l.disconnect(ctx, w)
+		assignments := l.alloc.Assigned(w.instance.ID())
+		for _, g := range assignments.Active {
+			if g.Unit.Tenant != upd.Name() {
 				continue
 			}
+
+			// TODO(herohde) 11/15/2023: send just updates relevant to the service.
+
+			if !w.connection.Send(ctx, NewUpdate(toGrant(g), upd)) {
+				log.Errorf(ctx, "Failed to send state update to worker: %v. Disconnecting", w)
+				l.disconnect(ctx, "stuck", w)
+				break
+			}
 		}
 	}
+}
+
+func (l *Leader) broadcast(ctx context.Context, grants ...Grant) {
+	if len(grants) == 0 {
+		return
+	}
+
+	var assignments []core.Assignment
+	for wid, assigned := range byWorker(grants...) {
+		info, _ := l.alloc.Worker(wid)
+
+		assignments = append(assignments, core.Assignment{
+			Worker: info.Instance.Data,
+			Grants: slicex.Map(assigned, toGrant),
+		})
+	}
+
+	for _, w := range l.workers {
+		if !w.connection.Send(ctx, NewClusterUpdate(assignments)) {
+			log.Errorf(ctx, "Failed to send cluster update to worker: %v. Disconnecting", w)
+			l.disconnect(ctx, "stuck", w)
+			continue
+		}
+	}
+}
+
+func (l *Leader) snapshot() []core.Assignment {
+	var cluster []core.Assignment
+	for _, worker := range l.alloc.Workers() {
+		assign := l.alloc.Assigned(worker.Instance.ID)
+
+		cluster = append(cluster, core.Assignment{
+			Worker: worker.Instance.Data,
+			Grants: slicex.Map(append(assign.Active, assign.Revoked...), toGrant),
+		})
+	}
+	return cluster
 }
 
 func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
@@ -754,15 +830,16 @@ func (l *Leader) emitMetrics(ctx context.Context) {
 
 	numWorkers.Set(ctx, float64(len(l.workers)), core.StatusTag("ok"))
 	for _, info := range l.cache.Tenants() {
-		numTenants.Set(ctx, float64(1), core.TenantTag(info.Name()), core.StatusTag("ok"))
+		count := len(l.cache.Services(info.Name()))
+		numServices.Set(ctx, float64(count), core.TenantTag(info.Name()))
 	}
 }
 
 func (l *Leader) resetMetrics(ctx context.Context) {
 	numWorkers.Reset(ctx)
-	numTenants.Reset(ctx)
+	numServices.Reset(ctx)
 }
 
-func (l *Leader) recordAction(ctx context.Context, action, result string) {
+func recordAction(ctx context.Context, action, result string) {
 	numActions.Increment(ctx, 1, core.ActionTag(action), core.ResultTag(result))
 }

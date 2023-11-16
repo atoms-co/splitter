@@ -24,11 +24,11 @@ func HasRegionAffinity(worker Worker, work Work) bool {
 	return work.Data.Region == "" || worker.Data.Location().Region == work.Data.Region
 }
 
-func newAllocation(id location.InstanceID, snapshot core.Snapshot, activation time.Time) *Allocation {
+func NewAllocation(id location.InstanceID, snapshot core.Snapshot, activation time.Time) *Allocation {
 	return allocation.New(id, slicex.New(regionAffinity), nil, findWork(snapshot), activation)
 }
 
-func updateAllocation(alloc *Allocation, snapshot core.Snapshot, activation time.Time) (*Allocation, []Grant) {
+func UpdateAllocation(alloc *Allocation, snapshot core.Snapshot, activation time.Time) (*Allocation, []Grant) {
 	return allocation.Update(alloc, slicex.New(regionAffinity), nil, findWork(snapshot), activation)
 }
 
@@ -41,7 +41,7 @@ func findWork(snapshot core.Snapshot) []Work {
 			w := Work{
 				Unit: info.Info().Name(),
 				Data: location.Location{Region: r},
-				Load: 10,
+				Load: 10 + 4*allocation.Load(len(info.Domains())), // weight by #domains
 			}
 			ret = append(ret, w)
 		}
@@ -50,6 +50,18 @@ func findWork(snapshot core.Snapshot) []Work {
 	return ret
 }
 
+func fromGrant(worker location.InstanceID, g core.Grant) Grant {
+	return allocation.NewGrant(g.ID(), allocation.Active, g.Service(), worker, g.Assigned(), g.Lease())
+}
+
 func toGrant(g Grant) core.Grant {
 	return core.NewGrant(g.ID, g.Unit, g.Expiration, g.Assigned)
+}
+
+func byWorker(grants ...Grant) map[location.InstanceID][]Grant {
+	m := map[location.InstanceID][]Grant{}
+	for _, grant := range grants {
+		m[grant.Worker] = append(m[grant.Worker], grant)
+	}
+	return m
 }

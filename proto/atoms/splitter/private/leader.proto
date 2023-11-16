@@ -200,6 +200,7 @@ message WorkerMessage {
     LeaseUpdate lease = 3;
     Disconnect disconnect = 4;
     Assign assign = 5;
+    Update update = 8;
     Revoke revoke = 6;
     Relinquished relinquished = 7;
   }

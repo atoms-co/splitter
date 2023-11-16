@@ -107,6 +107,17 @@ func NewAssign(grant core.Grant, state core.State) Message {
 	}})
 }
 
+func NewUpdate(grant core.Grant, state core.Update) Message {
+	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
+		Msg: &internal_v1.WorkerMessage_Update_{
+			Update: &internal_v1.WorkerMessage_Update{
+				Grant: core.UnwrapGrant(grant),
+				State: core.UnwrapUpdate(state),
+			},
+		},
+	}})
+}
+
 func NewRevoke(grants ...core.Grant) Message {
 	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
 		Msg: &internal_v1.WorkerMessage_Revoke_{
@@ -127,7 +138,7 @@ func NewRelinquished(grants ...core.Grant) Message {
 	}})
 }
 
-func NewSnapshot(assignments []core.Assignment) Message {
+func NewClusterSnapshot(assignments []core.Assignment) Message {
 	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
 		Msg: &internal_v1.ClusterMessage_Snapshot_{
 			Snapshot: &internal_v1.ClusterMessage_Snapshot{
@@ -137,7 +148,7 @@ func NewSnapshot(assignments []core.Assignment) Message {
 	}})
 }
 
-func NewUpdate(assignments []core.Assignment) Message {
+func NewClusterUpdate(assignments []core.Assignment) Message {
 	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
 		Msg: &internal_v1.ClusterMessage_Update_{
 			Update: &internal_v1.ClusterMessage_Update{
@@ -147,7 +158,7 @@ func NewUpdate(assignments []core.Assignment) Message {
 	}})
 }
 
-func NewRemove(remove []model.QualifiedServiceName) Message {
+func NewClusterRemove(remove []model.QualifiedServiceName) Message {
 	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
 		Msg: &internal_v1.ClusterMessage_Remove_{
 			Remove: &internal_v1.ClusterMessage_Remove{
@@ -197,81 +208,95 @@ func UnwrapWorkerMessage(m WorkerMessage) *internal_v1.WorkerMessage {
 	return m.pb
 }
 
-func (m *WorkerMessage) IsRegister() bool {
+func (m WorkerMessage) IsRegister() bool {
 	return m.pb.GetRegister() != nil
 }
 
-func (m *WorkerMessage) Register() (RegisterMessage, bool) {
+func (m WorkerMessage) Register() (RegisterMessage, bool) {
 	if !m.IsRegister() {
 		return RegisterMessage{}, false
 	}
 	return RegisterMessage{pb: m.pb.GetRegister()}, true
 }
 
-func (m *WorkerMessage) IsDeregister() bool {
+func (m WorkerMessage) IsDeregister() bool {
 	return m.pb.GetDeregister() != nil
 }
 
-func (m *WorkerMessage) Deregister() (DeregisterMessage, bool) {
+func (m WorkerMessage) Deregister() (DeregisterMessage, bool) {
 	if !m.IsDeregister() {
 		return DeregisterMessage{}, false
 	}
 	return DeregisterMessage{pb: m.pb.GetDeregister()}, true
 }
 
-func (m *WorkerMessage) IsLeaseUpdate() bool {
+func (m WorkerMessage) IsLeaseUpdate() bool {
 	return m.pb.GetLease() != nil
 }
 
-func (m *WorkerMessage) LeaseUpdate() (LeaseUpdateMessage, bool) {
+func (m WorkerMessage) LeaseUpdate() (LeaseUpdateMessage, bool) {
 	if !m.IsLeaseUpdate() {
 		return LeaseUpdateMessage{}, false
 	}
 	return LeaseUpdateMessage{pb: m.pb.GetLease()}, true
 }
 
-func (m *WorkerMessage) IsDisconnect() bool {
+func (m WorkerMessage) IsDisconnect() bool {
 	return m.pb.GetDisconnect() != nil
 }
 
-func (m *WorkerMessage) Disconnect() (DisconnectMessage, bool) {
+func (m WorkerMessage) Disconnect() (DisconnectMessage, bool) {
 	if !m.IsDisconnect() {
 		return DisconnectMessage{}, false
 	}
 	return DisconnectMessage{pb: m.pb.GetDisconnect()}, true
 }
 
-func (m *WorkerMessage) IsAssign() bool {
+func (m WorkerMessage) IsAssign() bool {
 	return m.pb.GetAssign() != nil
 }
 
-func (m *WorkerMessage) Assign() (AssignMessage, bool) {
+func (m WorkerMessage) Assign() (AssignMessage, bool) {
 	if !m.IsAssign() {
 		return AssignMessage{}, false
 	}
 	return AssignMessage{pb: m.pb.GetAssign()}, true
 }
 
-func (m *WorkerMessage) IsRevoke() bool {
+func (m WorkerMessage) IsUpdate() bool {
+	return m.pb.GetUpdate() != nil
+}
+
+func (m WorkerMessage) Update() (UpdateMessage, bool) {
+	if !m.IsUpdate() {
+		return UpdateMessage{}, false
+	}
+	return UpdateMessage{pb: m.pb.GetUpdate()}, true
+}
+func (m WorkerMessage) IsRevoke() bool {
 	return m.pb.GetRevoke() != nil
 }
 
-func (m *WorkerMessage) Revoke() (RevokeMessage, bool) {
+func (m WorkerMessage) Revoke() (RevokeMessage, bool) {
 	if !m.IsRevoke() {
 		return RevokeMessage{}, false
 	}
 	return RevokeMessage{pb: m.pb.GetRevoke()}, true
 }
 
-func (m *WorkerMessage) IsRelinquished() bool {
+func (m WorkerMessage) IsRelinquished() bool {
 	return m.pb.GetRelinquished() != nil
 }
 
-func (m *WorkerMessage) Relinquished() (RelinquishedMessage, bool) {
+func (m WorkerMessage) Relinquished() (RelinquishedMessage, bool) {
 	if !m.IsRelinquished() {
 		return RelinquishedMessage{}, false
 	}
 	return RelinquishedMessage{pb: m.pb.GetRelinquished()}, true
+}
+
+func (m WorkerMessage) String() string {
+	return proto.MarshalTextString(m.pb)
 }
 
 type RegisterMessage struct {
@@ -314,6 +339,18 @@ func (m AssignMessage) State() core.State {
 	return core.WrapState(m.pb.GetState())
 }
 
+type UpdateMessage struct {
+	pb *internal_v1.WorkerMessage_Update
+}
+
+func (m UpdateMessage) Grant() core.Grant {
+	return core.WrapGrant(m.pb.GetGrant())
+}
+
+func (m UpdateMessage) State() core.Update {
+	return core.WrapUpdate(m.pb.GetState())
+}
+
 type RevokeMessage struct {
 	pb *internal_v1.WorkerMessage_Revoke
 }
@@ -342,59 +379,64 @@ func UnwrapClusterMessage(m ClusterMessage) *internal_v1.ClusterMessage {
 	return m.pb
 }
 
-func (m *ClusterMessage) IsSnapshot() bool {
+func (m ClusterMessage) IsSnapshot() bool {
 	return m.pb.GetSnapshot() != nil
 }
-func (m *ClusterMessage) IsUpdate() bool {
+
+func (m ClusterMessage) IsUpdate() bool {
 	return m.pb.GetUpdate() != nil
 }
 
-func (m *ClusterMessage) IsRemove() bool {
+func (m ClusterMessage) IsRemove() bool {
 	return m.pb.GetRemove() != nil
 }
 
-func (m *ClusterMessage) Snapshot() (SnapshotMessage, bool) {
+func (m ClusterMessage) Snapshot() (ClusterSnapshotMessage, bool) {
 	if !m.IsSnapshot() {
-		return SnapshotMessage{}, false
+		return ClusterSnapshotMessage{}, false
 	}
-	return SnapshotMessage{pb: m.pb.GetSnapshot()}, true
+	return ClusterSnapshotMessage{pb: m.pb.GetSnapshot()}, true
 }
 
-func (m *ClusterMessage) Update() (UpdateMessage, bool) {
+func (m ClusterMessage) Update() (ClusterUpdateMessage, bool) {
 	if !m.IsUpdate() {
-		return UpdateMessage{}, false
+		return ClusterUpdateMessage{}, false
 	}
-	return UpdateMessage{pb: m.pb.GetUpdate()}, true
+	return ClusterUpdateMessage{pb: m.pb.GetUpdate()}, true
 }
 
-func (m *ClusterMessage) Remove() (RemoveMessage, bool) {
+func (m ClusterMessage) Remove() (ClusterRemoveMessage, bool) {
 	if !m.IsRemove() {
-		return RemoveMessage{}, false
+		return ClusterRemoveMessage{}, false
 	}
-	return RemoveMessage{pb: m.pb.GetRemove()}, true
+	return ClusterRemoveMessage{pb: m.pb.GetRemove()}, true
 }
 
-type SnapshotMessage struct {
+func (m ClusterMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
+type ClusterSnapshotMessage struct {
 	pb *internal_v1.ClusterMessage_Snapshot
 }
 
-func (m SnapshotMessage) Assignments() []core.Assignment {
+func (m ClusterSnapshotMessage) Assignments() []core.Assignment {
 	return slicex.Map(m.pb.GetAssignments(), core.ParseClusterAssignment)
 }
 
-type UpdateMessage struct {
+type ClusterUpdateMessage struct {
 	pb *internal_v1.ClusterMessage_Update
 }
 
-func (m UpdateMessage) Assignments() []core.Assignment {
+func (m ClusterUpdateMessage) Assignments() []core.Assignment {
 	return slicex.Map(m.pb.GetAssignments(), core.ParseClusterAssignment)
 }
 
-type RemoveMessage struct {
+type ClusterRemoveMessage struct {
 	pb *internal_v1.ClusterMessage_Remove
 }
 
-func (m RemoveMessage) Services() []model.QualifiedServiceName {
+func (m ClusterRemoveMessage) Services() []model.QualifiedServiceName {
 	return slicex.Map(m.pb.GetServices(), func(t *public_v1.QualifiedServiceName) model.QualifiedServiceName {
 		ret, _ := model.ParseQualifiedServiceName(t)
 		return ret
