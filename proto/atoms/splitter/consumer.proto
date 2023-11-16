@@ -28,27 +28,22 @@ message Shard {
   string to = 4;
 }
 
+enum GrantState {
+  UNKNOWN = 0;
+  ALLOCATED = 1;
+  ACTIVE = 2;
+  REVOKED = 3;
+}
+
 // Grant represents a shard with a lease.
 message Grant {
   string id = 1;
   Shard shard = 2;
-
-  enum State {
-    UNKNOWN = 0;
-    ALLOCATED = 1;
-    ACTIVE = 2;
-    REVOKED = 3;
-  }
-  State state = 3;
+  GrantState state = 3;
 
   google.protobuf.Timestamp lease = 4;
   // Assigned is the time when this grant was assigned to the shard with the status
   google.protobuf.Timestamp assigned = 5;
-}
-
-message Assignment {
-  Instance consumer = 1;
-  repeated Grant grants = 2;
 }
 
 // Register must be the first message from the consumer on connect. If a re-connect, the server may already know about
@@ -78,7 +73,7 @@ message Extend {
   google.protobuf.Timestamp lease = 1;
 }
 
-// Grant grants shard leases to the consumer for ownership.
+// Assign grants shard leases to the consumer for ownership.
 // The server must explicitly re-grant unexpired shard leases for reconnected consumers.
 message Assign {
   repeated Grant grants = 1;
@@ -92,18 +87,52 @@ message Revoke {
 
 // ClusterMessage represents an update in tenant ownership. The initial update contains a full routing table.
 message ClusterMessage {
+  // GrantInfo is information about a grant assigned to some consumer. It only contains information relevant
+  // to the consumers not owning the grant (e.g. lease is excluded).
+  message GrantInfo {
+    string id = 1;
+    Shard shard = 2;
+    GrantState state = 3;
+  }
+
+  // Assignment a list of grants assigned to a consumer. This can be a full or a partial list of grants.
+  message Assignment {
+    Instance consumer = 1;
+    repeated GrantInfo grants = 2;
+  }
+
+  // Snapshot contains assignments for all known consumers, including consumers without grants.
   message Snapshot {
     repeated Assignment assignments = 1;
   }
 
-  message Update {
+  // Assign contains changes in grant ownership. The list of consumer grants is partial and only contains
+  // assigned grants.
+  message Assign {
     repeated Assignment assignments = 1;
-    repeated string removed = 2;
+  }
+
+  // Update indicates a change in a grant state.
+  message Update {
+    repeated GrantInfo grants = 1;
+  }
+
+  // Unassign signals that grants are not owned by consumers.
+  message Unassign {
+    repeated string grants = 1;
+  }
+
+  // Detach signals removal of the consumers from the work distribution process.
+  message Detach {
+    repeated string consumers = 1;
   }
 
   oneof msg {
     Snapshot snapshot = 1;
-    Update update = 2;
+    Assign assign = 2;
+    Update update = 3;
+    Unassign unassign = 4;
+    Detach detach = 5;
   }
 }
 

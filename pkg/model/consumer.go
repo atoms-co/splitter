@@ -94,13 +94,13 @@ func (s Shard) String() string {
 	return fmt.Sprintf("shard[domain=%v, from: %v, to: %v]", s.Domain, s.From, s.To)
 }
 
-type GrantState = public_v1.Grant_State
+type GrantState = public_v1.GrantState
 
 var (
-	InvalidGrant   = public_v1.Grant_UNKNOWN
-	AllocatedGrant = public_v1.Grant_ALLOCATED
-	ActiveGrant    = public_v1.Grant_ACTIVE
-	RevokedGrant   = public_v1.Grant_REVOKED
+	InvalidGrant   = public_v1.GrantState_UNKNOWN
+	AllocatedGrant = public_v1.GrantState_ALLOCATED
+	ActiveGrant    = public_v1.GrantState_ACTIVE
+	RevokedGrant   = public_v1.GrantState_REVOKED
 )
 
 type GrantID string
@@ -141,23 +141,53 @@ func (g Grant) String() string {
 	return fmt.Sprintf("%v[shard=%v, state=%v, lease=%v, assinged=%v]", g.ID, g.Shard, g.State, g.Lease, g.Assigned)
 }
 
-type Assignment struct {
-	pb *public_v1.Assignment
+type GrantInfo struct {
+	ID    GrantID
+	Shard Shard
+	State GrantState
 }
 
-func WrapAssignment(pb *public_v1.Assignment) Assignment {
+func ParseGrantInfo(pb *public_v1.ClusterMessage_GrantInfo) (GrantInfo, error) {
+	shard, err := ParseShard(pb.GetShard())
+	if err != nil {
+		return GrantInfo{}, fmt.Errorf("invalid shard: %v: %w", proto.MarshalTextString(pb), err)
+	}
+	return GrantInfo{
+		ID:    GrantID(pb.GetId()),
+		Shard: shard,
+		State: pb.GetState(),
+	}, nil
+}
+
+func (g GrantInfo) ToProto() *public_v1.ClusterMessage_GrantInfo {
+	return &public_v1.ClusterMessage_GrantInfo{
+		Id:    string(g.ID),
+		Shard: g.Shard.ToProto(),
+		State: g.State,
+	}
+}
+
+func (g GrantInfo) String() string {
+	return fmt.Sprintf("%v[shard=%v, state=%v]", g.ID, g.Shard, g.State)
+}
+
+type Assignment struct {
+	pb *public_v1.ClusterMessage_Assignment
+}
+
+func WrapAssignment(pb *public_v1.ClusterMessage_Assignment) Assignment {
 	return Assignment{pb: pb}
 }
 
-func UnwrapAssignment(a Assignment) *public_v1.Assignment {
+func UnwrapAssignment(a Assignment) *public_v1.ClusterMessage_Assignment {
 	return a.pb
 }
 
-func NewAssignment(consumer Consumer, grants []Grant) Assignment {
+func NewAssignment(consumer Consumer, grants []GrantInfo) Assignment {
 	return Assignment{
-		pb: &public_v1.Assignment{
+		pb: &public_v1.ClusterMessage_Assignment{
 			Consumer: UnwrapInstance(consumer),
-			Grants:   slicex.Map(grants, Grant.ToProto),
+			Grants:   slicex.Map(grants, GrantInfo.ToProto),
 		},
 	}
 }
@@ -166,8 +196,8 @@ func (a Assignment) Consumer() Consumer {
 	return WrapInstance(a.pb.GetConsumer())
 }
 
-func (a Assignment) ParseGrants() ([]Grant, error) {
-	return slicex.TryMap(a.pb.GetGrants(), ParseGrant)
+func (a Assignment) ParseGrants() ([]GrantInfo, error) {
+	return slicex.TryMap(a.pb.GetGrants(), ParseGrantInfo)
 }
 
 type RegisterMessage struct {
@@ -513,6 +543,34 @@ func (s ClusterSnapshot) String() string {
 	return proto.MarshalTextString(s.pb)
 }
 
+type ClusterAssign struct {
+	pb *public_v1.ClusterMessage_Assign
+}
+
+func WrapClusterAssign(pb *public_v1.ClusterMessage_Assign) ClusterAssign {
+	return ClusterAssign{pb: pb}
+}
+
+func UnwrapClusterAssign(a ClusterAssign) *public_v1.ClusterMessage_Assign {
+	return a.pb
+}
+
+func NewClusterAssign(assignments []Assignment) ClusterAssign {
+	return ClusterAssign{
+		pb: &public_v1.ClusterMessage_Assign{
+			Assignments: slicex.Map(assignments, UnwrapAssignment),
+		},
+	}
+}
+
+func (a ClusterAssign) Assignments() []Assignment {
+	return slicex.Map(a.pb.GetAssignments(), WrapAssignment)
+}
+
+func (a ClusterAssign) String() string {
+	return proto.MarshalTextString(a.pb)
+}
+
 type ClusterUpdate struct {
 	pb *public_v1.ClusterMessage_Update
 }
@@ -525,25 +583,76 @@ func UnwrapClusterUpdate(u ClusterUpdate) *public_v1.ClusterMessage_Update {
 	return u.pb
 }
 
-func NewClusterUpdate(assignments []Assignment, removed []GrantID) ClusterUpdate {
+func NewClusterUpdate(grants []GrantInfo) ClusterUpdate {
 	return ClusterUpdate{
 		pb: &public_v1.ClusterMessage_Update{
-			Assignments: slicex.Map(assignments, UnwrapAssignment),
-			Removed:     slicex.Map(removed, serializeGrantID),
+			Grants: slicex.Map(grants, GrantInfo.ToProto),
 		},
 	}
 }
 
-func (u ClusterUpdate) Assignments() []Assignment {
-	return slicex.Map(u.pb.GetAssignments(), WrapAssignment)
-}
-
-func (u ClusterUpdate) Removed() []GrantID {
-	return slicex.Map(u.pb.GetRemoved(), deserializeGrantID)
+func (u ClusterUpdate) Grants() ([]GrantInfo, error) {
+	return slicex.TryMap(u.pb.GetGrants(), ParseGrantInfo)
 }
 
 func (u ClusterUpdate) String() string {
 	return proto.MarshalTextString(u.pb)
+}
+
+type ClusterUnassign struct {
+	pb *public_v1.ClusterMessage_Unassign
+}
+
+func WrapClusterUnassign(pb *public_v1.ClusterMessage_Unassign) ClusterUnassign {
+	return ClusterUnassign{pb: pb}
+}
+
+func UnwrapClusterUnassign(u ClusterUnassign) *public_v1.ClusterMessage_Unassign {
+	return u.pb
+}
+
+func NewClusterUnassign(grants []GrantID) ClusterUnassign {
+	return ClusterUnassign{
+		pb: &public_v1.ClusterMessage_Unassign{
+			Grants: slicex.Map(grants, func(id GrantID) string { return string(id) }),
+		},
+	}
+}
+
+func (u ClusterUnassign) Grants() []GrantID {
+	return slicex.Map(u.pb.GetGrants(), func(id string) GrantID { return GrantID(id) })
+}
+
+func (u ClusterUnassign) String() string {
+	return proto.MarshalTextString(u.pb)
+}
+
+type ClusterDetach struct {
+	pb *public_v1.ClusterMessage_Detach
+}
+
+func WrapClusterDetach(pb *public_v1.ClusterMessage_Detach) ClusterDetach {
+	return ClusterDetach{pb: pb}
+}
+
+func UnwrapClusterDetach(d ClusterDetach) *public_v1.ClusterMessage_Detach {
+	return d.pb
+}
+
+func NewClusterDetach(consumers []ConsumerID) ClusterDetach {
+	return ClusterDetach{
+		pb: &public_v1.ClusterMessage_Detach{
+			Consumers: slicex.Map(consumers, func(id ConsumerID) string { return string(id) }),
+		},
+	}
+}
+
+func (d ClusterDetach) Consumers() []ConsumerID {
+	return slicex.Map(d.pb.GetConsumers(), func(id string) ConsumerID { return ConsumerID(id) })
+}
+
+func (d ClusterDetach) String() string {
+	return proto.MarshalTextString(d.pb)
 }
 
 type ClusterMessage struct {
@@ -558,10 +667,34 @@ func NewClusterSnapshotMessage(snapshot ClusterSnapshot) ClusterMessage {
 	})
 }
 
+func NewClusterAssignMessage(assign ClusterAssign) ClusterMessage {
+	return WrapClusterMessage(&public_v1.ClusterMessage{
+		Msg: &public_v1.ClusterMessage_Assign_{
+			Assign: UnwrapClusterAssign(assign),
+		},
+	})
+}
+
 func NewClusterUpdateMessage(update ClusterUpdate) ClusterMessage {
 	return WrapClusterMessage(&public_v1.ClusterMessage{
 		Msg: &public_v1.ClusterMessage_Update_{
 			Update: UnwrapClusterUpdate(update),
+		},
+	})
+}
+
+func NewClusterUnassignMessage(unassign ClusterUnassign) ClusterMessage {
+	return WrapClusterMessage(&public_v1.ClusterMessage{
+		Msg: &public_v1.ClusterMessage_Unassign_{
+			Unassign: UnwrapClusterUnassign(unassign),
+		},
+	})
+}
+
+func NewClusterDetachMessage(detach ClusterDetach) ClusterMessage {
+	return WrapClusterMessage(&public_v1.ClusterMessage{
+		Msg: &public_v1.ClusterMessage_Detach_{
+			Detach: UnwrapClusterDetach(detach),
 		},
 	})
 }
@@ -585,6 +718,17 @@ func (m ClusterMessage) Snapshot() (ClusterSnapshot, bool) {
 	return WrapClusterSnapshot(m.pb.GetSnapshot()), true
 }
 
+func (m ClusterMessage) IsAssign() bool {
+	return m.pb.GetAssign() != nil
+}
+
+func (m ClusterMessage) Assign() (ClusterAssign, bool) {
+	if !m.IsAssign() {
+		return ClusterAssign{}, false
+	}
+	return WrapClusterAssign(m.pb.GetAssign()), true
+}
+
 func (m ClusterMessage) IsUpdate() bool {
 	return m.pb.GetUpdate() != nil
 }
@@ -594,6 +738,28 @@ func (m ClusterMessage) Update() (ClusterUpdate, bool) {
 		return ClusterUpdate{}, false
 	}
 	return WrapClusterUpdate(m.pb.GetUpdate()), true
+}
+
+func (m ClusterMessage) IsUnassign() bool {
+	return m.pb.GetUnassign() != nil
+}
+
+func (m ClusterMessage) Unassign() (ClusterUnassign, bool) {
+	if !m.IsUnassign() {
+		return ClusterUnassign{}, false
+	}
+	return WrapClusterUnassign(m.pb.GetUnassign()), true
+}
+
+func (m ClusterMessage) IsDetach() bool {
+	return m.pb.GetDetach() != nil
+}
+
+func (m ClusterMessage) Detach() (ClusterDetach, bool) {
+	if !m.IsUnassign() {
+		return ClusterDetach{}, false
+	}
+	return WrapClusterDetach(m.pb.GetDetach()), true
 }
 
 func (m ClusterMessage) String() string {

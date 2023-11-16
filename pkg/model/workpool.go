@@ -151,10 +151,10 @@ type consumerState struct {
 	grantExpired chan GrantID
 	handlerFn    Handler
 
-	grants      map[GrantID]*grantInfo
-	assignments map[ConsumerID]map[GrantID]Grant
-	lease       time.Time
-	leaseTimer  *clockx.Timer
+	grants     map[GrantID]*grantInfo
+	cluster    Cluster
+	lease      time.Time
+	leaseTimer *clockx.Timer
 }
 
 func newConsumerState(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handlerFn Handler) (state *consumerState, expiredLease chan bool, expiredGrants chan GrantID) {
@@ -171,8 +171,8 @@ func newConsumerState(cl clock.Clock, consumer Consumer, service QualifiedServic
 		grantExpired: expiredGrants,
 		handlerFn:    handlerFn,
 
-		grants:      map[GrantID]*grantInfo{},
-		assignments: map[ConsumerID]map[GrantID]Grant{},
+		grants:  map[GrantID]*grantInfo{},
+		cluster: NewCluster(nil, nil),
 	}
 	return s, expiredLease, expiredGrants
 }
@@ -209,50 +209,29 @@ func (s *consumerState) StaleActiveGrants() {
 	}
 }
 
-func (s *consumerState) SetAssignments(ctx context.Context, assignments []Assignment) Cluster {
-	fresh := map[ConsumerID]map[GrantID]Grant{}
-	for _, assignment := range assignments {
-		consumerGrants, err := assignment.ParseGrants()
-		if err != nil {
-			log.Errorf(ctx, "Unable to parse grants in cluster snapshot, skipping: %v", err)
-			continue
-		}
-		grants := map[GrantID]Grant{}
-		for _, grant := range consumerGrants {
-			grants[grant.ID] = grant
-		}
-		fresh[assignment.Consumer().ID()] = grants
-	}
-	s.assignments = fresh
-	return Cluster{}
+func (s *consumerState) SetAssignments(consumers []Consumer, grants map[ConsumerID][]GrantInfo) Cluster {
+	s.cluster = NewCluster(consumers, grants)
+	return s.cluster
 }
 
-func (s *consumerState) UpdateAssignments(ctx context.Context, assignments []Assignment, removed []GrantID) Cluster {
-	var allGrants map[ConsumerID]map[GrantID]Grant
-	for _, assignment := range assignments {
-		consumerGrants, err := assignment.ParseGrants()
-		if err != nil {
-			log.Errorf(ctx, "Unable to parse grants in cluster update, skipping: %v", err)
-			continue
-		}
-		grants := map[GrantID]Grant{}
-		for _, grant := range consumerGrants {
-			grants[grant.ID] = grant
-		}
-		allGrants[assignment.Consumer().ID()] = grants
-	}
+func (s *consumerState) UpdateAssignments(consumers []Consumer, grants map[ConsumerID][]GrantInfo) Cluster {
+	s.cluster.Assign(consumers, grants)
+	return s.cluster
+}
 
-	for cid, grants := range allGrants {
-		s.assignments[cid] = grants
-	}
-	for _, r := range removed {
-		for _, grants := range s.assignments {
-			if _, ok := grants[r]; ok {
-				delete(grants, r)
-			}
-		}
-	}
-	return Cluster{}
+func (s *consumerState) UpdateGrants(grants []GrantInfo) Cluster {
+	s.cluster.Update(grants)
+	return s.cluster
+}
+
+func (s *consumerState) RemoveAssignments(grants []GrantID) Cluster {
+	s.cluster.Unassign(grants)
+	return s.cluster
+}
+
+func (s *consumerState) RemoveConsumers(consumers []ConsumerID) Cluster {
+	s.cluster.Detach(consumers)
+	return s.cluster
 }
 
 func (s *consumerState) ExtendLease(lease time.Time) {
@@ -649,9 +628,18 @@ func (c *connection) handleConsumerMessage(ctx context.Context, msg ConsumerMess
 		case cluster.IsSnapshot():
 			m, _ := cluster.Snapshot()
 			c.handleClusterSnapshot(ctx, m)
+		case cluster.IsAssign():
+			m, _ := cluster.Assign()
+			c.handleClusterAssign(ctx, m)
 		case cluster.IsUpdate():
 			m, _ := cluster.Update()
 			c.handleClusterUpdate(ctx, m)
+		case cluster.IsUnassign():
+			m, _ := cluster.Unassign()
+			c.handleClusterUnassign(ctx, m)
+		case cluster.IsDetach():
+			m, _ := cluster.Detach()
+			c.handleClusterDetach(ctx, m)
 		default:
 			log.Errorf(ctx, "Unexpected cluster message: %v", cluster)
 		}
@@ -678,11 +666,34 @@ func (c *connection) handleConsumerMessage(ctx context.Context, msg ConsumerMess
 
 func (c *connection) handleClusterSnapshot(ctx context.Context, snapshot ClusterSnapshot) {
 	log.Debugf(ctx, "Storing initial assignments from cluster snapshot: %v", snapshot)
+	consumers, grants, err := parseAssignments(snapshot.Assignments())
+	if err != nil {
+		log.Errorf(ctx, "Invalid grants in cluster snapshot %v: %v", snapshot, err)
+		return
+	}
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.SetAssignments(ctx, snapshot.Assignments()), nil
+		return c.state.SetAssignments(consumers, grants), nil
 	})
 	if err != nil {
-		log.Warnf(ctx, "Connection %v closed while processing cluster snapshot", c)
+		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
+		return
+	}
+	chanx.Clear(c.out)
+	c.cluster <- cluster
+}
+
+func (c *connection) handleClusterAssign(ctx context.Context, assign ClusterAssign) {
+	log.Debugf(ctx, "Updating cluster assignments: %v", assign)
+	consumers, grants, err := parseAssignments(assign.Assignments())
+	if err != nil {
+		log.Errorf(ctx, "Invalid grants in cluster assignment %v: %v", assign, err)
+		return
+	}
+	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
+		return c.state.UpdateAssignments(consumers, grants), nil
+	})
+	if err != nil {
+		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
 		return
 	}
 	chanx.Clear(c.out)
@@ -690,13 +701,43 @@ func (c *connection) handleClusterSnapshot(ctx context.Context, snapshot Cluster
 }
 
 func (c *connection) handleClusterUpdate(ctx context.Context, update ClusterUpdate) {
-	log.Debugf(ctx, "Updating assignments from cluster update: %v", update)
-	removed := update.Removed()
+	grants, err := update.Grants()
+	if err != nil {
+		log.Errorf(ctx, "Invalid grants in cluster update %v: %v", update, err)
+		return
+	}
+	log.Debugf(ctx, "Updating cluster grants: %v", update)
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.UpdateAssignments(ctx, update.Assignments(), removed), nil
+		return c.state.UpdateGrants(grants), nil
 	})
 	if err != nil {
-		log.Warnf(ctx, "Connection %v closed while processing cluster update", c)
+		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
+		return
+	}
+	chanx.Clear(c.out)
+	c.cluster <- cluster
+}
+
+func (c *connection) handleClusterUnassign(ctx context.Context, unassign ClusterUnassign) {
+	log.Debugf(ctx, "Unassigning grants: %v", unassign)
+	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
+		return c.state.RemoveAssignments(unassign.Grants()), nil
+	})
+	if err != nil {
+		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
+		return
+	}
+	chanx.Clear(c.out)
+	c.cluster <- cluster
+}
+
+func (c *connection) handleClusterDetach(ctx context.Context, detach ClusterDetach) {
+	log.Debugf(ctx, "Detaching consumers: %v", detach)
+	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
+		return c.state.RemoveConsumers(detach.Consumers()), nil
+	})
+	if err != nil {
+		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
 		return
 	}
 	chanx.Clear(c.out)
@@ -725,4 +766,18 @@ func (c *connection) handleRevokedGrants(ctx context.Context, revoked RevokeMess
 
 func (c *connection) String() string {
 	return fmt.Sprintf("connection{service=%v,consumer=%v}", c.state.Service(), c.state.Consumer())
+}
+
+func parseAssignments(assignments []Assignment) ([]Consumer, map[ConsumerID][]GrantInfo, error) {
+	var consumers []Consumer
+	grants := map[ConsumerID][]GrantInfo{}
+	for _, a := range assignments {
+		consumers = append(consumers, a.Consumer())
+		g, err := a.ParseGrants()
+		if err != nil {
+			return nil, nil, err
+		}
+		grants[a.Consumer().ID()] = g
+	}
+	return consumers, grants, nil
 }
