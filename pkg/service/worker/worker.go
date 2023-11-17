@@ -203,6 +203,7 @@ steady:
 
 		case <-statsTimer.C:
 			// record metrics
+			log.Debugf(ctx, "Worker %v, joined=%v, #services=%v, #grants=%v", w.self, w.status != nil, len(w.services), len(w.grants))
 
 		case <-w.drain.Closed():
 			break steady

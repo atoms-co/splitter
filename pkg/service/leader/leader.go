@@ -137,6 +137,7 @@ func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 				if ok && cur.connection.Sid() == sid { // guard against race
 					l.disconnect(wctx, "connection closed", cur)
 				}
+				s.connection.Disconnect() // Close channel
 			})
 		}()
 		return out, nil
@@ -296,7 +297,7 @@ steady:
 
 	for _, w := range l.workers {
 		w.TrySend(ctx, NewDisconnect())
-		w.connection.Close()
+		w.connection.Disconnect()
 	}
 }
 

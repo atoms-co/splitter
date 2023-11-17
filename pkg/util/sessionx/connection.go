@@ -8,6 +8,7 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
 	"fmt"
+	"go.uber.org/atomic"
 	"time"
 )
 
@@ -18,6 +19,7 @@ type Connection[T any] interface {
 	Send(context.Context, T) bool
 	Sid() session.ID
 	Instance() model.Instance
+	Disconnect()
 }
 
 type connection[T any] struct {
@@ -27,6 +29,8 @@ type connection[T any] struct {
 	sid      session.ID
 	instance model.Instance
 	out      chan<- T
+
+	closed atomic.Bool
 }
 
 type Message[T any] struct {
@@ -49,6 +53,10 @@ func NewConnection[T any](cl clock.Clock, sid session.ID, instance model.Instanc
 }
 
 func (c connection[T]) Send(ctx context.Context, msg T) bool {
+	if c.IsClosed() {
+		return false
+	}
+
 	timer := c.cl.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
@@ -72,8 +80,15 @@ func (c connection[T]) Instance() model.Instance {
 	return c.instance
 }
 
+func (c connection[T]) Disconnect() {
+	c.Close()
+	if c.closed.CAS(false, true) {
+		close(c.out)
+	}
+}
 func (c connection[T]) forward(in <-chan T, messages chan<- *Message[T]) {
 	defer c.Close()
+
 	for {
 		select {
 		case msg, ok := <-in:
