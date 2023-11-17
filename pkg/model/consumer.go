@@ -103,6 +103,18 @@ var (
 	RevokedGrant   = public_v1.GrantState_REVOKED
 )
 
+func IsAllocatedGrant(state GrantState) bool {
+	return state == AllocatedGrant
+}
+
+func IsActiveGrant(state GrantState) bool {
+	return state == ActiveGrant
+}
+
+func IsRevokedGrant(state GrantState) bool {
+	return state == RevokedGrant
+}
+
 type GrantID string
 
 type Grant struct {
@@ -183,7 +195,7 @@ func UnwrapAssignment(a Assignment) *public_v1.ClusterMessage_Assignment {
 	return a.pb
 }
 
-func NewAssignment(consumer Consumer, grants []GrantInfo) Assignment {
+func NewAssignment(consumer Consumer, grants ...GrantInfo) Assignment {
 	return Assignment{
 		pb: &public_v1.ClusterMessage_Assignment{
 			Consumer: UnwrapInstance(consumer),

@@ -283,7 +283,7 @@ func (c *client) Join(ctx context.Context, consumer Consumer, service QualifiedS
 	ctx = consumerCtx(ctx, consumer, service)
 
 	quit := iox.NewAsyncCloser()
-	pool, cluster := NewWorkPool(ctx, c.clock, consumer, service, domains, c.consumer.Join, handler)
+	pool, clusters := NewWorkPool(ctx, c.clock, consumer, service, domains, c.consumer.Join, handler)
 
 	go func() {
 		defer quit.Close()
@@ -299,7 +299,7 @@ func (c *client) Join(ctx context.Context, consumer Consumer, service QualifiedS
 		}
 	}()
 
-	return cluster, quit
+	return clusters, quit
 }
 
 func consumerCtx(ctx context.Context, consumer Consumer, service QualifiedServiceName) context.Context {

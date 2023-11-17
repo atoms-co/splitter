@@ -124,7 +124,7 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 	defer r.mu.RUnlock()
 
 	var rt T
-	if instance, ok := r.cluster.Cluster().Owner(key); ok {
+	if instance, state, ok := r.cluster.Cluster().Owner(key); ok && IsActiveGrant(state) {
 		if instance.ID() == r.self {
 			return rt, ErrNoResolution
 		}

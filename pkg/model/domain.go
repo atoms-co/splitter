@@ -35,6 +35,14 @@ func ParseQualifiedDomainNameStr(name string) (QualifiedDomainName, bool) {
 	}, true
 }
 
+func MustParseQualifiedDomainNameStr(name string) QualifiedDomainName {
+	n, ok := ParseQualifiedDomainNameStr(name)
+	if !ok {
+		panic(fmt.Sprintf("invalid name: %v", name))
+	}
+	return n
+}
+
 func ParseQualifiedDomainName(pb *public_v1.QualifiedDomainName) (QualifiedDomainName, error) {
 	if pb.GetName() == "" {
 		return QualifiedDomainName{}, fmt.Errorf("invalid domain name: %v", proto.MarshalTextString(pb))

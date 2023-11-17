@@ -65,13 +65,13 @@ func NewWorkPool(ctx context.Context, cl clock.Clock, consumer Consumer, service
 		state: state,
 	}
 
-	var cluster <-chan Cluster
-	p.con, cluster = newConnection(cl, p.txn, joinFn, state)
+	var clusters <-chan Cluster
+	p.con, clusters = newConnection(cl, p.txn, joinFn, state)
 
 	go p.process(consumerCtx(context.Background(), consumer, service))
 
 	log.Infof(ctx, "Initialized work pool: %v", p.state.Consumer())
-	return p, cluster
+	return p, clusters
 }
 
 // Drained returns a channel that is closed when the pool is drained.
@@ -160,6 +160,7 @@ type consumerState struct {
 func newConsumerState(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handlerFn Handler) (state *consumerState, expiredLease chan bool, expiredGrants chan GrantID) {
 	expiredLease = make(chan bool, 1)
 	expiredGrants = make(chan GrantID, 100)
+	c, _ := NewCluster(nil, nil)
 	s := &consumerState{
 		AsyncCloser: iox.NewAsyncCloser(),
 
@@ -172,7 +173,7 @@ func newConsumerState(cl clock.Clock, consumer Consumer, service QualifiedServic
 		handlerFn:    handlerFn,
 
 		grants:  map[GrantID]*grantInfo{},
-		cluster: NewCluster(nil, nil),
+		cluster: c,
 	}
 	return s, expiredLease, expiredGrants
 }
@@ -209,29 +210,45 @@ func (s *consumerState) StaleActiveGrants() {
 	}
 }
 
-func (s *consumerState) SetAssignments(consumers []Consumer, grants map[ConsumerID][]GrantInfo) Cluster {
-	s.cluster = NewCluster(consumers, grants)
-	return s.cluster
+func (s *consumerState) SetAssignments(consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluster, error) {
+	c, err := NewCluster(consumers, grants)
+	if err != nil {
+		return nil, err
+	}
+	s.cluster = c
+	return s.cluster, nil
 }
 
-func (s *consumerState) UpdateAssignments(consumers []Consumer, grants map[ConsumerID][]GrantInfo) Cluster {
-	s.cluster.Assign(consumers, grants)
-	return s.cluster
+func (s *consumerState) UpdateAssignments(consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluster, error) {
+	err := s.cluster.Assign(consumers, grants)
+	if err != nil {
+		return nil, err
+	}
+	return s.cluster, nil
 }
 
-func (s *consumerState) UpdateGrants(grants []GrantInfo) Cluster {
-	s.cluster.Update(grants)
-	return s.cluster
+func (s *consumerState) UpdateGrants(grants []GrantInfo) (Cluster, error) {
+	err := s.cluster.Update(grants...)
+	if err != nil {
+		return nil, err
+	}
+	return s.cluster, nil
 }
 
-func (s *consumerState) RemoveAssignments(grants []GrantID) Cluster {
-	s.cluster.Unassign(grants)
-	return s.cluster
+func (s *consumerState) RemoveAssignments(grants []GrantID) (Cluster, error) {
+	err := s.cluster.Unassign(grants...)
+	if err != nil {
+		return nil, err
+	}
+	return s.cluster, nil
 }
 
-func (s *consumerState) RemoveConsumers(consumers []ConsumerID) Cluster {
-	s.cluster.Detach(consumers)
-	return s.cluster
+func (s *consumerState) RemoveConsumers(consumers []ConsumerID) (Cluster, error) {
+	err := s.cluster.Detach(consumers...)
+	if err != nil {
+		return nil, err
+	}
+	return s.cluster, nil
 }
 
 func (s *consumerState) ExtendLease(lease time.Time) {
@@ -485,7 +502,7 @@ type connection struct {
 }
 
 func newConnection(cl clock.Clock, txn syncx.TxnFn, joinFn JoinFn, state *consumerState) (*connection, <-chan Cluster) {
-	cluster := make(chan Cluster, 100)
+	clusters := make(chan Cluster, 100)
 	ctx := consumerCtx(context.Background(), state.Consumer(), state.Service())
 	c := &connection{
 		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
@@ -493,11 +510,11 @@ func newConnection(cl clock.Clock, txn syncx.TxnFn, joinFn JoinFn, state *consum
 		txn:         txn,
 		joinFn:      joinFn,
 		state:       state,
-		cluster:     cluster,
+		cluster:     clusters,
 		out:         make(chan ConsumerMessage, 1000),
 	}
 	go c.process(ctx)
-	return c, cluster
+	return c, clusters
 }
 
 func (c *connection) Send(msg ConsumerMessage) {
@@ -672,7 +689,7 @@ func (c *connection) handleClusterSnapshot(ctx context.Context, snapshot Cluster
 		return
 	}
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.SetAssignments(consumers, grants), nil
+		return c.state.SetAssignments(consumers, grants)
 	})
 	if err != nil {
 		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
@@ -690,7 +707,7 @@ func (c *connection) handleClusterAssign(ctx context.Context, assign ClusterAssi
 		return
 	}
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.UpdateAssignments(consumers, grants), nil
+		return c.state.UpdateAssignments(consumers, grants)
 	})
 	if err != nil {
 		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
@@ -708,7 +725,7 @@ func (c *connection) handleClusterUpdate(ctx context.Context, update ClusterUpda
 	}
 	log.Debugf(ctx, "Updating cluster grants: %v", update)
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.UpdateGrants(grants), nil
+		return c.state.UpdateGrants(grants)
 	})
 	if err != nil {
 		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
@@ -721,7 +738,7 @@ func (c *connection) handleClusterUpdate(ctx context.Context, update ClusterUpda
 func (c *connection) handleClusterUnassign(ctx context.Context, unassign ClusterUnassign) {
 	log.Debugf(ctx, "Unassigning grants: %v", unassign)
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.RemoveAssignments(unassign.Grants()), nil
+		return c.state.RemoveAssignments(unassign.Grants())
 	})
 	if err != nil {
 		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
@@ -734,7 +751,7 @@ func (c *connection) handleClusterUnassign(ctx context.Context, unassign Cluster
 func (c *connection) handleClusterDetach(ctx context.Context, detach ClusterDetach) {
 	log.Debugf(ctx, "Detaching consumers: %v", detach)
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.RemoveConsumers(detach.Consumers()), nil
+		return c.state.RemoveConsumers(detach.Consumers())
 	})
 	if err != nil {
 		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
