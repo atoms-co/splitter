@@ -406,6 +406,9 @@ func (w *Worker) removeGrant(ctx context.Context, gid core.GrantID) {
 	}
 
 	delete(w.grants, gid)
+	if w.services[grant.Grant.Service()] == gid {
+		delete(w.services, grant.Grant.Service()) // delete service tracking if not replaced by new grant
+	}
 
 	log.Debugf(ctx, "Worker %v removed grant %v", w.self, grant)
 }

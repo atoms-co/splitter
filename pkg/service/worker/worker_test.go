@@ -126,6 +126,10 @@ func TestWorker(t *testing.T) {
 
 		_, err := w.Connect(ctx, session.NewID(), in)
 		require.NoError(t, err)
+
+		in2 := chanx.NewFixed(model.NewConsumerRegisterMessage(model.NewRegisterMessage(consumer, service1, nil, nil)))
+		_, err = w.Connect(ctx, session.NewID(), in2)
+		assert.Error(t, err)
 	})
 
 }
