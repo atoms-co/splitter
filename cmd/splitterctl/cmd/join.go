@@ -31,7 +31,7 @@ func joinCmd() *cobra.Command {
 
 			instance := model.NewInstance(location.NewInstance(location.New(location.Region(*region), "local")), "localhost")
 			clusters, quit := client.Join(wctx, instance, name, nil,
-				func(ctx context.Context, shard splitter.Shard, lease splitter.Lease) {
+				func(ctx context.Context, id splitter.GrantID, shard splitter.Shard, lease splitter.Lease) {
 					fmt.Println(fmt.Sprintf("Received shard %v with lease %v", shard, lease))
 					<-ctx.Done()
 					fmt.Println(fmt.Sprintf("Lost shard %v", shard))

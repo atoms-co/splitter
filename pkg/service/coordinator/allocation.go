@@ -113,6 +113,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 			w := Work{
 				Unit: model.Shard{
 					Domain: domain.Name(),
+					Type:   model.Unit,
 				},
 				Data: location.Location{Region: region},
 				Load: 50, // use higher load for unit domains
@@ -141,6 +142,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 					w := Work{
 						Unit: model.Shard{
 							Domain: domain.Name(),
+							Type:   model.Global,
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),
 						},
@@ -157,6 +159,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 					w := Work{
 						Unit: model.Shard{
 							Domain: domain.Name(),
+							Type:   model.Global,
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),
 						},
@@ -175,6 +178,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 					w := Work{
 						Unit: model.Shard{
 							Region: r,
+							Type:   model.Regional,
 							Domain: domain.Name(),
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),

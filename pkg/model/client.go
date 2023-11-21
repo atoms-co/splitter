@@ -55,7 +55,7 @@ func WithUpdateDomainConfig(config DomainConfig) UpdateDomainOption {
 
 // Handler processes grants. Must be concurrency-safe.
 // If the lease expires, the context is cancelled and the handler must return immediately.
-type Handler func(ctx context.Context, shard Shard, lease Lease)
+type Handler func(ctx context.Context, id GrantID, shard Shard, lease Lease)
 
 // Client is a client for interacting with Splitter.
 type Client interface {

@@ -473,7 +473,7 @@ func startHandler(handler Handler, grant Grant, closer iox.AsyncCloser, lease Le
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		defer closer.Close()
-		handler(ctx, grant.Shard, lease)
+		handler(ctx, grant.ID, grant.Shard, lease)
 	}()
 
 	go func() {

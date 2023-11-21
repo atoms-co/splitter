@@ -348,6 +348,14 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 		}
 		w.lease.Renew(lease.Ttl(), w.cl.AfterFunc(w.cl.Until(lease.Ttl()), w.emitExpirationCheck))
 
+	case msg.IsUpdate():
+		lease, _ := msg.LeaseUpdate()
+
+		if w.lease == nil {
+			w.lease = NewRenewableLease(lease.Ttl(), nil)
+		}
+		w.lease.Renew(lease.Ttl(), w.cl.AfterFunc(w.cl.Until(lease.Ttl()), w.emitExpirationCheck))
+
 	default:
 		log.Errorf(ctx, "Invalid worker message: %v", msg)
 	}

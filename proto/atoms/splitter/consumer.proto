@@ -11,6 +11,18 @@ option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
 option java_package = "co.atoms.splitter.pb";
 
+// DomainKey specifies a domain element for an implicit domain.
+message DomainKey {
+  string region = 1;
+  string key = 2;
+}
+
+// QualifiedDomainKey fully specifies a domain element.
+message QualifiedDomainKey {
+  QualifiedDomainName domain = 1;
+  DomainKey key = 2;
+}
+
 // Instance defines an addressable dynamic component instance. Immutable.
 message Instance {
   atoms.splitter.lib.service.location.Instance client = 1;
@@ -18,14 +30,13 @@ message Instance {
 }
 
 // Shard is a unit of work. Usually it is a continuous subrange of UUIDs, but can also span the whole UUID space.
-// Shards of global and unit domain may have zero region if information about preferred region is not provided.
-// For unit domains the shard spans the whole UUID space.
 message Shard {
   QualifiedDomainName domain = 1;
+  Domain.Type type = 2;
   // Region is the optional region of the shard.
-  string region = 2;
-  string from = 3;
-  string to = 4;
+  string region = 3;
+  string from = 4;
+  string to = 5;
 }
 
 enum GrantState {
@@ -52,7 +63,7 @@ message Grant {
 message Register {
   Instance consumer = 1;
   QualifiedServiceName service = 2;
-  repeated atoms.splitter.QualifiedDomainName domains = 3;
+  repeated QualifiedDomainName domains = 3;
   repeated Grant active = 4; // Active grants with non-expired leases.
 }
 

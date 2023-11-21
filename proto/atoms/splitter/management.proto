@@ -68,9 +68,9 @@ message Domain {
 
   enum Type {
     INVALID = 0;
-    // Domain is a indivisible unit, useful for leader election. Key is not used. Region is informational.
+    // Domain is a indivisible unit, useful for leader election. Key is not used.
     UNIT = 1;
-    // Domain is a global uuid range. Region is informational.
+    // Domain is a global uuid range.
     GLOBAL = 2;
     // Domain is a set of region-explicit uuid ranges. Each key must be qualified by a region.
     REGIONAL = 3;

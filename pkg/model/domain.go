@@ -299,6 +299,24 @@ type DomainKey struct {
 	Key    Key    // if REGIONAL/GLOBAL
 }
 
+func ParseDomainKey(key *public_v1.DomainKey) (DomainKey, error) {
+	k, err := ParseKey(key.Key)
+	if err != nil {
+		return DomainKey{}, err
+	}
+	return DomainKey{
+		Region: Region(key.Region),
+		Key:    k,
+	}, nil
+}
+
+func (k DomainKey) ToProto() *public_v1.DomainKey {
+	return &public_v1.DomainKey{
+		Region: string(k.Region),
+		Key:    k.Key.String(),
+	}
+}
+
 var (
 	ZeroDomainKey = DomainKey{}
 )
@@ -317,6 +335,28 @@ func (k DomainKey) String() string {
 type QualifiedDomainKey struct {
 	Domain QualifiedDomainName
 	Key    DomainKey
+}
+
+func ParseQualifiedDomainKey(key *public_v1.QualifiedDomainKey) (QualifiedDomainKey, error) {
+	domain, err := ParseQualifiedDomainName(key.Domain)
+	if err != nil {
+		return QualifiedDomainKey{}, err
+	}
+	k, err := ParseDomainKey(key.Key)
+	if err != nil {
+		return QualifiedDomainKey{}, err
+	}
+	return QualifiedDomainKey{
+		Domain: domain,
+		Key:    k,
+	}, nil
+}
+
+func (k QualifiedDomainKey) ToProto() *public_v1.QualifiedDomainKey {
+	return &public_v1.QualifiedDomainKey{
+		Domain: k.Domain.ToProto(),
+		Key:    k.Key.ToProto(),
+	}
 }
 
 func (k QualifiedDomainKey) String() string {

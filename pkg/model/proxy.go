@@ -124,7 +124,13 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 	defer r.mu.RUnlock()
 
 	var rt T
-	if instance, state, ok := r.cluster.Cluster().Owner(key); ok && IsActiveGrant(state) {
+
+	cluster, ok := r.cluster.Cluster()
+	if !ok {
+		return rt, fmt.Errorf("clustermap not initialized: %w", ErrNotFound)
+	}
+
+	if instance, state, ok := cluster.Owner(key); ok && IsActiveGrant(state) {
 		if instance.ID() == r.self {
 			return rt, ErrNoResolution
 		}
@@ -165,7 +171,12 @@ func (p *connectionPool) Connect(ctx context.Context, id InstanceID) (Connection
 	p.mu.RLock()
 	defer p.mu.Unlock()
 
-	instance, ok := p.provider.Cluster().Consumer(id)
+	cluster, ok := p.provider.Cluster()
+	if !ok {
+		return Connection{}, fmt.Errorf("clustermap not initialized: %w", ErrNotFound)
+	}
+
+	instance, ok := cluster.Consumer(id)
 	if !ok {
 		return Connection{}, fmt.Errorf("consumer %v: %w", id, ErrNotFound)
 	}

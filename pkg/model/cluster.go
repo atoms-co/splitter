@@ -72,7 +72,7 @@ func (c *cluster) Owner(key QualifiedDomainKey) (Instance, GrantState, bool) {
 	if grants, ok := c.d2g[key.Domain]; ok {
 		for gid := range grants {
 			grant := c.grants[gid]
-			if grant.Shard.Contains(key.Key) && (IsActiveGrant(grant.State) || IsRevokedGrant(grant.State)) {
+			if grant.Shard.Contains(key) && (IsActiveGrant(grant.State) || IsRevokedGrant(grant.State)) {
 				return c.consumers[c.g2c[gid]], grant.State, true
 			}
 		}
@@ -84,7 +84,7 @@ func (c *cluster) OwnerWithState(key QualifiedDomainKey, state GrantState) (Inst
 	if grants, ok := c.d2g[key.Domain]; ok {
 		for gid := range grants {
 			grant := c.grants[gid]
-			if grant.Shard.Contains(key.Key) && grant.State == state {
+			if grant.Shard.Contains(key) && grant.State == state {
 				return c.consumers[c.g2c[gid]], true
 			}
 		}
@@ -242,7 +242,7 @@ func (c *cluster) deleteGrant(g GrantID) {
 }
 
 type ClusterProvider interface {
-	Cluster() Cluster
+	Cluster() (Cluster, bool)
 }
 
 func NewClusterProvider(ctx context.Context, clusters <-chan Cluster) ClusterProvider {
@@ -256,10 +256,10 @@ type clusterProvider struct {
 	mu      sync.RWMutex
 }
 
-func (p *clusterProvider) Cluster() Cluster {
+func (p *clusterProvider) Cluster() (Cluster, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return p.cluster
+	return p.cluster, p.cluster != nil
 }
 
 func (p *clusterProvider) process(ctx context.Context, clusters <-chan Cluster) {

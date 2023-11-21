@@ -29,19 +29,20 @@ func NewInstance(region location.Region, node location.Node, id model.InstanceID
 
 var QDN = model.MustParseQualifiedDomainNameStr
 
-func NewShard(domain string, region model.Region, from, to string) model.Shard {
+func NewShard(domain string, dtype model.DomainType, region model.Region, from, to string) model.Shard {
 	return model.Shard{
 		Region: region,
 		Domain: QDN(domain),
+		Type:   dtype,
 		To:     model.Key(pad(to)),
 		From:   model.Key(pad(from)),
 	}
 }
 
-func NewGrantInfo(id string, domain string, region model.Region, from, to string, state model.GrantState) model.GrantInfo {
+func NewGrantInfo(id string, domain string, dtype model.DomainType, region model.Region, from, to string, state model.GrantState) model.GrantInfo {
 	return model.GrantInfo{
 		ID:    model.GrantID(id),
-		Shard: NewShard(domain, region, from, to),
+		Shard: NewShard(domain, dtype, region, from, to),
 		State: state,
 	}
 }

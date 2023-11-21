@@ -109,7 +109,7 @@ func TestCluster_Grant(t *testing.T) {
 		c := setup(t)
 		g, ok := c.Grant("g11")
 		require.True(t, ok)
-		expected := prefab.NewGrantInfo("g11", "t1/s1/d1", "northcentralus", "0", "A", model.ActiveGrant)
+		expected := prefab.NewGrantInfo("g11", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrant)
 		requirex.EqualProtobuf(t, g.ToProto(), expected.ToProto())
 	})
 }
@@ -158,7 +158,7 @@ func TestCluster_GrantConsumer(t *testing.T) {
 func TestCluster_Assign(t *testing.T) {
 	t.Run("unknown consumer", func(t *testing.T) {
 		c := setup(t)
-		g := prefab.NewGrantInfo("g", "t1/s1/d1", "northcentralus", "D", "F", model.ActiveGrant)
+		g := prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "northcentralus", "D", "F", model.ActiveGrant)
 
 		err := c.Assign(slicex.New(prefab.Instance1), map[model.ConsumerID][]model.GrantInfo{prefab.Instance4.ID(): slicex.New(g)})
 		require.Error(t, err, "consumer information is missing in assignments: id4")
@@ -184,7 +184,7 @@ func TestCluster_Assign(t *testing.T) {
 
 	t.Run("new consumer with grants", func(t *testing.T) {
 		c := setup(t)
-		g := prefab.NewGrantInfo("g", "t1/s1/d1", "northcentralus", "D", "F", model.ActiveGrant)
+		g := prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "northcentralus", "D", "F", model.ActiveGrant)
 
 		err := c.Assign(slicex.New(prefab.Instance4), map[model.ConsumerID][]model.GrantInfo{prefab.Instance4.ID(): slicex.New(g)})
 		require.NoError(t, err)
@@ -208,7 +208,7 @@ func TestCluster_Assign(t *testing.T) {
 
 	t.Run("existing consumer with new grants", func(t *testing.T) {
 		c := setup(t)
-		g := prefab.NewGrantInfo("g", "t1/s1/d1", "centralus", "B", "C", model.ActiveGrant)
+		g := prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "centralus", "B", "C", model.ActiveGrant)
 		g21, ok := c.Grant("g21")
 		require.True(t, ok)
 		g22, ok := c.Grant("g22")
@@ -234,7 +234,7 @@ func TestCluster_Assign(t *testing.T) {
 
 	t.Run("active removed revoked", func(t *testing.T) {
 		c := setup(t)
-		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", "eastus1", "E", "F", model.ActiveGrant)
+		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.ActiveGrant)
 
 		i, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrant)
 		require.True(t, ok)
@@ -251,7 +251,7 @@ func TestCluster_Assign(t *testing.T) {
 
 	t.Run("grant moved to new consumer", func(t *testing.T) {
 		c := setup(t)
-		g12 := prefab.NewGrantInfo("g12", "t1/s1/d1", "northcentralus", "A", "D", model.ActiveGrant)
+		g12 := prefab.NewGrantInfo("g12", "t1/s1/d1", model.Regional, "northcentralus", "A", "D", model.ActiveGrant)
 
 		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "A34345"), prefab.Instance1, model.ActiveGrant)
 
@@ -266,7 +266,7 @@ func TestCluster_Update(t *testing.T) {
 	t.Run("unknown grant", func(t *testing.T) {
 		c := setup(t)
 
-		err := c.Update(prefab.NewGrantInfo("g", "t1/s1/d1", "northcentralus", "0", "A", model.ActiveGrant))
+		err := c.Update(prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrant))
 		require.Errorf(t, err, "unknown grant: g")
 	})
 
@@ -277,7 +277,7 @@ func TestCluster_Update(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, i, prefab.Instance2)
 
-		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", "eastus1", "E", "F", model.ActiveGrant)
+		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.ActiveGrant)
 		err := c.Update(g13)
 		require.NoError(t, err)
 
@@ -354,11 +354,11 @@ func TestCluster_Detach(t *testing.T) {
 func setup(t *testing.T) model.Cluster {
 	t.Helper()
 
-	g11 := prefab.NewGrantInfo("g11", "t1/s1/d1", "northcentralus", "0", "A", model.ActiveGrant)
-	g12 := prefab.NewGrantInfo("g12", "t1/s1/d1", "northcentralus", "A", "D", model.ActiveGrant)
-	g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", "eastus1", "E", "F", model.AllocatedGrant)
-	g21 := prefab.NewGrantInfo("g21", "t1/s1/d1", "centralus", "0", "A", model.ActiveGrant)
-	g22 := prefab.NewGrantInfo("g22", "t1/s1/d1", "eastus1", "E", "F", model.RevokedGrant)
+	g11 := prefab.NewGrantInfo("g11", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrant)
+	g12 := prefab.NewGrantInfo("g12", "t1/s1/d1", model.Regional, "northcentralus", "A", "D", model.ActiveGrant)
+	g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.AllocatedGrant)
+	g21 := prefab.NewGrantInfo("g21", "t1/s1/d1", model.Regional, "centralus", "0", "A", model.ActiveGrant)
+	g22 := prefab.NewGrantInfo("g22", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.RevokedGrant)
 	grants := map[model.ConsumerID][]model.GrantInfo{
 		prefab.Instance1.ID(): slicex.New(g11, g12, g13),
 		prefab.Instance2.ID(): slicex.New(g21, g22),

@@ -16,22 +16,24 @@ type ConsumerID = InstanceID
 type Consumer = Instance
 
 type Shard struct {
-	Region Region
 	Domain QualifiedDomainName
+	Type   DomainType
+	Region Region
 	To     Key
 	From   Key
 }
 
 // NewShards returns N shards for a region and domain, uniformly split.
-func NewShards(r Region, domain QualifiedDomainName, n int) []Shard {
+func NewShards(domain QualifiedDomainName, dtype DomainType, r Region, n int) []Shard {
 	list, err := uuidx.Split(uuidx.Domain, n)
 	if err != nil {
 		panic(err)
 	}
 	return slicex.Map(list, func(s uuidx.Range) Shard {
 		return Shard{
-			Region: r,
+			Type:   dtype,
 			Domain: domain,
+			Region: r,
 			From:   Key(s.From()),
 			To:     Key(s.To()),
 		}
@@ -42,45 +44,77 @@ func ParseShard(pb *public_v1.Shard) (Shard, error) {
 	if pb.GetDomain() == nil {
 		return Shard{}, fmt.Errorf("missing domain: %v", proto.MarshalTextString(pb))
 	}
-	to, err := ParseKey(pb.GetTo())
-	if err != nil {
-		return Shard{}, fmt.Errorf("invalid to: %v", proto.MarshalTextString(pb))
-	}
-	from, err := ParseKey(pb.GetFrom())
-	if err != nil {
-		return Shard{}, fmt.Errorf("invalid from: %v", proto.MarshalTextString(pb))
-	}
 	domain, err := ParseQualifiedDomainName(pb.GetDomain())
 	if err != nil {
 		return Shard{}, fmt.Errorf("invalid domain: %w", err)
 	}
-	return Shard{
-		Region: Region(pb.GetRegion()),
-		Domain: domain,
-		To:     to,
-		From:   from,
-	}, nil
+	switch pb.GetType() {
+	case Unit:
+		return Shard{
+			Domain: domain,
+			Type:   pb.GetType(),
+		}, nil
+	case Global:
+		to, err := ParseKey(pb.GetTo())
+		if err != nil {
+			return Shard{}, fmt.Errorf("invalid to: %v", proto.MarshalTextString(pb))
+		}
+		from, err := ParseKey(pb.GetFrom())
+		if err != nil {
+			return Shard{}, fmt.Errorf("invalid from: %v", proto.MarshalTextString(pb))
+		}
+		return Shard{
+			Domain: domain,
+			Type:   pb.GetType(),
+			To:     to,
+			From:   from,
+		}, nil
+	case Regional:
+		to, err := ParseKey(pb.GetTo())
+		if err != nil {
+			return Shard{}, fmt.Errorf("invalid to: %v", proto.MarshalTextString(pb))
+		}
+		from, err := ParseKey(pb.GetFrom())
+		if err != nil {
+			return Shard{}, fmt.Errorf("invalid from: %v", proto.MarshalTextString(pb))
+		}
+		return Shard{
+			Domain: domain,
+			Type:   pb.GetType(),
+			Region: Region(pb.GetRegion()),
+			To:     to,
+			From:   from,
+		}, nil
+	default:
+		return Shard{}, fmt.Errorf("invalid shard domain type: %v", pb.GetType())
+	}
 }
 
-func (s Shard) ShardDomain() QualifiedDomainName {
-	return s.Domain
-}
-
-func (s Shard) Contains(key DomainKey) bool {
-	if s.Region != key.Region {
+func (s Shard) Contains(key QualifiedDomainKey) bool {
+	switch s.Type {
+	case Unit:
+		return s.Domain == key.Domain
+	case Global:
+		if s.Domain != key.Domain {
+			return false
+		}
+		r, _ := uuidx.NewRange(uuid.UUID(s.From), uuid.UUID(s.To))
+		return r.Contains(uuid.UUID(key.Key.Key))
+	case Regional:
+		if s.Domain != key.Domain || s.Region != key.Key.Region {
+			return false
+		}
+		r, _ := uuidx.NewRange(uuid.UUID(s.From), uuid.UUID(s.To))
+		return r.Contains(uuid.UUID(key.Key.Key))
+	default:
 		return false
 	}
-	r, _ := uuidx.NewRange(uuid.UUID(s.From), uuid.UUID(s.To))
-	return r.Contains(uuid.UUID(key.Key))
-}
-
-func (s Shard) Equals(o Shard) bool {
-	return s == o
 }
 
 func (s Shard) ToProto() *public_v1.Shard {
 	return &public_v1.Shard{
 		Region: string(s.Region),
+		Type:   s.Type,
 		Domain: s.Domain.ToProto(),
 		To:     s.To.String(),
 		From:   s.From.String(),
@@ -88,10 +122,16 @@ func (s Shard) ToProto() *public_v1.Shard {
 }
 
 func (s Shard) String() string {
-	if s.Region != "" {
-		return fmt.Sprintf("shard[region=%v, domain=%v, from: %v, to: %v]", s.Region, s.Domain, s.From, s.To)
+	switch s.Type {
+	case Unit:
+		return fmt.Sprintf("%v", s.Domain)
+	case Global:
+		return fmt.Sprintf("%v[%v-%v)", s.Domain, s.To, s.From)
+	case Regional:
+		return fmt.Sprintf("%v@%v[%v-%v)", s.Domain, s.Region, s.To, s.From)
+	default:
+		return "invalid-shard"
 	}
-	return fmt.Sprintf("shard[domain=%v, from: %v, to: %v]", s.Domain, s.From, s.To)
 }
 
 type GrantState = public_v1.GrantState
