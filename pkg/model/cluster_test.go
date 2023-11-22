@@ -251,7 +251,7 @@ func TestCluster_Assign(t *testing.T) {
 
 	t.Run("grant moved to new consumer", func(t *testing.T) {
 		c := setup(t)
-		g12 := prefab.NewGrantInfo("g12", "t1/s1/d1", model.Regional, "northcentralus", "A", "D", model.ActiveGrant)
+		g12 := prefab.NewGrantInfo("g23", "t1/s1/d1", model.Regional, "northcentralus", "A", "D", model.ActiveGrant)
 
 		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "A34345"), prefab.Instance1, model.ActiveGrant)
 
@@ -259,6 +259,10 @@ func TestCluster_Assign(t *testing.T) {
 		require.NoError(t, err)
 
 		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "A34345"), prefab.Instance2, model.ActiveGrant)
+		_, ok := c.Grant("g12")
+		require.False(t, ok)
+		_, ok = c.Grant("g23")
+		require.True(t, ok)
 	})
 }
 

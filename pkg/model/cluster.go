@@ -51,6 +51,7 @@ type cluster struct {
 	c2g map[ConsumerID]map[GrantID]bool
 	g2c map[GrantID]ConsumerID
 	d2g map[QualifiedDomainName]map[GrantID]bool
+	s2g map[Shard]map[GrantID]bool
 }
 
 func NewCluster(consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluster, error) {
@@ -60,6 +61,7 @@ func NewCluster(consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluste
 		c2g:       map[ConsumerID]map[GrantID]bool{},
 		g2c:       map[GrantID]ConsumerID{},
 		d2g:       map[QualifiedDomainName]map[GrantID]bool{},
+		s2g:       map[Shard]map[GrantID]bool{},
 	}
 	err := c.Assign(consumers, grants)
 	if err != nil {
@@ -143,14 +145,16 @@ func (c *cluster) Assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo
 		for _, g := range consumerGrants {
 			c.activateGrantIfNeeded(g)
 
-			// Check grant moved to another consumer
-			if old, ok := c.g2c[g.ID]; ok && old != cid {
-				delete(c.c2g[old], g.ID)
+			// Check shard moved to another consumer
+			if gid, ok := c.findGrant(g.Shard, g.State); ok && c.g2c[gid] != cid {
+				c.deleteGrant(gid)
 			}
 
 			c.grants[g.ID] = g
 			c.c2g[cid][g.ID] = true
 			c.g2c[g.ID] = cid
+			c.ensureShard(g.Shard)
+			c.s2g[g.Shard][g.ID] = true
 
 			// Not checking for changes in shard domain, not supported
 			c.ensureDomain(g.Shard.Domain)
@@ -201,9 +205,26 @@ func (c *cluster) Detach(consumers ...ConsumerID) error {
 	return nil
 }
 
+func (c *cluster) findGrant(s Shard, state GrantState) (GrantID, bool) {
+	if grants, ok := c.s2g[s]; ok {
+		for id := range grants {
+			if c.grants[id].State == state {
+				return id, true
+			}
+		}
+	}
+	return "", false
+}
+
 func (c *cluster) ensureConsumer(cid ConsumerID) {
 	if _, ok := c.c2g[cid]; !ok {
 		c.c2g[cid] = map[GrantID]bool{}
+	}
+}
+
+func (c *cluster) ensureShard(s Shard) {
+	if _, ok := c.s2g[s]; !ok {
+		c.s2g[s] = map[GrantID]bool{}
 	}
 }
 
@@ -223,9 +244,9 @@ func (c *cluster) activateGrantIfNeeded(g GrantInfo) {
 }
 
 func (c *cluster) deleteRevokedGrant(shard Shard) {
-	for gid := range c.d2g[shard.Domain] {
+	for gid := range c.s2g[shard] {
 		grant := c.grants[gid]
-		if grant.Shard == shard && IsRevokedGrant(grant.State) {
+		if IsRevokedGrant(grant.State) {
 			c.deleteGrant(gid)
 			return
 		}
@@ -239,6 +260,7 @@ func (c *cluster) deleteGrant(g GrantID) {
 	delete(c.c2g[consumer], g)
 	delete(c.g2c, g)
 	delete(c.d2g[grant.Shard.Domain], g)
+	delete(c.s2g[grant.Shard], g)
 }
 
 type ClusterProvider interface {
