@@ -40,6 +40,10 @@ type WorkerInfo[K comparable, V any] struct {
 	Lease    time.Time
 }
 
+func (w WorkerInfo[K, V]) ID() K {
+	return w.Instance.ID
+}
+
 func (w WorkerInfo[K, V]) String() string {
 	return fmt.Sprintf("%v[state=%v, lease=%v]", w.Instance, w.State, w.Lease)
 }

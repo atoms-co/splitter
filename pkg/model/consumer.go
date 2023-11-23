@@ -155,6 +155,10 @@ func IsRevokedGrant(state GrantState) bool {
 	return state == RevokedGrant
 }
 
+func IsActiveOrRevokedGrant(state GrantState) bool {
+	return state == ActiveGrant || state == RevokedGrant
+}
+
 type GrantID string
 
 type Grant struct {
@@ -250,6 +254,12 @@ func (a Assignment) Consumer() Consumer {
 
 func (a Assignment) ParseGrants() ([]GrantInfo, error) {
 	return slicex.TryMap(a.pb.GetGrants(), ParseGrantInfo)
+}
+
+func ClusterToAssignments(c Cluster) []Assignment {
+	return slicex.Map(c.Consumers(), func(consumer Consumer) Assignment {
+		return NewAssignment(consumer, c.Grants(consumer.ID())...)
+	})
 }
 
 type RegisterMessage struct {
@@ -579,7 +589,7 @@ func UnwrapClusterSnapshot(s ClusterSnapshot) *public_v1.ClusterMessage_Snapshot
 	return s.pb
 }
 
-func NewClusterSnapshot(assignments []Assignment) ClusterSnapshot {
+func NewClusterSnapshot(assignments ...Assignment) ClusterSnapshot {
 	return ClusterSnapshot{
 		pb: &public_v1.ClusterMessage_Snapshot{
 			Assignments: slicex.Map(assignments, UnwrapAssignment),
@@ -607,7 +617,7 @@ func UnwrapClusterAssign(a ClusterAssign) *public_v1.ClusterMessage_Assign {
 	return a.pb
 }
 
-func NewClusterAssign(assignments []Assignment) ClusterAssign {
+func NewClusterAssign(assignments ...Assignment) ClusterAssign {
 	return ClusterAssign{
 		pb: &public_v1.ClusterMessage_Assign{
 			Assignments: slicex.Map(assignments, UnwrapAssignment),
@@ -635,7 +645,7 @@ func UnwrapClusterUpdate(u ClusterUpdate) *public_v1.ClusterMessage_Update {
 	return u.pb
 }
 
-func NewClusterUpdate(grants []GrantInfo) ClusterUpdate {
+func NewClusterUpdate(grants ...GrantInfo) ClusterUpdate {
 	return ClusterUpdate{
 		pb: &public_v1.ClusterMessage_Update{
 			Grants: slicex.Map(grants, GrantInfo.ToProto),
@@ -663,7 +673,7 @@ func UnwrapClusterUnassign(u ClusterUnassign) *public_v1.ClusterMessage_Unassign
 	return u.pb
 }
 
-func NewClusterUnassign(grants []GrantID) ClusterUnassign {
+func NewClusterUnassign(grants ...GrantID) ClusterUnassign {
 	return ClusterUnassign{
 		pb: &public_v1.ClusterMessage_Unassign{
 			Grants: slicex.Map(grants, func(id GrantID) string { return string(id) }),
@@ -691,7 +701,7 @@ func UnwrapClusterDetach(d ClusterDetach) *public_v1.ClusterMessage_Detach {
 	return d.pb
 }
 
-func NewClusterDetach(consumers []ConsumerID) ClusterDetach {
+func NewClusterDetach(consumers ...ConsumerID) ClusterDetach {
 	return ClusterDetach{
 		pb: &public_v1.ClusterMessage_Detach{
 			Consumers: slicex.Map(consumers, func(id ConsumerID) string { return string(id) }),
@@ -711,42 +721,42 @@ type ClusterMessage struct {
 	pb *public_v1.ClusterMessage
 }
 
-func NewClusterSnapshotMessage(snapshot ClusterSnapshot) ClusterMessage {
+func NewClusterSnapshotMessage(assignments ...Assignment) ClusterMessage {
 	return WrapClusterMessage(&public_v1.ClusterMessage{
 		Msg: &public_v1.ClusterMessage_Snapshot_{
-			Snapshot: UnwrapClusterSnapshot(snapshot),
+			Snapshot: UnwrapClusterSnapshot(NewClusterSnapshot(assignments...)),
 		},
 	})
 }
 
-func NewClusterAssignMessage(assign ClusterAssign) ClusterMessage {
+func NewClusterAssignMessage(assignments ...Assignment) ClusterMessage {
 	return WrapClusterMessage(&public_v1.ClusterMessage{
 		Msg: &public_v1.ClusterMessage_Assign_{
-			Assign: UnwrapClusterAssign(assign),
+			Assign: UnwrapClusterAssign(NewClusterAssign(assignments...)),
 		},
 	})
 }
 
-func NewClusterUpdateMessage(update ClusterUpdate) ClusterMessage {
+func NewClusterUpdateMessage(grants ...GrantInfo) ClusterMessage {
 	return WrapClusterMessage(&public_v1.ClusterMessage{
 		Msg: &public_v1.ClusterMessage_Update_{
-			Update: UnwrapClusterUpdate(update),
+			Update: UnwrapClusterUpdate(NewClusterUpdate(grants...)),
 		},
 	})
 }
 
-func NewClusterUnassignMessage(unassign ClusterUnassign) ClusterMessage {
+func NewClusterUnassignMessage(grants ...GrantID) ClusterMessage {
 	return WrapClusterMessage(&public_v1.ClusterMessage{
 		Msg: &public_v1.ClusterMessage_Unassign_{
-			Unassign: UnwrapClusterUnassign(unassign),
+			Unassign: UnwrapClusterUnassign(NewClusterUnassign(grants...)),
 		},
 	})
 }
 
-func NewClusterDetachMessage(detach ClusterDetach) ClusterMessage {
+func NewClusterDetachMessage(consumers ...ConsumerID) ClusterMessage {
 	return WrapClusterMessage(&public_v1.ClusterMessage{
 		Msg: &public_v1.ClusterMessage_Detach_{
-			Detach: UnwrapClusterDetach(detach),
+			Detach: UnwrapClusterDetach(NewClusterDetach(consumers...)),
 		},
 	})
 }

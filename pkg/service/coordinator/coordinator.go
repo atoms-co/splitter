@@ -8,7 +8,9 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
+	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/randx"
+	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
@@ -47,6 +49,7 @@ type coordinator struct {
 
 	consumers map[model.InstanceID]*consumerSession
 	alloc     *Allocation
+	cluster   model.Cluster
 	messages  chan *sessionx.Message[model.ConsumerMessage]
 
 	inject chan func()
@@ -104,6 +107,10 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	if err != nil {
 		return nil, nil, err
 	}
+	active, err := slicex.TryMap(grants, fromGrant)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	if old, ok := c.consumers[consumer.ID()]; ok {
 		log.Infof(ctx, "Consumer %v re-connected (session=%v) with #grants: %d. Disconnecting stale session", consumer, sid, len(grants))
@@ -117,29 +124,36 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 		consumer:   consumer,
 		connection: connection,
 	}
-	c.consumers[consumer.ID()] = s
 
 	lease := c.cl.Now().Add(leaseDuration)
 	connection.Send(ctx, model.NewConsumerExtendMessage(model.NewExtendMessage(lease)))
 
-	// If consumer is present in the allocation, there is no need to broadcast assignments to other
-	// consumers. Attach will change no assignments.
+	assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Client().ID(), consumer.instance), lease, active...)
+	if !ok {
+		log.Warnf(ctx, "Consumer %v is already attached in the allocation: %d", consumer)
+	}
 
-	_, broadcast := c.alloc.Worker(consumer.ID())
-	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Client().ID(), consumer.instance), lease /* + claimed grants */); ok {
-		if len(assigned.Active) > 0 {
-			connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Active)...)))
-		}
-		if len(assigned.Allocated) > 0 {
-			connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Allocated)...)))
+	if len(assigned.Active) > 0 {
+		if ok := connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Active)...))); !ok {
+			return nil, nil, fmt.Errorf("broken connection while initializing new consumer %v", consumer)
 		}
 	}
 
-	// TODO: send existing cluster map to new consumer
-
-	if broadcast {
-		// TODO
+	if len(assigned.Allocated) > 0 {
+		if ok := connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Allocated)...))); !ok {
+			return nil, nil, fmt.Errorf("broken connection while initializing new consumer %v", consumer)
+		}
 	}
+
+	c.updateCluster(ctx)
+
+	// Send full cluster to the consumer
+	snapshot := model.NewClusterSnapshotMessage(model.ClusterToAssignments(c.cluster)...)
+	if ok := connection.Send(ctx, model.NewConsumerClusterMessage(snapshot)); !ok {
+		return nil, nil, fmt.Errorf("broken connection while initializing new consumer %v", consumer)
+	}
+
+	c.consumers[consumer.ID()] = s
 
 	return s, out, nil
 }
@@ -172,6 +186,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	}
 	c.info = info
 	c.alloc = newAllocation(c.id.ID(), info, c.cache.Placements(c.name.Tenant), c.cl.Now().Add(leaseDuration))
+	c.cluster, _ = toCluster(c.alloc)
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
 
@@ -253,6 +268,7 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	for _, g := range rejected {
 		c.mustSend(ctx, c.consumers[g.Worker], model.NewConsumerRevokeMessage(model.NewRevokeMessage(model.GrantID(g.ID))))
 	}
+	c.updateCluster(ctx)
 }
 
 func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance bool) {
@@ -301,9 +317,65 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 		c.mustSend(ctx, c.consumers[cid], model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(grants)...)))
 	}
 
-	log.Debugf(ctx, "Allocation: %v/%v", c.name, c.alloc)
+	c.updateCluster(ctx)
 
-	// TODO: broadcast
+	log.Debugf(ctx, "Allocation: %v/%v", c.name, c.alloc)
+}
+
+func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, msg model.ConsumerMessage) {
+	log.Debugf(ctx, ">> %v/%v: %v", c.name, s.ID(), msg)
+
+	switch {
+	case msg.IsDeregister():
+		c.disconnect(ctx, s)
+
+	case msg.IsReleased():
+		r, _ := msg.Released()
+		c.release(ctx, s, r.Grants())
+
+	default:
+		log.Errorf(ctx, "Internal: unexpected consumer message: %v", msg)
+	}
+}
+
+func (c *coordinator) release(ctx context.Context, s *consumerSession, grants []model.GrantID) {
+	assigned := mapx.New(c.alloc.Assigned(s.ID()).All(), grantID)
+	for _, id := range grants {
+		if grant, ok := assigned[id]; ok {
+			c.alloc.Release(grant, c.cl.Now())
+		}
+	}
+	c.updateCluster(ctx)
+}
+
+func (c *coordinator) updateCluster(ctx context.Context) {
+	newCluster, err := toCluster(c.alloc)
+	if err != nil {
+		log.Errorf(ctx, "Internal: unable to create cluster from allocation: %v", err)
+		return
+	}
+
+	d := newCluster.Diff(c.cluster)
+
+	if len(d.Assigned) > 0 {
+		assignments := mapx.MapToSlice(d.Assigned, func(cid model.ConsumerID, grants []model.GrantInfo) model.Assignment {
+			consumer, _ := newCluster.Consumer(cid)
+			return model.NewAssignment(consumer, grants...)
+		})
+		c.broadcast(ctx, model.NewConsumerClusterMessage(model.NewClusterAssignMessage(assignments...)))
+	}
+
+	if len(d.Updated) > 0 {
+		c.broadcast(ctx, model.NewConsumerClusterMessage(model.NewClusterUpdateMessage(d.Updated...)))
+	}
+	if len(d.Unassigned) > 0 {
+		c.broadcast(ctx, model.NewConsumerClusterMessage(model.NewClusterUnassignMessage(d.Unassigned...)))
+	}
+	if len(d.Detached) > 0 {
+		c.broadcast(ctx, model.NewConsumerClusterMessage(model.NewClusterDetachMessage(d.Detached...)))
+	}
+
+	c.cluster = newCluster
 }
 
 // mustSend attempts to send a message on a consumer connection. If it fails, disconnect the consumer
@@ -317,15 +389,10 @@ func (c *coordinator) mustSend(ctx context.Context, s *consumerSession, message 
 	}
 	return true
 }
-func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, msg model.ConsumerMessage) {
-	log.Debugf(ctx, ">> %v/%v: %v", c.name, s.ID(), msg)
 
-	switch {
-	case msg.IsDeregister():
-		c.disconnect(ctx, s)
-
-	default:
-		log.Errorf(ctx, "Internal: unexpected consumer message: %v", msg)
+func (c *coordinator) broadcast(ctx context.Context, message model.ConsumerMessage) {
+	for _, s := range c.consumers {
+		c.mustSend(ctx, s, message)
 	}
 }
 

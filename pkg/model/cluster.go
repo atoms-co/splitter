@@ -31,6 +31,9 @@ type Cluster interface {
 	// GrantConsumer returns a consumer of the given grant if it exists.
 	GrantConsumer(gid GrantID) (Consumer, bool)
 
+	// ShardGrants returns grants assigned to the given shard
+	ShardGrants(shard Shard) []GrantID
+
 	// Assign updates the list of consumers and consumers grants (incrementally).
 	Assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo) error
 
@@ -42,6 +45,17 @@ type Cluster interface {
 
 	// Detach removes consumers from the cluster together with grants assigned to them (unassigning grants).
 	Detach(consumers ...ConsumerID) error
+
+	// Diff calculates the difference between two clusters
+	Diff(old Cluster) ClusterDiff
+}
+
+// ClusterDiff contains changes in a cluster map
+type ClusterDiff struct {
+	Assigned   map[ConsumerID][]GrantInfo
+	Updated    []GrantInfo
+	Unassigned []GrantID
+	Detached   []ConsumerID
 }
 
 type cluster struct {
@@ -112,6 +126,10 @@ func (c *cluster) Grant(gid GrantID) (GrantInfo, bool) {
 
 func (c *cluster) Grants(cid ConsumerID) []GrantInfo {
 	return slicex.Map(mapx.Keys(c.c2g[cid]), func(gid GrantID) GrantInfo { return c.grants[gid] })
+}
+
+func (c *cluster) ShardGrants(shard Shard) []GrantID {
+	return mapx.Keys(c.s2g[shard])
 }
 
 func (c *cluster) GrantConsumer(gid GrantID) (Consumer, bool) {
@@ -203,6 +221,94 @@ func (c *cluster) Detach(consumers ...ConsumerID) error {
 		delete(c.c2g, consumer)
 	}
 	return nil
+}
+
+func (c *cluster) Diff(old Cluster) ClusterDiff {
+	var detached []ConsumerID
+	oldGrants := map[GrantID]GrantInfo{}
+	for _, consumer := range old.Consumers() {
+		if _, ok := c.Consumer(consumer.ID()); !ok {
+			detached = append(detached, consumer.ID())
+		}
+		for _, g := range old.Grants(consumer.ID()) {
+			oldGrants[g.ID] = g
+		}
+	}
+
+	assigned := map[ConsumerID][]GrantInfo{}
+	var toDelete []GrantID
+
+	// Process new grants only
+	for newGid, newGrant := range c.grants {
+		if _, ok := oldGrants[newGid]; ok {
+			continue
+		}
+		assigned[c.g2c[newGid]] = append(assigned[c.g2c[newGid]], newGrant)
+
+		// Old grant implicitly removed when shard is assigned with a new grant ID
+		for _, gid := range old.ShardGrants(newGrant.Shard) {
+			g, _ := old.Grant(gid)
+			if g.State == newGrant.State {
+				toDelete = append(toDelete, gid)
+			}
+		}
+
+		// When a new allocated grant is created, another active grant for the same shard is revoked implicitly
+		if IsAllocatedGrant(newGrant.State) {
+			for gid := range c.s2g[newGrant.Shard] {
+				if IsActiveOrRevokedGrant(c.grants[gid].State) {
+					// Remove potential update (or no update)
+					if oldGrant, ok := old.Grant(gid); ok && IsActiveOrRevokedGrant(oldGrant.State) {
+						toDelete = append(toDelete, gid)
+					}
+				}
+			}
+		}
+	}
+
+	for _, gid := range toDelete {
+		delete(oldGrants, gid)
+	}
+
+	var updated []GrantInfo
+
+	// Process updated grants
+	for newGid, newGrant := range c.grants {
+		oldGrant, ok := oldGrants[newGid]
+		if !ok {
+			continue
+		}
+		if oldGrant == newGrant {
+			continue
+		}
+
+		updated = append(updated, newGrant)
+
+		// On a transition from allocated to active, the revoked grant is removed implicitly
+		if IsAllocatedGrant(oldGrant.State) && IsActiveGrant(newGrant.State) {
+			// Removal of revoked is implicit
+			for _, gid := range old.ShardGrants(oldGrant.Shard) {
+				if grant, _ := old.Grant(gid); IsRevokedGrant(grant.State) {
+					delete(oldGrants, gid)
+				}
+			}
+		}
+	}
+
+	var unassigned []GrantID
+
+	for gid := range oldGrants {
+		if _, ok := c.grants[gid]; !ok {
+			unassigned = append(unassigned, gid)
+		}
+	}
+
+	return ClusterDiff{
+		Assigned:   assigned,
+		Updated:    updated,
+		Unassigned: unassigned,
+		Detached:   detached,
+	}
 }
 
 func (c *cluster) findGrant(s Shard, state GrantState) (GrantID, bool) {

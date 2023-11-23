@@ -84,6 +84,10 @@ type Assignments[T, K comparable] struct {
 	Active, Allocated, Revoked []Grant[T, K]
 }
 
+func (a Assignments[T, K]) All() []Grant[T, K] {
+	return append(a.Allocated, append(a.Revoked, a.Active...)...)
+}
+
 func (a Assignments[T, K]) IsEmpty() bool {
 	return len(a.Active) == 0 && len(a.Allocated) == 0 && len(a.Revoked) == 0
 }

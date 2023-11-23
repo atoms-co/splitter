@@ -9,6 +9,7 @@ import (
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	"fmt"
 	"time"
 )
 
@@ -18,7 +19,9 @@ type (
 	Colocation = allocation.Colocation[model.Shard, location.Location, model.ConsumerID, model.Consumer]
 	Grant      = allocation.Grant[model.Shard, model.ConsumerID]
 	Worker     = allocation.Worker[model.ConsumerID, model.Consumer]
+	WorkerInfo = allocation.WorkerInfo[model.ConsumerID, model.Consumer]
 	Work       = allocation.Work[model.Shard, location.Location]
+	Assignment = allocation.Assignments[model.Shard, model.ConsumerID]
 )
 
 // TODO(herohde) 11/11/2023: need custom region-affinity that returns true if in the same region or buddy
@@ -207,6 +210,10 @@ func findShards(service model.Service, domain model.Domain) []uuidx.Range {
 	return shards
 }
 
+func grantID(g Grant) model.GrantID {
+	return model.GrantID(g.ID)
+}
+
 func toGrants(grants []Grant) []model.Grant {
 	return slicex.Map(grants, toGrant)
 }
@@ -221,6 +228,20 @@ func toGrant(g Grant) model.Grant {
 	}
 }
 
+func fromGrant(g model.Grant) (Grant, error) {
+	s, ok := fromGrantState(g.State)
+	if !ok {
+		return Grant{}, fmt.Errorf("internal: unknown grant state: %v", g.State)
+	}
+	return Grant{
+		ID:         allocation.GrantID(g.ID),
+		Unit:       g.Shard,
+		State:      s,
+		Expiration: g.Lease,
+		Assigned:   g.Assigned,
+	}, nil
+}
+
 func toGrantState(s allocation.GrantState) model.GrantState {
 	switch s {
 	case allocation.Active:
@@ -231,5 +252,46 @@ func toGrantState(s allocation.GrantState) model.GrantState {
 		return model.RevokedGrant
 	default:
 		return model.InvalidGrant
+	}
+}
+
+func fromGrantState(s model.GrantState) (allocation.GrantState, bool) {
+	switch s {
+	case model.ActiveGrant:
+		return allocation.Active, true
+	case model.AllocatedGrant:
+		return allocation.Allocated, true
+	case model.RevokedGrant:
+		return allocation.Revoked, true
+	default:
+		return "", false
+	}
+}
+
+func toCluster(a *Allocation) (model.Cluster, error) {
+	workers := a.Workers()
+	var consumers []model.Consumer
+	allGrants := map[model.ConsumerID][]model.GrantInfo{}
+
+	for _, w := range workers {
+		consumers = append(consumers, w.Instance.Data)
+		allGrants[w.Instance.ID] = assignmentGrants(a.Assigned(w.Instance.ID))
+	}
+
+	return model.NewCluster(consumers, allGrants)
+}
+
+func assignmentGrants(a Assignment) []model.GrantInfo {
+	grants := slicex.Map(a.Allocated, toGrantInfo)
+	grants = append(grants, slicex.Map(a.Active, toGrantInfo)...)
+	grants = append(grants, slicex.Map(a.Revoked, toGrantInfo)...)
+	return grants
+}
+
+func toGrantInfo(g Grant) model.GrantInfo {
+	return model.GrantInfo{
+		ID:    model.GrantID(g.ID),
+		Shard: g.Unit,
+		State: toGrantState(g.State),
 	}
 }
