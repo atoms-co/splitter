@@ -34,15 +34,15 @@ func TestWorker(t *testing.T) {
 	leaderCon := newFakeCon[leader.Message]()
 	defer leaderCon.Close()
 
-	coordinators := make(chan coordinator.Coordinator)
+	coordinators := make(chan *fakeCoordinator)
 
 	loc := location.NewInstance(location.New("centralus", "pod1"))
 	w, _ := worker.New(cl, model.NewInstance(loc, "endpoint"),
 		func(ctx context.Context, handler grpcx.Handler[leader.Message, leader.Message]) error {
 			return leaderCon.connect(ctx, handler)
 		},
-		func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator {
-			c := newFakeCoordinator(service)
+		func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator {
+			c := newFakeCoordinator(service, updates)
 			coordinators <- c
 			return c
 		},
@@ -71,7 +71,7 @@ func TestWorker(t *testing.T) {
 
 	// (2) Grant/Revoke
 
-	t.Run("grant-revoke", func(t *testing.T) {
+	t.Run("grant", func(t *testing.T) {
 		// << grant from leader --> coordinator creation
 		grant := core.NewGrant("grant1", service1, cl.Now().Add(time.Minute), cl.Now())
 		leaderCon.Out <- leader.NewAssign(grant, core.State{})
@@ -81,7 +81,7 @@ func TestWorker(t *testing.T) {
 
 		grant2 := core.NewGrant("grant2", service2, cl.Now().Add(time.Minute), cl.Now())
 		leaderCon.Out <- leader.NewAssign(grant2, core.State{})
-		assertx.Element(t, coordinators)
+		c := assertx.Element(t, coordinators)
 
 		// << revoke grant1 from leader --> relinquish
 
@@ -93,6 +93,18 @@ func TestWorker(t *testing.T) {
 		wMsg, ok := msg.WorkerMessage()
 		assert.True(t, ok)
 		assert.True(t, wMsg.IsRelinquished())
+
+		// update
+		service, _ := model.NewService(service2, cl.Now())
+		upd := core.NewServiceUpdate(model.NewServiceInfo(service, 2, cl.Now()))
+		leaderCon.Out <- leader.NewUpdate(grant2, upd)
+		assertx.Element(t, c.updates)
+	})
+
+	// (2) Grant/Revoke
+
+	t.Run("update", func(t *testing.T) {
+
 	})
 
 	// (3) Worker disconnect and reconnect to Leader
@@ -138,12 +150,14 @@ type fakeCoordinator struct {
 	iox.AsyncCloser
 	t       *testing.T
 	service model.QualifiedServiceName
+	updates <-chan core.Update
 }
 
-func newFakeCoordinator(service model.QualifiedServiceName) coordinator.Coordinator {
+func newFakeCoordinator(service model.QualifiedServiceName, updates <-chan core.Update) *fakeCoordinator {
 	return &fakeCoordinator{
 		AsyncCloser: iox.NewAsyncCloser(),
 		service:     service,
+		updates:     updates,
 	}
 }
 

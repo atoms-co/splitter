@@ -25,6 +25,7 @@ type Grant struct {
 	State       GrantState
 	Lease       Lease
 	Coordinator coordinator.Coordinator
+	Updates     chan<- core.Update
 }
 
 func (g *Grant) ToUpdated() core.Grant {

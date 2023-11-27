@@ -88,8 +88,8 @@ func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *clus
 		})
 	}
 
-	factoryFn := func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator {
-		return coordinator.New(ctx, self.Location(), cl, service, state, nil /* stateUpdates */)
+	factoryFn := func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator {
+		return coordinator.New(ctx, self.Location(), cl, service, state, updates)
 	}
 
 	w, out := worker.New(cl, self, joinFn, factoryFn)

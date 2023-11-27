@@ -22,12 +22,13 @@ import (
 )
 
 const (
-	statsDuration = 15 * time.Second
+	statsDuration             = 15 * time.Second
+	coordinatorStateBufferLen = 20
 )
 
 type JoinFn func(ctx context.Context, handler grpcx.Handler[leader.Message, leader.Message]) error
 
-type CoordinatorFactory func(ctx context.Context, service model.QualifiedServiceName, state core.State) coordinator.Coordinator
+type CoordinatorFactory func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator
 
 type joinStatus struct {
 	connected time.Time
@@ -286,16 +287,20 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 			}
 		}
 
-		c := w.factory(ctx, grant.Service(), state)
+		updates := make(chan core.Update, coordinatorStateBufferLen)
+		c := w.factory(ctx, grant.Service(), state, updates)
 
 		w.grants[grant.ID()] = &Grant{
 			Grant:       grant,
 			State:       GrantActive,
 			Lease:       w.lease,
 			Coordinator: c,
+			Updates:     updates,
 		}
 
 		go func() {
+			defer close(updates)
+
 			<-c.Closed()
 			syncx.Txn0(ctx, txnx.Txn(w, w.inject), func() {
 				w.removeGrant(ctx, grant.ID())
@@ -349,12 +354,20 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 		w.lease.Renew(lease.Ttl(), w.cl.AfterFunc(w.cl.Until(lease.Ttl()), w.emitExpirationCheck))
 
 	case msg.IsUpdate():
-		lease, _ := msg.LeaseUpdate()
+		update, _ := msg.Update()
 
-		if w.lease == nil {
-			w.lease = NewRenewableLease(lease.Ttl(), nil)
+		grant, ok := w.grants[update.Grant().ID()]
+		if !ok {
+			log.Warnf(ctx, "Updating stale grant: %v. Ignoring", grant)
+			return
 		}
-		w.lease.Renew(lease.Ttl(), w.cl.AfterFunc(w.cl.Until(lease.Ttl()), w.emitExpirationCheck))
+
+		select {
+		case grant.Updates <- update.State():
+		case <-time.After(100 * time.Millisecond):
+			log.Errorf(ctx, "Internal: Coordinator %v unable to accept new state updates", grant.Coordinator)
+			grant.Coordinator.Close()
+		}
 
 	default:
 		log.Errorf(ctx, "Invalid worker message: %v", msg)
