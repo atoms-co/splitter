@@ -216,7 +216,7 @@ steady:
 			}
 			if err := c.cache.Update(update, false); err != nil {
 				log.Errorf(ctx, "Internal: invalid state update %v", err)
-				return
+				break steady
 			}
 			c.refresh(ctx, leaseDuration)
 
