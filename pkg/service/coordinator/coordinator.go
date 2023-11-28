@@ -318,8 +318,6 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	}
 
 	c.updateCluster(ctx)
-
-	log.Debugf(ctx, "Allocation: %v/%v", c.name, c.alloc)
 }
 
 func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, msg model.ConsumerMessage) {
@@ -356,26 +354,18 @@ func (c *coordinator) updateCluster(ctx context.Context) {
 	}
 
 	d := newCluster.Diff(c.cluster)
-
-	if len(d.Assigned) > 0 {
-		assignments := mapx.MapToSlice(d.Assigned, func(cid model.ConsumerID, grants []model.GrantInfo) model.Assignment {
-			consumer, _ := newCluster.Consumer(cid)
-			return model.NewAssignment(consumer, grants...)
-		})
-		c.broadcast(ctx, model.NewConsumerClusterMessage(model.NewClusterAssignMessage(assignments...)))
+	if d.IsEmpty() {
+		return
 	}
 
-	if len(d.Updated) > 0 {
-		c.broadcast(ctx, model.NewConsumerClusterMessage(model.NewClusterUpdateMessage(d.Updated...)))
-	}
-	if len(d.Unassigned) > 0 {
-		c.broadcast(ctx, model.NewConsumerClusterMessage(model.NewClusterUnassignMessage(d.Unassigned...)))
-	}
-	if len(d.Detached) > 0 {
-		c.broadcast(ctx, model.NewConsumerClusterMessage(model.NewClusterDetachMessage(d.Detached...)))
-	}
-
+	assigned := mapx.MapToSlice(d.Assigned, func(cid model.ConsumerID, grants []model.GrantInfo) model.Assignment {
+		consumer, _ := newCluster.Consumer(cid)
+		return model.NewAssignment(consumer, grants...)
+	})
+	change := model.NewClusterChangeMessage(assigned, d.Updated, d.Unassigned, d.Detached)
+	c.broadcast(ctx, model.NewConsumerClusterMessage(change))
 	c.cluster = newCluster
+	log.Debugf(ctx, "New allocation: %v/%v", c.name, c.alloc)
 }
 
 // mustSend attempts to send a message on a consumer connection. If it fails, disconnect the consumer

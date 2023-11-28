@@ -58,6 +58,10 @@ type ClusterDiff struct {
 	Detached   []ConsumerID
 }
 
+func (d ClusterDiff) IsEmpty() bool {
+	return len(d.Assigned) == 0 && len(d.Updated) == 0 && len(d.Unassigned) == 0 && len(d.Detached) == 0
+}
+
 type cluster struct {
 	consumers map[ConsumerID]Consumer
 	grants    map[GrantID]GrantInfo

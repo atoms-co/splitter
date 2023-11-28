@@ -96,7 +96,7 @@ message Revoke {
   repeated string grants = 1;
 }
 
-// ClusterMessage represents an update in tenant ownership. The initial update contains a full routing table.
+// ClusterMessage represents an update in grant ownership.
 message ClusterMessage {
   // GrantInfo is information about a grant assigned to some consumer. It only contains information relevant
   // to the consumers not owning the grant (e.g. lease is excluded).
@@ -138,12 +138,17 @@ message ClusterMessage {
     repeated string consumers = 1;
   }
 
+  // Change is a series of modifications of a previously defined cluster.
+  message Change {
+    Assign assign = 1;
+    Update update = 2;
+    Unassign unassign = 3;
+    Detach detach = 4;
+  }
+
   oneof msg {
     Snapshot snapshot = 1;
-    Assign assign = 2;
-    Update update = 3;
-    Unassign unassign = 4;
-    Detach detach = 5;
+    Change change = 2;
   }
 }
 

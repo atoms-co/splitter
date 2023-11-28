@@ -717,6 +717,47 @@ func (d ClusterDetach) String() string {
 	return proto.MarshalTextString(d.pb)
 }
 
+type ClusterChange struct {
+	pb *public_v1.ClusterMessage_Change
+}
+
+func NewClusterChange(assigned []Assignment, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) ClusterChange {
+	return WrapClusterChange(&public_v1.ClusterMessage_Change{
+		Assign:   UnwrapClusterAssign(NewClusterAssign(assigned...)),
+		Update:   UnwrapClusterUpdate(NewClusterUpdate(updated...)),
+		Unassign: UnwrapClusterUnassign(NewClusterUnassign(unassigned...)),
+		Detach:   UnwrapClusterDetach(NewClusterDetach(detached...)),
+	})
+}
+
+func WrapClusterChange(pb *public_v1.ClusterMessage_Change) ClusterChange {
+	return ClusterChange{pb: pb}
+}
+
+func UnwrapClusterChange(m ClusterChange) *public_v1.ClusterMessage_Change {
+	return m.pb
+}
+
+func (c ClusterChange) Assign() ClusterAssign {
+	return WrapClusterAssign(c.pb.GetAssign())
+}
+
+func (c ClusterChange) Update() ClusterUpdate {
+	return WrapClusterUpdate(c.pb.GetUpdate())
+}
+
+func (c ClusterChange) Unassign() ClusterUnassign {
+	return WrapClusterUnassign(c.pb.GetUnassign())
+}
+
+func (c ClusterChange) Detach() ClusterDetach {
+	return WrapClusterDetach(c.pb.GetDetach())
+}
+
+func (c ClusterChange) String() string {
+	return proto.MarshalTextString(c.pb)
+}
+
 type ClusterMessage struct {
 	pb *public_v1.ClusterMessage
 }
@@ -729,34 +770,10 @@ func NewClusterSnapshotMessage(assignments ...Assignment) ClusterMessage {
 	})
 }
 
-func NewClusterAssignMessage(assignments ...Assignment) ClusterMessage {
+func NewClusterChangeMessage(assigned []Assignment, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) ClusterMessage {
 	return WrapClusterMessage(&public_v1.ClusterMessage{
-		Msg: &public_v1.ClusterMessage_Assign_{
-			Assign: UnwrapClusterAssign(NewClusterAssign(assignments...)),
-		},
-	})
-}
-
-func NewClusterUpdateMessage(grants ...GrantInfo) ClusterMessage {
-	return WrapClusterMessage(&public_v1.ClusterMessage{
-		Msg: &public_v1.ClusterMessage_Update_{
-			Update: UnwrapClusterUpdate(NewClusterUpdate(grants...)),
-		},
-	})
-}
-
-func NewClusterUnassignMessage(grants ...GrantID) ClusterMessage {
-	return WrapClusterMessage(&public_v1.ClusterMessage{
-		Msg: &public_v1.ClusterMessage_Unassign_{
-			Unassign: UnwrapClusterUnassign(NewClusterUnassign(grants...)),
-		},
-	})
-}
-
-func NewClusterDetachMessage(consumers ...ConsumerID) ClusterMessage {
-	return WrapClusterMessage(&public_v1.ClusterMessage{
-		Msg: &public_v1.ClusterMessage_Detach_{
-			Detach: UnwrapClusterDetach(NewClusterDetach(consumers...)),
+		Msg: &public_v1.ClusterMessage_Change_{
+			Change: UnwrapClusterChange(NewClusterChange(assigned, updated, unassigned, detached)),
 		},
 	})
 }
@@ -780,48 +797,15 @@ func (m ClusterMessage) Snapshot() (ClusterSnapshot, bool) {
 	return WrapClusterSnapshot(m.pb.GetSnapshot()), true
 }
 
-func (m ClusterMessage) IsAssign() bool {
-	return m.pb.GetAssign() != nil
+func (m ClusterMessage) IsChange() bool {
+	return m.pb.GetChange() != nil
 }
 
-func (m ClusterMessage) Assign() (ClusterAssign, bool) {
-	if !m.IsAssign() {
-		return ClusterAssign{}, false
+func (m ClusterMessage) Change() (ClusterChange, bool) {
+	if !m.IsChange() {
+		return ClusterChange{}, false
 	}
-	return WrapClusterAssign(m.pb.GetAssign()), true
-}
-
-func (m ClusterMessage) IsUpdate() bool {
-	return m.pb.GetUpdate() != nil
-}
-
-func (m ClusterMessage) Update() (ClusterUpdate, bool) {
-	if !m.IsSnapshot() {
-		return ClusterUpdate{}, false
-	}
-	return WrapClusterUpdate(m.pb.GetUpdate()), true
-}
-
-func (m ClusterMessage) IsUnassign() bool {
-	return m.pb.GetUnassign() != nil
-}
-
-func (m ClusterMessage) Unassign() (ClusterUnassign, bool) {
-	if !m.IsUnassign() {
-		return ClusterUnassign{}, false
-	}
-	return WrapClusterUnassign(m.pb.GetUnassign()), true
-}
-
-func (m ClusterMessage) IsDetach() bool {
-	return m.pb.GetDetach() != nil
-}
-
-func (m ClusterMessage) Detach() (ClusterDetach, bool) {
-	if !m.IsUnassign() {
-		return ClusterDetach{}, false
-	}
-	return WrapClusterDetach(m.pb.GetDetach()), true
+	return WrapClusterChange(m.pb.GetChange()), true
 }
 
 func (m ClusterMessage) String() string {

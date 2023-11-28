@@ -219,32 +219,20 @@ func (s *consumerState) SetAssignments(consumers []Consumer, grants map[Consumer
 	return s.cluster, nil
 }
 
-func (s *consumerState) UpdateAssignments(consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluster, error) {
-	err := s.cluster.Assign(consumers, grants)
+func (s *consumerState) UpdateCluster(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) (Cluster, error) {
+	err := s.cluster.Assign(consumers, assigned)
 	if err != nil {
 		return nil, err
 	}
-	return s.cluster, nil
-}
-
-func (s *consumerState) UpdateGrants(grants []GrantInfo) (Cluster, error) {
-	err := s.cluster.Update(grants...)
+	err = s.cluster.Update(updated...)
 	if err != nil {
 		return nil, err
 	}
-	return s.cluster, nil
-}
-
-func (s *consumerState) RemoveAssignments(grants []GrantID) (Cluster, error) {
-	err := s.cluster.Unassign(grants...)
+	err = s.cluster.Unassign(unassigned...)
 	if err != nil {
 		return nil, err
 	}
-	return s.cluster, nil
-}
-
-func (s *consumerState) RemoveConsumers(consumers []ConsumerID) (Cluster, error) {
-	err := s.cluster.Detach(consumers...)
+	err = s.cluster.Detach(detached...)
 	if err != nil {
 		return nil, err
 	}
@@ -640,25 +628,16 @@ func (c *connection) handleConsumerMessage(ctx context.Context, msg ConsumerMess
 
 	case msg.IsCluster():
 		// Cluster update. Merge with current cluster and forward to listeners.
-		cluster, _ := msg.GetCluster()
+		cls, _ := msg.GetCluster()
 		switch {
-		case cluster.IsSnapshot():
-			m, _ := cluster.Snapshot()
+		case cls.IsSnapshot():
+			m, _ := cls.Snapshot()
 			c.handleClusterSnapshot(ctx, m)
-		case cluster.IsAssign():
-			m, _ := cluster.Assign()
-			c.handleClusterAssign(ctx, m)
-		case cluster.IsUpdate():
-			m, _ := cluster.Update()
-			c.handleClusterUpdate(ctx, m)
-		case cluster.IsUnassign():
-			m, _ := cluster.Unassign()
-			c.handleClusterUnassign(ctx, m)
-		case cluster.IsDetach():
-			m, _ := cluster.Detach()
-			c.handleClusterDetach(ctx, m)
+		case cls.IsChange():
+			m, _ := cls.Change()
+			c.handleClusterChange(ctx, m)
 		default:
-			log.Errorf(ctx, "Unexpected cluster message: %v", cluster)
+			log.Errorf(ctx, "Unexpected cluster message: %v", cls)
 		}
 
 	case msg.IsExtend():
@@ -699,59 +678,23 @@ func (c *connection) handleClusterSnapshot(ctx context.Context, snapshot Cluster
 	c.cluster <- cluster
 }
 
-func (c *connection) handleClusterAssign(ctx context.Context, assign ClusterAssign) {
-	log.Debugf(ctx, "Updating cluster assignments: %v", assign)
-	consumers, grants, err := parseAssignments(assign.Assignments())
+func (c *connection) handleClusterChange(ctx context.Context, change ClusterChange) {
+	log.Debugf(ctx, "Updating cluster assignments: %v", change)
+	consumers, assigned, err := parseAssignments(change.Assign().Assignments())
 	if err != nil {
-		log.Errorf(ctx, "Invalid grants in cluster assignment %v: %v", assign, err)
+		log.Errorf(ctx, "Invalid grants in cluster assignment %v: %v", change.Assign(), err)
 		return
 	}
-	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.UpdateAssignments(consumers, grants)
-	})
+	updated, err := change.Update().Grants()
 	if err != nil {
-		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
+		log.Errorf(ctx, "Invalid grants in cluster update %v: %v", change.Update(), err)
 		return
 	}
-	chanx.Clear(c.out)
-	c.cluster <- cluster
-}
+	unassigned := change.Unassign().Grants()
+	detached := change.Detach().Consumers()
 
-func (c *connection) handleClusterUpdate(ctx context.Context, update ClusterUpdate) {
-	grants, err := update.Grants()
-	if err != nil {
-		log.Errorf(ctx, "Invalid grants in cluster update %v: %v", update, err)
-		return
-	}
-	log.Debugf(ctx, "Updating cluster grants: %v", update)
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.UpdateGrants(grants)
-	})
-	if err != nil {
-		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
-		return
-	}
-	chanx.Clear(c.out)
-	c.cluster <- cluster
-}
-
-func (c *connection) handleClusterUnassign(ctx context.Context, unassign ClusterUnassign) {
-	log.Debugf(ctx, "Unassigning grants: %v", unassign)
-	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.RemoveAssignments(unassign.Grants())
-	})
-	if err != nil {
-		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
-		return
-	}
-	chanx.Clear(c.out)
-	c.cluster <- cluster
-}
-
-func (c *connection) handleClusterDetach(ctx context.Context, detach ClusterDetach) {
-	log.Debugf(ctx, "Detaching consumers: %v", detach)
-	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.RemoveConsumers(detach.Consumers())
+		return c.state.UpdateCluster(consumers, assigned, updated, unassigned, detached)
 	})
 	if err != nil {
 		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
