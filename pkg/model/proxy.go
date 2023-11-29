@@ -168,7 +168,7 @@ func (p *connectionPool) Connect(ctx context.Context, id InstanceID) (Connection
 		return c, nil
 	}
 
-	p.mu.RLock()
+	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	cluster, ok := p.provider.Cluster()
