@@ -94,7 +94,7 @@ func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.Co
 	c, err := syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (coordinator.Coordinator, error) {
 		gid, ok := w.services[service]
 		if !ok {
-			return nil, fmt.Errorf("grant %v not found for service %v: %w", gid, service, model.ErrNotOwned)
+			return nil, fmt.Errorf("service not found %v: %w", service, model.ErrNotOwned)
 		}
 		return w.grants[gid].Coordinator, nil
 	})
