@@ -148,7 +148,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	c.updateCluster(ctx)
 
 	// Send full cluster to the consumer
-	snapshot := model.NewClusterSnapshotMessage(model.ClusterToAssignments(c.cluster)...)
+	snapshot := model.NewClusterSnapshotMessage(c.cluster.ID(), c.cluster.Version(), model.ClusterToAssignments(c.cluster)...)
 	if ok := connection.Send(ctx, model.NewConsumerClusterMessage(snapshot)); !ok {
 		return nil, nil, fmt.Errorf("broken connection while initializing new consumer %v", consumer)
 	}
@@ -186,7 +186,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	}
 	c.info = info
 	c.alloc = newAllocation(c.id.ID(), info, c.cache.Placements(c.name.Tenant), c.cl.Now().Add(leaseDuration))
-	c.cluster, _ = toCluster(c.alloc)
+	c.cluster, _ = toCluster(c.alloc, model.NewClusterID(), 0)
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
 
@@ -347,7 +347,7 @@ func (c *coordinator) release(ctx context.Context, s *consumerSession, grants []
 }
 
 func (c *coordinator) updateCluster(ctx context.Context) {
-	newCluster, err := toCluster(c.alloc)
+	newCluster, err := toCluster(c.alloc, c.cluster.ID(), c.cluster.Version()+1)
 	if err != nil {
 		log.Errorf(ctx, "Internal: unable to create cluster from allocation: %v", err)
 		return
@@ -362,10 +362,10 @@ func (c *coordinator) updateCluster(ctx context.Context) {
 		consumer, _ := newCluster.Consumer(cid)
 		return model.NewAssignment(consumer, grants...)
 	})
-	change := model.NewClusterChangeMessage(assigned, d.Updated, d.Unassigned, d.Detached)
+	change := model.NewClusterChangeMessage(newCluster.ID(), newCluster.Version(), assigned, d.Updated, d.Unassigned, d.Detached)
 	c.broadcast(ctx, model.NewConsumerClusterMessage(change))
 	c.cluster = newCluster
-	log.Debugf(ctx, "New allocation: %v/%v", c.name, c.alloc)
+	log.Debugf(ctx, "New allocation: %v/%v. Cluster: %v", c.name, c.alloc, newCluster)
 }
 
 // mustSend attempts to send a message on a consumer connection. If it fails, disconnect the consumer

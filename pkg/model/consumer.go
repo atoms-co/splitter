@@ -762,16 +762,20 @@ type ClusterMessage struct {
 	pb *public_v1.ClusterMessage
 }
 
-func NewClusterSnapshotMessage(assignments ...Assignment) ClusterMessage {
+func NewClusterSnapshotMessage(id ClusterId, version int, assignments ...Assignment) ClusterMessage {
 	return WrapClusterMessage(&public_v1.ClusterMessage{
+		Id:      string(id),
+		Version: int64(version),
 		Msg: &public_v1.ClusterMessage_Snapshot_{
 			Snapshot: UnwrapClusterSnapshot(NewClusterSnapshot(assignments...)),
 		},
 	})
 }
 
-func NewClusterChangeMessage(assigned []Assignment, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) ClusterMessage {
+func NewClusterChangeMessage(id ClusterId, version int, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) ClusterMessage {
 	return WrapClusterMessage(&public_v1.ClusterMessage{
+		Id:      string(id),
+		Version: int64(version),
 		Msg: &public_v1.ClusterMessage_Change_{
 			Change: UnwrapClusterChange(NewClusterChange(assigned, updated, unassigned, detached)),
 		},
@@ -784,6 +788,14 @@ func WrapClusterMessage(pb *public_v1.ClusterMessage) ClusterMessage {
 
 func UnwrapClusterMessage(m ClusterMessage) *public_v1.ClusterMessage {
 	return m.pb
+}
+
+func (m ClusterMessage) ID() ClusterId {
+	return ClusterId(m.pb.Id)
+}
+
+func (m ClusterMessage) Version() int {
+	return int(m.pb.Version)
 }
 
 func (m ClusterMessage) IsSnapshot() bool {

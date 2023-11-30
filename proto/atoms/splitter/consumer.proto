@@ -150,6 +150,9 @@ message ClusterMessage {
     Snapshot snapshot = 1;
     Change change = 2;
   }
+
+  string id = 3;
+  int64 version = 4;
 }
 
 // ConsumerMessage is a message sent from a consumer to a coordinator

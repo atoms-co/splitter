@@ -152,6 +152,7 @@ type consumerState struct {
 	handlerFn    Handler
 
 	grants     map[GrantID]*grantInfo
+	clusterId  ClusterId
 	cluster    Cluster
 	lease      time.Time
 	leaseTimer *clockx.Timer
@@ -160,7 +161,7 @@ type consumerState struct {
 func newConsumerState(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handlerFn Handler) (state *consumerState, expiredLease chan bool, expiredGrants chan GrantID) {
 	expiredLease = make(chan bool, 1)
 	expiredGrants = make(chan GrantID, 100)
-	c, _ := NewCluster(nil, nil)
+	c, _ := NewCluster("", 0, nil, nil)
 	s := &consumerState{
 		AsyncCloser: iox.NewAsyncCloser(),
 
@@ -210,8 +211,8 @@ func (s *consumerState) StaleActiveGrants() {
 	}
 }
 
-func (s *consumerState) SetAssignments(consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluster, error) {
-	c, err := NewCluster(consumers, grants)
+func (s *consumerState) SetAssignments(id ClusterId, version int, consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluster, error) {
+	c, err := NewCluster(id, 0, consumers, grants)
 	if err != nil {
 		return nil, err
 	}
@@ -220,19 +221,7 @@ func (s *consumerState) SetAssignments(consumers []Consumer, grants map[Consumer
 }
 
 func (s *consumerState) UpdateCluster(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) (Cluster, error) {
-	err := s.cluster.Assign(consumers, assigned)
-	if err != nil {
-		return nil, err
-	}
-	err = s.cluster.Update(updated...)
-	if err != nil {
-		return nil, err
-	}
-	err = s.cluster.Unassign(unassigned...)
-	if err != nil {
-		return nil, err
-	}
-	err = s.cluster.Detach(detached...)
+	err := s.cluster.Update(consumers, assigned, updated, unassigned, detached)
 	if err != nil {
 		return nil, err
 	}
@@ -632,10 +621,10 @@ func (c *connection) handleConsumerMessage(ctx context.Context, msg ConsumerMess
 		switch {
 		case cls.IsSnapshot():
 			m, _ := cls.Snapshot()
-			c.handleClusterSnapshot(ctx, m)
+			c.handleClusterSnapshot(ctx, m, cls.ID(), cls.Version())
 		case cls.IsChange():
 			m, _ := cls.Change()
-			c.handleClusterChange(ctx, m)
+			c.handleClusterChange(ctx, m, cls.ID(), cls.Version())
 		default:
 			log.Errorf(ctx, "Unexpected cluster message: %v", cls)
 		}
@@ -660,26 +649,27 @@ func (c *connection) handleConsumerMessage(ctx context.Context, msg ConsumerMess
 	}
 }
 
-func (c *connection) handleClusterSnapshot(ctx context.Context, snapshot ClusterSnapshot) {
-	log.Debugf(ctx, "Storing initial assignments from cluster snapshot: %v", snapshot)
+func (c *connection) handleClusterSnapshot(ctx context.Context, snapshot ClusterSnapshot, id ClusterId, version int) {
+	log.Debugf(ctx, "Storing initial assignments from cluster snapshot.")
 	consumers, grants, err := parseAssignments(snapshot.Assignments())
 	if err != nil {
 		log.Errorf(ctx, "Invalid grants in cluster snapshot %v: %v", snapshot, err)
 		return
 	}
 	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.SetAssignments(consumers, grants)
+		return c.state.SetAssignments(id, version, consumers, grants)
 	})
 	if err != nil {
 		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
 		return
 	}
+	log.Infof(ctx, "Received initial cluster: %v", cluster)
 	chanx.Clear(c.out)
 	c.cluster <- cluster
 }
 
-func (c *connection) handleClusterChange(ctx context.Context, change ClusterChange) {
-	log.Debugf(ctx, "Updating cluster assignments: %v", change)
+func (c *connection) handleClusterChange(ctx context.Context, change ClusterChange, id ClusterId, version int) {
+	log.Debugf(ctx, "Updating cluster change %v/%v", id, version)
 	consumers, assigned, err := parseAssignments(change.Assign().Assignments())
 	if err != nil {
 		log.Errorf(ctx, "Invalid grants in cluster assignment %v: %v", change.Assign(), err)
@@ -700,6 +690,7 @@ func (c *connection) handleClusterChange(ctx context.Context, change ClusterChan
 		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
 		return
 	}
+	log.Debugf(ctx, "Updated cluster: %v", cluster)
 	chanx.Clear(c.out)
 	c.cluster <- cluster
 }

@@ -5,8 +5,15 @@ import (
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"fmt"
+	"github.com/google/uuid"
 	"sync"
 )
+
+type ClusterId string
+
+func NewClusterID() ClusterId {
+	return ClusterId(uuid.New().String())
+}
 
 // Cluster contains information about all consumers included in the work distribution process.
 type Cluster interface {
@@ -34,20 +41,15 @@ type Cluster interface {
 	// ShardGrants returns grants assigned to the given shard
 	ShardGrants(shard Shard) []GrantID
 
-	// Assign updates the list of consumers and consumers grants (incrementally).
-	Assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo) error
-
-	// Update modifies the state of grants without changing their ownership.
-	Update(grants ...GrantInfo) error
-
-	// Unassign marks given grants as unassigned to consumers.
-	Unassign(grants ...GrantID) error
-
-	// Detach removes consumers from the cluster together with grants assigned to them (unassigning grants).
-	Detach(consumers ...ConsumerID) error
+	// Update modifies the cluster: updates the list of consumers, assigns, updates and removes grants.
+	Update(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) error
 
 	// Diff calculates the difference between two clusters
 	Diff(old Cluster) ClusterDiff
+
+	ID() ClusterId
+
+	Version() int
 }
 
 // ClusterDiff contains changes in a cluster map
@@ -63,6 +65,9 @@ func (d ClusterDiff) IsEmpty() bool {
 }
 
 type cluster struct {
+	id      ClusterId
+	version int
+
 	consumers map[ConsumerID]Consumer
 	grants    map[GrantID]GrantInfo
 
@@ -72,8 +77,10 @@ type cluster struct {
 	s2g map[Shard]map[GrantID]bool
 }
 
-func NewCluster(consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluster, error) {
+func NewCluster(id ClusterId, version int, consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluster, error) {
 	c := &cluster{
+		id:        id,
+		version:   version,
 		consumers: map[ConsumerID]Consumer{},
 		grants:    map[GrantID]GrantInfo{},
 		c2g:       map[ConsumerID]map[GrantID]bool{},
@@ -81,11 +88,23 @@ func NewCluster(consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluste
 		d2g:       map[QualifiedDomainName]map[GrantID]bool{},
 		s2g:       map[Shard]map[GrantID]bool{},
 	}
-	err := c.Assign(consumers, grants)
+	err := c.assign(consumers, grants)
 	if err != nil {
 		return nil, err
 	}
 	return c, nil
+}
+
+func (c *cluster) ID() ClusterId {
+	return c.id
+}
+
+func (c *cluster) Version() int {
+	return c.version
+}
+
+func (c *cluster) String() string {
+	return fmt.Sprintf("cluster{id=%v/%v, #consumers=%v, #grants=%v}", c.id, c.version, len(c.consumers), len(c.grants))
 }
 
 func (c *cluster) Owner(key QualifiedDomainKey) (Instance, GrantState, bool) {
@@ -144,7 +163,28 @@ func (c *cluster) GrantConsumer(gid GrantID) (Consumer, bool) {
 	return Consumer{}, false
 }
 
-func (c *cluster) Assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo) error {
+func (c *cluster) Update(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) error {
+	err := c.assign(consumers, assigned)
+	if err != nil {
+		return err
+	}
+	err = c.update(updated...)
+	if err != nil {
+		return err
+	}
+	err = c.unassign(unassigned...)
+	if err != nil {
+		return err
+	}
+	err = c.detach(detached...)
+	if err != nil {
+		return err
+	}
+	c.version++
+	return nil
+}
+
+func (c *cluster) assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo) error {
 	ids := mapx.MapNew(consumers, func(c Consumer) (ConsumerID, bool) {
 		return c.ID(), true
 	})
@@ -186,7 +226,7 @@ func (c *cluster) Assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo
 	return nil
 }
 
-func (c *cluster) Update(grants ...GrantInfo) error {
+func (c *cluster) update(grants ...GrantInfo) error {
 	for _, g := range grants {
 		if _, ok := c.grants[g.ID]; !ok {
 			return fmt.Errorf("unknown grant: %v", g)
@@ -199,7 +239,7 @@ func (c *cluster) Update(grants ...GrantInfo) error {
 	return nil
 }
 
-func (c *cluster) Unassign(grants ...GrantID) error {
+func (c *cluster) unassign(grants ...GrantID) error {
 	for _, g := range grants {
 		if _, ok := c.grants[g]; !ok {
 			return fmt.Errorf("unknown grant: %v", g)
@@ -211,7 +251,7 @@ func (c *cluster) Unassign(grants ...GrantID) error {
 	return nil
 }
 
-func (c *cluster) Detach(consumers ...ConsumerID) error {
+func (c *cluster) detach(consumers ...ConsumerID) error {
 	for _, consumer := range consumers {
 		if _, ok := c.consumers[consumer]; !ok {
 			return fmt.Errorf("unknown consumer: %v", consumer)
