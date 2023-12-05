@@ -4,6 +4,7 @@ import (
 	"context"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
+	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -63,6 +64,7 @@ func TestLeader(t *testing.T) {
 	assert.Equal(t, serviceName, assign.Grant().Service())
 
 	l.Close()
+	assertx.Closed(t, out)
 }
 
 func isAssign(msg leader.Message) (leader.AssignMessage, bool) {

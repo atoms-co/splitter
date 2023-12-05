@@ -199,6 +199,11 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 
 	l.process(ctx)
 
+	for _, w := range l.workers {
+		w.TrySend(ctx, NewDisconnect())
+		w.connection.Disconnect()
+	}
+
 	log.Infof(ctx, "Leader exited: %v", l.id)
 }
 
@@ -294,11 +299,6 @@ steady:
 	}
 
 	log.Infof(ctx, "Leader %v draining, #workers=%v", l.id, len(l.workers))
-
-	for _, w := range l.workers {
-		w.TrySend(ctx, NewDisconnect())
-		w.connection.Disconnect()
-	}
 }
 
 func (l *Leader) handleMessage(ctx context.Context, w *workerSession, m Message) {
