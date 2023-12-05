@@ -45,14 +45,14 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 	defer consumerSession.Close()
 	wctx, _ := contextx.WithQuitCancel(server.Context(), consumerSession.Closed()) // cancel context if consumer session closes
 
-	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.ConsumerMessage) (<-chan *public_v1.ConsumerMessage, error) {
-		consumerIn := chanx.MapIf(in, func(pb *public_v1.ConsumerMessage) (model.ConsumerMessage, bool) {
+	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
+		consumerIn := chanx.MapIf(in, func(pb *public_v1.JoinMessage) (model.ConsumerMessage, bool) {
 			if pb.GetSession() != nil {
 				consumerSession.Observe(ctx, session.WrapMessage(pb.GetSession()))
 				// Do not propagate consumer session messages to the coordinator
 				return model.ConsumerMessage{}, false
 			}
-			return model.WrapConsumerMessage(pb), true
+			return model.WrapConsumerMessage(pb.GetConsumer()), true
 		})
 
 		// Read session initialization message
@@ -63,14 +63,20 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		}
 
 		msg, ok := chanx.TryRead(consumerIn, 20*time.Second)
-		if !ok || !msg.IsRegister() {
-			log.Errorf(ctx, "No registration message received: %v", msg)
-			return nil, fmt.Errorf("no registration message received %v: %w", msg, model.ErrInvalid)
+		if !ok {
+			log.Errorf(ctx, "No registration message received")
+			return nil, model.WrapError(fmt.Errorf("no registration message received: %w", model.ErrInvalid))
 		}
-		register, _ := msg.Register()
+
+		clientMsg, ok := msg.ClientMessage()
+		if !ok || !clientMsg.IsRegister() {
+			log.Errorf(ctx, "Expected registration message, got: %v", msg)
+			return nil, fmt.Errorf("expected registration message, got %v: %w", msg, model.ErrInvalid)
+		}
+		register, _ := clientMsg.Register()
 
 		// Send register message first, it was read from consumer messages earlier
-		consumerIn = chanx.Prepend(consumerIn, model.NewConsumerRegisterMessage(register))
+		consumerIn = chanx.Prepend(consumerIn, msg)
 
 		// Get a shared gRPC connection to the service's coordinator
 		cc, err := s.resolver.Resolve(ctx, register.Service())
@@ -95,8 +101,8 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		}
 
 		// Inject session messages into the messages sent to the consumer
-		joined := session.Receive(consumerSession, coordinatorOut, sessionOut, model.NewConsumerSessionMessage)
-		return chanx.Map(joined, model.UnwrapConsumerMessage), nil
+		joined := session.Receive(consumerSession, chanx.Map(coordinatorOut, model.NewJoinMessage), sessionOut, model.NewJoinSessionMessage)
+		return chanx.Map(joined, model.UnwrapJoinMessage), nil
 	})
 }
 

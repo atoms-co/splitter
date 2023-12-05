@@ -9,6 +9,7 @@ import (
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pb"
 	"fmt"
 	"time"
 )
@@ -219,27 +220,17 @@ func toGrants(grants []Grant) []model.Grant {
 }
 
 func toGrant(g Grant) model.Grant {
-	return model.Grant{
-		ID:       model.GrantID(g.ID),
-		Shard:    g.Unit,
-		State:    toGrantState(g.State),
-		Lease:    g.Expiration,
-		Assigned: g.Assigned,
-	}
+	return model.NewGrant(g.ID, g.Unit, toGrantState(g.State), g.Expiration, g.Assigned)
 }
 
-func fromGrant(g model.Grant) (Grant, error) {
-	s, ok := fromGrantState(g.State)
-	if !ok {
-		return Grant{}, fmt.Errorf("internal: unknown grant state: %v", g.State)
+func fromGrant(consumer Consumer) func(g model.Grant) (Grant, error) {
+	return func(g model.Grant) (Grant, error) {
+		state, ok := fromGrantState(g.State())
+		if !ok {
+			return Grant{}, fmt.Errorf("internal: unknown grant state: %v", g.State())
+		}
+		return allocation.NewGrant(g.ID(), state, g.Shard(), consumer.ID(), g.Assigned(), g.Lease()), nil
 	}
-	return Grant{
-		ID:         allocation.GrantID(g.ID),
-		Unit:       g.Shard,
-		State:      s,
-		Expiration: g.Lease,
-		Assigned:   g.Assigned,
-	}, nil
 }
 
 func toGrantState(s allocation.GrantState) model.GrantState {
@@ -289,9 +280,9 @@ func assignmentGrants(a Assignment) []model.GrantInfo {
 }
 
 func toGrantInfo(g Grant) model.GrantInfo {
-	return model.GrantInfo{
-		ID:    model.GrantID(g.ID),
-		Shard: g.Unit,
+	return model.WrapGrantInfo(&public_v1.ClusterMessage_GrantInfo{
+		Id:    string(g.ID),
+		Shard: g.Unit.ToProto(),
 		State: toGrantState(g.State),
-	}
+	})
 }

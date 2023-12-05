@@ -12,5 +12,5 @@ option java_package = "co.atoms.splitter.pb";
 // By using this service a client joins the work distribution process during which it receives
 // assigned grants and, separately, grants assigned to all consumers.
 service ConsumerService {
-  rpc Join (stream ConsumerMessage) returns (stream ConsumerMessage);
+  rpc Join (stream JoinMessage) returns (stream JoinMessage);
 }

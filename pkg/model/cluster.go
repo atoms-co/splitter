@@ -111,8 +111,8 @@ func (c *cluster) Owner(key QualifiedDomainKey) (Instance, GrantState, bool) {
 	if grants, ok := c.d2g[key.Domain]; ok {
 		for gid := range grants {
 			grant := c.grants[gid]
-			if grant.Shard.Contains(key) && (IsActiveGrant(grant.State) || IsRevokedGrant(grant.State)) {
-				return c.consumers[c.g2c[gid]], grant.State, true
+			if grant.Shard().Contains(key) && (IsActiveGrant(grant.State()) || IsRevokedGrant(grant.State())) {
+				return c.consumers[c.g2c[gid]], grant.State(), true
 			}
 		}
 	}
@@ -123,7 +123,7 @@ func (c *cluster) OwnerWithState(key QualifiedDomainKey, state GrantState) (Inst
 	if grants, ok := c.d2g[key.Domain]; ok {
 		for gid := range grants {
 			grant := c.grants[gid]
-			if grant.Shard.Contains(key) && grant.State == state {
+			if grant.Shard().Contains(key) && grant.State() == state {
 				return c.consumers[c.g2c[gid]], true
 			}
 		}
@@ -208,19 +208,19 @@ func (c *cluster) assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo
 			c.activateGrantIfNeeded(g)
 
 			// Check shard moved to another consumer
-			if gid, ok := c.findGrant(g.Shard, g.State); ok && c.g2c[gid] != cid {
+			if gid, ok := c.findGrant(g.Shard(), g.State()); ok && c.g2c[gid] != cid {
 				c.deleteGrant(gid)
 			}
 
-			c.grants[g.ID] = g
-			c.c2g[cid][g.ID] = true
-			c.g2c[g.ID] = cid
-			c.ensureShard(g.Shard)
-			c.s2g[g.Shard][g.ID] = true
+			c.grants[g.ID()] = g
+			c.c2g[cid][g.ID()] = true
+			c.g2c[g.ID()] = cid
+			c.ensureShard(g.Shard())
+			c.s2g[g.Shard()][g.ID()] = true
 
 			// Not checking for changes in shard domain, not supported
-			c.ensureDomain(g.Shard.Domain)
-			c.d2g[g.Shard.Domain][g.ID] = true
+			c.ensureDomain(g.Shard().Domain)
+			c.d2g[g.Shard().Domain][g.ID()] = true
 		}
 	}
 	return nil
@@ -228,13 +228,13 @@ func (c *cluster) assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo
 
 func (c *cluster) update(grants ...GrantInfo) error {
 	for _, g := range grants {
-		if _, ok := c.grants[g.ID]; !ok {
+		if _, ok := c.grants[g.ID()]; !ok {
 			return fmt.Errorf("unknown grant: %v", g)
 		}
 	}
 	for _, g := range grants {
 		c.activateGrantIfNeeded(g)
-		c.grants[g.ID] = g
+		c.grants[g.ID()] = g
 	}
 	return nil
 }
@@ -275,7 +275,7 @@ func (c *cluster) Diff(old Cluster) ClusterDiff {
 			detached = append(detached, consumer.ID())
 		}
 		for _, g := range old.Grants(consumer.ID()) {
-			oldGrants[g.ID] = g
+			oldGrants[g.ID()] = g
 		}
 	}
 
@@ -290,19 +290,19 @@ func (c *cluster) Diff(old Cluster) ClusterDiff {
 		assigned[c.g2c[newGid]] = append(assigned[c.g2c[newGid]], newGrant)
 
 		// Old grant implicitly removed when shard is assigned with a new grant ID
-		for _, gid := range old.ShardGrants(newGrant.Shard) {
+		for _, gid := range old.ShardGrants(newGrant.Shard()) {
 			g, _ := old.Grant(gid)
-			if g.State == newGrant.State {
+			if g.State() == newGrant.State() {
 				toDelete = append(toDelete, gid)
 			}
 		}
 
 		// When a new allocated grant is created, another active grant for the same shard is revoked implicitly
-		if IsAllocatedGrant(newGrant.State) {
-			for gid := range c.s2g[newGrant.Shard] {
-				if IsActiveOrRevokedGrant(c.grants[gid].State) {
+		if IsAllocatedGrant(newGrant.State()) {
+			for gid := range c.s2g[newGrant.Shard()] {
+				if IsActiveOrRevokedGrant(c.grants[gid].State()) {
 					// Remove potential update (or no update)
-					if oldGrant, ok := old.Grant(gid); ok && IsActiveOrRevokedGrant(oldGrant.State) {
+					if oldGrant, ok := old.Grant(gid); ok && IsActiveOrRevokedGrant(oldGrant.State()) {
 						toDelete = append(toDelete, gid)
 					}
 				}
@@ -329,10 +329,10 @@ func (c *cluster) Diff(old Cluster) ClusterDiff {
 		updated = append(updated, newGrant)
 
 		// On a transition from allocated to active, the revoked grant is removed implicitly
-		if IsAllocatedGrant(oldGrant.State) && IsActiveGrant(newGrant.State) {
+		if IsAllocatedGrant(oldGrant.State()) && IsActiveGrant(newGrant.State()) {
 			// Removal of revoked is implicit
-			for _, gid := range old.ShardGrants(oldGrant.Shard) {
-				if grant, _ := old.Grant(gid); IsRevokedGrant(grant.State) {
+			for _, gid := range old.ShardGrants(oldGrant.Shard()) {
+				if grant, _ := old.Grant(gid); IsRevokedGrant(grant.State()) {
 					delete(oldGrants, gid)
 				}
 			}
@@ -358,7 +358,7 @@ func (c *cluster) Diff(old Cluster) ClusterDiff {
 func (c *cluster) findGrant(s Shard, state GrantState) (GrantID, bool) {
 	if grants, ok := c.s2g[s]; ok {
 		for id := range grants {
-			if c.grants[id].State == state {
+			if c.grants[id].State() == state {
 				return id, true
 			}
 		}
@@ -386,9 +386,9 @@ func (c *cluster) ensureDomain(domain QualifiedDomainName) {
 
 func (c *cluster) activateGrantIfNeeded(g GrantInfo) {
 	// On transition from allocated to active, remove the revoked grant for the same shard, but different ID
-	if IsActiveGrant(g.State) {
-		if old, ok := c.grants[g.ID]; ok && IsAllocatedGrant(old.State) {
-			c.deleteRevokedGrant(g.Shard)
+	if IsActiveGrant(g.State()) {
+		if old, ok := c.grants[g.ID()]; ok && IsAllocatedGrant(old.State()) {
+			c.deleteRevokedGrant(g.Shard())
 		}
 	}
 }
@@ -396,7 +396,7 @@ func (c *cluster) activateGrantIfNeeded(g GrantInfo) {
 func (c *cluster) deleteRevokedGrant(shard Shard) {
 	for gid := range c.s2g[shard] {
 		grant := c.grants[gid]
-		if IsRevokedGrant(grant.State) {
+		if IsRevokedGrant(grant.State()) {
 			c.deleteGrant(gid)
 			return
 		}
@@ -409,8 +409,8 @@ func (c *cluster) deleteGrant(g GrantID) {
 	delete(c.grants, g)
 	delete(c.c2g[consumer], g)
 	delete(c.g2c, g)
-	delete(c.d2g[grant.Shard.Domain], g)
-	delete(c.s2g[grant.Shard], g)
+	delete(c.d2g[grant.Shard().Domain], g)
+	delete(c.s2g[grant.Shard()], g)
 }
 
 type ClusterProvider interface {

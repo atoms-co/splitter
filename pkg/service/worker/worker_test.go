@@ -134,12 +134,12 @@ func TestWorker(t *testing.T) {
 
 	t.Run("consumer/connect", func(t *testing.T) {
 		consumer := model.NewInstance(location.NewInstance(location.New("centralus", "node")), "endpoint")
-		in := chanx.NewFixed(model.NewConsumerRegisterMessage(model.NewRegisterMessage(consumer, service2, nil, nil)))
+		in := chanx.NewFixed(model.NewRegister(consumer, service2, nil, nil))
 
 		_, err := w.Connect(ctx, session.NewID(), in)
 		require.NoError(t, err)
 
-		in2 := chanx.NewFixed(model.NewConsumerRegisterMessage(model.NewRegisterMessage(consumer, service1, nil, nil)))
+		in2 := chanx.NewFixed(model.NewRegister(consumer, service1, nil, nil))
 		_, err = w.Connect(ctx, session.NewID(), in2)
 		assert.Error(t, err)
 	})

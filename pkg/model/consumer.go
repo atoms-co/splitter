@@ -1,9 +1,9 @@
 package model
 
 import (
-	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
+	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pb"
 	"fmt"
 	"github.com/golang/protobuf/proto"
@@ -159,675 +159,81 @@ func IsActiveOrRevokedGrant(state GrantState) bool {
 	return state == ActiveGrant || state == RevokedGrant
 }
 
-type GrantID string
+// GrantID is a coordinator-determined grant id.
+type GrantID = allocation.GrantID
 
 type Grant struct {
-	ID       GrantID
-	Shard    Shard
-	State    GrantState
-	Lease    time.Time
-	Assigned time.Time
+	pb *public_v1.Grant
 }
 
-func ParseGrant(pb *public_v1.Grant) (Grant, error) {
-	shard, err := ParseShard(pb.GetShard())
-	if err != nil {
-		return Grant{}, fmt.Errorf("invalid shard: %v: %w", proto.MarshalTextString(pb), err)
-	}
-	return Grant{
-		ID:       GrantID(pb.GetId()),
-		Shard:    shard,
-		State:    pb.GetState(),
-		Lease:    pb.GetLease().AsTime(),
-		Assigned: pb.GetAssigned().AsTime(),
-	}, nil
+func NewGrant(id GrantID, shard Shard, state GrantState, lease, assigned time.Time) Grant {
+	return WrapGrant(&public_v1.Grant{
+		Id:       string(id),
+		Shard:    shard.ToProto(),
+		State:    state,
+		Lease:    timestamppb.New(lease),
+		Assigned: timestamppb.New(assigned),
+	})
 }
 
-func (g Grant) ToProto() *public_v1.Grant {
-	return &public_v1.Grant{
-		Id:       string(g.ID),
-		Shard:    g.Shard.ToProto(),
-		State:    g.State,
-		Lease:    timestamppb.New(g.Lease),
-		Assigned: timestamppb.New(g.Assigned),
-	}
+func WrapGrant(pb *public_v1.Grant) Grant {
+	return Grant{pb: pb}
+}
+
+func UnwrapGrant(g Grant) *public_v1.Grant {
+	return g.pb
+}
+
+func (g Grant) ID() GrantID {
+	return GrantID(g.pb.GetId())
+}
+
+func (g Grant) Shard() Shard {
+	ret, _ := ParseShard(g.pb.GetShard())
+	return ret
+}
+
+func (g Grant) State() GrantState {
+	return g.pb.GetState()
+}
+
+func (g Grant) Lease() time.Time {
+	return g.pb.GetLease().AsTime()
+}
+
+func (g Grant) Assigned() time.Time {
+	return g.pb.GetAssigned().AsTime()
 }
 
 func (g Grant) String() string {
-	return fmt.Sprintf("%v[shard=%v, state=%v, lease=%v, assinged=%v]", g.ID, g.Shard, g.State, g.Lease, g.Assigned)
+	return fmt.Sprintf("%v[shard=%v, state=%v, lease=%v, assinged=%v]", g.ID(), g.Shard(), g.State(), g.Lease(), g.Assigned())
 }
 
 type GrantInfo struct {
-	ID    GrantID
-	Shard Shard
-	State GrantState
+	pb *public_v1.ClusterMessage_GrantInfo
 }
 
-func ParseGrantInfo(pb *public_v1.ClusterMessage_GrantInfo) (GrantInfo, error) {
-	shard, err := ParseShard(pb.GetShard())
-	if err != nil {
-		return GrantInfo{}, fmt.Errorf("invalid shard: %v: %w", proto.MarshalTextString(pb), err)
-	}
-	return GrantInfo{
-		ID:    GrantID(pb.GetId()),
-		Shard: shard,
-		State: pb.GetState(),
-	}, nil
+func WrapGrantInfo(pb *public_v1.ClusterMessage_GrantInfo) GrantInfo {
+	return GrantInfo{pb: pb}
 }
 
-func (g GrantInfo) ToProto() *public_v1.ClusterMessage_GrantInfo {
-	return &public_v1.ClusterMessage_GrantInfo{
-		Id:    string(g.ID),
-		Shard: g.Shard.ToProto(),
-		State: g.State,
-	}
+func UnwrapGrantInfo(g GrantInfo) *public_v1.ClusterMessage_GrantInfo {
+	return g.pb
+}
+
+func (g GrantInfo) ID() GrantID {
+	return GrantID(g.pb.GetId())
+}
+
+func (g GrantInfo) Shard() Shard {
+	ret, _ := ParseShard(g.pb.GetShard())
+	return ret
+}
+
+func (g GrantInfo) State() GrantState {
+	return g.pb.GetState()
 }
 
 func (g GrantInfo) String() string {
-	return fmt.Sprintf("%v[shard=%v, state=%v]", g.ID, g.Shard, g.State)
-}
-
-type Assignment struct {
-	pb *public_v1.ClusterMessage_Assignment
-}
-
-func WrapAssignment(pb *public_v1.ClusterMessage_Assignment) Assignment {
-	return Assignment{pb: pb}
-}
-
-func UnwrapAssignment(a Assignment) *public_v1.ClusterMessage_Assignment {
-	return a.pb
-}
-
-func NewAssignment(consumer Consumer, grants ...GrantInfo) Assignment {
-	return Assignment{
-		pb: &public_v1.ClusterMessage_Assignment{
-			Consumer: UnwrapInstance(consumer),
-			Grants:   slicex.Map(grants, GrantInfo.ToProto),
-		},
-	}
-}
-
-func (a Assignment) Consumer() Consumer {
-	return WrapInstance(a.pb.GetConsumer())
-}
-
-func (a Assignment) ParseGrants() ([]GrantInfo, error) {
-	return slicex.TryMap(a.pb.GetGrants(), ParseGrantInfo)
-}
-
-func ClusterToAssignments(c Cluster) []Assignment {
-	return slicex.Map(c.Consumers(), func(consumer Consumer) Assignment {
-		return NewAssignment(consumer, c.Grants(consumer.ID())...)
-	})
-}
-
-type RegisterMessage struct {
-	pb *public_v1.Register
-}
-
-func WrapRegisterMessage(pb *public_v1.Register) RegisterMessage {
-	return RegisterMessage{pb: pb}
-}
-
-func UnwrapRegisterMessage(m RegisterMessage) *public_v1.Register {
-	return m.pb
-}
-
-func NewRegisterMessage(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant) RegisterMessage {
-	return WrapRegisterMessage(&public_v1.Register{
-		Consumer: UnwrapInstance(consumer),
-		Service:  service.ToProto(),
-		Domains:  slicex.Map(domains, QualifiedDomainName.ToProto),
-		Active:   slicex.Map(grants, Grant.ToProto),
-	})
-}
-
-func (m RegisterMessage) Service() QualifiedServiceName {
-	ret, _ := ParseQualifiedServiceName(m.pb.GetService())
-	return ret
-}
-
-func (m RegisterMessage) Consumer() Consumer {
-	return WrapInstance(m.pb.GetConsumer())
-}
-
-func (m RegisterMessage) ParseActive() ([]Grant, error) {
-	return slicex.TryMap(m.pb.GetActive(), ParseGrant)
-}
-
-func (m RegisterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
-}
-
-type DeregisterMessage struct {
-	pb *public_v1.Deregister
-}
-
-func WrapDeregisterMessage(pb *public_v1.Deregister) DeregisterMessage {
-	return DeregisterMessage{pb: pb}
-}
-
-func UnwrapDeregisterMessage(m DeregisterMessage) *public_v1.Deregister {
-	return m.pb
-}
-
-func NewDeregisterMessage() DeregisterMessage {
-	return WrapDeregisterMessage(&public_v1.Deregister{})
-}
-
-func (m DeregisterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
-}
-
-type ReleasedMessage struct {
-	pb *public_v1.Released
-}
-
-func WrapReleasedMessage(pb *public_v1.Released) ReleasedMessage {
-	return ReleasedMessage{pb: pb}
-}
-
-func UnwrapReleasedMessage(m ReleasedMessage) *public_v1.Released {
-	return m.pb
-}
-
-func NewReleasedMessage(grants ...GrantID) ReleasedMessage {
-	return WrapReleasedMessage(&public_v1.Released{
-		Grants: slicex.Map(grants, serializeGrantID),
-	})
-}
-
-func (m ReleasedMessage) Grants() []GrantID {
-	return slicex.Map(m.pb.GetGrants(), deserializeGrantID)
-}
-
-func (m ReleasedMessage) String() string {
-	return proto.MarshalTextString(m.pb)
-}
-
-type ExtendMessage struct {
-	pb *public_v1.Extend
-}
-
-func NewExtendMessage(lease time.Time) ExtendMessage {
-	return WrapExtendMessage(&public_v1.Extend{
-		Lease: timestamppb.New(lease),
-	})
-}
-
-func WrapExtendMessage(pb *public_v1.Extend) ExtendMessage {
-	return ExtendMessage{pb: pb}
-}
-
-func UnwrapExtendMessage(m ExtendMessage) *public_v1.Extend {
-	return m.pb
-}
-
-func (m ExtendMessage) GetLease() time.Time {
-	return m.pb.GetLease().AsTime()
-}
-
-func (m ExtendMessage) String() string {
-	return proto.MarshalTextString(m.pb)
-}
-
-type AssignMessage struct {
-	pb *public_v1.Assign
-}
-
-func NewAssignMessage(grants ...Grant) AssignMessage {
-	return WrapAssignMessage(&public_v1.Assign{
-		Grants: slicex.Map(grants, Grant.ToProto),
-	})
-}
-
-func WrapAssignMessage(pb *public_v1.Assign) AssignMessage {
-	return AssignMessage{pb: pb}
-}
-
-func UnwrapAssignMessage(m AssignMessage) *public_v1.Assign {
-	return m.pb
-}
-
-func (m AssignMessage) Grants() []Grant {
-	ret, _ := slicex.TryMap(m.pb.GetGrants(), ParseGrant)
-	return ret
-}
-
-func (m AssignMessage) String() string {
-	return proto.MarshalTextString(m.pb)
-}
-
-type RevokeMessage struct {
-	pb *public_v1.Revoke
-}
-
-func NewRevokeMessage(grants ...GrantID) RevokeMessage {
-	return WrapRevokeMessage(&public_v1.Revoke{
-		Grants: slicex.Map(grants, func(t GrantID) string {
-			return string(t)
-		}),
-	})
-}
-
-func WrapRevokeMessage(pb *public_v1.Revoke) RevokeMessage {
-	return RevokeMessage{pb: pb}
-}
-
-func UnwrapRevokeMessage(m RevokeMessage) *public_v1.Revoke {
-	return m.pb
-}
-
-func (m RevokeMessage) Grants() []GrantID {
-	return slicex.Map(m.pb.GetGrants(), deserializeGrantID)
-}
-
-func (m RevokeMessage) String() string {
-	return proto.MarshalTextString(m.pb)
-}
-
-type ConsumerMessage struct {
-	pb *public_v1.ConsumerMessage
-}
-
-func WrapConsumerMessage(pb *public_v1.ConsumerMessage) ConsumerMessage {
-	return ConsumerMessage{pb: pb}
-}
-
-func UnwrapConsumerMessage(m ConsumerMessage) *public_v1.ConsumerMessage {
-	return m.pb
-}
-
-func NewConsumerSessionMessage(m session.Message) ConsumerMessage {
-	return WrapConsumerMessage(&public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Session{
-			Session: session.UnwrapMessage(m),
-		},
-	})
-}
-
-func NewConsumerRegisterMessage(m RegisterMessage) ConsumerMessage {
-	return WrapConsumerMessage(&public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Register{
-			Register: UnwrapRegisterMessage(m),
-		},
-	})
-}
-
-func NewConsumerDeregisterMessage() ConsumerMessage {
-	return WrapConsumerMessage(&public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Deregister{
-			Deregister: UnwrapDeregisterMessage(NewDeregisterMessage()),
-		},
-	})
-}
-
-func NewConsumerExtendMessage(m ExtendMessage) ConsumerMessage {
-	return WrapConsumerMessage(&public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Extend{
-			Extend: UnwrapExtendMessage(m),
-		},
-	})
-}
-
-func NewConsumerAssignMessage(m AssignMessage) ConsumerMessage {
-	return WrapConsumerMessage(&public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Assign{
-			Assign: UnwrapAssignMessage(m),
-		},
-	})
-}
-
-func NewConsumerRevokeMessage(m RevokeMessage) ConsumerMessage {
-	return WrapConsumerMessage(&public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Revoke{
-			Revoke: UnwrapRevokeMessage(m),
-		},
-	})
-}
-
-func NewConsumerReleasedMessage(m ReleasedMessage) ConsumerMessage {
-	return WrapConsumerMessage(&public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Released{
-			Released: UnwrapReleasedMessage(m),
-		},
-	})
-}
-
-func NewConsumerClusterMessage(m ClusterMessage) ConsumerMessage {
-	return WrapConsumerMessage(&public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Cluster{
-			Cluster: UnwrapClusterMessage(m),
-		},
-	})
-}
-
-func (m ConsumerMessage) IsRegister() bool {
-	return m.pb.GetRegister() != nil
-}
-
-func (m ConsumerMessage) Register() (RegisterMessage, bool) {
-	if !m.IsRegister() {
-		return RegisterMessage{}, false
-	}
-	return WrapRegisterMessage(m.pb.GetRegister()), true
-}
-
-func (m ConsumerMessage) IsDeregister() bool {
-	return m.pb.GetDeregister() != nil
-}
-
-func (m ConsumerMessage) IsReleased() bool {
-	return m.pb.GetReleased() != nil
-}
-
-func (m ConsumerMessage) Released() (ReleasedMessage, bool) {
-	if !m.IsReleased() {
-		return ReleasedMessage{}, false
-	}
-	return WrapReleasedMessage(m.pb.GetReleased()), true
-}
-
-func (m ConsumerMessage) IsExtend() bool {
-	return m.pb.GetExtend() != nil
-}
-
-func (m ConsumerMessage) GetExtend() (ExtendMessage, bool) {
-	if !m.IsExtend() {
-		return ExtendMessage{}, false
-	}
-	return WrapExtendMessage(m.pb.GetExtend()), true
-}
-
-func (m ConsumerMessage) IsAssign() bool {
-	return m.pb.GetAssign() != nil
-}
-
-func (m ConsumerMessage) GetAssign() (AssignMessage, bool) {
-	if !m.IsAssign() {
-		return AssignMessage{}, false
-	}
-	return WrapAssignMessage(m.pb.GetAssign()), true
-}
-
-func (m ConsumerMessage) IsRevoke() bool {
-	return m.pb.GetRevoke() != nil
-}
-
-func (m ConsumerMessage) GetRevoke() (RevokeMessage, bool) {
-	if !m.IsRevoke() {
-		return RevokeMessage{}, false
-	}
-	return WrapRevokeMessage(m.pb.GetRevoke()), true
-}
-
-func (m ConsumerMessage) IsCluster() bool {
-	return m.pb.GetCluster() != nil
-}
-
-func (m ConsumerMessage) GetCluster() (ClusterMessage, bool) {
-	if !m.IsCluster() {
-		return ClusterMessage{}, false
-	}
-	return WrapClusterMessage(m.pb.GetCluster()), true
-}
-
-func (m ConsumerMessage) String() string {
-	return proto.MarshalTextString(m.pb)
-}
-
-type ClusterSnapshot struct {
-	pb *public_v1.ClusterMessage_Snapshot
-}
-
-func WrapClusterSnapshot(pb *public_v1.ClusterMessage_Snapshot) ClusterSnapshot {
-	return ClusterSnapshot{pb: pb}
-}
-
-func UnwrapClusterSnapshot(s ClusterSnapshot) *public_v1.ClusterMessage_Snapshot {
-	return s.pb
-}
-
-func NewClusterSnapshot(assignments ...Assignment) ClusterSnapshot {
-	return ClusterSnapshot{
-		pb: &public_v1.ClusterMessage_Snapshot{
-			Assignments: slicex.Map(assignments, UnwrapAssignment),
-		},
-	}
-}
-
-func (s ClusterSnapshot) Assignments() []Assignment {
-	return slicex.Map(s.pb.GetAssignments(), WrapAssignment)
-}
-
-func (s ClusterSnapshot) String() string {
-	return proto.MarshalTextString(s.pb)
-}
-
-type ClusterAssign struct {
-	pb *public_v1.ClusterMessage_Assign
-}
-
-func WrapClusterAssign(pb *public_v1.ClusterMessage_Assign) ClusterAssign {
-	return ClusterAssign{pb: pb}
-}
-
-func UnwrapClusterAssign(a ClusterAssign) *public_v1.ClusterMessage_Assign {
-	return a.pb
-}
-
-func NewClusterAssign(assignments ...Assignment) ClusterAssign {
-	return ClusterAssign{
-		pb: &public_v1.ClusterMessage_Assign{
-			Assignments: slicex.Map(assignments, UnwrapAssignment),
-		},
-	}
-}
-
-func (a ClusterAssign) Assignments() []Assignment {
-	return slicex.Map(a.pb.GetAssignments(), WrapAssignment)
-}
-
-func (a ClusterAssign) String() string {
-	return proto.MarshalTextString(a.pb)
-}
-
-type ClusterUpdate struct {
-	pb *public_v1.ClusterMessage_Update
-}
-
-func WrapClusterUpdate(pb *public_v1.ClusterMessage_Update) ClusterUpdate {
-	return ClusterUpdate{pb: pb}
-}
-
-func UnwrapClusterUpdate(u ClusterUpdate) *public_v1.ClusterMessage_Update {
-	return u.pb
-}
-
-func NewClusterUpdate(grants ...GrantInfo) ClusterUpdate {
-	return ClusterUpdate{
-		pb: &public_v1.ClusterMessage_Update{
-			Grants: slicex.Map(grants, GrantInfo.ToProto),
-		},
-	}
-}
-
-func (u ClusterUpdate) Grants() ([]GrantInfo, error) {
-	return slicex.TryMap(u.pb.GetGrants(), ParseGrantInfo)
-}
-
-func (u ClusterUpdate) String() string {
-	return proto.MarshalTextString(u.pb)
-}
-
-type ClusterUnassign struct {
-	pb *public_v1.ClusterMessage_Unassign
-}
-
-func WrapClusterUnassign(pb *public_v1.ClusterMessage_Unassign) ClusterUnassign {
-	return ClusterUnassign{pb: pb}
-}
-
-func UnwrapClusterUnassign(u ClusterUnassign) *public_v1.ClusterMessage_Unassign {
-	return u.pb
-}
-
-func NewClusterUnassign(grants ...GrantID) ClusterUnassign {
-	return ClusterUnassign{
-		pb: &public_v1.ClusterMessage_Unassign{
-			Grants: slicex.Map(grants, func(id GrantID) string { return string(id) }),
-		},
-	}
-}
-
-func (u ClusterUnassign) Grants() []GrantID {
-	return slicex.Map(u.pb.GetGrants(), func(id string) GrantID { return GrantID(id) })
-}
-
-func (u ClusterUnassign) String() string {
-	return proto.MarshalTextString(u.pb)
-}
-
-type ClusterDetach struct {
-	pb *public_v1.ClusterMessage_Detach
-}
-
-func WrapClusterDetach(pb *public_v1.ClusterMessage_Detach) ClusterDetach {
-	return ClusterDetach{pb: pb}
-}
-
-func UnwrapClusterDetach(d ClusterDetach) *public_v1.ClusterMessage_Detach {
-	return d.pb
-}
-
-func NewClusterDetach(consumers ...ConsumerID) ClusterDetach {
-	return ClusterDetach{
-		pb: &public_v1.ClusterMessage_Detach{
-			Consumers: slicex.Map(consumers, func(id ConsumerID) string { return string(id) }),
-		},
-	}
-}
-
-func (d ClusterDetach) Consumers() []ConsumerID {
-	return slicex.Map(d.pb.GetConsumers(), func(id string) ConsumerID { return ConsumerID(id) })
-}
-
-func (d ClusterDetach) String() string {
-	return proto.MarshalTextString(d.pb)
-}
-
-type ClusterChange struct {
-	pb *public_v1.ClusterMessage_Change
-}
-
-func NewClusterChange(assigned []Assignment, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) ClusterChange {
-	return WrapClusterChange(&public_v1.ClusterMessage_Change{
-		Assign:   UnwrapClusterAssign(NewClusterAssign(assigned...)),
-		Update:   UnwrapClusterUpdate(NewClusterUpdate(updated...)),
-		Unassign: UnwrapClusterUnassign(NewClusterUnassign(unassigned...)),
-		Detach:   UnwrapClusterDetach(NewClusterDetach(detached...)),
-	})
-}
-
-func WrapClusterChange(pb *public_v1.ClusterMessage_Change) ClusterChange {
-	return ClusterChange{pb: pb}
-}
-
-func UnwrapClusterChange(m ClusterChange) *public_v1.ClusterMessage_Change {
-	return m.pb
-}
-
-func (c ClusterChange) Assign() ClusterAssign {
-	return WrapClusterAssign(c.pb.GetAssign())
-}
-
-func (c ClusterChange) Update() ClusterUpdate {
-	return WrapClusterUpdate(c.pb.GetUpdate())
-}
-
-func (c ClusterChange) Unassign() ClusterUnassign {
-	return WrapClusterUnassign(c.pb.GetUnassign())
-}
-
-func (c ClusterChange) Detach() ClusterDetach {
-	return WrapClusterDetach(c.pb.GetDetach())
-}
-
-func (c ClusterChange) String() string {
-	return proto.MarshalTextString(c.pb)
-}
-
-type ClusterMessage struct {
-	pb *public_v1.ClusterMessage
-}
-
-func NewClusterSnapshotMessage(id ClusterId, version int, assignments ...Assignment) ClusterMessage {
-	return WrapClusterMessage(&public_v1.ClusterMessage{
-		Id:      string(id),
-		Version: int64(version),
-		Msg: &public_v1.ClusterMessage_Snapshot_{
-			Snapshot: UnwrapClusterSnapshot(NewClusterSnapshot(assignments...)),
-		},
-	})
-}
-
-func NewClusterChangeMessage(id ClusterId, version int, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) ClusterMessage {
-	return WrapClusterMessage(&public_v1.ClusterMessage{
-		Id:      string(id),
-		Version: int64(version),
-		Msg: &public_v1.ClusterMessage_Change_{
-			Change: UnwrapClusterChange(NewClusterChange(assigned, updated, unassigned, detached)),
-		},
-	})
-}
-
-func WrapClusterMessage(pb *public_v1.ClusterMessage) ClusterMessage {
-	return ClusterMessage{pb: pb}
-}
-
-func UnwrapClusterMessage(m ClusterMessage) *public_v1.ClusterMessage {
-	return m.pb
-}
-
-func (m ClusterMessage) ID() ClusterId {
-	return ClusterId(m.pb.Id)
-}
-
-func (m ClusterMessage) Version() int {
-	return int(m.pb.Version)
-}
-
-func (m ClusterMessage) IsSnapshot() bool {
-	return m.pb.GetSnapshot() != nil
-}
-
-func (m ClusterMessage) Snapshot() (ClusterSnapshot, bool) {
-	if !m.IsSnapshot() {
-		return ClusterSnapshot{}, false
-	}
-	return WrapClusterSnapshot(m.pb.GetSnapshot()), true
-}
-
-func (m ClusterMessage) IsChange() bool {
-	return m.pb.GetChange() != nil
-}
-
-func (m ClusterMessage) Change() (ClusterChange, bool) {
-	if !m.IsChange() {
-		return ClusterChange{}, false
-	}
-	return WrapClusterChange(m.pb.GetChange()), true
-}
-
-func (m ClusterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
-}
-
-func serializeGrantID(g GrantID) string {
-	return string(g)
-}
-
-func deserializeGrantID(str string) GrantID {
-	return GrantID(str)
+	return fmt.Sprintf("%v[shard=%v, state=%v]", g.ID(), g.Shard(), g.State())
 }

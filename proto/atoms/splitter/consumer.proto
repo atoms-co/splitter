@@ -57,43 +57,54 @@ message Grant {
   google.protobuf.Timestamp assigned = 5;
 }
 
-// Register must be the first message from the consumer on connect. If a re-connect, the server may already know about
-// the consumer, in which case existing assignments are generally chosen to continue to minimize disruption (assuming
-// the consumer lease has not expired meanwhile).
-message Register {
-  Instance consumer = 1;
-  QualifiedServiceName service = 2;
-  repeated QualifiedDomainName domains = 3;
-  repeated Grant active = 4; // Active grants with non-expired leases.
-}
+message ClientMessage {
+  // Register must be the first message from the consumer on connect. If a re-connect, the server may already know about
+  // the consumer, in which case existing assignments are generally chosen to continue to minimize disruption (assuming
+  // the consumer lease has not expired meanwhile).
+  message Register {
+    Instance consumer = 1;
+    QualifiedServiceName service = 2;
+    repeated QualifiedDomainName domains = 3;
+    repeated Grant active = 4; // Active grants with non-expired leases.
+  }
 
-// Deregister indicates that the consumer will soon disappear, usually restarted in ~30s. The server should initiate a
-// graceful drain of responsibilities by marking all shards as revoked and wait for them to relinquish. No new work
-// should be assigned to the consumer.
-message Deregister {
-}
+  // Deregister indicates that the consumer will soon disappear, usually restarted in ~30s. The server should initiate a
+  // graceful drain of responsibilities by marking all shards as revoked and wait for them to relinquish. No new work
+  // should be assigned to the consumer.
+  message Deregister {
+  }
 
-// Released returns the voluntary exclusive lease for the given grants back to the server. It is usually sent in
-// response to REVOKE before the lease expires.
-message Released {
-  repeated string grants = 1;
-}
+  // Extend extends all granted shard leases
+  message Extend {
+    google.protobuf.Timestamp lease = 1;
+  }
 
-// Extend extends all granted shard leases
-message Extend {
-  google.protobuf.Timestamp lease = 1;
-}
+  // Assign grants shard leases to the consumer for ownership.
+  // The server must explicitly re-grant unexpired shard leases for reconnected consumers.
+  message Assign {
+    repeated Grant grants = 1;
+  }
 
-// Assign grants shard leases to the consumer for ownership.
-// The server must explicitly re-grant unexpired shard leases for reconnected consumers.
-message Assign {
-  repeated Grant grants = 1;
-}
+  // Revoke gracefully revokes previously granted shard leases.
+  // The consumer should relinquish the shard leases instead of letting them expire for faster re-assignment.
+  message Revoke {
+    repeated Grant grants = 1;
+  }
 
-// Revoke gracefully revokes previously granted shard leases.
-// The consumer should relinquish the shard leases instead of letting them expire for faster re-assignment.
-message Revoke {
-  repeated string grants = 1;
+  // Released returns the voluntary exclusive lease for the given grants back to the server. It is usually sent in
+  // response to REVOKE before the lease expires.
+  message Released {
+    repeated Grant grants = 1;
+  }
+
+  oneof msg {
+    Register register = 1;
+    Deregister deregister = 2;
+    Extend extend = 3;
+    Assign assign = 4;
+    Revoke revoke = 5;
+    Released released = 6;
+  }
 }
 
 // ClusterMessage represents an update in grant ownership.
@@ -155,16 +166,18 @@ message ClusterMessage {
   int64 version = 4;
 }
 
-// ConsumerMessage is a message sent from a consumer to a coordinator
+
 message ConsumerMessage {
   oneof msg {
+    ClientMessage client = 1;
+    ClusterMessage cluster = 2;
+  }
+}
+
+// JoinMessage is a message sent from a consumer to a coordinator
+message JoinMessage {
+  oneof msg {
     atoms.splitter.lib.service.service.Message session = 1;
-    Register register = 2;
-    Deregister deregister = 3;
-    Released released = 4;
-    Extend extend = 5;
-    Assign assign = 6;
-    Revoke revoke = 7;
-    ClusterMessage cluster = 8;
+    ConsumerMessage consumer = 2;
   }
 }

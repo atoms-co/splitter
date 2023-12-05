@@ -4,6 +4,7 @@ import (
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	"fmt"
 )
 
 type Tenants interface {
@@ -76,7 +77,7 @@ type tenants Writer
 
 func (t *tenants) Create(tenant model.Tenant) (core.Update, model.TenantInfo, error) {
 	if _, ok := t.db.Tenant(tenant.Name()); ok {
-		return core.Update{}, model.TenantInfo{}, model.ErrAlreadyExists
+		return core.Update{}, model.TenantInfo{}, fmt.Errorf("tenant %v exists: %w", tenant.Name(), model.ErrAlreadyExists)
 	}
 	return t.update(tenant, 1)
 }
@@ -84,7 +85,7 @@ func (t *tenants) Create(tenant model.Tenant) (core.Update, model.TenantInfo, er
 func (t *tenants) Update(tenant model.Tenant, guard model.Version) (core.Update, model.TenantInfo, error) {
 	cur, ok := t.db.Tenant(tenant.Name())
 	if !ok {
-		return core.Update{}, model.TenantInfo{}, model.ErrNotFound
+		return core.Update{}, model.TenantInfo{}, fmt.Errorf("tenant %v not found: %w", tenant.Name(), model.ErrNotFound)
 	}
 	if cur.Version() != guard {
 		return core.Update{}, model.TenantInfo{}, model.ErrVersionMismatch
@@ -94,7 +95,7 @@ func (t *tenants) Update(tenant model.Tenant, guard model.Version) (core.Update,
 
 func (t *tenants) Delete(name model.TenantName) (core.Delete, error) {
 	if _, ok := t.db.Tenant(name); !ok {
-		return core.Delete{}, model.ErrNotFound
+		return core.Delete{}, fmt.Errorf("tenant %v not found: %w", name, model.ErrNotFound)
 	}
 	del := core.NewDelete(name)
 	return del, t.db.Delete(del)
@@ -110,10 +111,10 @@ type services Writer
 
 func (s *services) Create(service model.Service) (core.Update, model.ServiceInfo, error) {
 	if _, ok := s.db.Tenant(service.Name().Tenant); !ok {
-		return core.Update{}, model.ServiceInfo{}, model.ErrNotFound
+		return core.Update{}, model.ServiceInfo{}, fmt.Errorf("tenant %v not found: %w", service.Name().Tenant, model.ErrNotFound)
 	}
 	if _, ok := s.db.Service(service.Name()); ok {
-		return core.Update{}, model.ServiceInfo{}, model.ErrAlreadyExists
+		return core.Update{}, model.ServiceInfo{}, fmt.Errorf("service %v exists: %w", service.Name(), model.ErrAlreadyExists)
 	}
 	info := model.NewServiceInfo(service, 1, s.cl.Now())
 	upd := core.NewServiceUpdate(info)
@@ -124,7 +125,7 @@ func (s *services) Create(service model.Service) (core.Update, model.ServiceInfo
 func (s *services) Update(service model.Service, guard model.Version) (core.Update, model.ServiceInfo, error) {
 	cur, ok := s.db.Service(service.Name())
 	if !ok {
-		return core.Update{}, model.ServiceInfo{}, model.ErrNotFound
+		return core.Update{}, model.ServiceInfo{}, fmt.Errorf("service %v not found: %w", service.Name(), model.ErrNotFound)
 	}
 	if cur.Info().Version() != guard {
 		return core.Update{}, model.ServiceInfo{}, model.ErrVersionMismatch
@@ -137,7 +138,7 @@ func (s *services) Update(service model.Service, guard model.Version) (core.Upda
 
 func (s *services) Delete(name model.QualifiedServiceName) (core.Update, error) {
 	if _, ok := s.db.Service(name); !ok {
-		return core.Update{}, model.ErrNotFound
+		return core.Update{}, fmt.Errorf("service %v not found: %w", name, model.ErrNotFound)
 	}
 	upd := core.NewServiceRemoval(name)
 
@@ -149,10 +150,10 @@ type domains Writer
 func (d *domains) Create(domain model.Domain) (core.Update, model.Domain, error) {
 	service, ok := d.db.Service(domain.Name().Service)
 	if !ok {
-		return core.Update{}, model.Domain{}, model.ErrNotFound
+		return core.Update{}, model.Domain{}, fmt.Errorf("service %v not found: %w", domain.Name().Service, model.ErrNotFound)
 	}
 	if _, ok := d.db.Domain(domain.Name()); ok {
-		return core.Update{}, model.Domain{}, model.ErrAlreadyExists
+		return core.Update{}, model.Domain{}, fmt.Errorf("domain %v exists: %w", domain.Name(), model.ErrAlreadyExists)
 	}
 	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, d.cl.Now())
 	upd := core.NewDomainUpdate(info, domain)
@@ -163,10 +164,10 @@ func (d *domains) Create(domain model.Domain) (core.Update, model.Domain, error)
 func (d *domains) Update(domain model.Domain, guard model.Version) (core.Update, model.Domain, error) {
 	service, ok := d.db.Service(domain.Name().Service)
 	if !ok {
-		return core.Update{}, model.Domain{}, model.ErrNotFound
+		return core.Update{}, model.Domain{}, fmt.Errorf("service %v not found: %w", domain.Name().Service, model.ErrNotFound)
 	}
 	if _, ok := d.db.Domain(domain.Name()); !ok {
-		return core.Update{}, model.Domain{}, model.ErrNotFound
+		return core.Update{}, model.Domain{}, fmt.Errorf("domain %v not found: %w", domain.Name(), model.ErrNotFound)
 	}
 	if service.Info().Version() != guard {
 		return core.Update{}, model.Domain{}, model.ErrVersionMismatch
@@ -180,10 +181,10 @@ func (d *domains) Update(domain model.Domain, guard model.Version) (core.Update,
 func (d *domains) Delete(name model.QualifiedDomainName) (core.Update, error) {
 	service, ok := d.db.Service(name.Service)
 	if !ok {
-		return core.Update{}, model.ErrNotFound
+		return core.Update{}, fmt.Errorf("service %v not found: %w", name.Service, model.ErrNotFound)
 	}
 	if _, ok := d.db.Domain(name); !ok {
-		return core.Update{}, model.ErrNotFound
+		return core.Update{}, fmt.Errorf("domain %v not found: %w", name, model.ErrNotFound)
 	}
 	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, d.cl.Now())
 	upd := core.NewDomainRemoval(info, name)
@@ -195,10 +196,10 @@ type placements Writer
 
 func (p *placements) Create(placement core.InternalPlacement) (core.Update, core.InternalPlacementInfo, error) {
 	if _, ok := p.db.Tenant(placement.Name().Tenant); !ok {
-		return core.Update{}, core.InternalPlacementInfo{}, model.ErrNotFound
+		return core.Update{}, core.InternalPlacementInfo{}, fmt.Errorf("tenant %v not found: %w", placement.Name().Tenant, model.ErrNotFound)
 	}
 	if _, ok := p.db.Placement(placement.Name()); ok {
-		return core.Update{}, core.InternalPlacementInfo{}, model.ErrAlreadyExists
+		return core.Update{}, core.InternalPlacementInfo{}, fmt.Errorf("placement %v exists: %w", placement.Name(), model.ErrAlreadyExists)
 	}
 	return p.update(placement, 1)
 }
@@ -206,7 +207,7 @@ func (p *placements) Create(placement core.InternalPlacement) (core.Update, core
 func (p *placements) Update(placement core.InternalPlacement, guard model.Version) (core.Update, core.InternalPlacementInfo, error) {
 	cur, ok := p.db.Placement(placement.Name())
 	if !ok {
-		return core.Update{}, core.InternalPlacementInfo{}, model.ErrNotFound
+		return core.Update{}, core.InternalPlacementInfo{}, fmt.Errorf("placement %v not found: %w", placement.Name(), model.ErrNotFound)
 	}
 	if cur.Version() != guard {
 		return core.Update{}, core.InternalPlacementInfo{}, model.ErrVersionMismatch
@@ -216,7 +217,7 @@ func (p *placements) Update(placement core.InternalPlacement, guard model.Versio
 
 func (p *placements) Delete(name model.QualifiedPlacementName) (core.Update, error) {
 	if _, ok := p.db.Placement(name); !ok {
-		return core.Update{}, model.ErrNotFound
+		return core.Update{}, fmt.Errorf("placement %v not found: %w", name, model.ErrNotFound)
 	}
 	upd := core.NewPlacementRemoval(name)
 	return upd, p.db.Update(upd, true)

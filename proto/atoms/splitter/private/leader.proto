@@ -162,8 +162,8 @@ message WorkerMessage {
 
   // Disconnect indicates that the worker should immediately disconnect. The server will generally only send
   // DISCONNECT when draining.
+  // TODO(jhhurwitz): 11/30/23 Remove inplace of session library
   message Disconnect {
-
   }
 
   // Assign grants an exclusive tenant lease to the worker, under the worker lease. The worker must create a

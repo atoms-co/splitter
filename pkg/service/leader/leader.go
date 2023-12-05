@@ -19,10 +19,10 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
-	"go.atoms.co/splitter/pkg/util/txnx"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -121,7 +121,7 @@ func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 
 	log.Infof(ctx, "Registration for %v: %v, #grants=%v", sid, worker, len(grants))
 
-	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (<-chan Message, error) {
+	return syncx.Txn1(ctx, l.txn, func() (<-chan Message, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), l.Closed())
 
 		now := l.cl.Now()
@@ -132,7 +132,7 @@ func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 			defer cancel()
 			<-s.connection.Closed()
 
-			syncx.AsyncTxn(txnx.Txn(l, l.inject), func() {
+			syncx.AsyncTxn(l.txn, func() {
 				cur, ok := l.workers[worker.ID()]
 				if ok && cur.connection.Sid() == sid { // guard against race
 					l.disconnect(wctx, "connection closed", cur)
@@ -653,7 +653,7 @@ func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 }
 
 func (l *Leader) handleTenantRequest(ctx context.Context, req *internal_v1.TenantRequest) (*internal_v1.TenantResponse, error) {
-	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (*internal_v1.TenantResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.TenantResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListTenantsRequest(ctx, req.GetList())
@@ -680,7 +680,7 @@ func (l *Leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.Inf
 
 	info, ok := l.cache.Tenant(name)
 	if !ok {
-		return nil, model.ErrNotFound
+		return nil, fmt.Errorf("tenant %v not found: %w", name, model.ErrNotFound)
 	}
 
 	return &internal_v1.TenantResponse{
@@ -693,7 +693,7 @@ func (l *Leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.Inf
 }
 
 func (l *Leader) handleServiceRequest(ctx context.Context, req *internal_v1.ServiceRequest) (*internal_v1.ServiceResponse, error) {
-	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (*internal_v1.ServiceResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.ServiceResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListServicesRequest(ctx, req.GetList())
@@ -723,7 +723,7 @@ func (l *Leader) handleInfoServiceRequest(ctx context.Context, req *public_v1.In
 
 	info, ok := l.cache.Service(name)
 	if !ok {
-		return nil, model.ErrNotFound
+		return nil, fmt.Errorf("service %v not found: %w", name, model.ErrNotFound)
 	}
 
 	return &internal_v1.ServiceResponse{
@@ -736,7 +736,7 @@ func (l *Leader) handleInfoServiceRequest(ctx context.Context, req *public_v1.In
 }
 
 func (l *Leader) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (*internal_v1.DomainResponse, error) {
-	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (*internal_v1.DomainResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.DomainResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListDomainsRequest(ctx, req.GetList())
@@ -753,7 +753,7 @@ func (l *Leader) handleListDomainsRequest(ctx context.Context, req *public_v1.Li
 	}
 
 	if _, ok := l.cache.Service(name); !ok {
-		return nil, model.ErrNotFound
+		return nil, fmt.Errorf("service %v not found: %w", name, model.ErrNotFound)
 	}
 
 	return &internal_v1.DomainResponse{
@@ -766,7 +766,7 @@ func (l *Leader) handleListDomainsRequest(ctx context.Context, req *public_v1.Li
 }
 
 func (l *Leader) handlePlacementRequest(ctx context.Context, req *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
-	return syncx.Txn1(ctx, txnx.Txn(l, l.inject), func() (*internal_v1.PlacementResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.PlacementResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListPlacementsRequest(ctx, req.GetList())
@@ -802,7 +802,7 @@ func (l *Leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v
 
 	info, ok := l.cache.Placement(name)
 	if !ok {
-		return nil, model.ErrNotFound
+		return nil, fmt.Errorf("placement %v not found: %w", name, model.ErrNotFound)
 	}
 
 	return &internal_v1.PlacementResponse{
@@ -817,7 +817,7 @@ func (l *Leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v
 func (l *Leader) handleWrite(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	// (1) Storage operation. Validate and enqueue it sync if mutation.
 
-	done, resp, err := syncx.Txn2(ctx, txnx.Txn(l, l.inject), func() (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
+	done, resp, err := syncx.Txn2(ctx, l.txn, func() (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
 		return l.writer.HandleAsync(ctx, req)
 	})
 	if err != nil {
@@ -849,6 +849,25 @@ func (l *Leader) emitMetrics(ctx context.Context) {
 func (l *Leader) resetMetrics(ctx context.Context) {
 	numWorkers.Reset(ctx)
 	numServices.Reset(ctx)
+}
+
+func (l *Leader) txn(ctx context.Context, fn func() error) error {
+	var wg sync.WaitGroup
+	var err error
+
+	wg.Add(1)
+	select {
+	case l.inject <- func() {
+		defer wg.Done()
+		err = fn()
+	}:
+		wg.Wait()
+		return err
+	case <-ctx.Done():
+		return model.ErrOverloaded
+	case <-l.Closed():
+		return model.ErrDraining
+	}
 }
 
 func recordAction(ctx context.Context, action, result string) {

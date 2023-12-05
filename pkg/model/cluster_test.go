@@ -109,7 +109,7 @@ func TestCluster_Grant(t *testing.T) {
 	t.Run("existing grant", func(t *testing.T) {
 		c := setup(t)
 		expected := prefab.NewGrantInfo("g11", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrant)
-		requirex.EqualProtobuf(t, grant(t, c, "g11").ToProto(), expected.ToProto())
+		requirex.EqualProtobuf(t, model.UnwrapGrantInfo(grant(t, c, "g11")), model.UnwrapGrantInfo(expected))
 	})
 }
 
@@ -587,15 +587,15 @@ func requireGrantsEqual(t *testing.T, actual []model.GrantInfo, expected []model
 
 	actual = slicex.Clone(actual)
 	sort.Slice(actual, func(i, j int) bool {
-		return actual[i].ID < actual[j].ID
+		return actual[i].ID() < actual[j].ID()
 	})
 	expected = slicex.Clone(expected)
 	sort.Slice(expected, func(i, j int) bool {
-		return expected[i].ID < expected[j].ID
+		return expected[i].ID() < expected[j].ID()
 	})
 
 	for i := range actual {
-		requirex.EqualProtobuf(t, actual[i].ToProto(), expected[i].ToProto())
+		requirex.EqualProtobuf(t, model.UnwrapGrantInfo(actual[i]), model.UnwrapGrantInfo(expected[i]))
 	}
 }
 

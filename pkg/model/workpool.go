@@ -3,31 +3,33 @@ package model
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
-	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/clockx"
+	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/lib/randx"
 	"go.atoms.co/lib/syncx"
-	"go.atoms.co/splitter/pb"
 	"fmt"
-	"go.uber.org/atomic"
-	"golang.org/x/time/rate"
-	"google.golang.org/grpc"
 	"sync"
 	"time"
 )
 
 const (
+	statsDuration = 15 * time.Second
 	drainWaitTime = 30 * time.Second
 )
 
-type JoinFn func(context.Context, ...grpc.CallOption) (public_v1.ConsumerService_JoinClient, error)
+type JoinFn func(ctx context.Context, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error
+
+type joinStatus struct {
+	connected time.Time
+}
 
 // WorkPool manages a pool of grants assigned by Splitter to the consumer and provides updated clusters. It maintains
-// connection with the service, re-connecting on failures, and continues to manage assigned grants when disconnected.
+// WorkPool with the service, re-connecting on failures, and continues to manage assigned grants when disconnected.
 //
 // Life cycle is controlled by the context passed on creation; context cancellation triggers draining procedure.
 // `Drained()` can be used to detect when draining has stopped and the pool is being closed.
@@ -35,43 +37,58 @@ type JoinFn func(context.Context, ...grpc.CallOption) (public_v1.ConsumerService
 // the lease is expired, and it wasn't renewed by the service for some reason.
 type WorkPool struct {
 	iox.AsyncCloser
-	drain iox.AsyncCloser
 
-	cl clock.Clock
+	cl      clock.Clock
+	self    Consumer
+	service QualifiedServiceName
+	domains []QualifiedDomainName
+	joinFn  JoinFn
+	handler Handler
 
-	inject        chan func()
-	expiredGrants chan GrantID // some grants possibly expired or closed
-	expiredLease  chan bool
+	status *joinStatus            // coordinator connectivity status
+	in     <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
+	out    chan<- ConsumerMessage // coordinator outgoing messages (empty and not closed, if disconnected)
 
-	state *consumerState
-	con   *connection
+	cluster  Cluster
+	clusters chan Cluster
+
+	grants map[GrantID]*grant
+	shards map[Shard]GrantID
+	lease  *clockx.Timer
+	expire chan bool
+
+	inject chan func()
+	quit   iox.AsyncCloser
+	drain  iox.AsyncCloser
 }
 
-func NewWorkPool(ctx context.Context, cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler) (*WorkPool, <-chan Cluster) {
-	ctx = consumerCtx(ctx, consumer, service)
-
-	state, expiredLease, expiredGrants := newConsumerState(cl, consumer, service, domains, handlerFn)
-
-	closer := iox.NewAsyncCloser()
+func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler) (*WorkPool, <-chan Cluster) {
+	quit := iox.NewAsyncCloser()
 	p := &WorkPool{
-		AsyncCloser: closer,
-		drain:       iox.WithQuit(closer.Closed(), iox.WithCancel(ctx, iox.NewAsyncCloser())),
+		AsyncCloser: quit,
 		cl:          cl,
-
-		inject:        make(chan func()),
-		expiredGrants: expiredGrants,
-		expiredLease:  expiredLease,
-
-		state: state,
+		self:        consumer,
+		service:     service,
+		domains:     domains,
+		joinFn:      joinFn,
+		handler:     handlerFn,
+		clusters:    make(chan Cluster, 1),
+		grants:      map[GrantID]*grant{},
+		shards:      map[Shard]GrantID{},
+		expire:      make(chan bool, 1),
+		inject:      make(chan func()),
+		quit:        quit,
+		drain:       iox.WithQuit(quit.Closed(), iox.NewAsyncCloser()),
 	}
 
-	var clusters <-chan Cluster
-	p.con, clusters = newConnection(cl, p.txn, joinFn, state)
+	go p.join(context.Background())
+	go p.process(context.Background())
+	return p, p.clusters
+}
 
-	go p.process(consumerCtx(context.Background(), consumer, service))
-
-	log.Infof(ctx, "Initialized work pool: %v", p.state.Consumer())
-	return p, clusters
+func (p *WorkPool) Drain(timeout time.Duration) {
+	p.drain.Close()
+	p.cl.AfterFunc(timeout, p.Close)
 }
 
 // Drained returns a channel that is closed when the pool is drained.
@@ -79,36 +96,139 @@ func (p *WorkPool) Drained() <-chan struct{} {
 	return p.drain.Closed()
 }
 
-// process performs processing in the main thread
+func (p *WorkPool) join(ctx context.Context) {
+	wctx, _ := contextx.WithQuitCancel(ctx, p.Closed())
+
+	for !p.drain.IsClosed() {
+		// subctx here that cancels on disconnect
+
+		// Not connected. Establish WorkPool with coordinator with blocking join call. The workpool is either
+		// connecting or connected while in the join call.
+
+		log.Infof(ctx, "WorkPool %v attempting to join coordinator", p.self)
+
+		err := p.joinFn(wctx, func(ctx context.Context, in <-chan ConsumerMessage) (<-chan ConsumerMessage, error) {
+			return syncx.Txn1(ctx, p.txn, func() (<-chan ConsumerMessage, error) {
+				return p.joinCoordinator(ctx, in)
+			})
+		})
+
+		log.Infof(ctx, "WorkPool %v disconnected from coordinator: %v", p.self, err)
+
+		syncx.Txn0(wctx, p.txn, func() {
+			p.lostCoordinator(ctx)
+		})
+
+		p.cl.Sleep(time.Second + randx.Duration(time.Second)) // short random backoff on disconnect
+	}
+}
+
+func (p *WorkPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessage) (<-chan ConsumerMessage, error) {
+	p.lostCoordinator(ctx) // sanity check
+
+	active := mapx.MapValuesIf(p.grants, func(g *grant) (Grant, bool) {
+		return g.ToUpdated(), g.LeaseState == LeaseStale
+	})
+
+	log.Debugf(ctx, "Connected to coordinator, #grants=%v, #active=%v", len(p.grants), len(active))
+
+	out := make(chan ConsumerMessage, 2_000)
+	out <- NewRegister(p.self, p.service, p.domains, active)
+
+	p.in = in
+	p.out = out
+	p.status = &joinStatus{
+		connected: p.cl.Now(),
+	}
+	p.lease = nil
+
+	return out, nil
+}
+
+func (p *WorkPool) lostCoordinator(ctx context.Context) {
+	if p.status == nil {
+		return // ok: already disconnected
+	}
+
+	log.Infof(ctx, "Lost connection to coordinator, connected=%v, #grants=%v", p.cl.Since(p.status.connected), len(p.grants))
+
+	close(p.out)
+
+	p.in = make(chan ConsumerMessage)
+	p.out = make(chan ConsumerMessage)
+	p.status = nil
+	p.lease = nil
+
+	for _, g := range p.grants {
+		if g.LeaseState != LeaseRevoked {
+			g.LeaseState = LeaseStale
+		}
+	}
+}
+
 func (p *WorkPool) process(ctx context.Context) {
 	defer p.Close()
-	defer p.state.Close()
-	defer p.con.Close()
 
+	statsTimer := p.cl.NewTicker(statsDuration)
+	defer statsTimer.Stop()
+
+steady:
 	for {
 		select {
+		case msg, ok := <-p.in:
+			if !ok {
+				log.Errorf(ctx, "Coordinator connection unexpectedly closed")
+				p.lostCoordinator(ctx)
+				break
+			}
+			p.handleMessage(ctx, msg)
+
+		case <-p.expire:
+			p.checkExpiration(ctx)
+
 		case fn := <-p.inject:
 			fn()
 
-		// Expired grants must be handled even if connection is not present and must not block the main thread
-		case gid := <-p.expiredGrants:
-			if p.state.RemoveIfExpired(ctx, gid) {
-				go func() {
-					p.con.Send(NewConsumerReleasedMessage(NewReleasedMessage(gid)))
-				}()
-			}
-
-		case <-p.expiredLease:
-			if p.state.IsLeaseExpired() {
-				// Consumer lost the lease, most probably due to disconnect from the service and lack of lease extensions.
-				// All leases assigned to this consumer are considered expired automatically.
-				log.Errorf(ctx, "Work pool lease %v expired at %v", p.state.Lease(), p.cl.Now())
-				return
-			}
+		case <-statsTimer.C:
+			// record metrics
+			log.Debugf(ctx, "WorkPool %v, joined=%v, #shards=%v, #grants=%v", p.self, p.status != nil, len(p.shards), len(p.grants))
 
 		case <-p.drain.Closed():
-			p.state.Drain(drainWaitTime)
+			break steady
+
+		case <-p.Closed():
 			return
+		}
+	}
+
+	log.Infof(ctx, "WorkPool %v draining, joined=%v, #grants=%v", p.self, p.status != nil, len(p.grants))
+	now := p.cl.Now()
+
+	if p.status == nil || !p.trySend(ctx, NewDeregister()) {
+		log.Errorf(ctx, "WorkPool %v draining while disconnected/stuck. Hard close", p.self)
+		return
+	}
+
+	for {
+		if len(p.grants) == 0 {
+			log.Infof(ctx, "Worked %v drained after %v", p.self, p.cl.Since(now))
+			return
+		}
+
+		select {
+		case msg, ok := <-p.in:
+			if !ok {
+				log.Errorf(ctx, "Coordinator connection unexpectedly closed while draining. Hard close")
+				p.lostCoordinator(ctx)
+				return
+			}
+			p.handleMessage(ctx, msg)
+
+		case <-p.expire:
+			p.checkExpiration(ctx)
+
+		case fn := <-p.inject:
+			fn()
 
 		case <-p.Closed():
 			return
@@ -116,8 +236,232 @@ func (p *WorkPool) process(ctx context.Context) {
 	}
 }
 
-// txn runs the given function in the main thread sync. Any signal that triggers a complex action must
-// perform I/O or expensive parts outside txn and potentially use multiple txn calls.
+func (p *WorkPool) handleMessage(ctx context.Context, msg ConsumerMessage) {
+	switch {
+	case msg.IsClientMessage():
+		client, _ := msg.ClientMessage()
+		p.handleClientMessage(ctx, client)
+
+	case msg.IsClusterMessage():
+		cluster, _ := msg.ClusterMessage()
+		p.handleClusterMessage(ctx, cluster)
+
+	default:
+		log.Errorf(ctx, "Internal: unexpected coordinator message: %v", msg)
+	}
+}
+
+func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
+	switch {
+	case msg.IsAssign():
+		assign, _ := msg.Assign()
+		grants := assign.Grants()
+
+		for _, g := range grants {
+			p.shards[g.Shard()] = g.ID()
+			if old, ok := p.grants[g.ID()]; ok {
+				if old.LeaseState == LeaseStale {
+					old.LeaseState = LeaseActive
+					old.Lease = p.lease
+
+					log.Debugf(ctx, "Re-activating stale grant %v", old)
+					return
+				} else {
+					log.Errorf(ctx, "Internal: unexpected re-grant of non-stale grant %v. Re-creating", old)
+
+					old.Handler.Close()
+					delete(p.grants, g.ID())
+				}
+			}
+
+			// TODO(jhhurwitz): 11/30/23 non-nil Lease object when Lifecycle API is figured out
+			h := newHandler(p.cl, g.ID(), g.Shard(), p.handler, nil)
+
+			p.grants[g.ID()] = &grant{
+				Grant:      g,
+				LeaseState: LeaseActive,
+				Lease:      p.lease,
+				Handler:    h,
+			}
+
+			go func() {
+				<-h.Closed()
+				syncx.Txn0(ctx, p.txn, func() {
+					p.removeGrant(ctx, g.ID())
+				})
+			}()
+
+			log.Debugf(ctx, "Created handler for grant %v", g)
+		}
+
+	case msg.IsRevoke():
+		revoke, _ := msg.Revoke()
+		grants := revoke.Grants()
+		leases := map[time.Time]*clockx.Timer{}
+
+		for _, g := range grants {
+			gid := g.ID()
+			grant, ok := p.grants[gid]
+			if !ok {
+				log.Warnf(ctx, "Revoking stale grant: %v. Ignoring", g)
+				continue
+			}
+
+			// (1) Create lease that expires at the current TTL. The workpool lease no longer includes this grant.
+			// We share the leases to not get a flood of identical expiration checks.
+
+			ttl := grant.Lease.Ttl()
+			if _, ok := leases[ttl]; !ok {
+				leases[ttl] = clockx.AfterFunc(p.cl, p.cl.Until(ttl), p.emitExpirationCheck)
+			}
+			grant.LeaseState = LeaseRevoked
+			grant.Lease = leases[ttl]
+
+			// (2) Revoke async. If the Revoke unexpectedly arrives before Assign, the lease still expires.
+
+			log.Infof(ctx, "Revoking grant %v, ttl=%v", g, ttl)
+
+			grant.Handler.Drain(p.cl.Until(ttl))
+		}
+
+	case msg.IsExtend():
+		extend, _ := msg.Extend()
+
+		if p.lease == nil {
+			p.lease = clockx.AfterFunc(p.cl, p.cl.Until(extend.Lease()), p.emitExpirationCheck)
+		}
+		p.lease.Reset(p.cl.Until(extend.Lease()))
+
+	default:
+		log.Errorf(ctx, "Unexpected coordinator message: %v", msg)
+	}
+}
+
+func (p *WorkPool) handleClusterMessage(ctx context.Context, msg ClusterMessage) {
+	// Cluster update. Merge with current cluster and forward to listeners.
+	switch {
+	case msg.IsSnapshot():
+		m, _ := msg.Snapshot()
+		p.handleClusterSnapshot(ctx, m, msg.ID(), msg.Version())
+	case msg.IsChange():
+		m, _ := msg.Change()
+		p.handleClusterChange(ctx, m, msg.ID(), msg.Version())
+	default:
+		log.Errorf(ctx, "Unexpected cluster message: %v", msg)
+	}
+
+}
+
+func (p *WorkPool) handleClusterSnapshot(ctx context.Context, snapshot ClusterSnapshot, id ClusterId, version int) {
+	log.Debugf(ctx, "Storing initial assignments from cluster snapshot.")
+	consumers, grants := parseAssignments(snapshot.Assignments())
+
+	// TODO(jhhurwitz): 11/30/23 Likely shouldn't have an error here at all
+	var err error
+	p.cluster, err = NewCluster(id, version, consumers, grants)
+	if err != nil {
+		log.Errorf(ctx, "Invalid cluster %v: %v", snapshot, err)
+		return
+	}
+
+	log.Infof(ctx, "Received initial cluster: %v", p.cluster)
+	chanx.Clear(p.clusters)
+	p.clusters <- p.cluster
+}
+
+func (p *WorkPool) handleClusterChange(ctx context.Context, change ClusterChange, id ClusterId, version int) {
+	log.Debugf(ctx, "Updating cluster change %v/%v", id, version)
+	consumers, grants := parseAssignments(change.Assign().Assignments())
+	updated := change.Update().Grants()
+	unassigned := change.Unassign().Grants()
+	detached := change.Detach().Consumers()
+
+	// TODO(jhhurwitz): 11/30/23 Likely shouldn't have an error here at all
+	err := p.cluster.Update(consumers, grants, updated, unassigned, detached)
+	if err != nil {
+		log.Errorf(ctx, "Invalid update %v: %v", change, err)
+		return
+	}
+
+	log.Infof(ctx, "Updated cluster: %v", p.cluster)
+	chanx.Clear(p.clusters)
+	p.clusters <- p.cluster
+}
+
+func parseAssignments(assignments []Assignment) ([]Consumer, map[ConsumerID][]GrantInfo) {
+	var consumers []Consumer
+	grants := map[ConsumerID][]GrantInfo{}
+	for _, a := range assignments {
+		consumers = append(consumers, a.Consumer())
+		grants[a.Consumer().ID()] = a.Grants()
+	}
+	return consumers, grants
+}
+
+func (p *WorkPool) emitExpirationCheck() {
+	select {
+	case <-p.expire:
+	default:
+	}
+	p.expire <- true
+}
+
+func (p *WorkPool) checkExpiration(ctx context.Context) {
+	// Possible grant expiration
+
+	now := p.cl.Now()
+	for gid, g := range p.grants {
+		if g.Lease.Ttl().Before(now) {
+			p.removeGrant(ctx, gid)
+		}
+	}
+}
+
+func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
+	grant, ok := p.grants[gid]
+	if !ok {
+		return // ok: no longer present
+	}
+	grant.Handler.Close()
+
+	if grant.LeaseState != LeaseStale && p.cl.Now().Before(grant.Lease.Ttl()) {
+		p.mustSend(ctx, NewReleased(grant.Grant))
+	}
+	//
+	delete(p.grants, gid)
+	if p.shards[grant.Grant.Shard()] == gid {
+		delete(p.shards, grant.Grant.Shard()) // delete service tracking if not replaced by new grant
+	}
+
+	log.Debugf(ctx, "WorkPool %v removed grant %v", p.self, grant)
+}
+
+func (p *WorkPool) trySend(ctx context.Context, msg ConsumerMessage) bool {
+	select {
+	case p.out <- msg:
+		return true
+	default:
+		return false
+	}
+}
+
+func (p *WorkPool) mustSend(ctx context.Context, msg ConsumerMessage) {
+	if p.status == nil {
+		return // ok: disconnected
+	}
+
+	timer := p.cl.NewTimer(100 * time.Millisecond)
+	defer timer.Stop()
+
+	select {
+	case p.out <- msg:
+		return
+	case <-timer.C:
+		log.Errorf(ctx, "Internal: coordinator WorkPool stuck. Disconnecting")
+		p.lostCoordinator(ctx)
+	}
+}
+
 func (p *WorkPool) txn(ctx context.Context, fn func() error) error {
 	var wg sync.WaitGroup
 	var err error
@@ -130,605 +474,77 @@ func (p *WorkPool) txn(ctx context.Context, fn func() error) error {
 	}:
 		wg.Wait()
 		return err
+	case <-ctx.Done():
+		return ErrOverloaded
 	case <-p.Closed():
 		return ErrDraining
-	case <-ctx.Done():
-		return ErrDraining
 	}
 }
 
-// consumerState manages the consumer state, including the consumer lease and all the grants. Non-thread safe.
-// Life cycle is controlled by `Drain` to drain all the grants and to close the state and grants; or by `Close()`
-// to close the state and grants without draining.
-type consumerState struct {
-	iox.AsyncCloser
-
-	clock        clock.Clock
-	consumer     Consumer
-	service      QualifiedServiceName
-	domains      []QualifiedDomainName
-	leaseExpired chan bool
-	grantExpired chan GrantID
-	handlerFn    Handler
-
-	grants     map[GrantID]*grantInfo
-	clusterId  ClusterId
-	cluster    Cluster
-	lease      time.Time
-	leaseTimer *clockx.Timer
-}
-
-func newConsumerState(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handlerFn Handler) (state *consumerState, expiredLease chan bool, expiredGrants chan GrantID) {
-	expiredLease = make(chan bool, 1)
-	expiredGrants = make(chan GrantID, 100)
-	c, _ := NewCluster("", 0, nil, nil)
-	s := &consumerState{
-		AsyncCloser: iox.NewAsyncCloser(),
-
-		clock:        cl,
-		consumer:     consumer,
-		service:      service,
-		domains:      domains,
-		leaseExpired: expiredLease,
-		grantExpired: expiredGrants,
-		handlerFn:    handlerFn,
-
-		grants:  map[GrantID]*grantInfo{},
-		cluster: c,
-	}
-	return s, expiredLease, expiredGrants
-}
-
-func (s *consumerState) Consumer() Consumer {
-	return s.consumer
-}
-
-func (s *consumerState) Service() QualifiedServiceName {
-	return s.service
-}
-
-func (s *consumerState) Domains() []QualifiedDomainName {
-	return s.domains
-}
-
-func (s *consumerState) Grants() []Grant {
-	return mapx.MapValues(s.grants, func(g *grantInfo) Grant {
-		return g.Grant()
-	})
-}
-
-func (s *consumerState) GrantsCount() int {
-	return len(s.grants)
-}
-
-func (s *consumerState) Lease() time.Time {
-	return s.lease
-}
-
-func (s *consumerState) StaleActiveGrants() {
-	for _, info := range s.grants {
-		info.Stale()
-	}
-}
-
-func (s *consumerState) SetAssignments(id ClusterId, version int, consumers []Consumer, grants map[ConsumerID][]GrantInfo) (Cluster, error) {
-	c, err := NewCluster(id, 0, consumers, grants)
-	if err != nil {
-		return nil, err
-	}
-	s.cluster = c
-	return s.cluster, nil
-}
-
-func (s *consumerState) UpdateCluster(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) (Cluster, error) {
-	err := s.cluster.Update(consumers, assigned, updated, unassigned, detached)
-	if err != nil {
-		return nil, err
-	}
-	return s.cluster, nil
-}
-
-func (s *consumerState) ExtendLease(lease time.Time) {
-	if lease.Before(s.lease) {
-		return
-	}
-
-	s.lease = lease
-	ttl := lease.Sub(s.clock.Now())
-
-	if s.leaseTimer == nil {
-		s.leaseTimer = clockx.NewTimer(s.clock, ttl)
-		go func() {
-			for {
-				select {
-				case <-s.Closed():
-					return
-				case <-s.leaseTimer.C:
-					chanx.Clear(s.leaseExpired)
-					s.leaseExpired <- true
-				}
-			}
-		}()
-	} else {
-		s.leaseTimer.Reset(ttl)
-	}
-
-	for _, info := range s.grants {
-		if info.state != active || info.IsClosed() {
-			continue // skip: don't extend inactive or closed allocations
-		}
-		info.UpdateLease(lease)
-	}
-}
-
-func (s *consumerState) IsLeaseExpired() bool {
-	return s.lease.Before(s.clock.Now())
-}
-
-func (s *consumerState) RevokeGrants(ctx context.Context, grants []GrantID) {
-	for _, grantId := range grants {
-		info, ok := s.grants[grantId]
-		if !ok {
-			log.Errorf(ctx, "Leader revoked unknown grant %v. Ignoring", grantId)
-			continue
-		}
-		info.Drain()
-	}
-}
-
-func (s *consumerState) RemoveIfExpired(ctx context.Context, gid GrantID) bool {
-	info, ok := s.grants[gid]
-	if !ok {
-		log.Errorf(ctx, "Unable to find grant %v when checking its expiration", gid)
-		return false
-	}
-	now := s.clock.Now()
-
-	if !info.IsClosed() && info.Grant().Lease.After(now) {
-		return false // live
-	}
-
-	log.Warnf(ctx, "Grant %v expired or closed", info)
-	delete(s.grants, gid)
-	return true
-}
-
-func (s *consumerState) AssignGrants(ctx context.Context, grants []Grant) {
-	for _, grant := range grants {
-		s.assignGrant(ctx, grant)
-	}
-}
-
-func (s *consumerState) Drain(duration time.Duration) {
-	for _, info := range s.grants {
-		info.Drain()
-	}
-
-	s.clock.AfterFunc(duration, s.closeGrants)
-
-	for _, info := range s.grants {
-		<-info.Closed()
-	}
-
-	s.AsyncCloser.Close()
-}
-
-func (s *consumerState) Close() {
-	if s.AsyncCloser.IsClosed() {
-		return
-	}
-	s.closeGrants()
-	s.AsyncCloser.Close()
-}
-
-func (s *consumerState) closeGrants() {
-	for _, info := range s.grants {
-		info.Close()
-	}
-}
-
-func (s *consumerState) assignGrant(ctx context.Context, grant Grant) {
-	// Determine if the grant is a continuation for an existing stale grant as a result of a server change.
-	// We then simply revive it and do nothing.
-
-	if grant.Lease.After(s.lease) {
-		grant.Lease = s.lease
-	}
-
-	if info, ok := s.grants[grant.ID]; ok && !info.IsClosed() {
-		switch info.State() {
-		case stale:
-			log.Infof(ctx, "New grant will activate stale grant %v", info.Grant())
-			info.UpdateLease(grant.Lease)
-			return
-
-		case active:
-			log.Errorf(ctx, "New grant %v duplicates existing active grant %v. Ignoring", grant, info.Grant())
-			return
-
-		default:
-			// If disconnecting, we would have to wait out the drain before creating a new shard.
-			// Unsupported and not an expected grant from the server. Close shard, for now.
-
-			log.Errorf(ctx, "Invalid grant state %v for new grant %v. Closing", info.State(), info.Grant())
-			info.Close()
-		}
-	}
-
-	s.grants[grant.ID] = newGrantInfo(s.clock, s.handlerFn, s.grantExpired, grant)
-}
-
-// consumerGrantState represents the current state of a shard tracked by the work pool. A shard is stale when
-// disconnected with a valid lease.
-type consumerGrantState string
+// LeaseState represents the current state of a grant.
+type LeaseState string
 
 const (
-	active   consumerGrantState = "active"
-	draining                    = "draining"
-	stale                       = "stale"
+	// LeaseActive represents that the grant is active and under the (renewed) lease.
+	LeaseActive LeaseState = "active"
+	// LeaseRevoked represents that the grant has been revoked by the coordinator. Lease is detached.
+	LeaseRevoked LeaseState = "revoked"
+	// LeaseStale represents that the grant is active, but will lapse due to a coordinator disconnect. Most
+	// grants will go back to active, but that is the coordinator's decision.
+	LeaseStale LeaseState = "stale"
 )
 
-type grantInfo struct {
+// grant holds a grant and its metadata and bookkeeping.
+type grant struct {
+	Grant      Grant // holds original lease
+	LeaseState LeaseState
+	Lease      *clockx.Timer
+	Handler    *handler
+}
+
+func (g *grant) ToUpdated() Grant {
+	return NewGrant(g.Grant.ID(), g.Grant.Shard(), g.Grant.State(), g.Lease.Ttl(), g.Grant.Assigned())
+}
+
+func (g *grant) String() string {
+	return fmt.Sprintf("grant=%v, lease_state=%v, ttl=%v", g.Grant, g.LeaseState, g.Lease.Ttl().Unix())
+}
+
+type handler struct {
 	iox.AsyncCloser
-	drainer iox.AsyncCloser
 
 	cl    clock.Clock
-	grant Grant
-	state consumerGrantState
-	lease *session.ExtendableLease
-	timer *clockx.Timer
+	drain iox.AsyncCloser
 }
 
-func newGrantInfo(cl clock.Clock, handlerFn Handler, grantExpired chan<- GrantID, grant Grant) *grantInfo {
-	closer := iox.NewAsyncCloser()
-	drainer := iox.NewAsyncCloser()
+func (h *handler) Drain(timeout time.Duration) {
+	h.drain.Close()
+	h.cl.AfterFunc(timeout, h.Close)
+}
 
-	ttl := grant.Lease.Sub(cl.Now())
-	info := &grantInfo{
-		AsyncCloser: closer,
-		cl:          cl,
-		grant:       grant,
-		drainer:     drainer,
-		state:       active,
-		lease:       session.NewExtendableLease(drainer, grant.Lease),
-		timer:       clockx.NewTimer(cl, ttl),
+func newHandler(cl clock.Clock, id GrantID, shard Shard, handlerFn Handler, lease Lease) *handler {
+	h := &handler{
+		AsyncCloser: iox.NewAsyncCloser(),
+
+		cl:    cl,
+		drain: iox.NewAsyncCloser(),
 	}
 
-	startHandler(handlerFn, grant, closer, info.lease)
-
+	hctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		for {
-			select {
-			case <-closer.Closed():
-				grantExpired <- grant.ID
-				return
-			case <-info.timer.C:
-				// This may race with timer reset, but should be no-op if lease is extended
-				grantExpired <- grant.ID
-				// Exit only when it's closed.
-			}
-		}
-	}()
-	return info
-}
+		defer h.Close()
 
-func (g *grantInfo) Grant() Grant {
-	return g.grant
-}
-
-func (g *grantInfo) State() consumerGrantState {
-	return g.state
-}
-
-func (g *grantInfo) UpdateLease(lease time.Time) {
-	g.state = active
-	if g.grant.Lease.After(lease) {
-		return
-	}
-	g.grant.Lease = lease
-	g.lease.Extend(lease)
-	g.resetTimer()
-}
-
-func (g *grantInfo) Stale() {
-	if g.state == active {
-		g.state = stale
-	}
-}
-
-func (g *grantInfo) Drain() {
-	g.state = draining
-	g.drainer.Closed()
-}
-
-func (g *grantInfo) resetTimer() {
-	ttl := g.grant.Lease.Sub(g.cl.Now())
-	g.timer.Reset(ttl)
-}
-
-func startHandler(handler Handler, grant Grant, closer iox.AsyncCloser, lease Lease) {
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		defer closer.Close()
-		handler(ctx, grant.ID, grant.Shard, lease)
+		handlerFn(hctx, id, shard, lease)
 	}()
 
 	go func() {
 		defer cancel()
+
 		select {
-		case <-closer.Closed():
-		}
-	}()
-}
-
-// connection maintains communication with the service, handles incoming messages by acting on the consumer state
-// and sends complete clusters on all changes from the service (snapshot and incremental updates).
-// Life cycle is controlled by `Close()` which will stop all communication and drop all the inflight messages. Must
-// be used only when work pool is drained or its lease is expired.
-type connection struct {
-	iox.AsyncCloser
-
-	clock  clock.Clock
-	txn    syncx.TxnFn
-	joinFn JoinFn
-
-	state     *consumerState
-	connected atomic.Bool
-	cluster   chan Cluster
-	out       chan ConsumerMessage
-}
-
-func newConnection(cl clock.Clock, txn syncx.TxnFn, joinFn JoinFn, state *consumerState) (*connection, <-chan Cluster) {
-	clusters := make(chan Cluster, 100)
-	ctx := consumerCtx(context.Background(), state.Consumer(), state.Service())
-	c := &connection{
-		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
-		clock:       cl,
-		txn:         txn,
-		joinFn:      joinFn,
-		state:       state,
-		cluster:     clusters,
-		out:         make(chan ConsumerMessage, 1000),
-	}
-	go c.process(ctx)
-	return c, clusters
-}
-
-func (c *connection) Send(msg ConsumerMessage) {
-	if !c.connected.Load() {
-		return
-	}
-
-	select {
-	case c.out <- msg:
-	case <-c.Closed():
-	}
-}
-
-// connect maintains communication with the server, off the main thread. All operations must be coordinated
-// using txn.
-func (c *connection) process(ctx context.Context) {
-	var err error
-	limiter := rate.NewLimiter(rate.Every(time.Minute), 3)
-	for {
-		if c.IsClosed() {
-			return
-		}
-
-		err = limiter.Wait(ctx)
-		if err != nil {
-			c.clock.Sleep(time.Second * 30)
-			continue
-		}
-
-		now := c.clock.Now()
-		log.Infof(ctx, "Attempting to connect to Splitter at %v", now)
-
-		grants, err := syncx.Txn1(ctx, c.txn, func() ([]Grant, error) {
-			return c.state.Grants(), nil
-		})
-		if err != nil {
-			log.Infof(ctx, "%v closed before connecting to Splitter at %v", c, now)
-			return
-		}
-
-		// TODO (styurin, 10/23/2023): handle draining grants
-
-		err = c.join(ctx, grants)
-		if err != nil {
-			log.Errorf(ctx, "Failed to join Splitter: %v", err)
-		}
-
-		syncx.Txn0(ctx, c.txn, c.state.StaleActiveGrants)
-	}
-}
-
-func (c *connection) join(ctx context.Context, grants []Grant) error {
-	// Create a client session with the worker instance
-	sess, establish, sessionOut := session.NewClient(ctx, c.clock, c.state.Consumer().Client())
-	go func() {
-		select {
-		case <-sess.Closed():
-			c.connected.Store(false)
+		case <-h.drain.Closed():
+		case <-h.Closed():
 		}
 	}()
 
-	return grpcx.Connect(ctx, c.joinFn, func(ctx context.Context, coordinatorIn <-chan *public_v1.ConsumerMessage) (<-chan *public_v1.ConsumerMessage, error) {
-		// Process incoming messages by either copying to the output buffer or sending to the session
-		in := chanx.MapIf(coordinatorIn, func(pb *public_v1.ConsumerMessage) (ConsumerMessage, bool) {
-			if pb.GetSession() != nil {
-				sess.Observe(ctx, session.WrapMessage(pb.GetSession()))
-				// Do not propagate session messages to the client
-				return ConsumerMessage{}, false
-			}
-			return WrapConsumerMessage(pb), true
-		})
-
-		chanx.Clear(c.out)
-		c.connected.Store(true)
-		go c.processSession(ctx, grants, in)
-
-		// Send register as the first message
-		register := NewRegisterMessage(c.state.Consumer(), c.state.Service(), c.state.Domains(), grants)
-		out := chanx.Envelope(NewConsumerRegisterMessage(register), c.out, NewConsumerDeregisterMessage())
-
-		joined := session.Connect(sess, establish, out, sessionOut, NewConsumerSessionMessage)
-		return chanx.Map(joined, UnwrapConsumerMessage), nil
-	})
-}
-
-func (c *connection) processSession(ctx context.Context, grants []Grant, in <-chan ConsumerMessage) {
-	now := c.clock.Now()
-
-	// Process messages from splitter and clients as well as allocation expiration events. The splitter guarantees to send
-	// state, cluster and lease updates as the first messages.
-
-	log.Infof(ctx, "Connected to Splitter with %v existing allocation(s) at %v", len(grants), now)
-
-	defer func() {
-		log.Infof(ctx, "Disconnected from Splitter after %v", c.clock.Since(now))
-	}()
-
-	for {
-		// Exit abruptly when closed. Connection is closed only when work pool is drained and no communication with
-		// service is expected.
-		if c.IsClosed() {
-			log.Infof(ctx, "Connection %v closed", c)
-			return
-		}
-
-		select {
-		case msg, ok := <-in:
-			if !ok {
-				log.Warnf(ctx, "Unexpected closed connection")
-				return
-			}
-			c.handleConsumerMessage(ctx, msg)
-
-		case <-c.Closed():
-			log.Infof(ctx, "Connection %v closed", c)
-			return
-		}
-	}
-}
-
-func (c *connection) handleConsumerMessage(ctx context.Context, msg ConsumerMessage) {
-	switch {
-
-	case msg.IsCluster():
-		// Cluster update. Merge with current cluster and forward to listeners.
-		cls, _ := msg.GetCluster()
-		switch {
-		case cls.IsSnapshot():
-			m, _ := cls.Snapshot()
-			c.handleClusterSnapshot(ctx, m, cls.ID(), cls.Version())
-		case cls.IsChange():
-			m, _ := cls.Change()
-			c.handleClusterChange(ctx, m, cls.ID(), cls.Version())
-		default:
-			log.Errorf(ctx, "Unexpected cluster message: %v", cls)
-		}
-
-	case msg.IsExtend():
-		// Worker lease update. The new expiration time applies to all "active" grants.
-		m, _ := msg.GetExtend()
-		syncx.Txn0(ctx, c.txn, func() {
-			c.state.ExtendLease(m.GetLease())
-		})
-
-	case msg.IsAssign():
-		m, _ := msg.GetAssign()
-		c.handleAssignedGrants(ctx, m)
-
-	case msg.IsRevoke():
-		m, _ := msg.GetRevoke()
-		c.handleRevokedGrants(ctx, m)
-
-	default:
-		log.Errorf(ctx, "Unexpected coordinator message: %v", msg)
-	}
-}
-
-func (c *connection) handleClusterSnapshot(ctx context.Context, snapshot ClusterSnapshot, id ClusterId, version int) {
-	log.Debugf(ctx, "Storing initial assignments from cluster snapshot.")
-	consumers, grants, err := parseAssignments(snapshot.Assignments())
-	if err != nil {
-		log.Errorf(ctx, "Invalid grants in cluster snapshot %v: %v", snapshot, err)
-		return
-	}
-	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.SetAssignments(id, version, consumers, grants)
-	})
-	if err != nil {
-		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
-		return
-	}
-	log.Infof(ctx, "Received initial cluster: %v", cluster)
-	chanx.Clear(c.out)
-	c.cluster <- cluster
-}
-
-func (c *connection) handleClusterChange(ctx context.Context, change ClusterChange, id ClusterId, version int) {
-	log.Debugf(ctx, "Updating cluster change %v/%v", id, version)
-	consumers, assigned, err := parseAssignments(change.Assign().Assignments())
-	if err != nil {
-		log.Errorf(ctx, "Invalid grants in cluster assignment %v: %v", change.Assign(), err)
-		return
-	}
-	updated, err := change.Update().Grants()
-	if err != nil {
-		log.Errorf(ctx, "Invalid grants in cluster update %v: %v", change.Update(), err)
-		return
-	}
-	unassigned := change.Unassign().Grants()
-	detached := change.Detach().Consumers()
-
-	cluster, err := syncx.Txn1(ctx, c.txn, func() (Cluster, error) {
-		return c.state.UpdateCluster(consumers, assigned, updated, unassigned, detached)
-	})
-	if err != nil {
-		log.Warnf(ctx, "Connection %v closed while updating cluster", c)
-		return
-	}
-	log.Debugf(ctx, "Updated cluster: %v", cluster)
-	chanx.Clear(c.out)
-	c.cluster <- cluster
-}
-
-func (c *connection) handleAssignedGrants(ctx context.Context, assigned AssignMessage) {
-	grants := assigned.Grants()
-
-	log.Infof(ctx, "Received assigned grants: %v", grants)
-
-	syncx.Txn0(ctx, c.txn, func() {
-		c.state.AssignGrants(ctx, grants)
-	})
-}
-
-func (c *connection) handleRevokedGrants(ctx context.Context, revoked RevokeMessage) {
-	grants := revoked.Grants()
-
-	log.Infof(ctx, "Received revoked grants: %v", grants)
-
-	syncx.Txn0(ctx, c.txn, func() {
-		c.state.RevokeGrants(ctx, grants)
-	})
-}
-
-func (c *connection) String() string {
-	return fmt.Sprintf("connection{service=%v,consumer=%v}", c.state.Service(), c.state.Consumer())
-}
-
-func parseAssignments(assignments []Assignment) ([]Consumer, map[ConsumerID][]GrantInfo, error) {
-	var consumers []Consumer
-	grants := map[ConsumerID][]GrantInfo{}
-	for _, a := range assignments {
-		consumers = append(consumers, a.Consumer())
-		g, err := a.ParseGrants()
-		if err != nil {
-			return nil, nil, err
-		}
-		grants[a.Consumer().ID()] = g
-	}
-	return consumers, grants, nil
+	return h
 }

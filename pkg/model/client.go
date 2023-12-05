@@ -3,7 +3,11 @@ package model
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/chanx"
+	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
@@ -280,28 +284,42 @@ func (c *client) InfoPlacement(ctx context.Context, name QualifiedPlacementName)
 }
 
 func (c *client) Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.AsyncCloser) {
-	ctx = consumerCtx(ctx, consumer, service)
-
 	quit := iox.NewAsyncCloser()
-	pool, clusters := NewWorkPool(ctx, c.clock, consumer, service, domains, c.consumer.Join, handler)
+
+	joinFn := func(ctx context.Context, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
+		sess, establish, out := session.NewClient(ctx, c.clock, consumer.Client())
+		defer sess.Close()
+		wctx, _ := contextx.WithQuitCancel(ctx, sess.Closed()) // cancel context if session client closes
+
+		return grpcx.Connect(wctx, c.consumer.Join, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
+			ch := chanx.MapIf(in, func(pb *public_v1.JoinMessage) (ConsumerMessage, bool) {
+				if pb.GetSession() != nil {
+					sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session client
+					return ConsumerMessage{}, false
+				}
+				return WrapConsumerMessage(pb.GetConsumer()), true
+			})
+
+			resp, err := handler(ctx, ch)
+			if err != nil {
+				return nil, WrapError(err)
+			}
+
+			joined := session.Connect(sess, establish, chanx.Map(resp, NewJoinMessage), out, NewJoinSessionMessage)
+			return chanx.Map(joined, UnwrapJoinMessage), nil
+		})
+	}
+	pool, clusters := NewWorkPool(c.clock, consumer, service, domains, joinFn, handler)
 
 	go func() {
 		defer quit.Close()
-		<-pool.Drained()
+		<-ctx.Done()
 
+		pool.Drain(1 * time.Minute)
 		now := c.clock.Now()
-		select {
-		case <-pool.Closed():
-			log.Infof(ctx, "Successfully drained work pool in %v", time.Since(now))
-		case <-time.After(1 * time.Minute):
-			log.Warnf(ctx, "Failed to drain work pool in %v", time.Since(now))
-			pool.Close()
-		}
+		<-pool.Closed()
+		log.Infof(ctx, "Closed work pool in %v", time.Since(now))
 	}()
 
 	return clusters, quit
-}
-
-func consumerCtx(ctx context.Context, consumer Consumer, service QualifiedServiceName) context.Context {
-	return log.NewContext(ctx, log.String("consumer_id", consumer.ID()), log.String("service", service.String()))
 }

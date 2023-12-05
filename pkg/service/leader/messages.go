@@ -44,6 +44,14 @@ type Message struct {
 	pb *internal_v1.LeaderMessage
 }
 
+func WrapMessage(pb *internal_v1.LeaderMessage) Message {
+	return Message{pb: pb}
+}
+
+func UnwrapMessage(m Message) *internal_v1.LeaderMessage {
+	return m.pb
+}
+
 func NewWorkerMessage(m WorkerMessage) Message {
 	return Message{pb: &internal_v1.LeaderMessage{
 		Msg: &internal_v1.LeaderMessage_Worker{
@@ -166,14 +174,6 @@ func NewClusterRemove(remove []model.QualifiedServiceName) Message {
 			},
 		},
 	}})
-}
-
-func WrapMessage(pb *internal_v1.LeaderMessage) Message {
-	return Message{pb: pb}
-}
-
-func UnwrapMessage(m Message) *internal_v1.LeaderMessage {
-	return m.pb
 }
 
 func (m Message) Type() string {

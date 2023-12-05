@@ -136,11 +136,13 @@ func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) {
 	defer timer.Stop()
 
 	s.cluster.Drain(timeout)
+	s.worker.Drain(timeout)
 
 	select {
 	case <-s.cluster.Closed():
-		log.Infof(ctx, "Successfully drained cluster in %v", time.Since(now))
+		log.Infof(ctx, "Successfully drained RAFT cluster in %v", time.Since(now))
 	case <-timer.C:
 		log.Warnf(ctx, "Failed to drain gracefully in %v", time.Since(now))
 	}
+	<-s.worker.Closed()
 }

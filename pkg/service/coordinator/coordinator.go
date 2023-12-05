@@ -17,8 +17,8 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
-	"go.atoms.co/splitter/pkg/util/txnx"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -75,7 +75,7 @@ func New(ctx context.Context, loc location.Location, cl clock.Clock, service mod
 }
 
 func (c *coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	return syncx.Txn1(ctx, txnx.Txn(c, c.inject), func() (<-chan model.ConsumerMessage, error) {
+	return syncx.Txn1(ctx, c.txn, func() (<-chan model.ConsumerMessage, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
 
 		s, out, err := c.connect(wctx, sid, register, in)
@@ -89,7 +89,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, register mode
 			defer cancel()
 			<-s.connection.Closed()
 
-			syncx.AsyncTxn(txnx.Txn(c, c.inject), func() {
+			syncx.AsyncTxn(c.txn, func() {
 				if cur, ok := c.consumers[s.consumer.ID()]; ok {
 					if ok && cur.connection.Sid() == sid { // guard against race
 						c.disconnect(wctx, cur)
@@ -103,20 +103,16 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, register mode
 
 func (c *coordinator) connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage, error) {
 	consumer := NewConsumer(register.Consumer(), c.cl.Now())
-	grants, err := register.ParseActive()
-	if err != nil {
-		return nil, nil, err
-	}
-	active, err := slicex.TryMap(grants, fromGrant)
+	active, err := slicex.TryMap(register.Active(), fromGrant(consumer))
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if old, ok := c.consumers[consumer.ID()]; ok {
-		log.Infof(ctx, "Consumer %v re-connected (session=%v) with #grants: %d. Disconnecting stale session", consumer, sid, len(grants))
+		log.Infof(ctx, "Consumer %v re-connected (session=%v) with #grants: %d. Disconnecting stale session", consumer, sid, len(active))
 		c.disconnect(ctx, old)
 	} else {
-		log.Infof(ctx, "Consumer %v connected (session=%v) with #grants: %d", consumer, sid, len(grants))
+		log.Infof(ctx, "Consumer %v connected (session=%v) with #grants: %d", consumer, sid, len(active))
 	}
 
 	connection, out := sessionx.NewConnection[model.ConsumerMessage](c.cl, sid, consumer.Instance(), c, in, c.messages)
@@ -126,7 +122,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	}
 
 	lease := c.cl.Now().Add(leaseDuration)
-	connection.Send(ctx, model.NewConsumerExtendMessage(model.NewExtendMessage(lease)))
+	connection.Send(ctx, model.NewExtend(lease))
 
 	assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Client().ID(), consumer.instance), lease, active...)
 	if !ok {
@@ -134,13 +130,13 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	}
 
 	if len(assigned.Active) > 0 {
-		if ok := connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Active)...))); !ok {
+		if ok := connection.Send(ctx, model.NewAssign(toGrants(assigned.Active)...)); !ok {
 			return nil, nil, fmt.Errorf("broken connection while initializing new consumer %v", consumer)
 		}
 	}
 
 	if len(assigned.Allocated) > 0 {
-		if ok := connection.Send(ctx, model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(assigned.Allocated)...))); !ok {
+		if ok := connection.Send(ctx, model.NewAssign(toGrants(assigned.Allocated)...)); !ok {
 			return nil, nil, fmt.Errorf("broken connection while initializing new consumer %v", consumer)
 		}
 	}
@@ -148,8 +144,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	c.updateCluster(ctx)
 
 	// Send full cluster to the consumer
-	snapshot := model.NewClusterSnapshotMessage(c.cluster.ID(), c.cluster.Version(), model.ClusterToAssignments(c.cluster)...)
-	if ok := connection.Send(ctx, model.NewConsumerClusterMessage(snapshot)); !ok {
+	if ok := connection.Send(ctx, model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Version(), model.ClusterToAssignments(c.cluster)...)); !ok {
 		return nil, nil, fmt.Errorf("broken connection while initializing new consumer %v", consumer)
 	}
 
@@ -192,6 +187,10 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	c.process(ctx, updates)
 
+	for _, s := range c.consumers {
+		s.connection.Disconnect()
+	}
+
 	log.Infof(ctx, "Coordinator %v/%v closed", c.name, c.id)
 }
 
@@ -228,7 +227,7 @@ steady:
 
 			var unhealthy []*consumerSession
 			for _, s := range c.consumers {
-				if !s.connection.Send(ctx, model.NewConsumerExtendMessage(model.NewExtendMessage(lease))) {
+				if !s.connection.Send(ctx, model.NewExtend(lease)) {
 					unhealthy = append(unhealthy, s)
 					continue
 				}
@@ -266,7 +265,7 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	c.alloc = upd
 
 	for _, g := range rejected {
-		c.mustSend(ctx, c.consumers[g.Worker], model.NewConsumerRevokeMessage(model.NewRevokeMessage(model.GrantID(g.ID))))
+		c.mustSend(ctx, c.consumers[g.Worker], model.NewRevoke(toGrant(g)))
 	}
 	c.updateCluster(ctx)
 }
@@ -305,7 +304,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 		if move, load, ok := c.alloc.LoadBalance(now); ok {
 			assign[move.To.Worker] = append(assign[move.To.Worker], move.To)
 
-			c.mustSend(ctx, c.consumers[move.From.Worker], model.NewConsumerRevokeMessage(model.NewRevokeMessage(model.GrantID(move.From.ID))))
+			c.mustSend(ctx, c.consumers[move.From.Worker], model.NewRevoke(toGrant(move.From)))
 
 			log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
 		}
@@ -314,14 +313,19 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	// (5) Send out new assignments and broadcast updates, incl revoke
 
 	for cid, grants := range assign {
-		c.mustSend(ctx, c.consumers[cid], model.NewConsumerAssignMessage(model.NewAssignMessage(toGrants(grants)...)))
+		c.mustSend(ctx, c.consumers[cid], model.NewAssign(toGrants(grants)...))
 	}
 
 	c.updateCluster(ctx)
 }
 
-func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, msg model.ConsumerMessage) {
-	log.Debugf(ctx, ">> %v/%v: %v", c.name, s.ID(), msg)
+func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSession, m model.ConsumerMessage) {
+	msg, ok := m.ClientMessage()
+	if !ok {
+		log.Errorf(ctx, "Internal: unexpected message: %v", m)
+		c.disconnect(ctx, s)
+		return
+	}
 
 	switch {
 	case msg.IsDeregister():
@@ -329,19 +333,20 @@ func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSess
 
 	case msg.IsReleased():
 		r, _ := msg.Released()
-		c.release(ctx, s, r.Grants())
+		grants, err := slicex.TryMap(r.Grants(), fromGrant(s.consumer))
+		if err != nil {
+			log.Errorf(ctx, "Internal: invalid grants: %v", err)
+		}
+		c.release(ctx, s, grants)
 
 	default:
 		log.Errorf(ctx, "Internal: unexpected consumer message: %v", msg)
 	}
 }
 
-func (c *coordinator) release(ctx context.Context, s *consumerSession, grants []model.GrantID) {
-	assigned := mapx.New(c.alloc.Assigned(s.ID()).All(), grantID)
-	for _, id := range grants {
-		if grant, ok := assigned[id]; ok {
-			c.alloc.Release(grant, c.cl.Now())
-		}
+func (c *coordinator) release(ctx context.Context, s *consumerSession, grants []Grant) {
+	for _, grant := range grants {
+		c.alloc.Release(grant, c.cl.Now())
 	}
 	c.updateCluster(ctx)
 }
@@ -362,8 +367,7 @@ func (c *coordinator) updateCluster(ctx context.Context) {
 		consumer, _ := newCluster.Consumer(cid)
 		return model.NewAssignment(consumer, grants...)
 	})
-	change := model.NewClusterChangeMessage(newCluster.ID(), newCluster.Version(), assigned, d.Updated, d.Unassigned, d.Detached)
-	c.broadcast(ctx, model.NewConsumerClusterMessage(change))
+	c.broadcast(ctx, model.NewClusterChange(newCluster.ID(), newCluster.Version(), assigned, d.Updated, d.Unassigned, d.Detached))
 	c.cluster = newCluster
 	log.Debugf(ctx, "New allocation: %v/%v. Cluster: %v", c.name, c.alloc, newCluster)
 }
@@ -393,4 +397,24 @@ func (c *coordinator) Drain(timeout time.Duration) {
 
 func (c *coordinator) String() string {
 	return fmt.Sprintf("%v[alloc=%v, #consumers=%v]", c.name, c.alloc, len(c.consumers))
+}
+
+// Txn is a helper that constructs a syncx.TxnFn with the project specific error codes and injection channels
+func (c *coordinator) txn(ctx context.Context, fn func() error) error {
+	var wg sync.WaitGroup
+	var err error
+
+	wg.Add(1)
+	select {
+	case c.inject <- func() {
+		defer wg.Done()
+		err = fn()
+	}:
+		wg.Wait()
+		return err
+	case <-ctx.Done():
+		return model.ErrOverloaded
+	case <-c.Closed():
+		return model.ErrDraining
+	}
 }

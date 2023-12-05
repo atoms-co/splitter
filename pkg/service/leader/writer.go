@@ -165,7 +165,7 @@ func (w *Writer) handleUpdateTenantRequest(ctx context.Context, req *public_v1.U
 
 	info, ok := w.cache.Tenant(name)
 	if !ok {
-		return nil, nil, model.ErrNotFound
+		return nil, nil, fmt.Errorf("tenant %v not found: %w", name, model.ErrNotFound)
 	}
 
 	var opts []model.TenantOption
@@ -263,7 +263,7 @@ func (w *Writer) handleUpdateServiceRequest(ctx context.Context, req *public_v1.
 
 	infoEx, ok := w.cache.Service(name)
 	if !ok {
-		return nil, nil, model.ErrNotFound
+		return nil, nil, fmt.Errorf("service %v not found: %w", name, model.ErrNotFound)
 	}
 
 	var opts []model.ServiceOption
@@ -363,13 +363,13 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.U
 
 	service, ok := w.cache.Service(name.Service)
 	if !ok {
-		return nil, nil, model.ErrNotFound
+		return nil, nil, fmt.Errorf("service %v not found: %w", name, model.ErrNotFound)
 	}
 	guard := service.Info().Version()
 
 	existing, ok := service.Domain(name.Domain)
 	if !ok {
-		return nil, nil, model.ErrNotFound
+		return nil, nil, fmt.Errorf("domain %v not found: %w", name.Domain, model.ErrNotFound)
 	}
 
 	var opts []model.DomainOption

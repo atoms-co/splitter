@@ -6,6 +6,7 @@ import (
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
+	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
@@ -16,8 +17,8 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pkg/util/txnx"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -51,7 +52,7 @@ type Worker struct {
 
 	grants   map[core.GrantID]*Grant
 	services map[model.QualifiedServiceName]core.GrantID
-	lease    *RenewableLease
+	lease    *clockx.Timer
 
 	expire chan bool
 	inject chan func()
@@ -84,14 +85,20 @@ func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory Coordinator
 // Connect handles connection of a consumer to a local coordinator
 func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	msg, ok := chanx.TryRead(in, 20*time.Second)
-	if !ok || !msg.IsRegister() {
+	if !ok {
 		log.Errorf(ctx, "No registration message received: %v", msg)
 		return nil, fmt.Errorf("no registration message received %v: %w", msg, model.ErrInvalid)
 	}
-	register, _ := msg.Register()
+
+	clientMsg, ok := msg.ClientMessage()
+	if !ok || !clientMsg.IsRegister() {
+		log.Errorf(ctx, "expected registration message, got %v", clientMsg)
+		return nil, model.WrapError(fmt.Errorf("invalid registration message: %w", model.ErrInvalid))
+	}
+	register, _ := clientMsg.Register()
 
 	service := register.Service()
-	c, err := syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (coordinator.Coordinator, error) {
+	c, err := syncx.Txn1(ctx, w.txn, func() (coordinator.Coordinator, error) {
 		gid, ok := w.services[service]
 		if !ok {
 			return nil, fmt.Errorf("service not found %v: %w", service, model.ErrNotOwned)
@@ -121,14 +128,14 @@ func (w *Worker) join(ctx context.Context) {
 		log.Infof(ctx, "Worker %v attempting to join leader", w.self)
 
 		err := w.joinFn(wctx, func(ctx context.Context, in <-chan leader.Message) (<-chan leader.Message, error) {
-			return syncx.Txn1(ctx, txnx.Txn(w, w.inject), func() (<-chan leader.Message, error) {
+			return syncx.Txn1(ctx, w.txn, func() (<-chan leader.Message, error) {
 				return w.joinLeader(ctx, in)
 			})
 		})
 
 		log.Infof(ctx, "Worker %v disconnected from leader: %v", w.self, err)
 
-		syncx.Txn0(wctx, txnx.Txn(w, w.inject), func() {
+		syncx.Txn0(wctx, w.txn, func() {
 			w.lostLeader(ctx)
 		})
 
@@ -140,7 +147,7 @@ func (w *Worker) joinLeader(ctx context.Context, in <-chan leader.Message) (<-ch
 	w.lostLeader(ctx) // sanity check
 
 	active := mapx.MapValuesIf(w.grants, func(g *Grant) (core.Grant, bool) {
-		return g.ToUpdated(), g.State == GrantStale
+		return g.ToUpdated(), g.State == LeaseStale
 	})
 
 	log.Debugf(ctx, "Connected to leader, #grants=%v, #active=%v", len(w.grants), len(active))
@@ -173,8 +180,8 @@ func (w *Worker) lostLeader(ctx context.Context) {
 	w.lease = nil
 
 	for _, g := range w.grants {
-		if g.State != GrantRevoked {
-			g.State = GrantStale
+		if g.State != LeaseRevoked {
+			g.State = LeaseStale
 		}
 	}
 }
@@ -273,8 +280,8 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 
 		w.services[grant.Service()] = grant.ID()
 		if old, ok := w.grants[grant.ID()]; ok {
-			if old.State == GrantStale {
-				old.State = GrantActive
+			if old.State == LeaseStale {
+				old.State = LeaseActive
 				old.Lease = w.lease
 
 				log.Debugf(ctx, "Re-activating stale grant %v", old)
@@ -292,7 +299,7 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 
 		w.grants[grant.ID()] = &Grant{
 			Grant:       grant,
-			State:       GrantActive,
+			State:       LeaseActive,
 			Lease:       w.lease,
 			Coordinator: c,
 			Updates:     updates,
@@ -302,7 +309,7 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 			defer close(updates)
 
 			<-c.Closed()
-			syncx.Txn0(ctx, txnx.Txn(w, w.inject), func() {
+			syncx.Txn0(ctx, w.txn, func() {
 				w.removeGrant(ctx, grant.ID())
 			})
 		}()
@@ -312,7 +319,7 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 	case msg.IsRevoke():
 		revoke, _ := msg.Revoke()
 		grants := revoke.Grants()
-		leases := map[time.Time]Lease{}
+		leases := map[time.Time]*clockx.Timer{}
 
 		for _, g := range grants {
 			gid := g.ID()
@@ -325,11 +332,11 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 			// (1) Create lease that expires at the current TTL. The worker lease no longer includes this grant.
 			// We share the leases to not get a flood of identical expiration checks.
 
-			ttl := grant.Lease.Expiration()
+			ttl := grant.Lease.Ttl()
 			if _, ok := leases[ttl]; !ok {
-				leases[ttl] = NewRenewableLease(ttl, w.cl.AfterFunc(w.cl.Until(ttl), w.emitExpirationCheck))
+				leases[ttl] = clockx.AfterFunc(w.cl, w.cl.Until(ttl), w.emitExpirationCheck)
 			}
-			grant.State = GrantRevoked
+			grant.State = LeaseRevoked
 			grant.Lease = leases[ttl]
 
 			// (2) Revoke async. If the Revoke unexpectedly arrives before Assign, the lease still expires.
@@ -349,9 +356,9 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 		lease, _ := msg.LeaseUpdate()
 
 		if w.lease == nil {
-			w.lease = NewRenewableLease(lease.Ttl(), nil)
+			w.lease = clockx.AfterFunc(w.cl, w.cl.Until(lease.Ttl()), w.emitExpirationCheck)
 		}
-		w.lease.Renew(lease.Ttl(), w.cl.AfterFunc(w.cl.Until(lease.Ttl()), w.emitExpirationCheck))
+		w.lease.Reset(w.cl.Until(lease.Ttl()))
 
 	case msg.IsUpdate():
 		update, _ := msg.Update()
@@ -409,7 +416,7 @@ func (w *Worker) checkExpiration(ctx context.Context) {
 
 	now := w.cl.Now()
 	for gid, g := range w.grants {
-		if g.Lease.Expiration().Before(now) {
+		if g.Lease.Ttl().Before(now) {
 			w.removeGrant(ctx, gid)
 		}
 	}
@@ -422,7 +429,7 @@ func (w *Worker) removeGrant(ctx context.Context, gid core.GrantID) {
 	}
 	grant.Coordinator.Close()
 
-	if grant.State != GrantStale && w.cl.Now().Before(grant.Lease.Expiration()) {
+	if grant.State != LeaseStale && w.cl.Now().Before(grant.Lease.Ttl()) {
 		w.mustSend(ctx, leader.NewRelinquished(grant.Grant))
 	}
 
@@ -457,5 +464,25 @@ func (w *Worker) mustSend(ctx context.Context, msg leader.Message) {
 	case <-timer.C:
 		log.Errorf(ctx, "Internal: leader connection stuck. Disconnecting")
 		w.lostLeader(ctx)
+	}
+}
+
+// Txn is a helper that constructs a syncx.TxnFn with the project specific error codes and injection channels
+func (w *Worker) txn(ctx context.Context, fn func() error) error {
+	var wg sync.WaitGroup
+	var err error
+
+	wg.Add(1)
+	select {
+	case w.inject <- func() {
+		defer wg.Done()
+		err = fn()
+	}:
+		wg.Wait()
+		return err
+	case <-ctx.Done():
+		return model.ErrOverloaded
+	case <-w.Closed():
+		return model.ErrDraining
 	}
 }
