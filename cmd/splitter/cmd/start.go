@@ -46,7 +46,7 @@ func makeStartCommand() *cobra.Command {
 	internalPort := cmd.PersistentFlags().Int("internal_port", 50052, "Grpc server port for pod-to-pod traffic")
 	healthPort := cmd.PersistentFlags().Int("health_port", 8081, "Http port for health check traffic")
 	pprofPort := cmd.PersistentFlags().Int("pprof_port", 6060, "Http port for pprof debug traffic")
-	fastActivation := cmd.PersistentFlags().Bool("fast_activation", false, "Fast Leader activation for testing")
+	fastActivation := cmd.PersistentFlags().Bool("fast_activation", false, "Fast Leader/Coordinator activation for testing")
 
 	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "Tcp port for raft traffic")
 	raftID := cmd.PersistentFlags().String("raft_id", getName(), "Node id used by Raft")
@@ -148,7 +148,7 @@ func makeStartCommand() *cobra.Command {
 		})
 
 		self := model.NewInstance(location.NewInstance(loc), fmt.Sprintf("%v:%v", *instance, *internalPort))
-		s := server.New(ctx, cl, self, c, manager)
+		s := server.New(ctx, cl, self, c, manager, server.WithFastActivation(*fastActivation))
 
 		// (4) Start server and await termination
 

@@ -234,6 +234,10 @@ func (g GrantInfo) State() GrantState {
 	return g.pb.GetState()
 }
 
+func (g GrantInfo) Equals(o GrantInfo) bool {
+	return proto.Equal(g.pb, o.pb)
+}
+
 func (g GrantInfo) String() string {
 	return fmt.Sprintf("%v[shard=%v, state=%v]", g.ID(), g.Shard(), g.State())
 }

@@ -211,10 +211,6 @@ func findShards(service model.Service, domain model.Domain) []uuidx.Range {
 	return shards
 }
 
-func grantID(g Grant) model.GrantID {
-	return model.GrantID(g.ID)
-}
-
 func toGrants(grants []Grant) []model.Grant {
 	return slicex.Map(grants, toGrant)
 }
@@ -262,21 +258,18 @@ func fromGrantState(s model.GrantState) (allocation.GrantState, bool) {
 func toCluster(a *Allocation, id model.ClusterId, version int) (model.Cluster, error) {
 	workers := a.Workers()
 	var consumers []model.Consumer
-	allGrants := map[model.ConsumerID][]model.GrantInfo{}
+	grants := map[model.ConsumerID][]model.GrantInfo{}
 
 	for _, w := range workers {
+		assigned := a.Assigned(w.Instance.ID)
+		info := slicex.Map(assigned.Allocated, toGrantInfo)
+		info = append(info, slicex.Map(assigned.Active, toGrantInfo)...)
+		info = append(info, slicex.Map(assigned.Revoked, toGrantInfo)...)
+
+		grants[w.Instance.ID] = info
 		consumers = append(consumers, w.Instance.Data)
-		allGrants[w.Instance.ID] = assignmentGrants(a.Assigned(w.Instance.ID))
 	}
-
-	return model.NewCluster(id, version, consumers, allGrants)
-}
-
-func assignmentGrants(a Assignment) []model.GrantInfo {
-	grants := slicex.Map(a.Allocated, toGrantInfo)
-	grants = append(grants, slicex.Map(a.Active, toGrantInfo)...)
-	grants = append(grants, slicex.Map(a.Revoked, toGrantInfo)...)
-	return grants
+	return model.NewCluster(id, version, consumers, grants)
 }
 
 func toGrantInfo(g Grant) model.GrantInfo {

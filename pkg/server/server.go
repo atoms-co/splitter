@@ -27,16 +27,16 @@ import (
 )
 
 type options struct {
-	leaderFastActivation bool
+	fastActivation bool
 }
 
 // Option is a server option.
 type Option func(*options)
 
-// WithLeaderFastActivation true skips the recovery period and lets the leader allocate existing shards immediately. Unsafe.
-func WithLeaderFastActivation(fastActivation bool) Option {
+// WithFastActivation true skips the recovery period and lets the leader allocate existing shards immediately. Unsafe.
+func WithFastActivation(fastActivation bool) Option {
 	return func(o *options) {
-		o.leaderFastActivation = fastActivation
+		o.fastActivation = fastActivation
 	}
 }
 
@@ -89,7 +89,11 @@ func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *clus
 	}
 
 	factoryFn := func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator {
-		return coordinator.New(ctx, self.Location(), cl, service, state, updates)
+		var lopts []coordinator.Option
+		if opt.fastActivation {
+			lopts = append(lopts, coordinator.WithFastActivation())
+		}
+		return coordinator.New(ctx, self.Location(), cl, service, state, updates, lopts...)
 	}
 
 	w, out := worker.New(cl, self, joinFn, factoryFn)

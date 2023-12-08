@@ -370,14 +370,13 @@ func (p *WorkPool) handleClusterSnapshot(ctx context.Context, snapshot ClusterSn
 }
 
 func (p *WorkPool) handleClusterChange(ctx context.Context, change ClusterChange, id ClusterId, version int) {
-	log.Debugf(ctx, "Updating cluster change %v/%v", id, version)
 	consumers, grants := parseAssignments(change.Assign().Assignments())
 	updated := change.Update().Grants()
 	unassigned := change.Unassign().Grants()
-	detached := change.Detach().Consumers()
+	removed := change.Remove().Consumers()
 
 	// TODO(jhhurwitz): 11/30/23 Likely shouldn't have an error here at all
-	err := p.cluster.Update(consumers, grants, updated, unassigned, detached)
+	err := p.cluster.Update(consumers, grants, updated, unassigned, removed)
 	if err != nil {
 		log.Errorf(ctx, "Invalid update %v: %v", change, err)
 		return

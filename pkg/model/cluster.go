@@ -42,7 +42,7 @@ type Cluster interface {
 	ShardGrants(shard Shard) []GrantID
 
 	// Update modifies the cluster: updates the list of consumers, assigns, updates and removes grants.
-	Update(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) error
+	Update(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID) error
 
 	// Diff calculates the difference between two clusters
 	Diff(old Cluster) ClusterDiff
@@ -57,11 +57,11 @@ type ClusterDiff struct {
 	Assigned   map[ConsumerID][]GrantInfo
 	Updated    []GrantInfo
 	Unassigned []GrantID
-	Detached   []ConsumerID
+	Removed    []ConsumerID
 }
 
 func (d ClusterDiff) IsEmpty() bool {
-	return len(d.Assigned) == 0 && len(d.Updated) == 0 && len(d.Unassigned) == 0 && len(d.Detached) == 0
+	return len(d.Assigned) == 0 && len(d.Updated) == 0 && len(d.Unassigned) == 0 && len(d.Removed) == 0
 }
 
 type cluster struct {
@@ -163,7 +163,7 @@ func (c *cluster) GrantConsumer(gid GrantID) (Consumer, bool) {
 	return Consumer{}, false
 }
 
-func (c *cluster) Update(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) error {
+func (c *cluster) Update(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID) error {
 	err := c.assign(consumers, assigned)
 	if err != nil {
 		return err
@@ -176,7 +176,7 @@ func (c *cluster) Update(consumers []Consumer, assigned map[ConsumerID][]GrantIn
 	if err != nil {
 		return err
 	}
-	err = c.detach(detached...)
+	err = c.remove(removed...)
 	if err != nil {
 		return err
 	}
@@ -251,7 +251,7 @@ func (c *cluster) unassign(grants ...GrantID) error {
 	return nil
 }
 
-func (c *cluster) detach(consumers ...ConsumerID) error {
+func (c *cluster) remove(consumers ...ConsumerID) error {
 	for _, consumer := range consumers {
 		if _, ok := c.consumers[consumer]; !ok {
 			return fmt.Errorf("unknown consumer: %v", consumer)
@@ -268,11 +268,11 @@ func (c *cluster) detach(consumers ...ConsumerID) error {
 }
 
 func (c *cluster) Diff(old Cluster) ClusterDiff {
-	var detached []ConsumerID
+	var removed []ConsumerID
 	oldGrants := map[GrantID]GrantInfo{}
 	for _, consumer := range old.Consumers() {
 		if _, ok := c.Consumer(consumer.ID()); !ok {
-			detached = append(detached, consumer.ID())
+			removed = append(removed, consumer.ID())
 		}
 		for _, g := range old.Grants(consumer.ID()) {
 			oldGrants[g.ID()] = g
@@ -287,6 +287,7 @@ func (c *cluster) Diff(old Cluster) ClusterDiff {
 		if _, ok := oldGrants[newGid]; ok {
 			continue
 		}
+
 		assigned[c.g2c[newGid]] = append(assigned[c.g2c[newGid]], newGrant)
 
 		// Old grant implicitly removed when shard is assigned with a new grant ID
@@ -322,10 +323,9 @@ func (c *cluster) Diff(old Cluster) ClusterDiff {
 		if !ok {
 			continue
 		}
-		if oldGrant == newGrant {
+		if oldGrant.Equals(newGrant) {
 			continue
 		}
-
 		updated = append(updated, newGrant)
 
 		// On a transition from allocated to active, the revoked grant is removed implicitly
@@ -351,7 +351,7 @@ func (c *cluster) Diff(old Cluster) ClusterDiff {
 		Assigned:   assigned,
 		Updated:    updated,
 		Unassigned: unassigned,
-		Detached:   detached,
+		Removed:    removed,
 	}
 }
 

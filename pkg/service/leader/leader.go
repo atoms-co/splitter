@@ -199,6 +199,7 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 
 	l.process(ctx)
 
+	// Close worker connections
 	for _, w := range l.workers {
 		w.TrySend(ctx, NewDisconnect())
 		w.connection.Disconnect()
@@ -392,6 +393,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 		log.Infof(ctx, "Worker %v connected (session=%v) with #grants: %d", instance, sid, len(grants))
 	}
 
+	// TODO(jhhurwitz): 12/06/23: Custom size
 	connection, out := sessionx.NewConnection[Message](l.cl, sid, instance, l, in, l.messages)
 	w := &workerSession{
 		instance:   instance,
@@ -402,6 +404,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 	lease := l.cl.Now().Add(leaseDuration)
 	w.TrySend(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
 
+	// TODO(jhhurwitz): 12/06/23: Claim grants
 	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client().ID(), w.instance), lease /* + claimed grants */); ok {
 		for _, grant := range assigned.Active {
 			tenant := grant.Unit.Tenant
@@ -420,7 +423,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, ins
 
 	if !w.TrySend(ctx, NewClusterSnapshot(l.snapshot())) {
 		log.Errorf(ctx, "Internal: failed to send initial cluster map to worker: %v. Closing", w)
-		connection.Close()
+		connection.Disconnect()
 	}
 
 	return w, out
@@ -444,8 +447,7 @@ func (l *Leader) disconnect(ctx context.Context, reason string, workers ...*work
 		} // else: already detached
 
 		w.TrySend(ctx, NewDisconnect()) // TODO(herohde) 11/12/2023: needed with session terminated?
-		w.connection.Close()
-
+		w.connection.Disconnect()
 		delete(l.workers, w.instance.ID())
 	}
 }
@@ -513,7 +515,6 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 	l.assign(ctx, now, append(promo, grants...)...)
 
 	log.Debugf(ctx, "Allocation: %v", l.alloc)
-
 }
 
 func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {

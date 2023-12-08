@@ -275,6 +275,18 @@ func (a *Allocation[T, W, K, V]) Detach(id K) bool {
 	return false
 }
 
+// Remove removes a worker from the allocation if it has no grants. Returns false if not found or not removable.
+func (a *Allocation[T, W, K, V]) Remove(id K) bool {
+	if w, ok := a.workers[id]; ok {
+		if len(w.live) == 0 && len(w.revoked) == 0 {
+			delete(a.workers, id)
+			return true
+		}
+		return false
+	}
+	return false
+}
+
 // Assigned returns the currently assigned grants -- incl revoked grants -- for a worker.
 func (a *Allocation[T, W, K, V]) Assigned(id K) Assignments[T, K] {
 	if w, ok := a.workers[id]; ok {

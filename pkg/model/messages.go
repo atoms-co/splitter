@@ -137,7 +137,7 @@ func NewClusterSnapshot(id ClusterId, version int, assignments ...Assignment) Co
 	}})
 }
 
-func NewClusterChange(id ClusterId, version int, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, detached []ConsumerID) ConsumerMessage {
+func NewClusterChange(id ClusterId, version int, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID) ConsumerMessage {
 	return NewClusterMessage(ClusterMessage{pb: &public_v1.ClusterMessage{
 		Id:      string(id),
 		Version: int64(version),
@@ -152,12 +152,25 @@ func NewClusterChange(id ClusterId, version int, assigned []Assignment, updated 
 				Unassign: &public_v1.ClusterMessage_Unassign{
 					Grants: slicex.Map(unassigned, func(id GrantID) string { return string(id) }),
 				},
-				Detach: &public_v1.ClusterMessage_Detach{
-					Consumers: slicex.Map(detached, func(id ConsumerID) string { return string(id) }),
+				Remove: &public_v1.ClusterMessage_Remove{
+					Consumers: slicex.Map(removed, func(id ConsumerID) string { return string(id) }),
 				},
 			},
 		},
 	}})
+}
+
+func (m ConsumerMessage) Type() string {
+	switch {
+	case m.IsClientMessage():
+		msg, _ := m.ClientMessage()
+		return "client/" + msg.Type()
+	case m.IsClusterMessage():
+		msg, _ := m.ClusterMessage()
+		return "cluster/" + msg.Type()
+	default:
+		return "unknown"
+	}
 }
 
 func (m ConsumerMessage) IsClientMessage() bool {
@@ -533,8 +546,8 @@ func (c ClusterChange) Unassign() ClusterUnassign {
 	return WrapClusterUnassign(c.pb.GetUnassign())
 }
 
-func (c ClusterChange) Detach() ClusterDetach {
-	return WrapClusterDetach(c.pb.GetDetach())
+func (c ClusterChange) Remove() ClusterRemove {
+	return WrapClusterRemove(c.pb.GetRemove())
 }
 
 func (c ClusterChange) String() string {
@@ -601,22 +614,22 @@ func (u ClusterUnassign) String() string {
 	return proto.MarshalTextString(u.pb)
 }
 
-type ClusterDetach struct {
-	pb *public_v1.ClusterMessage_Detach
+type ClusterRemove struct {
+	pb *public_v1.ClusterMessage_Remove
 }
 
-func WrapClusterDetach(pb *public_v1.ClusterMessage_Detach) ClusterDetach {
-	return ClusterDetach{pb: pb}
+func WrapClusterRemove(pb *public_v1.ClusterMessage_Remove) ClusterRemove {
+	return ClusterRemove{pb: pb}
 }
 
-func UnwrapClusterDetach(d ClusterDetach) *public_v1.ClusterMessage_Detach {
+func UnwrapClusterRemove(d ClusterRemove) *public_v1.ClusterMessage_Remove {
 	return d.pb
 }
 
-func (d ClusterDetach) Consumers() []ConsumerID {
+func (d ClusterRemove) Consumers() []ConsumerID {
 	return slicex.Map(d.pb.GetConsumers(), func(id string) ConsumerID { return ConsumerID(id) })
 }
 
-func (d ClusterDetach) String() string {
+func (d ClusterRemove) String() string {
 	return proto.MarshalTextString(d.pb)
 }

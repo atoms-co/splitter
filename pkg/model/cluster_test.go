@@ -398,7 +398,7 @@ func TestCluster_Diff(t *testing.T) {
 		requireGrantsEqual(t, d.Assigned[prefab.Instance2.ID()], slicex.New(grant(t, newCluster, "g21"), grant(t, newCluster, "g22")))
 		require.Empty(t, d.Updated)
 		require.Empty(t, d.Unassigned)
-		require.Empty(t, d.Detached)
+		require.Empty(t, d.Removed)
 	})
 
 	t.Run("activation with two grants", func(t *testing.T) {
@@ -423,7 +423,7 @@ func TestCluster_Diff(t *testing.T) {
 		require.Len(t, d.Updated, 1)
 		requireGrantsEqual(t, d.Updated, slicex.New(g11))
 		require.Empty(t, d.Unassigned)
-		require.Empty(t, d.Detached)
+		require.Empty(t, d.Removed)
 	})
 
 	t.Run("activation with one grant", func(t *testing.T) {
@@ -446,7 +446,7 @@ func TestCluster_Diff(t *testing.T) {
 		require.Len(t, d.Updated, 1)
 		requireGrantsEqual(t, d.Updated, slicex.New(g11))
 		require.Empty(t, d.Unassigned)
-		require.Empty(t, d.Detached)
+		require.Empty(t, d.Removed)
 	})
 
 	t.Run("revoke", func(t *testing.T) {
@@ -471,7 +471,7 @@ func TestCluster_Diff(t *testing.T) {
 		requireGrantsEqual(t, d.Assigned[prefab.Instance2.ID()], slicex.New(g21))
 		require.Empty(t, d.Updated)
 		require.Empty(t, d.Unassigned)
-		require.Empty(t, d.Detached)
+		require.Empty(t, d.Removed)
 	})
 
 	t.Run("move grant", func(t *testing.T) {
@@ -494,7 +494,7 @@ func TestCluster_Diff(t *testing.T) {
 		requireGrantsEqual(t, d.Assigned[prefab.Instance2.ID()], slicex.New(g21))
 		require.Empty(t, d.Updated)
 		require.Empty(t, d.Unassigned)
-		require.Empty(t, d.Detached)
+		require.Empty(t, d.Removed)
 	})
 
 	for _, state := range slicex.New(model.ActiveGrant, model.RevokedGrant, model.AllocatedGrant) {
@@ -514,7 +514,7 @@ func TestCluster_Diff(t *testing.T) {
 			requireGrantsEqual(t, d.Assigned[prefab.Instance1.ID()], slicex.New(g11))
 			require.Empty(t, d.Updated)
 			require.Empty(t, d.Unassigned)
-			require.Empty(t, d.Detached)
+			require.Empty(t, d.Removed)
 		})
 	}
 
@@ -535,7 +535,7 @@ func TestCluster_Diff(t *testing.T) {
 			require.Empty(t, d.Assigned)
 			require.Empty(t, d.Updated)
 			requirex.Equal(t, d.Unassigned, slicex.New[model.GrantID]("g11"))
-			require.Empty(t, d.Detached)
+			require.Empty(t, d.Removed)
 		})
 	}
 
@@ -554,7 +554,7 @@ func TestCluster_Diff(t *testing.T) {
 		require.Empty(t, d.Assigned)
 		require.Empty(t, d.Updated)
 		require.Empty(t, d.Unassigned)
-		requirex.Equal(t, d.Detached, slicex.New(prefab.Instance2.ID()))
+		requirex.Equal(t, d.Removed, slicex.New(prefab.Instance2.ID()))
 	})
 
 }

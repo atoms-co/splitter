@@ -144,8 +144,8 @@ message ClusterMessage {
     repeated string grants = 1;
   }
 
-  // Detach signals removal of the consumers from the work distribution process.
-  message Detach {
+  // Remove signals that consumers have left the work distribution process.
+  message Remove {
     repeated string consumers = 1;
   }
 
@@ -154,7 +154,7 @@ message ClusterMessage {
     Assign assign = 1;
     Update update = 2;
     Unassign unassign = 3;
-    Detach detach = 4;
+    Remove remove = 4;
   }
 
   oneof msg {

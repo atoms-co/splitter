@@ -1,10 +1,17 @@
 package coordinator
 
 import (
+	"context"
+	"go.atoms.co/lib/metrics"
+	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/sessionx"
 	"fmt"
 	"time"
+)
+
+var (
+	numMessages = metrics.NewCounter("go.atoms.co/splitter/coordinator_messages", "Coordinator messages", core.MessageTypeKey)
 )
 
 type Consumer struct {
@@ -43,7 +50,16 @@ func (c Consumer) String() string {
 
 type consumerSession struct {
 	consumer   Consumer
+	draining   bool
 	connection sessionx.Connection[model.ConsumerMessage]
+}
+
+func (c *consumerSession) TrySend(ctx context.Context, message model.ConsumerMessage) bool {
+	if c.connection.Send(ctx, message) {
+		numMessages.Increment(ctx, 1, core.MessageTypeTag(message.Type()))
+		return true
+	}
+	return false
 }
 
 func (c *consumerSession) ID() model.ConsumerID {
