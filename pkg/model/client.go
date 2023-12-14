@@ -15,16 +15,25 @@ import (
 	"time"
 )
 
-type Lease interface {
+type Ownership interface {
+	// Active returns a quit channel to signal that the Grant has been activated.
+	Active() <-chan struct{}
+	// Revoked returns a quit channel to signal that the Grant has been revoked.
+	Revoked() <-chan struct{}
+	// Expired returns a quit channel to signal that the Grant lease has expired.
+	Expired() <-chan struct{}
+
+	// IsActive returns if the Grant has been activated.
+	IsActive() bool
+	// IsRevoked returns if the Grant has been revoked.
+	IsRevoked() bool
+	// IsExpired returns if the Grant has been expired.
+	IsExpired() bool
+
 	// Expiration returns the expiration time of the lease. The expiration is updated periodically by the server under
 	// normal circumstances. When the expiration time is past the current moment the grant is no longer assigned
 	// to the current consumer and the consumer must abort processing immediately.
 	Expiration() time.Time
-
-	// Drained returns a channel that is closed when the grant under this lease is being reassigned to another
-	// consumer. This signal means that the lease will not be extended and the current consumer must finish
-	// processing as soon as possible.
-	Drained() <-chan struct{}
 }
 
 // UpdateTenantOption represents an option to NewTenant.
@@ -58,8 +67,7 @@ func WithUpdateDomainConfig(config DomainConfig) UpdateDomainOption {
 }
 
 // Handler processes grants. Must be concurrency-safe.
-// If the lease expires, the context is cancelled and the handler must return immediately.
-type Handler func(ctx context.Context, id GrantID, shard Shard, lease Lease)
+type Handler func(ctx context.Context, id GrantID, shard Shard, ownership Ownership)
 
 // Client is a client for interacting with Splitter.
 type Client interface {

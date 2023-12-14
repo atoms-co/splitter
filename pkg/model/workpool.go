@@ -12,14 +12,12 @@ import (
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/lib/syncx"
-	"fmt"
 	"sync"
 	"time"
 )
 
 const (
 	statsDuration = 15 * time.Second
-	drainWaitTime = 30 * time.Second
 )
 
 type JoinFn func(ctx context.Context, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error
@@ -100,8 +98,6 @@ func (p *WorkPool) join(ctx context.Context) {
 	wctx, _ := contextx.WithQuitCancel(ctx, p.Closed())
 
 	for !p.drain.IsClosed() {
-		// subctx here that cancels on disconnect
-
 		// Not connected. Establish WorkPool with coordinator with blocking join call. The workpool is either
 		// connecting or connected while in the join call.
 
@@ -274,9 +270,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				}
 			}
 
-			// TODO(jhhurwitz): 11/30/23 non-nil Lease object when Lifecycle API is figured out
-			h := newHandler(p.cl, g.ID(), g.Shard(), p.handler, nil)
-
+			h := newHandler(ctx, p.cl, g, p.lease.Ttl(), p.handler)
 			p.grants[g.ID()] = &grant{
 				Grant:      g,
 				LeaseState: LeaseActive,
@@ -292,6 +286,28 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			}()
 
 			log.Debugf(ctx, "Created handler for grant %v", g)
+		}
+
+	case msg.IsPromote():
+		promote, _ := msg.Promote()
+		grants := promote.Grants()
+
+		for _, g := range grants {
+			p.shards[g.Shard()] = g.ID()
+			candidate, ok := p.grants[g.ID()]
+			if !ok {
+				log.Errorf(ctx, "Internal: unexpected promotion of unowned grant %v. Ignoring")
+				continue
+			}
+			if candidate.LeaseState != LeaseActive {
+				log.Errorf(ctx, "Internal: unexpected promotion of inactive grant %v. Ignoring")
+				continue
+			}
+			if candidate.Grant.State() != AllocatedGrantState {
+				log.Errorf(ctx, "Internal: unexpected promotion of inactive grant %v. Ignoring")
+				continue
+			}
+			candidate.Handler.Ownership().Activate() // Signal consumer that grant is activated
 		}
 
 	case msg.IsRevoke():
@@ -316,6 +332,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			}
 			grant.LeaseState = LeaseRevoked
 			grant.Lease = leases[ttl]
+			grant.Handler.Ownership().Revoke() // Signal consumer that grant is revoked
 
 			// (2) Revoke async. If the Revoke unexpectedly arrives before Assign, the lease still expires.
 
@@ -331,6 +348,11 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			p.lease = clockx.AfterFunc(p.cl, p.cl.Until(extend.Lease()), p.emitExpirationCheck)
 		}
 		p.lease.Reset(p.cl.Until(extend.Lease()))
+
+		// Update informational consumer lease
+		for _, grant := range p.grants {
+			grant.Handler.Ownership().SetExpiration(extend.Lease())
+		}
 
 	default:
 		log.Errorf(ctx, "Unexpected coordinator message: %v", msg)
@@ -426,7 +448,6 @@ func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
 	if grant.LeaseState != LeaseStale && p.cl.Now().Before(grant.Lease.Ttl()) {
 		p.mustSend(ctx, NewReleased(grant.Grant))
 	}
-	//
 	delete(p.grants, gid)
 	if p.shards[grant.Grant.Shard()] == gid {
 		delete(p.shards, grant.Grant.Shard()) // delete service tracking if not replaced by new grant
@@ -478,72 +499,4 @@ func (p *WorkPool) txn(ctx context.Context, fn func() error) error {
 	case <-p.Closed():
 		return ErrDraining
 	}
-}
-
-// LeaseState represents the current state of a grant.
-type LeaseState string
-
-const (
-	// LeaseActive represents that the grant is active and under the (renewed) lease.
-	LeaseActive LeaseState = "active"
-	// LeaseRevoked represents that the grant has been revoked by the coordinator. Lease is detached.
-	LeaseRevoked LeaseState = "revoked"
-	// LeaseStale represents that the grant is active, but will lapse due to a coordinator disconnect. Most
-	// grants will go back to active, but that is the coordinator's decision.
-	LeaseStale LeaseState = "stale"
-)
-
-// grant holds a grant and its metadata and bookkeeping.
-type grant struct {
-	Grant      Grant // holds original lease
-	LeaseState LeaseState
-	Lease      *clockx.Timer
-	Handler    *handler
-}
-
-func (g *grant) ToUpdated() Grant {
-	return NewGrant(g.Grant.ID(), g.Grant.Shard(), g.Grant.State(), g.Lease.Ttl(), g.Grant.Assigned())
-}
-
-func (g *grant) String() string {
-	return fmt.Sprintf("grant=%v, lease_state=%v, ttl=%v", g.Grant, g.LeaseState, g.Lease.Ttl().Unix())
-}
-
-type handler struct {
-	iox.AsyncCloser
-
-	cl    clock.Clock
-	drain iox.AsyncCloser
-}
-
-func (h *handler) Drain(timeout time.Duration) {
-	h.drain.Close()
-	h.cl.AfterFunc(timeout, h.Close)
-}
-
-func newHandler(cl clock.Clock, id GrantID, shard Shard, handlerFn Handler, lease Lease) *handler {
-	h := &handler{
-		AsyncCloser: iox.NewAsyncCloser(),
-
-		cl:    cl,
-		drain: iox.NewAsyncCloser(),
-	}
-
-	hctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		defer h.Close()
-
-		handlerFn(hctx, id, shard, lease)
-	}()
-
-	go func() {
-		defer cancel()
-
-		select {
-		case <-h.drain.Closed():
-		case <-h.Closed():
-		}
-	}()
-
-	return h
 }

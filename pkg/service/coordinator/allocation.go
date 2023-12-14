@@ -232,23 +232,23 @@ func fromGrant(consumer Consumer) func(g model.Grant) (Grant, error) {
 func toGrantState(s allocation.GrantState) model.GrantState {
 	switch s {
 	case allocation.Active:
-		return model.ActiveGrant
+		return model.ActiveGrantState
 	case allocation.Allocated:
-		return model.AllocatedGrant
+		return model.AllocatedGrantState
 	case allocation.Revoked:
-		return model.RevokedGrant
+		return model.RevokedGrantState
 	default:
-		return model.InvalidGrant
+		return model.InvalidGrantState
 	}
 }
 
 func fromGrantState(s model.GrantState) (allocation.GrantState, bool) {
 	switch s {
-	case model.ActiveGrant:
+	case model.ActiveGrantState:
 		return allocation.Active, true
-	case model.AllocatedGrant:
+	case model.AllocatedGrantState:
 		return allocation.Allocated, true
-	case model.RevokedGrant:
+	case model.RevokedGrantState:
 		return allocation.Revoked, true
 	default:
 		return "", false

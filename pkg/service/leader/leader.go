@@ -532,7 +532,7 @@ func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
 
 		w, ok := l.workers[grant.Worker]
 		if !ok {
-			l.alloc.Release(grant, now) // undo allocation
+			l.alloc.Release(grant, now) // undo assignment
 			continue
 		}
 
@@ -542,14 +542,14 @@ func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
 		if !w.TrySend(ctx, NewAssign(toGrant(grant), state)) {
 			log.Errorf(ctx, "Failed to send grant %v to worker: %v. Disconnecting", grant, w)
 
-			l.alloc.Release(grant, now) // undo allocation. Safe because it was not sent
+			l.alloc.Release(grant, now) // undo assignment. Safe because it was not sent
 			l.disconnect(ctx, "stuck", w)
 			recordAction(ctx, "assign", "failed")
 			continue
 		}
 		recordAction(ctx, "assign", "ok")
 
-		log.Infof(ctx, "Allocated new grant to worker %v: %v.", w, tenant)
+		log.Infof(ctx, "Assigned new grant to worker %v: %v.", w, tenant)
 		assigned = append(assigned, grant)
 	}
 

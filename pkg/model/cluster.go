@@ -116,7 +116,7 @@ func (c *cluster) Owner(key QualifiedDomainKey) (Instance, GrantState, bool) {
 			}
 		}
 	}
-	return Instance{}, InvalidGrant, false
+	return Instance{}, InvalidGrantState, false
 }
 
 func (c *cluster) OwnerWithState(key QualifiedDomainKey, state GrantState) (Instance, bool) {

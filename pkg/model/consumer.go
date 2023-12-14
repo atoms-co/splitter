@@ -137,26 +137,26 @@ func (s Shard) String() string {
 type GrantState = public_v1.GrantState
 
 var (
-	InvalidGrant   = public_v1.GrantState_UNKNOWN
-	AllocatedGrant = public_v1.GrantState_ALLOCATED
-	ActiveGrant    = public_v1.GrantState_ACTIVE
-	RevokedGrant   = public_v1.GrantState_REVOKED
+	InvalidGrantState   = public_v1.GrantState_UNKNOWN
+	ActiveGrantState    = public_v1.GrantState_ACTIVE
+	AllocatedGrantState = public_v1.GrantState_ALLOCATED
+	RevokedGrantState   = public_v1.GrantState_REVOKED
 )
 
-func IsAllocatedGrant(state GrantState) bool {
-	return state == AllocatedGrant
+func IsActiveGrant(state GrantState) bool {
+	return state == ActiveGrantState
 }
 
-func IsActiveGrant(state GrantState) bool {
-	return state == ActiveGrant
+func IsAllocatedGrant(state GrantState) bool {
+	return state == AllocatedGrantState
 }
 
 func IsRevokedGrant(state GrantState) bool {
-	return state == RevokedGrant
+	return state == RevokedGrantState
 }
 
 func IsActiveOrRevokedGrant(state GrantState) bool {
-	return state == ActiveGrant || state == RevokedGrant
+	return state == ActiveGrantState || state == RevokedGrantState
 }
 
 // GrantID is a coordinator-determined grant id.

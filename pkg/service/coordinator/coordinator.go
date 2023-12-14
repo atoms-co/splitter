@@ -7,6 +7,7 @@ import (
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/mapx"
@@ -39,7 +40,7 @@ var (
 type Coordinator interface {
 	iox.AsyncCloser
 
-	Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
+	Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
 	Drain(timeout time.Duration)
 }
 
@@ -73,19 +74,20 @@ type coordinator struct {
 
 	inject chan func()
 
-	drain iox.AsyncCloser
+	drain, initialized iox.AsyncCloser
 }
 
-func New(ctx context.Context, loc location.Location, cl clock.Clock, service model.QualifiedServiceName, state core.State, updates <-chan core.Update, opts ...Option) Coordinator {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, service model.QualifiedServiceName, state core.State, updates <-chan core.Update, opts ...Option) *coordinator {
 	c := &coordinator{
 		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
-		id:          location.NewInstance(loc),
 		cl:          cl,
+		id:          location.NewInstance(loc),
 		name:        service,
 		cache:       storage.NewCache(),
 		consumers:   map[model.InstanceID]*consumerSession{},
 		messages:    make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 		inject:      make(chan func()),
+		initialized: iox.NewAsyncCloser(),
 		drain:       iox.NewAsyncCloser(),
 	}
 	for _, opt := range opts {
@@ -97,7 +99,20 @@ func New(ctx context.Context, loc location.Location, cl clock.Clock, service mod
 	return c
 }
 
-func (c *coordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (c *coordinator) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+	msg, ok := chanx.TryRead(in, 20*time.Second)
+	if !ok {
+		log.Errorf(ctx, "No registration message received: %v", msg)
+		return nil, fmt.Errorf("no registration message received %v: %w", msg, model.ErrInvalid)
+	}
+
+	clientMsg, ok := msg.ClientMessage()
+	if !ok || !clientMsg.IsRegister() {
+		log.Errorf(ctx, "expected registration message, got %v", clientMsg)
+		return nil, model.WrapError(fmt.Errorf("invalid registration message: %w", model.ErrInvalid))
+	}
+	register, _ := clientMsg.Register()
+
 	return syncx.Txn1(ctx, c.txn, func() (<-chan model.ConsumerMessage, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
 
@@ -118,6 +133,10 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, register mode
 		}()
 		return out, nil
 	})
+}
+
+func (c *coordinator) Initialized() iox.AsyncCloser {
+	return c.initialized
 }
 
 func (c *coordinator) connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
@@ -151,8 +170,12 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	s.TrySend(ctx, model.NewExtend(lease)) // grants will be covered under this lease
 
 	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Client().ID(), consumer.instance), lease, active...); ok {
-		s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Active, toGrant)...))
-		s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Allocated, toGrant)...))
+		if len(assigned.Active) > 0 {
+			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Active, toGrant)...))
+		}
+		if len(assigned.Allocated) > 0 {
+			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Allocated, toGrant)...))
+		}
 	}
 
 	// Send full cluster to the consumer
@@ -184,6 +207,7 @@ func (c *coordinator) disconnect(ctx context.Context, reason string, consumers .
 func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan core.Update) {
 	defer c.Close()
 	defer c.drain.Close()
+	defer c.initialized.Close()
 
 	c.cache.Restore(core.NewSnapshot(state))
 
@@ -202,6 +226,8 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	c.cluster, _ = toCluster(c.alloc, model.NewClusterID(), 0)
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
+	recordAction(ctx, "init", "ok")
+	c.initialized.Close()
 
 	c.process(ctx, updates)
 
@@ -304,7 +330,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	// (1) Expire, Allocate and LoadBalance. If any worker cannot handle the update
 	// they are disconnected. If an assignment fails, the grant is immediately released.
 
-	promo := c.alloc.Expire(now)
+	promoted := c.alloc.Expire(now)
 	grants := c.alloc.Allocate(now)
 
 	if loadbalance {
@@ -322,7 +348,8 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 		}
 	}
 
-	c.assign(ctx, now, append(promo, grants...)...)
+	c.assign(ctx, now, grants...)
+	c.promote(ctx, promoted...)
 
 	log.Debugf(ctx, "Allocation: %v", c.alloc)
 }
@@ -332,24 +359,49 @@ func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant
 		return
 	}
 
-	// (1) Assign all grant, if possible.
+	// (1) Assign all grants, if possible. Release un-assignable grants.
 
 	for _, grant := range grants {
 		s, ok := c.consumers[grant.Worker]
 		if !ok {
-			c.alloc.Release(grant, now) // undo allocation
+			c.alloc.Release(grant, now) // undo assignment
 			continue
 		}
 
 		if !s.TrySend(ctx, model.NewAssign(toGrant(grant))) {
-			log.Errorf(ctx, "Failed to send grant %v to consumer: %v. Disconnecting", grant, s)
+			log.Errorf(ctx, "Failed to send assignment for grant %v to consumer: %v. Disconnecting", grant, s)
 
-			c.alloc.Release(grant, now) // undo allocation. Safe because it was not sent
+			c.alloc.Release(grant, now) // undo assignment. Safe because it was not sent
 			c.disconnect(ctx, "stuck", s)
 			recordAction(ctx, "assign", "failed")
 			continue
 		}
 		recordAction(ctx, "assign", "ok")
+
+		log.Infof(ctx, "Assigned new grant to consumer %v: %v.", s, grant)
+	}
+}
+
+func (c *coordinator) promote(ctx context.Context, grants ...Grant) {
+	if len(grants) == 0 {
+		return
+	}
+
+	// (1) Promote all grants, if possible, otherwise leave grant as is.
+
+	for _, grant := range grants {
+		s, ok := c.consumers[grant.Worker]
+		if !ok {
+			continue
+		}
+
+		if !s.TrySend(ctx, model.NewPromote(toGrant(grant))) {
+			log.Errorf(ctx, "Failed to send promotion for grant %v to consumer: %v. Disconnecting", grant, s)
+			c.disconnect(ctx, "stuck", s)
+			recordAction(ctx, "promote", "failed")
+			continue
+		}
+		recordAction(ctx, "promote", "ok")
 
 		log.Infof(ctx, "Allocated new grant to consumer %v: %v.", s, grant)
 	}
@@ -436,9 +488,9 @@ func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, re
 		c.alloc.Remove(s.consumer.ID())
 	}
 
-	// (2) Assign promoted, if any
+	// (2) Promote grants, if any
 
-	c.assign(ctx, now, promoted...)
+	c.promote(ctx, promoted...)
 }
 
 func (c *coordinator) broadcast(ctx context.Context) {
@@ -525,8 +577,4 @@ func (c *coordinator) txn(ctx context.Context, fn func() error) error {
 
 func recordAction(ctx context.Context, action, result string) {
 	numActions.Increment(ctx, 1, core.ActionTag(action), core.ResultTag(result))
-}
-
-func recordActions(ctx context.Context, n int, action, result string) {
-	numActions.Increment(ctx, n, core.ActionTag(action), core.ResultTag(result))
 }

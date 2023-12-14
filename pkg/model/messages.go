@@ -105,6 +105,16 @@ func NewAssign(grants ...Grant) ConsumerMessage {
 	}})
 }
 
+func NewPromote(grants ...Grant) ConsumerMessage {
+	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
+		Msg: &public_v1.ClientMessage_Promote_{
+			Promote: &public_v1.ClientMessage_Promote{
+				Grants: slicex.Map(grants, UnwrapGrant),
+			},
+		},
+	}})
+}
+
 func NewRevoke(grants ...Grant) ConsumerMessage {
 	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
 		Msg: &public_v1.ClientMessage_Revoke_{
@@ -226,6 +236,8 @@ func (m ClientMessage) Type() string {
 		return "extend"
 	case m.IsAssign():
 		return "assign"
+	case m.IsPromote():
+		return "promote"
 	case m.IsRevoke():
 		return "revoke"
 	case m.IsReleased():
@@ -277,6 +289,17 @@ func (m ClientMessage) Assign() (AssignMessage, bool) {
 		return AssignMessage{}, false
 	}
 	return AssignMessage{pb: m.pb.GetAssign()}, true
+}
+
+func (m ClientMessage) IsPromote() bool {
+	return m.pb.GetPromote() != nil
+}
+
+func (m ClientMessage) Promote() (PromoteMessage, bool) {
+	if !m.IsPromote() {
+		return PromoteMessage{}, false
+	}
+	return PromoteMessage{pb: m.pb.GetPromote()}, true
 }
 
 func (m ClientMessage) IsRevoke() bool {
@@ -379,6 +402,22 @@ func UnwrapAssignMessage(m AssignMessage) *public_v1.ClientMessage_Assign {
 }
 
 func (m AssignMessage) Grants() []Grant {
+	return slicex.Map(m.pb.GetGrants(), WrapGrant)
+}
+
+type PromoteMessage struct {
+	pb *public_v1.ClientMessage_Promote
+}
+
+func WrapPromoteMessage(pb *public_v1.ClientMessage_Promote) PromoteMessage {
+	return PromoteMessage{pb: pb}
+}
+
+func UnwrapPromoteMessage(m PromoteMessage) *public_v1.ClientMessage_Promote {
+	return m.pb
+}
+
+func (m PromoteMessage) Grants() []Grant {
 	return slicex.Map(m.pb.GetGrants(), WrapGrant)
 }
 

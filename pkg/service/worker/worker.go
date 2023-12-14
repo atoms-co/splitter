@@ -108,7 +108,7 @@ func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.Co
 	if err != nil {
 		return nil, err
 	}
-	return c.Connect(ctx, sid, register, in)
+	return c.Connect(ctx, sid, chanx.Prepend(in, msg))
 }
 
 func (w *Worker) Drain(timeout time.Duration) {

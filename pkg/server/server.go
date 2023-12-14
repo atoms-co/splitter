@@ -93,7 +93,7 @@ func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *clus
 		if opt.fastActivation {
 			lopts = append(lopts, coordinator.WithFastActivation())
 		}
-		return coordinator.New(ctx, self.Location(), cl, service, state, updates, lopts...)
+		return coordinator.New(ctx, cl, self.Location(), service, state, updates, lopts...)
 	}
 
 	w, out := worker.New(cl, self, joinFn, factoryFn)

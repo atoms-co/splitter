@@ -41,8 +41,12 @@ message Shard {
 
 enum GrantState {
   UNKNOWN = 0;
-  ALLOCATED = 1;
-  ACTIVE = 2;
+  // Active indicates work assigned to a single worker. No other grants for this work exist.
+  ACTIVE = 1;
+  // Allocated indicates the destination location for work movement, matching a Revoked grant (possibly
+  // unassigned).
+  ALLOCATED = 2;
+  // Revoked indicates the source location for work movement, matching an Allocated grant (possibly unassigned).
   REVOKED = 3;
 }
 
@@ -85,6 +89,11 @@ message ClientMessage {
     repeated Grant grants = 1;
   }
 
+  // Promote promotes shards from Allocated to Assigned.
+  message Promote {
+    repeated Grant grants = 1;
+  }
+
   // Revoke gracefully revokes previously granted shard leases.
   // The consumer should relinquish the shard leases instead of letting them expire for faster re-assignment.
   message Revoke {
@@ -102,8 +111,9 @@ message ClientMessage {
     Deregister deregister = 2;
     Extend extend = 3;
     Assign assign = 4;
-    Revoke revoke = 5;
-    Released released = 6;
+    Promote promote = 5;
+    Revoke revoke = 6;
+    Released released = 7;
   }
 }
 

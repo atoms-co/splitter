@@ -15,7 +15,7 @@ import (
 func TestCluster_Owner(t *testing.T) {
 	t.Run("key in existing shard", func(t *testing.T) {
 		c := setup(t)
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrantState)
 	})
 
 	t.Run("key outside of existing shard", func(t *testing.T) {
@@ -37,40 +37,40 @@ func TestCluster_Owner(t *testing.T) {
 func TestCluster_OwnerWithState(t *testing.T) {
 	t.Run("key in existing shard with matching state", func(t *testing.T) {
 		c := setup(t)
-		i, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), model.ActiveGrant)
+		i, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), model.ActiveGrantState)
 		require.True(t, ok)
 		require.Equal(t, i, prefab.Instance1)
 
-		i, ok = c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.AllocatedGrant)
+		i, ok = c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.AllocatedGrantState)
 		require.True(t, ok)
 		require.Equal(t, i, prefab.Instance1)
 
-		i, ok = c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrant)
+		i, ok = c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrantState)
 		require.True(t, ok)
 		require.Equal(t, i, prefab.Instance2)
 	})
 
 	t.Run("key in existing shard with mismatching state", func(t *testing.T) {
 		c := setup(t)
-		_, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), model.AllocatedGrant)
+		_, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), model.AllocatedGrantState)
 		require.False(t, ok)
 	})
 
 	t.Run("key outside of existing shard", func(t *testing.T) {
 		c := setup(t)
-		_, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "northcentralus", "E4345"), model.AllocatedGrant)
+		_, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "northcentralus", "E4345"), model.AllocatedGrantState)
 		require.False(t, ok)
 	})
 
 	t.Run("non-existing domain", func(t *testing.T) {
 		c := setup(t)
-		_, ok := c.OwnerWithState(prefab.NewQDK("tenant1/service1/domain2", "northcentralus", "B4345"), model.AllocatedGrant)
+		_, ok := c.OwnerWithState(prefab.NewQDK("tenant1/service1/domain2", "northcentralus", "B4345"), model.AllocatedGrantState)
 		require.False(t, ok)
 	})
 
 	t.Run("non-existing region", func(t *testing.T) {
 		c := setup(t)
-		_, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus2", "34345"), model.AllocatedGrant)
+		_, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus2", "34345"), model.AllocatedGrantState)
 		require.False(t, ok)
 	})
 }
@@ -108,7 +108,7 @@ func TestCluster_Grant(t *testing.T) {
 
 	t.Run("existing grant", func(t *testing.T) {
 		c := setup(t)
-		expected := prefab.NewGrantInfo("g11", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrant)
+		expected := prefab.NewGrantInfo("g11", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrantState)
 		requirex.EqualProtobuf(t, model.UnwrapGrantInfo(grant(t, c, "g11")), model.UnwrapGrantInfo(expected))
 	})
 }
@@ -152,7 +152,7 @@ func TestCluster_Update(t *testing.T) {
 	t.Run("assign unknown consumer", func(t *testing.T) {
 		c := setup(t)
 		old := c.Version()
-		g := prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "northcentralus", "D", "F", model.ActiveGrant)
+		g := prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "northcentralus", "D", "F", model.ActiveGrantState)
 
 		err := c.Update(slicex.New(prefab.Instance1), map[model.ConsumerID][]model.GrantInfo{prefab.Instance4.ID(): slicex.New(g)}, nil, nil, nil)
 		require.Error(t, err, "consumer information is missing in assignments: id4")
@@ -176,14 +176,14 @@ func TestCluster_Update(t *testing.T) {
 		requireConsumers(t, c, prefab.Instance1, prefab.Instance2, prefab.Instance3, prefab.Instance4)
 
 		// Check that existing consumers are not affected
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrant)
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrantState)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrantState)
 	})
 
 	t.Run("assign new consumer with grants", func(t *testing.T) {
 		c := setup(t)
 		old := c.Version()
-		g := prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "northcentralus", "D", "F", model.ActiveGrant)
+		g := prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "northcentralus", "D", "F", model.ActiveGrantState)
 
 		err := c.Update(slicex.New(prefab.Instance4), map[model.ConsumerID][]model.GrantInfo{prefab.Instance4.ID(): slicex.New(g)}, nil, nil, nil)
 		require.NoError(t, err)
@@ -199,17 +199,17 @@ func TestCluster_Update(t *testing.T) {
 		require.Equal(t, consumer, prefab.Instance4)
 
 		requireConsumers(t, c, prefab.Instance1, prefab.Instance2, prefab.Instance3, prefab.Instance4)
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "ECD"), prefab.Instance4, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "ECD"), prefab.Instance4, model.ActiveGrantState)
 
 		// Check that existing consumers are not affected
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrant)
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrantState)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrantState)
 	})
 
 	t.Run("assign existing consumer with new grants", func(t *testing.T) {
 		c := setup(t)
 		old := c.Version()
-		g := prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "centralus", "B", "C", model.ActiveGrant)
+		g := prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "centralus", "B", "C", model.ActiveGrantState)
 		g21 := grant(t, c, "g21")
 		g22 := grant(t, c, "g22")
 
@@ -220,24 +220,24 @@ func TestCluster_Update(t *testing.T) {
 		// Check updated consumer
 		requireConsumers(t, c, prefab.Instance1, prefab.Instance2, prefab.Instance3)
 		requireGrantsEqual(t, c.Grants(prefab.Instance2.ID()), slicex.New(g21, g22, g))
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrant)
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "BCD"), prefab.Instance2, model.ActiveGrant)
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "eastus1", "ECD"), prefab.Instance2, model.RevokedGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrantState)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "BCD"), prefab.Instance2, model.ActiveGrantState)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "eastus1", "ECD"), prefab.Instance2, model.RevokedGrantState)
 
 		consumer, ok := c.GrantConsumer("g")
 		require.True(t, ok)
 		require.Equal(t, consumer, prefab.Instance2)
 
 		// Check that existing consumers are not affected
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrantState)
 	})
 
 	t.Run("assign active removed revoked", func(t *testing.T) {
 		c := setup(t)
 		old := c.Version()
-		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.ActiveGrant)
+		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.ActiveGrantState)
 
-		i, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrant)
+		i, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrantState)
 		require.True(t, ok)
 		require.Equal(t, i, prefab.Instance2)
 
@@ -245,24 +245,24 @@ func TestCluster_Update(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, c.Version(), old+1)
 
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), prefab.Instance1, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), prefab.Instance1, model.ActiveGrantState)
 
-		_, ok = c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrant)
+		_, ok = c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrantState)
 		require.False(t, ok)
 	})
 
 	t.Run("assign grant moved to new consumer", func(t *testing.T) {
 		c := setup(t)
 		old := c.Version()
-		g12 := prefab.NewGrantInfo("g23", "t1/s1/d1", model.Regional, "northcentralus", "A", "D", model.ActiveGrant)
+		g12 := prefab.NewGrantInfo("g23", "t1/s1/d1", model.Regional, "northcentralus", "A", "D", model.ActiveGrantState)
 
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "A34345"), prefab.Instance1, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "A34345"), prefab.Instance1, model.ActiveGrantState)
 
 		err := c.Update(slicex.New(prefab.Instance2), map[model.ConsumerID][]model.GrantInfo{prefab.Instance2.ID(): slicex.New(g12)}, nil, nil, nil)
 		require.NoError(t, err)
 		require.Equal(t, c.Version(), old+1)
 
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "A34345"), prefab.Instance2, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "A34345"), prefab.Instance2, model.ActiveGrantState)
 		_, ok := c.Grant("g12")
 		require.False(t, ok)
 		_, ok = c.Grant("g23")
@@ -273,7 +273,7 @@ func TestCluster_Update(t *testing.T) {
 		c := setup(t)
 		old := c.Version()
 
-		err := c.Update(nil, nil, slicex.New(prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrant)), nil, nil)
+		err := c.Update(nil, nil, slicex.New(prefab.NewGrantInfo("g", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrantState)), nil, nil)
 		require.Errorf(t, err, "unknown grant: g")
 		require.Equal(t, c.Version(), old)
 	})
@@ -282,18 +282,18 @@ func TestCluster_Update(t *testing.T) {
 		c := setup(t)
 		old := c.Version()
 
-		i, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrant)
+		i, ok := c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrantState)
 		require.True(t, ok)
 		require.Equal(t, i, prefab.Instance2)
 
-		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.ActiveGrant)
+		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.ActiveGrantState)
 		err := c.Update(nil, nil, slicex.New(g13), nil, nil)
 		require.NoError(t, err)
 		require.Equal(t, c.Version(), old+1)
 
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), prefab.Instance1, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), prefab.Instance1, model.ActiveGrantState)
 
-		_, ok = c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrant)
+		_, ok = c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrantState)
 	})
 
 	t.Run("unassign unknown grant", func(t *testing.T) {
@@ -333,8 +333,8 @@ func TestCluster_Update(t *testing.T) {
 
 		// Check that existing consumers are not affected
 		requireConsumers(t, c, prefab.Instance1, prefab.Instance2, prefab.Instance3)
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrant)
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "34345"), prefab.Instance1, model.ActiveGrantState)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrantState)
 	})
 
 	t.Run("detach existing consumer", func(t *testing.T) {
@@ -357,7 +357,7 @@ func TestCluster_Update(t *testing.T) {
 		require.Empty(t, c.Grants(prefab.Instance1.ID()))
 
 		// Check that existing consumers are not affected
-		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrant)
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "centralus", "34345"), prefab.Instance2, model.ActiveGrantState)
 	})
 
 	t.Run("multiple changes", func(t *testing.T) {
@@ -367,8 +367,8 @@ func TestCluster_Update(t *testing.T) {
 		g11, ok := c.Grant("g11")
 		require.True(t, ok)
 
-		g31 := prefab.NewGrantInfo("g31", "t1/s1/d1", model.Regional, "eastus2", "E", "F", model.ActiveGrant)
-		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.ActiveGrant)
+		g31 := prefab.NewGrantInfo("g31", "t1/s1/d1", model.Regional, "eastus2", "E", "F", model.ActiveGrantState)
+		g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.ActiveGrantState)
 
 		assigned := map[model.ConsumerID][]model.GrantInfo{prefab.Instance3.ID(): slicex.New(g31)}
 		unassigned := slicex.New[model.GrantID]("g12")
@@ -402,8 +402,8 @@ func TestCluster_Diff(t *testing.T) {
 	})
 
 	t.Run("activation with two grants", func(t *testing.T) {
-		g11 := newGrant("g11", "0", "A", model.AllocatedGrant)
-		g21 := newGrant("g21", "0", "A", model.RevokedGrant)
+		g11 := newGrant("g11", "0", "A", model.AllocatedGrantState)
+		g21 := newGrant("g21", "0", "A", model.RevokedGrantState)
 		grants := map[model.ConsumerID][]model.GrantInfo{
 			prefab.Instance1.ID(): slicex.New(g11),
 			prefab.Instance2.ID(): slicex.New(g21),
@@ -411,7 +411,7 @@ func TestCluster_Diff(t *testing.T) {
 		oldCluster, err := model.NewCluster(model.NewClusterID(), 0, slicex.New(prefab.Instance1, prefab.Instance2), grants)
 		require.NoError(t, err)
 
-		g11 = newGrant("g11", "0", "A", model.ActiveGrant)
+		g11 = newGrant("g11", "0", "A", model.ActiveGrantState)
 		grants = map[model.ConsumerID][]model.GrantInfo{
 			prefab.Instance1.ID(): slicex.New(g11),
 		}
@@ -427,14 +427,14 @@ func TestCluster_Diff(t *testing.T) {
 	})
 
 	t.Run("activation with one grant", func(t *testing.T) {
-		g11 := newGrant("g11", "0", "A", model.AllocatedGrant)
+		g11 := newGrant("g11", "0", "A", model.AllocatedGrantState)
 		grants := map[model.ConsumerID][]model.GrantInfo{
 			prefab.Instance1.ID(): slicex.New(g11),
 		}
 		oldCluster, err := model.NewCluster(model.NewClusterID(), 0, slicex.New(prefab.Instance1), grants)
 		require.NoError(t, err)
 
-		g11 = newGrant("g11", "0", "A", model.ActiveGrant)
+		g11 = newGrant("g11", "0", "A", model.ActiveGrantState)
 		grants = map[model.ConsumerID][]model.GrantInfo{
 			prefab.Instance1.ID(): slicex.New(g11),
 		}
@@ -450,15 +450,15 @@ func TestCluster_Diff(t *testing.T) {
 	})
 
 	t.Run("revoke", func(t *testing.T) {
-		g11 := newGrant("g11", "0", "A", model.ActiveGrant)
+		g11 := newGrant("g11", "0", "A", model.ActiveGrantState)
 		grants := map[model.ConsumerID][]model.GrantInfo{
 			prefab.Instance1.ID(): slicex.New(g11),
 		}
 		oldCluster, err := model.NewCluster(model.NewClusterID(), 0, slicex.New(prefab.Instance1, prefab.Instance2), grants)
 		require.NoError(t, err)
 
-		g11 = newGrant("g11", "0", "A", model.RevokedGrant)
-		g21 := newGrant("g21", "0", "A", model.AllocatedGrant)
+		g11 = newGrant("g11", "0", "A", model.RevokedGrantState)
+		g21 := newGrant("g21", "0", "A", model.AllocatedGrantState)
 		grants = map[model.ConsumerID][]model.GrantInfo{
 			prefab.Instance1.ID(): slicex.New(g11),
 			prefab.Instance2.ID(): slicex.New(g21),
@@ -475,14 +475,14 @@ func TestCluster_Diff(t *testing.T) {
 	})
 
 	t.Run("move grant", func(t *testing.T) {
-		g11 := newGrant("g11", "0", "A", model.ActiveGrant)
+		g11 := newGrant("g11", "0", "A", model.ActiveGrantState)
 		grants := map[model.ConsumerID][]model.GrantInfo{
 			prefab.Instance1.ID(): slicex.New(g11),
 		}
 		oldCluster, err := model.NewCluster(model.NewClusterID(), 0, slicex.New(prefab.Instance1, prefab.Instance2), grants)
 		require.NoError(t, err)
 
-		g21 := newGrant("g21", "0", "A", model.ActiveGrant)
+		g21 := newGrant("g21", "0", "A", model.ActiveGrantState)
 		grants = map[model.ConsumerID][]model.GrantInfo{
 			prefab.Instance2.ID(): slicex.New(g21),
 		}
@@ -497,7 +497,7 @@ func TestCluster_Diff(t *testing.T) {
 		require.Empty(t, d.Removed)
 	})
 
-	for _, state := range slicex.New(model.ActiveGrant, model.RevokedGrant, model.AllocatedGrant) {
+	for _, state := range slicex.New(model.ActiveGrantState, model.RevokedGrantState, model.AllocatedGrantState) {
 		t.Run(fmt.Sprintf("assign %v", state), func(t *testing.T) {
 			grants := map[model.ConsumerID][]model.GrantInfo{}
 			oldCluster, err := model.NewCluster(model.NewClusterID(), 0, slicex.New(prefab.Instance1, prefab.Instance2), grants)
@@ -518,7 +518,7 @@ func TestCluster_Diff(t *testing.T) {
 		})
 	}
 
-	for _, state := range slicex.New(model.ActiveGrant, model.RevokedGrant, model.AllocatedGrant) {
+	for _, state := range slicex.New(model.ActiveGrantState, model.RevokedGrantState, model.AllocatedGrantState) {
 		t.Run(fmt.Sprintf("unassign %v", state), func(t *testing.T) {
 			g11 := newGrant("g11", "0", "A", state)
 			grants := map[model.ConsumerID][]model.GrantInfo{
@@ -540,7 +540,7 @@ func TestCluster_Diff(t *testing.T) {
 	}
 
 	t.Run("detach", func(t *testing.T) {
-		g11 := newGrant("g11", "0", "A", model.ActiveGrant)
+		g11 := newGrant("g11", "0", "A", model.ActiveGrantState)
 		grants := map[model.ConsumerID][]model.GrantInfo{
 			prefab.Instance1.ID(): slicex.New(g11),
 		}
@@ -562,11 +562,11 @@ func TestCluster_Diff(t *testing.T) {
 func setup(t *testing.T) model.Cluster {
 	t.Helper()
 
-	g11 := prefab.NewGrantInfo("g11", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrant)
-	g12 := prefab.NewGrantInfo("g12", "t1/s1/d1", model.Regional, "northcentralus", "A", "D", model.ActiveGrant)
-	g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.AllocatedGrant)
-	g21 := prefab.NewGrantInfo("g21", "t1/s1/d1", model.Regional, "centralus", "0", "A", model.ActiveGrant)
-	g22 := prefab.NewGrantInfo("g22", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.RevokedGrant)
+	g11 := prefab.NewGrantInfo("g11", "t1/s1/d1", model.Regional, "northcentralus", "0", "A", model.ActiveGrantState)
+	g12 := prefab.NewGrantInfo("g12", "t1/s1/d1", model.Regional, "northcentralus", "A", "D", model.ActiveGrantState)
+	g13 := prefab.NewGrantInfo("g13", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.AllocatedGrantState)
+	g21 := prefab.NewGrantInfo("g21", "t1/s1/d1", model.Regional, "centralus", "0", "A", model.ActiveGrantState)
+	g22 := prefab.NewGrantInfo("g22", "t1/s1/d1", model.Regional, "eastus1", "E", "F", model.RevokedGrantState)
 	grants := map[model.ConsumerID][]model.GrantInfo{
 		prefab.Instance1.ID(): slicex.New(g11, g12, g13),
 		prefab.Instance2.ID(): slicex.New(g21, g22),

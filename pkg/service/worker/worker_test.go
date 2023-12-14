@@ -14,7 +14,6 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -161,10 +160,7 @@ func newFakeCoordinator(service model.QualifiedServiceName, updates <-chan core.
 	}
 }
 
-func (f *fakeCoordinator) Connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	if register.Service() != f.service {
-		return nil, fmt.Errorf("service doesnt match: expected %v, received %v", f.service, register.Service())
-	}
+func (f *fakeCoordinator) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	return nil, nil
 }
 
