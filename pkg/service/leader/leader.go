@@ -217,6 +217,9 @@ func (l *Leader) process(ctx context.Context) {
 	ticker := l.cl.NewTicker(4*time.Second + randx.Duration(time.Second))
 	defer ticker.Stop()
 
+	slow := l.cl.NewTicker(time.Minute + randx.Duration(10*time.Second))
+	defer slow.Stop()
+
 steady:
 	for {
 		select {
@@ -252,6 +255,35 @@ steady:
 			l.allocate(ctx, now, true)
 
 			l.emitMetrics(ctx)
+
+		case <-slow.C:
+			// Move placements by N blocks every 5 minutes, if needed.
+
+			cutoff := l.cl.Now().Add(-5 * time.Minute)
+
+			for _, t := range l.cache.Tenants() {
+				for _, info := range l.cache.Placements(t.Name()) {
+					placement := info.InternalPlacement()
+
+					if !placement.IsActive() || !info.Timestamp().Before(cutoff) {
+						continue // skip: not active or too recently changed
+					}
+					target, current, n := placement.Target(), placement.Current(), placement.BlocksPerCycle()
+					if target.Equals(current) {
+						continue // skip: on target
+					}
+
+					moved := core.MoveBlockDistribution(current, target, n)
+					cfg := core.NewInternalPlacementConfig(target, moved, n)
+					upd := core.NewInternalPlacement(placement.Name(), cfg, l.cl.Now())
+
+					if err := l.writer.UpdatePlacementAsync(ctx, upd, info.Version()); err != nil {
+						log.Errorf(ctx, "Failed to move dynamic region placement %v: %v", placement.Name(), err)
+					} else {
+						log.Infof(ctx, "Updated dynamic region placement %v: %v -> %v, target=%v", placement.Name(), current, moved, target)
+					}
+				}
+			}
 
 		case fn := <-l.inject:
 			fn()

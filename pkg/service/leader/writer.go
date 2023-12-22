@@ -77,6 +77,20 @@ func (w *Writer) HandleAsync(ctx context.Context, req HandleRequest) (iox.AsyncC
 	return w.handle(ctx, req)
 }
 
+// UpdatePlacementAsync attempts to update a placement initiated by the leader. Does not wait for response.
+func (w *Writer) UpdatePlacementAsync(ctx context.Context, placement core.InternalPlacement, guard model.Version) error {
+	if len(w.pool.Chan()) == pendingApplyCapacity {
+		log.Warnf(ctx, "Internal: pending applies reached internal limit: %v", pendingApplyCapacity)
+		return model.ErrOverloaded
+	}
+	upd, _, err := w.writer.Placements.Update(placement, guard)
+	if err != nil {
+		return err
+	}
+	_ = w.updateAsync(ctx, upd)
+	return nil
+}
+
 func (w *Writer) handle(ctx context.Context, req HandleRequest) (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
 	switch {
 	case req.Proto.GetTenant() != nil:
@@ -461,11 +475,31 @@ func (w *Writer) handleUpdatePlacementRequest(ctx context.Context, req *internal
 	}
 	guard := model.Version(req.GetVersion())
 
-	cfg, err := core.ParseInternalPlacementConfig(req.GetConfig())
-	if err != nil {
-		return nil, nil, err
+	cur, ok := w.cache.Placement(name)
+	if !ok {
+		return nil, nil, model.ErrNotFound
 	}
-	placement := core.NewInternalPlacement(name, cfg, w.cl.Now())
+	if cur.InternalPlacement().IsDecommissioned() {
+		return nil, nil, fmt.Errorf("decommissioned: %w", model.ErrNotAllowed)
+	}
+
+	var opts []core.UpdateInternalPlacementOption
+
+	if req.GetState() != 0 {
+		opts = append(opts, core.WithInternalPlacementState(req.GetState()))
+	}
+	if req.GetConfig() != nil {
+		cfg, err := core.ParseInternalPlacementConfig(req.GetConfig())
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid config: %w", err)
+		}
+		opts = append(opts, core.WithInternalPlacementConfig(cfg))
+	}
+
+	if len(opts) == 0 {
+		return nil, nil, fmt.Errorf("empty update: %w", model.ErrInvalid)
+	}
+	placement := core.UpdateInternalPlacement(cur.InternalPlacement(), opts...)
 
 	upd, info, err := w.writer.Placements.Update(placement, guard)
 	if err != nil {
@@ -486,6 +520,24 @@ func (w *Writer) handleDeletePlacementRequest(ctx context.Context, req *internal
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
+	}
+
+	// Validate that it is decommissioned and not used. If we don't enforce decommissioned state, an uncommitted
+	// apply ahead of us might assign it, and then we would delete into an invalid state.
+
+	cur, ok := w.cache.Placement(name)
+	if !ok {
+		return nil, nil, model.ErrNotFound
+	}
+	if !cur.InternalPlacement().IsDecommissioned() {
+		return nil, nil, fmt.Errorf("not decommissioned: %w", model.ErrNotAllowed)
+	}
+	for _, s := range w.cache.Services(name.Tenant) {
+		for _, d := range w.cache.Domains(s.Name()) {
+			if p, ok := d.Config().Placement(); ok && p == name.Placement {
+				return nil, nil, fmt.Errorf("stil in use: %w", model.ErrNotAllowed)
+			}
+		}
 	}
 
 	upd, err := w.writer.Placements.Delete(name)

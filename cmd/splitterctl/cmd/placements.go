@@ -14,6 +14,13 @@ var (
 		Use:   "placements",
 		Short: "Manage dynamic domain placements",
 	}
+
+	// list of valid regions for placements to prevent typos
+
+	regions = map[model.Region]bool{
+		"centralus":      true,
+		"northcentralus": true,
+	}
 )
 
 func makeListPlacementCmd() *cobra.Command {
@@ -44,21 +51,32 @@ func makeListPlacementCmd() *cobra.Command {
 
 func makeNewPlacementCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "new <tenant>/<placement> <region> [block list]",
+		Use:          "new <tenant>/<placement> <region>[/block:region]*",
 		Short:        "New placement",
-		Args:         cobra.MinimumNArgs(2),
+		Args:         cobra.ExactArgs(2),
 		SilenceUsage: true,
 	}
+
+	skip := cmd.Flags().Bool("skip_region_check", false, "Allow use of unsupported regions")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedPlacementNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid placement name")
 		}
-		initial := splitter.Region(args[1])
+		dist, err := core.ParseBlockDistributionStr(args[1])
+		if err != nil {
+			return fmt.Errorf("invalid distribution: %v", err)
+		}
+
+		if !*skip {
+			if err := validateBlockDistribution(dist); err != nil {
+				return err
+			}
+		}
 
 		return withInternalClient(func(ctx context.Context, client core.Client) error {
-			info, err := client.NewPlacement(ctx, name, core.NewSingleRegionBlockDistribution(initial))
+			info, err := client.NewPlacement(ctx, name, dist)
 			if err != nil {
 				return fmt.Errorf("placement creation failed: %v", err)
 			}
@@ -101,9 +119,16 @@ func makeUpdatePlacementCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "update <tenant>/<placement>",
 		Short:        "Update placement",
-		Args:         cobra.MinimumNArgs(1),
+		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 	}
+
+	state := cmd.Flags().String("state", "", "Update state")
+	target := cmd.Flags().String("target", "", "Update target distribution as <region>[/block:region]*")
+	blocks := cmd.Flags().Int("speed", 0, "Blocks to move per cycle (optional)")
+
+	skip := cmd.Flags().Bool("skip_region_check", false, "Allow use of unsupported regions")
+	force := cmd.Flags().Bool("force", false, "Force immediate application")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedPlacementNameStr(args[0])
@@ -117,9 +142,39 @@ func makeUpdatePlacementCmd() *cobra.Command {
 				return fmt.Errorf("failed to read: %v", err)
 			}
 
-			// apply flags ...
+			var opts []core.UpdatePlacementOption
 
-			upd, err := client.UpdatePlacement(ctx, name, info.Version())
+			if *state != "" {
+				upd, ok := core.ParsePlacementState(*state)
+				if !ok {
+					return fmt.Errorf("invalid placement state: %v", *state)
+				}
+				opts = append(opts, core.WithPlacementState(upd))
+			}
+
+			if *target != "" {
+				dist, err := core.ParseBlockDistributionStr(*target)
+				if err != nil {
+					return fmt.Errorf("invalid target distribution: %v", err)
+				}
+				if !*skip {
+					if err := validateBlockDistribution(dist); err != nil {
+						return err
+					}
+				}
+
+				current := info.InternalPlacement().Current()
+				if *force {
+					current = dist
+				}
+				speed := info.InternalPlacement().BlocksPerCycle()
+				if *blocks > 0 {
+					speed = *blocks
+				}
+				opts = append(opts, core.WithPlacementConfig(core.NewInternalPlacementConfig(dist, current, speed)))
+			}
+
+			upd, err := client.UpdatePlacement(ctx, name, info.Version(), opts...)
 			if err != nil {
 				return fmt.Errorf("update placement failed: %v", err)
 			}
@@ -182,4 +237,16 @@ func makePublicInfoPlacementCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+func validateBlockDistribution(dist core.BlockDistribution) error {
+	if !regions[dist.Initial()] {
+		return fmt.Errorf("invalid region: %v", dist.Initial())
+	}
+	for _, s := range dist.Splits() {
+		if !regions[s.Region] {
+			return fmt.Errorf("invalid region: %v", s)
+		}
+	}
+	return nil
 }

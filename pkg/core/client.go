@@ -59,11 +59,8 @@ func (c *client) ListPlacements(ctx context.Context, tenant model.TenantName) ([
 
 func (c *client) NewPlacement(ctx context.Context, name model.QualifiedPlacementName, target BlockDistribution) (InternalPlacementInfo, error) {
 	req := &internal_v1.NewPlacementRequest{
-		Name: name.ToProto(),
-		Config: &internal_v1.InternalPlacement_Config{
-			Target:  UnwrapBlockDistribution(target),
-			Current: UnwrapBlockDistribution(target),
-		},
+		Name:   name.ToProto(),
+		Config: UnwrapInternalPlacementConfig(NewInternalPlacementConfig(target, target, 1)),
 	}
 	resp, err := c.placement.New(ctx, req)
 	if err != nil {

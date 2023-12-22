@@ -38,6 +38,7 @@ message InternalPlacement {
   message Config {
     BlockDistribution target = 1;
     BlockDistribution current = 2;
+    int32 blocks_per_cycle = 3; // blocks to move per 5m cycle if target != current
   }
   Config config = 3;
 
