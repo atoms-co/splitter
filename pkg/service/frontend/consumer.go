@@ -9,6 +9,7 @@ import (
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
@@ -89,7 +90,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		// Setup communication with the service's coordinator
 		var coordinatorOut <-chan model.ConsumerMessage
 		if err == nil {
-			coordinatorOut, err = s.forwardRemote(ctx, cc, consumerIn)
+			coordinatorOut, err = s.forwardRemote(ctx, consumerSession, cc, consumerIn)
 			if err != nil {
 				return nil, model.WrapError(err)
 			}
@@ -106,10 +107,11 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 	})
 }
 
-func (s *ConsumerService) forwardRemote(ctx context.Context, cc core.Connection, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (s *ConsumerService) forwardRemote(ctx context.Context, consumerSession *session.Server, cc core.Connection, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	// Create a client session with the coordinator instance
 	coordinatorSession, establish, sessionOut := session.NewClient(ctx, s.cl, s.instance)
 	wctx, _ := contextx.WithQuitCancel(ctx, coordinatorSession.Closed()) // cancel context if session closes
+	iox.WhenClosed(coordinatorSession, consumerSession)
 
 	// Use error channel to wait for stream connection. Buffered to avoid blocking goroutine on a late error
 	errChan := make(chan error, 1)

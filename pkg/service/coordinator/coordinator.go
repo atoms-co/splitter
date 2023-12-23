@@ -30,7 +30,7 @@ const (
 )
 
 var (
-	numConsumers = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", core.StatusKey))
+	numConsumers = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", core.ServiceKey, core.StatusKey))
 	numShards    = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.ServiceKey, core.DomainKey))
 
 	numActions = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Leader actions", core.ActionKey, core.ResultKey)
@@ -543,7 +543,7 @@ func (c *coordinator) String() string {
 func (c *coordinator) emitMetrics(ctx context.Context) {
 	c.resetMetrics(ctx)
 
-	numConsumers.Set(ctx, float64(len(c.consumers)), core.StatusTag("ok"))
+	numConsumers.Set(ctx, float64(len(c.consumers)), core.ServiceTag(c.name.Service), core.StatusTag("ok"))
 	for _, domain := range c.cache.Domains(c.name) {
 		shards := domain.Config().ShardingPolicy().Shards()
 		numShards.Set(ctx, float64(shards), core.ServiceTag(c.name.Service), core.DomainTag(domain.ShortName()))
@@ -551,8 +551,8 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 }
 
 func (c *coordinator) resetMetrics(ctx context.Context) {
-	numConsumers.Reset(ctx)
-	numShards.Reset(ctx)
+	numConsumers.Reset(ctx, core.ServiceTag(c.name.Service))
+	numShards.Reset(ctx, core.ServiceTag(c.name.Service))
 }
 
 // Txn is a helper that constructs a syncx.TxnFn with the project specific error codes and injection channels
