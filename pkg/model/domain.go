@@ -22,7 +22,7 @@ type QualifiedDomainName struct {
 }
 
 func ParseQualifiedDomainNameStr(name string) (QualifiedDomainName, bool) {
-	parts := slicex.Map(strings.Split(name, "/"), strings.TrimSpace)
+	parts := slicex.Map(strings.SplitN(name, "/", 3), strings.TrimSpace)
 	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 		return QualifiedDomainName{}, false
 	}
