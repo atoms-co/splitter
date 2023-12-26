@@ -106,6 +106,7 @@ message NewDomainRequest {
   QualifiedDomainName name = 1;
   Domain.Type type = 2;
   Domain.Config config = 3;
+  Domain.State state = 4;
 }
 
 message NewDomainResponse {
@@ -116,6 +117,7 @@ message UpdateDomainRequest {
   QualifiedDomainName name = 1;
   int64 service_version = 2;
   Domain.Config config = 3;
+  Domain.State state = 4;
 }
 
 message UpdateDomainResponse {

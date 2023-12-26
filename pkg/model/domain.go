@@ -187,15 +187,17 @@ func (t Domain) String() string {
 
 type DomainConfigOption func(cfg *public_v1.Domain_Config)
 
-func WithDomainPlacement(placement string) DomainConfigOption {
+func WithDomainPlacement(placement PlacementName) DomainConfigOption {
 	return func(cfg *public_v1.Domain_Config) {
-		cfg.Placement = placement
+		cfg.Placement = string(placement)
 	}
 }
 
-func WithDomainRegions(regions ...string) DomainConfigOption {
+func WithDomainRegions(regions ...Region) DomainConfigOption {
 	return func(cfg *public_v1.Domain_Config) {
-		cfg.Regions = regions
+		cfg.Regions = slicex.Map(regions, func(t Region) string {
+			return string(t)
+		})
 	}
 }
 
@@ -259,6 +261,18 @@ func (c DomainConfig) ShardingPolicy() ShardingPolicy {
 
 func (c DomainConfig) Regions() []Region {
 	return slicex.Map(c.pb.GetRegions(), func(r string) Region { return Region(r) })
+}
+
+func (c DomainConfig) AntiAffinity() []DomainName {
+	return slicex.Map(c.pb.GetAntiAffinity(), func(r string) DomainName { return DomainName(r) })
+}
+
+func (c DomainConfig) Equals(o DomainConfig) bool {
+	return proto.Equal(c.pb, o.pb)
+}
+
+func (c DomainConfig) String() string {
+	return proto.MarshalTextString(c.pb)
 }
 
 // Key is a UUID key for a domain or placement.

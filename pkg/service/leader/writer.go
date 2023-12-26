@@ -349,6 +349,9 @@ func (w *Writer) handleNewDomainRequest(ctx context.Context, req *public_v1.NewD
 	if req.GetConfig() != nil {
 		opts = append(opts, model.WithDomainConfig(model.WrapDomainConfig(req.GetConfig())))
 	}
+	if req.GetState() != 0 {
+		opts = append(opts, model.WithDomainState(req.GetState()))
+	}
 	domain, err := model.NewDomain(name, req.GetType(), w.cl.Now(), opts...)
 	if err != nil {
 		return nil, nil, err
@@ -389,6 +392,9 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.U
 	var opts []model.DomainOption
 	if req.GetConfig() != nil {
 		opts = append(opts, model.WithDomainConfig(model.WrapDomainConfig(req.GetConfig())))
+	}
+	if req.GetState() != 0 {
+		opts = append(opts, model.WithDomainState(req.GetState()))
 	}
 	cur, err := model.UpdateDomain(existing, opts...)
 	if err != nil {

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
 	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
@@ -99,7 +100,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 		return withClient(func(ctx context.Context, client model.Client) error {
 			domain, err := client.NewDomain(ctx, name, splitter.Global,
 				splitter.NewDomainConfig(
-					splitter.WithDomainPlacement(*placement),
+					splitter.WithDomainPlacement(splitter.PlacementName(*placement)),
 					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
 				),
 			)
@@ -135,9 +136,11 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 		return withClient(func(ctx context.Context, client model.Client) error {
 			domain, err := client.NewDomain(ctx, name, splitter.Regional,
 				splitter.NewDomainConfig(
-					splitter.WithDomainPlacement(*placement),
+					splitter.WithDomainPlacement(splitter.PlacementName(*placement)),
 					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
-					splitter.WithDomainRegions(*regions...),
+					splitter.WithDomainRegions(slicex.Map(*regions, func(t string) splitter.Region {
+						return splitter.Region(t)
+					})...),
 				),
 			)
 			if err != nil {
@@ -167,13 +170,16 @@ func makeUpdateDomainCmd() *cobra.Command {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
-		var opts []splitter.DomainOption
+		var opts []splitter.UpdateDomainOption
 		if state != nil && *state != "" {
 			s, ok := splitter.ParseDomainState(*state)
 			if !ok {
 				return fmt.Errorf("invalid state: %v", *state)
 			}
-			opts = append(opts, splitter.WithDomainState(s))
+			opts = append(opts, splitter.WithUpdateDomainState(s))
+		}
+		if len(opts) == 0 {
+			return nil
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
@@ -181,15 +187,7 @@ func makeUpdateDomainCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			domain, ok := service.Domain(name.Domain)
-			if !ok {
-				return fmt.Errorf("subscription %v not found", name)
-			}
-			upd, err := splitter.UpdateDomain(domain, opts...)
-			if err != nil {
-				return err
-			}
-			t, err := client.UpdateDomain(ctx, upd, service.Info().Version())
+			t, err := client.UpdateDomain(ctx, name, service.Info().Version(), opts...)
 			if err != nil {
 				return fmt.Errorf("update domain failed: %v", err)
 			}
