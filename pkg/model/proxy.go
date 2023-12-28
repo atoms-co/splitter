@@ -190,3 +190,22 @@ func (p *connectionPool) Connect(ctx context.Context, id InstanceID) (Connection
 	p.connections[id] = c
 	return c, nil
 }
+
+// DomainResolver is a convenience wrapper for single-domain resolution using the cluster resolver.
+type DomainResolver[T, K any] struct {
+	name     QualifiedDomainName
+	resolver Resolver[T, QualifiedDomainKey]
+	fn       func(K) DomainKey
+}
+
+func NewDomainResolver[T, K any](name QualifiedDomainName, resolver Resolver[T, QualifiedDomainKey], fn func(K) DomainKey) *DomainResolver[T, K] {
+	return &DomainResolver[T, K]{name: name, resolver: resolver, fn: fn}
+}
+
+func (d *DomainResolver[T, K]) Resolve(ctx context.Context, key K) (T, error) {
+	return d.resolver.Resolve(ctx, QualifiedDomainKey{Domain: d.name, Key: d.fn(key)})
+}
+
+func (d *DomainResolver[T, K]) String() string {
+	return d.name.String()
+}
