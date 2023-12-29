@@ -269,6 +269,12 @@ steady:
 				log.Errorf(ctx, "Internal: invalid state update %v", err)
 				return
 			}
+			info, ok := c.cache.Service(c.name)
+			if !ok {
+				log.Errorf(ctx, "Internal: coordinator service not present in updated state. Closing")
+				return
+			}
+			c.info = info
 
 			c.refresh(ctx, leaseDuration)
 			c.allocate(ctx, c.cl.Now(), false)
