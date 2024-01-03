@@ -77,6 +77,11 @@ const (
 	Regional = public_v1.Domain_REGIONAL
 )
 
+func ParseDomainType(str string) (DomainType, bool) {
+	v, ok := public_v1.Domain_Type_value[strings.ToUpper(str)]
+	return DomainType(v), ok && v != 0
+}
+
 type DomainState = public_v1.Domain_State
 
 const (
@@ -92,8 +97,8 @@ func ParseDomainState(str string) (DomainState, bool) {
 type DomainOption func(tenant *public_v1.Domain)
 
 func WithDomainState(state public_v1.Domain_State) DomainOption {
-	return func(subscription *public_v1.Domain) {
-		subscription.State = state
+	return func(domain *public_v1.Domain) {
+		domain.State = state
 	}
 }
 
@@ -266,7 +271,6 @@ func (c DomainConfig) Regions() []Region {
 func (c DomainConfig) AntiAffinity() []DomainName {
 	return slicex.Map(c.pb.GetAntiAffinity(), func(r string) DomainName { return DomainName(r) })
 }
-
 func (c DomainConfig) Equals(o DomainConfig) bool {
 	return proto.Equal(c.pb, o.pb)
 }

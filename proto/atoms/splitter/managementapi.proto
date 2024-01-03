@@ -56,7 +56,7 @@ message ListServicesRequest {
 }
 
 message ListServicesResponse {
-  repeated ServiceInfo services = 1;
+  repeated ServiceInfoEx services = 1;
 }
 
 message NewServiceRequest {

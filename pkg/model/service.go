@@ -143,10 +143,8 @@ type ServiceConfig struct {
 	pb *public_v1.Service_Config
 }
 
-func NewServiceConfig(region Region, opts ...ServiceConfigOption) ServiceConfig {
-	pb := &public_v1.Service_Config{
-		Region: string(region),
-	}
+func NewServiceConfig(opts ...ServiceConfigOption) ServiceConfig {
+	pb := &public_v1.Service_Config{}
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -249,6 +247,10 @@ func (t ServiceInfoEx) Info() ServiceInfo {
 	return WrapServiceInfo(t.pb.GetService())
 }
 
+func (t ServiceInfoEx) Service() Service {
+	return WrapService(t.pb.GetService().GetService())
+}
+
 func (t ServiceInfoEx) Domains() []Domain {
 	return slicex.Map(t.pb.GetDomains(), WrapDomain)
 }
@@ -259,6 +261,11 @@ func (t ServiceInfoEx) Domain(name DomainName) (Domain, bool) {
 	})
 	return WrapDomain(s), ok
 }
+
+func (t ServiceInfoEx) Equals(o ServiceInfoEx) bool {
+	return proto.Equal(t.pb, o.pb)
+}
+
 func (t ServiceInfoEx) String() string {
 	return proto.MarshalTextString(t.pb)
 }

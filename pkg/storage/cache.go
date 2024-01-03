@@ -35,10 +35,10 @@ func (c *Cache) Tenant(name model.TenantName) (model.TenantInfo, bool) {
 	return model.TenantInfo{}, false
 }
 
-func (c *Cache) Services(name model.TenantName) []model.ServiceInfo {
+func (c *Cache) Services(name model.TenantName) []model.ServiceInfoEx {
 	if t, ok := c.tenants[name]; ok {
-		return mapx.MapValues(t.services, func(s model.ServiceInfoEx) model.ServiceInfo {
-			return s.Info()
+		return mapx.MapValues(t.services, func(s model.ServiceInfoEx) model.ServiceInfoEx {
+			return s
 		})
 	}
 	return nil

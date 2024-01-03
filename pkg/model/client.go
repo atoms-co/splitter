@@ -59,7 +59,7 @@ func WithUpdateServiceConfig(config ServiceConfig) UpdateServiceOption {
 // NewDomainOption represents an option to NewDomain.
 type NewDomainOption func(*public_v1.NewDomainRequest)
 
-// WithNewDomainState update the state of a domain.
+// WithNewDomainState updates the state of a domain.
 func WithNewDomainState(state DomainState) NewDomainOption {
 	return func(request *public_v1.NewDomainRequest) {
 		request.State = state
@@ -94,10 +94,10 @@ type Client interface {
 	UpdateTenant(ctx context.Context, tenant TenantInfo, opts ...UpdateTenantOption) (TenantInfo, error)
 	DeleteTenant(ctx context.Context, name TenantName) error
 
-	ListServices(ctx context.Context, tenant TenantName) ([]ServiceInfo, error)
+	ListServices(ctx context.Context, tenant TenantName) ([]ServiceInfoEx, error)
 	NewService(ctx context.Context, name QualifiedServiceName, cfg ServiceConfig) (ServiceInfo, error)
 	InfoService(ctx context.Context, name QualifiedServiceName) (ServiceInfoEx, error)
-	UpdateService(ctx context.Context, tenant ServiceInfo, opts ...UpdateServiceOption) (ServiceInfo, error)
+	UpdateService(ctx context.Context, service ServiceInfo, opts ...UpdateServiceOption) (ServiceInfo, error)
 	DeleteService(ctx context.Context, name QualifiedServiceName) error
 
 	ListDomains(ctx context.Context, service QualifiedServiceName) ([]Domain, error)
@@ -184,7 +184,7 @@ func (c *client) DeleteTenant(ctx context.Context, name TenantName) error {
 	return err
 }
 
-func (c *client) ListServices(ctx context.Context, tenant TenantName) ([]ServiceInfo, error) {
+func (c *client) ListServices(ctx context.Context, tenant TenantName) ([]ServiceInfoEx, error) {
 	req := &public_v1.ListServicesRequest{
 		Tenant: string(tenant),
 	}
@@ -192,7 +192,7 @@ func (c *client) ListServices(ctx context.Context, tenant TenantName) ([]Service
 	if err != nil {
 		return nil, err
 	}
-	return slicex.Map(resp.GetServices(), WrapServiceInfo), nil
+	return slicex.Map(resp.GetServices(), WrapServiceInfoEx), nil
 }
 
 func (c *client) NewService(ctx context.Context, name QualifiedServiceName, cfg ServiceConfig) (ServiceInfo, error) {

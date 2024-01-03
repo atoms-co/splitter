@@ -742,7 +742,7 @@ func (l *Leader) handleListServicesRequest(ctx context.Context, req *public_v1.L
 	return &internal_v1.ServiceResponse{
 		Resp: &internal_v1.ServiceResponse_List{
 			List: &public_v1.ListServicesResponse{
-				Services: slicex.Map(l.cache.Services(model.TenantName(req.GetTenant())), model.UnwrapServiceInfo),
+				Services: slicex.Map(l.cache.Services(model.TenantName(req.GetTenant())), model.UnwrapServiceInfoEx),
 			},
 		},
 	}, nil

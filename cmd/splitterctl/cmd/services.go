@@ -32,7 +32,7 @@ func makeListServiceCmd() *cobra.Command {
 				return err
 			}
 			for _, info := range list {
-				printJson(model.UnwrapServiceInfo(info), true)
+				printJson(model.UnwrapServiceInfoEx(info), true)
 			}
 			return nil
 		})
@@ -57,7 +57,7 @@ func makeNewServiceCmd() *cobra.Command {
 		region := splitter.Region(args[1])
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			service, err := client.NewService(ctx, name, splitter.NewServiceConfig(region))
+			service, err := client.NewService(ctx, name, splitter.NewServiceConfig(splitter.WithServiceRegion(region)))
 			if err != nil {
 				return err
 			}
