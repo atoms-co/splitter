@@ -3,7 +3,7 @@ package frontend
 import (
 	"context"
 	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/mapx"
+	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
@@ -14,52 +14,39 @@ import (
 	"time"
 )
 
-// TODO(herohde) 7/27/2023: redirect all calls to leader instead
-
 const (
 	handleTimeout = 20 * time.Second
 )
 
 type PlacementService struct {
-	fixed map[model.QualifiedPlacementName]model.PlacementInfo
+	internal *InternalPlacementService
 }
 
-func NewPlacementService() *PlacementService {
-	facility := model.QualifiedPlacementName{Tenant: "orders", Placement: "facility_id"}
-	dist := model.NewDistribution("centralus", model.DistributionSplit{
-		Key:    model.MustParseKey("80000000-0000-0000-0000-000000000000"),
-		Region: "northcentralus",
-	})
-
-	return &PlacementService{
-		fixed: map[model.QualifiedPlacementName]model.PlacementInfo{
-			facility: model.NewPlacementInfo(model.NewPlacement(facility, dist), 1, time.Now()),
-		},
-	}
+func NewPlacementService(internal *InternalPlacementService) *PlacementService {
+	return &PlacementService{internal: internal}
 }
 
 func (p *PlacementService) List(ctx context.Context, request *public_v1.ListPlacementsRequest) (*public_v1.ListPlacementsResponse, error) {
-	tenant := model.TenantName(request.GetTenant())
+	resp, err := p.internal.List(ctx, &internal_v1.ListPlacementsRequest{Tenant: request.GetTenant()})
+	if err != nil {
+		return nil, err
+	}
+
 	return &public_v1.ListPlacementsResponse{
-		Info: mapx.MapValuesIf(p.fixed, func(v model.PlacementInfo) (*public_v1.PlacementInfo, bool) {
-			if v.Placement().Name().Tenant != tenant {
-				return nil, false
-			}
-			return model.UnwrapPlacementInfo(v), true
+		Info: slicex.Map(resp.GetInfo(), func(t *internal_v1.InternalPlacementInfo) *public_v1.PlacementInfo {
+			return model.UnwrapPlacementInfo(core.WrapInternalPlacementInfo(t).ToPlacementInfo())
 		}),
 	}, nil
 }
 
 func (p *PlacementService) Info(ctx context.Context, request *public_v1.InfoPlacementRequest) (*public_v1.InfoPlacementResponse, error) {
-	name, err := model.ParseQualifiedPlacementName(request.GetName())
+	resp, err := p.internal.Info(ctx, &internal_v1.InfoPlacementRequest{Name: request.GetName()})
 	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
+		return nil, err
 	}
-	info, ok := p.fixed[name]
-	if !ok {
-		return nil, model.WrapError(model.ErrNotFound)
-	}
-	return &public_v1.InfoPlacementResponse{Info: model.UnwrapPlacementInfo(info)}, nil
+	return &public_v1.InfoPlacementResponse{
+		Info: model.UnwrapPlacementInfo(core.WrapInternalPlacementInfo(resp.GetInfo()).ToPlacementInfo()),
+	}, nil
 }
 
 type InternalPlacementService struct {

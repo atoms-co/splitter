@@ -347,6 +347,10 @@ func (t InternalPlacement) BlocksPerCycle() int {
 	return int(t.pb.GetConfig().GetBlocksPerCycle())
 }
 
+func (t InternalPlacement) ToPlacement() model.Placement {
+	return model.NewPlacement(t.Name(), t.Current().ToDistribution())
+}
+
 func (t InternalPlacement) String() string {
 	return proto.MarshalTextString(t.pb)
 }
@@ -385,6 +389,10 @@ func (t InternalPlacementInfo) Version() model.Version {
 
 func (t InternalPlacementInfo) Timestamp() time.Time {
 	return t.pb.GetTimestamp().AsTime()
+}
+
+func (t InternalPlacementInfo) ToPlacementInfo() model.PlacementInfo {
+	return model.NewPlacementInfo(t.InternalPlacement().ToPlacement(), t.Version(), t.Timestamp())
 }
 
 func (t InternalPlacementInfo) String() string {

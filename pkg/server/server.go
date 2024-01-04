@@ -111,11 +111,13 @@ func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *clus
 
 // Serve starts the public grpc server on the given port. Blocking.
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
+	placement := frontend.NewInternalPlacementService(s.manager, s.manager)
+
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
 	public_v1.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.cl, s.location, s.worker, s.resolver))
 	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.manager, s.manager))
-	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService())
-	internal_v1.RegisterPlacementManagementServiceServer(gs, frontend.NewInternalPlacementService(s.manager, s.manager))
+	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService(placement))
+	internal_v1.RegisterPlacementManagementServiceServer(gs, placement)
 
 	return grpcx.Serve(ctx, gs, listener)
 }
