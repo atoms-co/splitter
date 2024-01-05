@@ -97,7 +97,7 @@ func (p *preference[T, W, K, V]) String() string {
 	return string(p.name)
 }
 
-// Colocation is a rule that determines the addition load from colocation of the given work on a worker.
+// Colocation is a rule that determines the additional load from colocation of the given work on a worker.
 // Used for worker overload as well as affinity and anti-affinity across work, usually dependent on T.
 // Must be deterministic.
 type Colocation[T comparable, W any, K comparable, V any] interface {

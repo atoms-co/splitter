@@ -15,9 +15,8 @@ var (
 )
 
 type Consumer struct {
-	instance   model.Instance
-	joined     time.Time
-	expiration time.Time
+	instance model.Instance
+	joined   time.Time
 }
 
 func NewConsumer(instance model.Instance, joined time.Time) Consumer {
@@ -33,19 +32,15 @@ func (c Consumer) Instance() model.Instance {
 }
 
 func (c Consumer) Region() model.Region {
-	return model.Region(c.instance.Location().Region)
+	return c.instance.Location().Region
 }
 
 func (c Consumer) Joined() time.Time {
 	return c.joined
 }
 
-func (c Consumer) Expiration() time.Time {
-	return c.expiration
-}
-
 func (c Consumer) String() string {
-	return fmt.Sprintf("consumer{id=%v, joined=%v, expiration=%v}", c.instance, c.joined, c.expiration)
+	return fmt.Sprintf("%v[joined=%v]", c.instance, c.joined)
 }
 
 type consumerSession struct {
@@ -67,5 +62,5 @@ func (c *consumerSession) ID() model.ConsumerID {
 }
 
 func (c *consumerSession) String() string {
-	return fmt.Sprintf("session{consumer=%v, connection=%v}", c.consumer, c.connection)
+	return fmt.Sprintf("%v[consumer=%v]", c.connection.Sid(), c.consumer)
 }

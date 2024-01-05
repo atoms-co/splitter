@@ -30,10 +30,13 @@ const (
 )
 
 var (
-	numConsumers = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", core.ServiceKey, core.StatusKey))
-	numShards    = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.ServiceKey, core.DomainKey))
-
-	numActions = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Leader actions", core.ActionKey, core.ResultKey)
+	numConsumers = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.StatusKey)...),
+	)
+	numShards = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
+	)
+	numActions = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Leader actions", core.TenantKey, core.ServiceKey, core.ActionKey, core.ResultKey)
 )
 
 // Coordinator handles consumer connection and work allocation.
@@ -52,7 +55,7 @@ func WithFastActivation() Option {
 	}
 }
 
-// coordinator is responsible for managing a single tenant. It accepts incoming connections from consumers and
+// coordinator is responsible for managing a single service. It accepts incoming connections from consumers and
 // distributes work among the consumers by assigning shards with leases.
 type coordinator struct {
 	iox.AsyncCloser
@@ -340,16 +343,25 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	grants := c.alloc.Allocate(now)
 
 	if loadbalance {
-		if move, load, ok := c.alloc.LoadBalance(now); ok {
-			s := c.consumers[move.From.Worker]
+		// Revoke and allocate
 
+		if move, load, ok := c.alloc.LoadBalance(now); ok {
+			// Revoke from source worker, on failure, lease will run out
+			s := c.consumers[move.From.Worker]
 			if !s.TrySend(ctx, model.NewRevoke(toGrant(move.From))) {
-				log.Errorf(ctx, "Failed to send move %v from consumer: %v. Disconnecting", move, s)
+				log.Errorf(ctx, "Failed to send revoke for move %v to consumer: %v. Disconnecting", move, s)
 				c.disconnect(ctx, "stuck", s)
-			} else {
-				log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
 			}
 
+			// Allocate to destination worker, on failure, release allocation
+			s = c.consumers[move.To.Worker]
+			if !s.TrySend(ctx, model.NewAssign(toGrant(move.To))) {
+				log.Errorf(ctx, "Failed to send allocate for move %v to consumer: %v. Disconnecting", move, s)
+				c.alloc.Release(move.To, now)
+				c.disconnect(ctx, "stuck", s)
+			}
+
+			log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
 			recordAction(ctx, "move", "ok")
 		}
 	}
@@ -436,7 +448,7 @@ func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSess
 }
 
 func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, deregister model.DeregisterMessage) {
-	log.Infof(ctx, "Received de-register from worker %v", s)
+	log.Infof(ctx, "Received de-register from consumer %v", s)
 
 	// (1) Mark worker as suspended to prevent new work.
 
@@ -473,6 +485,8 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 }
 
 func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, released model.ReleasedMessage) {
+	log.Infof(ctx, "Received released %v from consumer %v", released, s)
+
 	now := c.cl.Now()
 
 	// (1) Release relinquished grants. Check deregister status
@@ -549,16 +563,16 @@ func (c *coordinator) String() string {
 func (c *coordinator) emitMetrics(ctx context.Context) {
 	c.resetMetrics(ctx)
 
-	numConsumers.Set(ctx, float64(len(c.consumers)), core.ServiceTag(c.name.Service), core.StatusTag("ok"))
+	numConsumers.Set(ctx, float64(len(c.consumers)), slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.StatusTag("ok"))...)
 	for _, domain := range c.cache.Domains(c.name) {
 		shards := domain.Config().ShardingPolicy().Shards()
-		numShards.Set(ctx, float64(shards), core.ServiceTag(c.name.Service), core.DomainTag(domain.ShortName()))
+		numShards.Set(ctx, float64(shards), core.QualifiedDomainTags(domain.Name())...)
 	}
 }
 
 func (c *coordinator) resetMetrics(ctx context.Context) {
-	numConsumers.Reset(ctx, core.ServiceTag(c.name.Service))
-	numShards.Reset(ctx, core.ServiceTag(c.name.Service))
+	numConsumers.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	numShards.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 }
 
 // Txn is a helper that constructs a syncx.TxnFn with the project specific error codes and injection channels

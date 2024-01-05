@@ -44,5 +44,5 @@ func (i Instance) Endpoint() string {
 }
 
 func (i Instance) String() string {
-	return fmt.Sprintf("%v=%v", i.Location(), i.Endpoint())
+	return fmt.Sprintf("%v[location=%v,endpoint=%v]", i.ID(), i.Location(), i.Endpoint())
 }

@@ -107,5 +107,5 @@ func (c connection[T]) forward(in <-chan T, messages chan<- *Message[T]) {
 }
 
 func (c connection[T]) String() string {
-	return fmt.Sprintf("sid: %v, instance: %v", c.sid, c.instance)
+	return fmt.Sprintf("%v[instance=%v]", c.sid, c.instance)
 }
