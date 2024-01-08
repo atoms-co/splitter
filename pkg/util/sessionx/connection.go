@@ -52,7 +52,7 @@ func NewConnection[T any](cl clock.Clock, sid session.ID, instance model.Instanc
 	return con, out
 }
 
-func (c connection[T]) Send(ctx context.Context, msg T) bool {
+func (c *connection[T]) Send(ctx context.Context, msg T) bool {
 	if c.IsClosed() {
 		return false
 	}
@@ -72,21 +72,22 @@ func (c connection[T]) Send(ctx context.Context, msg T) bool {
 	}
 }
 
-func (c connection[T]) Sid() session.ID {
+func (c *connection[T]) Sid() session.ID {
 	return c.sid
 }
 
-func (c connection[T]) Instance() model.Instance {
+func (c *connection[T]) Instance() model.Instance {
 	return c.instance
 }
 
-func (c connection[T]) Disconnect() {
+func (c *connection[T]) Disconnect() {
 	c.Close()
 	if c.closed.CAS(false, true) {
 		close(c.out)
 	}
 }
-func (c connection[T]) forward(in <-chan T, messages chan<- *Message[T]) {
+
+func (c *connection[T]) forward(in <-chan T, messages chan<- *Message[T]) {
 	defer c.Close()
 
 	for {
@@ -106,6 +107,6 @@ func (c connection[T]) forward(in <-chan T, messages chan<- *Message[T]) {
 	}
 }
 
-func (c connection[T]) String() string {
+func (c *connection[T]) String() string {
 	return fmt.Sprintf("%v[instance=%v]", c.sid, c.instance)
 }

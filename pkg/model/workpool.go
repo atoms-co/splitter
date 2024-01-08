@@ -296,15 +296,20 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			p.shards[g.Shard()] = g.ID()
 			candidate, ok := p.grants[g.ID()]
 			if !ok {
-				log.Errorf(ctx, "Internal: unexpected promotion of unowned grant %v. Ignoring", g)
+				log.Errorf(ctx, "Internal: unexpected promotion of unowned grant %v. Releasing promotion", g)
+				p.mustSend(ctx, NewReleased(g))
 				continue
 			}
 			if candidate.LeaseState != LeaseActive {
-				log.Errorf(ctx, "Internal: unexpected promotion of inactive grant %v. Ignoring", g)
+				log.Errorf(ctx, "Internal: unexpected promotion of inactive grant %v. Releasing promotion and closing grant", g)
+				p.mustSend(ctx, NewReleased(g))
+				candidate.Handler.Close()
 				continue
 			}
 			if candidate.Grant.State() != AllocatedGrantState {
-				log.Errorf(ctx, "Internal: unexpected promotion of inactive grant %v. Ignoring", g)
+				log.Errorf(ctx, "Internal: unexpected promotion of non-allocated grant %v. Releasing promotion and closing grant", g)
+				p.mustSend(ctx, NewReleased(g))
+				candidate.Handler.Close()
 				continue
 			}
 			candidate.Handler.Ownership().Activate() // Signal consumer that grant is activated
