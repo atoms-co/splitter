@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
@@ -249,6 +250,27 @@ func TestCluster_Update(t *testing.T) {
 
 		_, ok = c.OwnerWithState(prefab.NewQDK("t1/s1/d1", "eastus1", "E34345"), model.RevokedGrantState)
 		require.False(t, ok)
+	})
+
+	t.Run("revoked", func(t *testing.T) {
+		g11 := prefab.NewGrantInfo("g11", "t1/s1/d1", model.Regional, "northcentralus", "E", "F", model.ActiveGrantState)
+		grants := map[model.ConsumerID][]model.GrantInfo{
+			prefab.Instance1.ID(): slicex.New(g11),
+		}
+		c, err := model.NewCluster(model.NewClusterID(), 0, slicex.New(prefab.Instance1, prefab.Instance2), grants)
+		require.NoError(t, err)
+
+		g12 := prefab.NewGrantInfo("g12", "t1/s1/d1", model.Regional, "northcentralus", "E", "F", model.AllocatedGrantState)
+
+		err = c.Update(slicex.New(prefab.Instance2), map[model.ConsumerID][]model.GrantInfo{prefab.Instance2.ID(): slicex.New(g12)}, nil, nil, nil)
+		require.NoError(t, err)
+
+		requireOwner(t, c, prefab.NewQDK("t1/s1/d1", "northcentralus", "E34345"), prefab.Instance1, model.RevokedGrantState)
+
+		g, ok := c.Grant("g12")
+		require.True(t, ok)
+
+		assertx.Equal(t, model.AllocatedGrantState, g.State())
 	})
 
 	t.Run("assign grant moved to new consumer", func(t *testing.T) {

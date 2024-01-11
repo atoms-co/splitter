@@ -188,6 +188,7 @@ func (c *cluster) assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo
 	ids := mapx.MapNew(consumers, func(c Consumer) (ConsumerID, bool) {
 		return c.ID(), true
 	})
+
 	// Verify integrity before mutating data
 	for cid := range grants {
 		if _, ok := ids[cid]; !ok {
@@ -206,6 +207,7 @@ func (c *cluster) assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo
 	for cid, consumerGrants := range grants {
 		for _, g := range consumerGrants {
 			c.activateGrantIfNeeded(g)
+			c.revokeGrantIfNeeded(g)
 
 			// Check shard moved to another consumer
 			if gid, ok := c.findGrant(g.Shard(), g.State()); ok && c.g2c[gid] != cid {
@@ -291,6 +293,7 @@ func (c *cluster) Diff(old Cluster) ClusterDiff {
 		assigned[c.g2c[newGid]] = append(assigned[c.g2c[newGid]], newGrant)
 
 		// Old grant implicitly removed when shard is assigned with a new grant ID
+		// This optimization avoids surfacing implicit revokes in the Diff
 		for _, gid := range old.ShardGrants(newGrant.Shard()) {
 			g, _ := old.Grant(gid)
 			if g.State() == newGrant.State() {
@@ -389,6 +392,15 @@ func (c *cluster) activateGrantIfNeeded(g GrantInfo) {
 	if IsActiveGrant(g.State()) {
 		if old, ok := c.grants[g.ID()]; ok && IsAllocatedGrant(old.State()) {
 			c.deleteRevokedGrant(g.Shard())
+		}
+	}
+}
+
+func (c *cluster) revokeGrantIfNeeded(g GrantInfo) {
+	// On Allocation, previous Active grant should be transitioned to Revoked state
+	if IsAllocatedGrant(g.State()) {
+		if gid, ok := c.findGrant(g.Shard(), ActiveGrantState); ok {
+			c.grants[gid] = NewGrantInfo(gid, c.grants[gid].Shard(), RevokedGrantState)
 		}
 	}
 }

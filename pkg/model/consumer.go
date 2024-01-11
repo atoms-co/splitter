@@ -213,6 +213,14 @@ type GrantInfo struct {
 	pb *public_v1.ClusterMessage_GrantInfo
 }
 
+func NewGrantInfo(id GrantID, shard Shard, state GrantState) GrantInfo {
+	return GrantInfo{pb: &public_v1.ClusterMessage_GrantInfo{
+		Id:    string(id),
+		Shard: shard.ToProto(),
+		State: state,
+	}}
+}
+
 func WrapGrantInfo(pb *public_v1.ClusterMessage_GrantInfo) GrantInfo {
 	return GrantInfo{pb: pb}
 }

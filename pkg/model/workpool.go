@@ -410,6 +410,7 @@ func (p *WorkPool) handleClusterChange(ctx context.Context, change ClusterChange
 	}
 
 	log.Infof(ctx, "Updated cluster: %v", p.cluster)
+
 	chanx.Clear(p.clusters)
 	p.clusters <- p.cluster
 }

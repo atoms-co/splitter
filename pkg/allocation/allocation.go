@@ -625,7 +625,7 @@ func (p penalized[T, W, K, V]) Less(o penalized[T, W, K, V]) bool {
 // example, avoid recently assigned work, specific domains or similar. It would be an addition
 // placement rule?
 
-// TODO(herohde) 11/5/2023: how aggressively should we even laod? Stability is also desirable.
+// TODO(herohde) 11/5/2023: how aggressively should we even load? Stability is also desirable.
 // OTOH we also want upscaling to help. Maybe best done as a separate function?
 
 // LoadBalance attempts to make a move that improves total adjusted load, or worker load balance as
