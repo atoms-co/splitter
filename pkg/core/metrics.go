@@ -16,6 +16,7 @@ const (
 	ResultKey       metrics.Key = "result"
 	ActionKey       metrics.Key = "action"
 	StatusKey       metrics.Key = "status"
+	StateKey        metrics.Key = "state"
 	MessageTypeKey  metrics.Key = "message_type"
 )
 
@@ -78,6 +79,10 @@ func ActionTag(v any) metrics.Tag {
 
 func StatusTag(v any) metrics.Tag {
 	return metrics.Tag{Key: StatusKey, Value: fmt.Sprintf("%v", v)}
+}
+
+func StateTag(v model.GrantState) metrics.Tag {
+	return metrics.Tag{Key: StateKey, Value: fmt.Sprintf("%v", v)}
 }
 
 func MessageTypeTag(v any) metrics.Tag {

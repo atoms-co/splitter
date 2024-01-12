@@ -33,9 +33,14 @@ var (
 	numConsumers = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.StatusKey)...),
 	)
+	numAssignments = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.StateKey)...),
+	)
+
 	numShards = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
 	)
+
 	numActions = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Leader actions", core.TenantKey, core.ServiceKey, core.ActionKey, core.ResultKey)
 )
 
@@ -563,16 +568,49 @@ func (c *coordinator) String() string {
 func (c *coordinator) emitMetrics(ctx context.Context) {
 	c.resetMetrics(ctx)
 
+	// Consumers with status
 	numConsumers.Set(ctx, float64(len(c.consumers)), slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.StatusTag("ok"))...)
+
+	// Static shard counts
 	for _, domain := range c.cache.Domains(c.name) {
 		shards := domain.Config().ShardingPolicy().Shards()
 		numShards.Set(ctx, float64(shards), core.QualifiedDomainTags(domain.Name())...)
+	}
+
+	// Assignments with state
+	assigned := map[model.QualifiedDomainName]map[model.GrantState]int{}
+	for _, worker := range c.alloc.Workers() {
+		assign := c.alloc.Assigned(worker.ID())
+		for _, active := range assign.Active {
+			if assigned[active.Unit.Domain] == nil {
+				assigned[active.Unit.Domain] = map[model.GrantState]int{}
+			}
+			assigned[active.Unit.Domain][model.ActiveGrantState] += 1
+		}
+		for _, allocated := range assign.Allocated {
+			if assigned[allocated.Unit.Domain] == nil {
+				assigned[allocated.Unit.Domain] = map[model.GrantState]int{}
+			}
+			assigned[allocated.Unit.Domain][model.AllocatedGrantState] += 1
+		}
+		for _, revoked := range assign.Revoked {
+			if assigned[revoked.Unit.Domain] == nil {
+				assigned[revoked.Unit.Domain] = map[model.GrantState]int{}
+			}
+			assigned[revoked.Unit.Domain][model.RevokedGrantState] += 1
+		}
+	}
+	for domain, counts := range assigned {
+		for state, count := range counts {
+			numAssignments.Set(ctx, float64(count), slicex.CopyAppend(core.QualifiedDomainTags(domain), core.StateTag(state))...)
+		}
 	}
 }
 
 func (c *coordinator) resetMetrics(ctx context.Context) {
 	numConsumers.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numShards.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	numAssignments.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 }
 
 // Txn is a helper that constructs a syncx.TxnFn with the project specific error codes and injection channels
