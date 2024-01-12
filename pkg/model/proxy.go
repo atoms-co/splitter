@@ -98,52 +98,47 @@ var (
 // resolver is a low-level helper for redirecting requests to the shard owner, using a connection pool. Multiple
 // proxies with different service contracts can use the same resolver.
 type resolver[T any] struct {
-	self InstanceID
-	pool ConnectionPool
-	fn   RemoteFn[T]
-
+	self    InstanceID
+	pool    ConnectionPool
+	fn      RemoteFn[T]
 	cluster ClusterProvider
-	mu      sync.RWMutex
 }
 
 // NewResolver creates a resolve to reach domain owners over grpc. Callers must check if locally owned first.
 // If an ownership failure occurs, the local check must be re-done before a retry.
-func NewResolver[T any](ctx context.Context, self InstanceID, clusterProvider ClusterProvider, pool ConnectionPool, fn RemoteFn[T]) Resolver[T, QualifiedDomainKey] {
-	ret := &resolver[T]{
+func NewResolver[T any](self InstanceID, provider ClusterProvider, pool ConnectionPool, fn RemoteFn[T]) Resolver[T, QualifiedDomainKey] {
+	return &resolver[T]{
 		self:    self,
 		pool:    pool,
 		fn:      fn,
-		cluster: clusterProvider,
+		cluster: provider,
 	}
-	return ret
 }
 
-// Resolve returns a shared grpc connection to the owning instance, if remote. Returns false if local.
+// Resolve returns a shared grpc connection to the owning instance, if remote. Returns ErrNoResolution if local.
 func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
+	var zero T
 
-	var rt T
+	if cluster, ok := r.cluster.V(); ok {
+		if instance, _, ok := cluster.Owner(key); ok {
+			// TOOD(herohde) 1/12/2024: the current Owner method implies Active/Revoked state if ok.
+			// But we need resolves that make a different decision.
 
-	cluster, ok := r.cluster.Cluster()
-	if !ok {
-		return rt, fmt.Errorf("clustermap not initialized: %w", ErrNotFound)
+			if instance.ID() == r.self {
+				return zero, ErrNoResolution
+			}
+			con, err := r.pool.Connect(ctx, instance.ID())
+			if err != nil {
+				numForwards.Increment(ctx, 1, resultTag("no_connection"))
+				return zero, fmt.Errorf("no connection: %w", err)
+			}
+			numForwards.Increment(ctx, 1, resultTag("ok"))
+			return r.fn(con.Conn), nil
+		}
 	}
 
-	if instance, state, ok := cluster.Owner(key); ok && IsActiveGrant(state) {
-		if instance.ID() == r.self {
-			return rt, ErrNoResolution
-		}
-		con, err := r.pool.Connect(ctx, instance.ID())
-		if err != nil {
-			numForwards.Increment(ctx, 1, resultTag("no_connection"))
-			return rt, fmt.Errorf("no connection: %w", ErrInvalid) // Should this be Invalid?
-		}
-		numForwards.Increment(ctx, 1, resultTag("ok"))
-		return r.fn(con.Conn), nil
-	}
 	numForwards.Increment(ctx, 1, resultTag("not_initialized"))
-	return rt, fmt.Errorf("not initialized: %w", ErrInvalid) // Should this be Invalid?
+	return zero, fmt.Errorf("not initialized: %w", ErrNotFound)
 }
 
 type connectionPool struct {
@@ -171,7 +166,7 @@ func (p *connectionPool) Connect(ctx context.Context, id InstanceID) (Connection
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	cluster, ok := p.provider.Cluster()
+	cluster, ok := p.provider.V()
 	if !ok {
 		return Connection{}, fmt.Errorf("clustermap not initialized: %w", ErrNotFound)
 	}

@@ -2,11 +2,11 @@ package model
 
 import (
 	"context"
+	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"fmt"
 	"github.com/google/uuid"
-	"sync"
 )
 
 type ClusterId string
@@ -425,39 +425,11 @@ func (c *cluster) deleteGrant(g GrantID) {
 	delete(c.s2g[grant.Shard()], g)
 }
 
+// ClusterProvider returns the latest Cluster, if one is present. Thread-safe.
 type ClusterProvider interface {
-	Cluster() (Cluster, bool)
+	V() (Cluster, bool)
 }
 
 func NewClusterProvider(ctx context.Context, clusters <-chan Cluster) ClusterProvider {
-	p := clusterProvider{}
-	go p.process(ctx, clusters)
-	return &p
-}
-
-type clusterProvider struct {
-	cluster Cluster
-	mu      sync.RWMutex
-}
-
-func (p *clusterProvider) Cluster() (Cluster, bool) {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return p.cluster, p.cluster != nil
-}
-
-func (p *clusterProvider) process(ctx context.Context, clusters <-chan Cluster) {
-	for {
-		select {
-		case c, ok := <-clusters:
-			if !ok {
-				return
-			}
-			p.mu.Lock()
-			p.cluster = c
-			p.mu.Unlock()
-		case <-ctx.Done():
-			return
-		}
-	}
+	return chanx.NewProvider(ctx, clusters)
 }
