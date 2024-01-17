@@ -28,12 +28,12 @@ import (
 
 const (
 	// handleTimeout is the timeout for handle requests.
-	handleTimeout = 10 * time.Second
+	handleTimeout = 5 * time.Second
 	// registrationTimeout is the timeout for observing the initial register request from a worker connection.
-	registrationTimeout = 20 * time.Second
+	registrationTimeout = 10 * time.Second
 	// leaseDuration is the granted lease duration for tenants. It should be long enough to accommodate a reconnect,
 	// but not so long tenants are idle for too long if the connection has restarted.
-	leaseDuration = 45 * time.Second
+	leaseDuration = 20 * time.Second
 )
 
 var (
@@ -117,15 +117,14 @@ func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 		return nil, model.WrapError(fmt.Errorf("invalid registration message: %w", model.ErrInvalid))
 	}
 	register, _ := workerMsg.Register()
-	worker, grants := register.Worker(), register.Active()
 
-	log.Infof(ctx, "Registration for %v: %v, #grants=%v", sid, worker, len(grants))
+	log.Infof(ctx, "Registration for %v: %v, #grants=%v", sid, register.Worker(), len(register.Active()))
 
 	return syncx.Txn1(ctx, l.txn, func() (<-chan Message, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), l.Closed())
 
 		now := l.cl.Now()
-		s, out := l.connect(wctx, now, sid, worker, grants, in)
+		s, out := l.connect(wctx, now, sid, register, in)
 		l.allocate(ctx, now, false) // Allocate to assign work post connection
 
 		go func() {
@@ -133,7 +132,7 @@ func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 			<-s.connection.Closed()
 
 			syncx.AsyncTxn(l.txn, func() {
-				cur, ok := l.workers[worker.ID()]
+				cur, ok := l.workers[s.instance.ID()]
 				if ok && cur.connection.Sid() == sid { // guard against race
 					l.disconnect(wctx, "connection closed", cur)
 				}
@@ -417,27 +416,32 @@ func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relin
 	l.assign(ctx, now, promoted...)
 }
 
-func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, instance model.Instance, grants []core.Grant, in <-chan Message) (*workerSession, <-chan Message) {
-	if old, ok := l.workers[instance.ID()]; ok {
-		log.Infof(ctx, "Worker %v re-connected (session=%v) with #grants: %d. Disconnecting stale session", instance, sid, len(grants))
+func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, register RegisterMessage, in <-chan Message) (*workerSession, <-chan Message) {
+	worker := register.Worker()
+	var active []Grant
+	for _, g := range register.Active() {
+		active = append(active, fromGrant(worker.ID(), g))
+	}
+
+	if old, ok := l.workers[worker.ID()]; ok {
+		log.Infof(ctx, "Worker %v re-connected (session=%v) with #grants: %d. Disconnecting stale session", worker, sid, len(active))
 		l.disconnect(ctx, "reconnect", old)
 	} else {
-		log.Infof(ctx, "Worker %v connected (session=%v) with #grants: %d", instance, sid, len(grants))
+		log.Infof(ctx, "Worker %v connected (session=%v) with #grants: %d", worker, sid, len(active))
 	}
 
 	// TODO(jhhurwitz): 12/06/23: Custom size
-	connection, out := sessionx.NewConnection[Message](l.cl, sid, instance, l, in, l.messages)
+	connection, out := sessionx.NewConnection[Message](l.cl, sid, worker, l, in, l.messages)
 	w := &workerSession{
-		instance:   instance,
+		instance:   worker,
 		connection: connection,
 	}
-	l.workers[instance.ID()] = w
+	l.workers[worker.ID()] = w
 
 	lease := l.cl.Now().Add(leaseDuration)
 	w.TrySend(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
 
-	// TODO(jhhurwitz): 12/06/23: Claim grants
-	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client().ID(), w.instance), lease /* + claimed grants */); ok {
+	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client().ID(), w.instance), lease, active...); ok {
 		for _, grant := range assigned.Active {
 			tenant := grant.Unit.Tenant
 			state, _ := l.cache.State(tenant)

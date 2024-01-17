@@ -58,8 +58,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		model.NewDomainConfig(
 			model.WithDomainShardingPolicy(
 				model.NewShardingPolicy(4)),
-			model.WithDomainRegions("centralus")),
-	),
+			model.WithDomainRegions("centralus"))),
 	)
 	require.NoError(t, err)
 

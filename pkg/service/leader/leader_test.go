@@ -2,6 +2,7 @@ package leader_test
 
 import (
 	"context"
+	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
@@ -9,6 +10,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
+	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/storage/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,32 +24,18 @@ const (
 	domain1  model.DomainName  = "domain1"
 )
 
-func TestLeader(t *testing.T) {
+var (
+	s1 = model.QualifiedServiceName{Tenant: tenant1, Service: service1}
+)
+
+func TestLeader_SingleConsumer(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 	loc := location.New("centralus", "splitter-0")
-	db := memory.New()
 
-	tenant, err := model.NewTenant(tenant1, cl.Now())
+	s, err := model.NewService(s1, cl.Now())
 	require.NoError(t, err)
-
-	serviceName := model.QualifiedServiceName{Tenant: tenant1, Service: service1}
-	service, err := model.NewService(serviceName, cl.Now())
-	require.NoError(t, err)
-
-	domainName := model.QualifiedDomainName{Service: serviceName, Domain: domain1}
-	domain, err := model.NewDomain(domainName, model.Unit, cl.Now())
-	require.NoError(t, err)
-
-	err = db.Update(ctx, core.NewTenantUpdate(model.NewTenantInfo(tenant, 1, cl.Now())))
-	require.NoError(t, err)
-
-	serviceInfo := model.NewServiceInfo(service, 1, cl.Now())
-	err = db.Update(ctx, core.NewServiceUpdate(serviceInfo))
-	require.NoError(t, err)
-
-	err = db.Update(ctx, core.NewDomainUpdate(model.NewServiceInfo(service, 2, cl.Now()), domain))
-	require.NoError(t, err)
+	db := setup(t, ctx, cl, s)
 
 	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
 	<-l.Initialized().Closed()
@@ -61,10 +49,53 @@ func TestLeader(t *testing.T) {
 	require.NoError(t, err, "worker failed to join leader")
 
 	assign := readFn(t, out, isAssign)
-	assert.Equal(t, serviceName, assign.Grant().Service())
+	assert.Equal(t, s.Name(), assign.Grant().Service())
 
 	l.Close()
 	assertx.Closed(t, out)
+}
+
+func TestLeader_SingleConsumerReattach(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+	loc := location.New("centralus", "splitter-0")
+
+	s, err := model.NewService(s1, cl.Now())
+	require.NoError(t, err)
+	db := setup(t, ctx, cl, s)
+
+	l := leader.New(ctx, cl, loc, db /* no need for fast activation as regrant can occur before activation */)
+	<-l.Initialized().Closed()
+
+	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+
+	in := make(chan leader.Message, 1)
+	in <- leader.NewRegister(w, core.NewGrant("foo", s.Name(), cl.Now().Add(20*time.Second), cl.Now()))
+
+	out, err := l.Join(ctx, session.NewID(), in)
+	require.NoError(t, err, "worker failed to join leader")
+
+	assign := readFn(t, out, isAssign)
+	assert.Equal(t, s1, assign.Grant().Service())
+
+	l.Close()
+	assertx.Closed(t, out)
+}
+
+func setup(t *testing.T, ctx context.Context, cl clock.Clock, services ...model.Service) storage.Storage {
+	db := memory.New()
+
+	for _, service := range services {
+		tenant, err := model.NewTenant(service.Name().Tenant, cl.Now())
+		require.NoError(t, err)
+
+		// db updates
+		err = db.Update(ctx, core.NewTenantUpdate(model.NewTenantInfo(tenant, 1, cl.Now())))
+		require.NoError(t, err)
+		serviceInfo := model.NewServiceInfo(service, 1, cl.Now())
+		err = db.Update(ctx, core.NewServiceUpdate(serviceInfo))
+	}
+	return db
 }
 
 func isAssign(msg leader.Message) (leader.AssignMessage, bool) {
