@@ -2,13 +2,14 @@ package session
 
 import (
 	"context"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
-	"time"
 )
 
 const (
@@ -31,25 +32,26 @@ type Client struct {
 	cl clock.Clock
 
 	sid    ID
-	client location.Instance
+	self   location.Instance
+	server location.Instance
 
 	in  chan Message // never closed
 	out chan<- Message
 }
 
-func NewClient(ctx context.Context, cl clock.Clock, client location.Instance) (*Client, Message, <-chan Message) {
+func NewClient(ctx context.Context, cl clock.Clock, self location.Instance) (*Client, Message, <-chan Message) {
 	out := make(chan Message, clientBufChanSize)
 	c := &Client{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
 		sid:         NewID(),
-		client:      client,
+		self:        self,
 		in:          make(chan Message, clientBufChanSize),
 		out:         out,
 	}
 	go c.process(ctx)
 
-	return c, NewEstablishMessage(c.sid, c.client), out
+	return c, NewEstablishMessage(c.sid, c.self), out
 }
 
 // Observe observes session messages to the Client
@@ -80,20 +82,27 @@ func (c *Client) process(ctx context.Context) {
 	for !c.IsClosed() {
 		select {
 		case msg := <-c.in:
+
+
 			switch {
 			case msg.IsEstablished():
-				ttl, _ := msg.Established()
+				established, _ := msg.Established()
+				c.server = established.Server
+				expiration.Reset(c.cl.Until(established.Ttl))
+
+			case msg.IsHeartbeatAck():
+				ttl, _ := msg.HeartbeatAck()
 				expiration.Reset(c.cl.Until(ttl))
 
 			case msg.IsClosed():
 				return
 
 			default:
-				log.Warnf(ctx, "Received unknown message for sid %v: %v", c.sid, msg)
+				log.Warnf(ctx, "Received unknown message for sid %v, (self: %v -> server: %v): %v", c.sid, c.self, c.server, msg)
 			}
 
 		case <-expiration.C:
-			log.Infof(ctx, "Session expired. sid: %v, client: %v", c.sid, c.client)
+			log.Infof(ctx, "Session expired. sid: %v, (self: %v -> server: %v)", c.sid, c.self, c.server)
 			return
 
 		case <-heartbeat.C:

@@ -2,13 +2,15 @@ package session_test
 
 import (
 	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
-	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 )
 
 func TestConnect(t *testing.T) {
@@ -81,7 +83,7 @@ func TestReceive(t *testing.T) {
 	t.Run("main", func(t *testing.T) {
 		main := make(chan message[int], 1)
 
-		s, liveness := session.NewServer(ctx, cl)
+		s, liveness := session.NewServer(ctx, cl, loc)
 		s.Observe(ctx, session.NewEstablishMessage("sid", loc))
 
 		out := session.Receive(s, main, liveness, inject[int])
@@ -107,7 +109,7 @@ func TestReceive(t *testing.T) {
 	t.Run("manual", func(t *testing.T) {
 		main := make(chan message[int], 2)
 
-		s, liveness := session.NewServer(ctx, cl)
+		s, liveness := session.NewServer(ctx, cl, loc)
 		s.Observe(ctx, session.NewEstablishMessage("sid", loc))
 
 		out := session.Receive(s, main, liveness, inject[int])

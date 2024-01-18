@@ -26,15 +26,15 @@ import (
 // assigned grants and, separately, grants assigned to all consumers.
 type ConsumerService struct {
 	cl       clock.Clock
-	instance location.Instance
+	self     location.Instance
 	worker   *worker.Worker
 	resolver core.ServiceResolver
 }
 
-func NewConsumerService(cl clock.Clock, loc location.Location, worker *worker.Worker, resolver core.ServiceResolver) *ConsumerService {
+func NewConsumerService(cl clock.Clock, worker *worker.Worker, resolver core.ServiceResolver) *ConsumerService {
 	return &ConsumerService{
 		cl:       cl,
-		instance: location.NewInstance(loc),
+		self:     location.NewNamedInstance("proxy", worker.Self().Location()),
 		worker:   worker,
 		resolver: resolver,
 	}
@@ -42,7 +42,7 @@ func NewConsumerService(cl clock.Clock, loc location.Location, worker *worker.Wo
 
 func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) error {
 	// Create initialize server side of a session to maintain connection to the consumer
-	consumerSession, sessionOut := session.NewServer(server.Context(), s.cl)
+	consumerSession, sessionOut := session.NewServer(server.Context(), s.cl, s.self)
 	defer consumerSession.Close()
 	wctx, _ := contextx.WithQuitCancel(server.Context(), consumerSession.Closed()) // cancel context if consumer session closes
 
@@ -109,7 +109,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 
 func (s *ConsumerService) forwardRemote(ctx context.Context, consumerSession *session.Server, cc core.Connection, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	// Create a client session with the coordinator instance
-	coordinatorSession, establish, sessionOut := session.NewClient(ctx, s.cl, s.instance)
+	coordinatorSession, establish, sessionOut := session.NewClient(ctx, s.cl, s.self)
 	wctx, _ := contextx.WithQuitCancel(ctx, coordinatorSession.Closed()) // cancel context if session closes
 	iox.WhenClosed(coordinatorSession, consumerSession)
 
@@ -139,7 +139,7 @@ func (s *ConsumerService) forwardRemote(ctx context.Context, consumerSession *se
 			return chanx.Map(joined, coordinator.UnwrapConnectMessage), nil
 		})
 		if err != nil {
-			log.Warnf(ctx, "Error in a stream from %v to a coordinator: %v", s.instance, err)
+			log.Warnf(ctx, "Error in a stream from %v to a coordinator: %v", s.self, err)
 			errChan <- err
 		}
 	}()

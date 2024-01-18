@@ -83,7 +83,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 	l := &Leader{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
-		id:          location.NewInstance(loc),
+		id:          location.NewInstance(loc, location.WithName("leader")),
 		writer:      writer,
 		cache:       storage.NewCache(),
 		workers:     map[model.InstanceID]*workerSession{},
@@ -441,7 +441,8 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, reg
 	lease := l.cl.Now().Add(leaseDuration)
 	w.TrySend(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
 
-	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Client().ID(), w.instance), lease, active...); ok {
+	// TODO(jhhurwitz): 12/06/23: Claim grants
+	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Instance().ID(), w.instance), lease, active...); ok {
 		for _, grant := range assigned.Active {
 			tenant := grant.Unit.Tenant
 			state, _ := l.cache.State(tenant)

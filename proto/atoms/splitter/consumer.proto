@@ -25,7 +25,7 @@ message QualifiedDomainKey {
 
 // Instance defines an addressable dynamic component instance. Immutable.
 message Instance {
-  atoms.splitter.lib.service.location.Instance client = 1;
+  atoms.splitter.lib.service.location.Instance instance = 1;
   string endpoint = 2;
 }
 

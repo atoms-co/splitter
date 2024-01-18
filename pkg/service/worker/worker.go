@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
@@ -27,7 +28,7 @@ const (
 	coordinatorStateBufferLen = 20
 )
 
-type JoinFn func(ctx context.Context, handler grpcx.Handler[leader.Message, leader.Message]) error
+type JoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[leader.Message, leader.Message]) error
 
 type CoordinatorFactory func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator
 
@@ -60,12 +61,12 @@ type Worker struct {
 	drain iox.AsyncCloser
 }
 
-func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory CoordinatorFactory) (*Worker, <-chan core.Cluster) {
+func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, factory CoordinatorFactory) (*Worker, <-chan core.Cluster) {
 	quit := iox.NewAsyncCloser()
 	w := &Worker{
 		AsyncCloser: quit,
 		cl:          cl,
-		self:        self,
+		self:        model.NewInstance(location.NewNamedInstance("worker", loc), endpoint),
 		joinFn:      joinFn,
 		factory:     factory,
 		in:          make(chan leader.Message),
@@ -80,6 +81,10 @@ func New(cl clock.Clock, self model.Instance, joinFn JoinFn, factory Coordinator
 	go w.join(context.Background())
 	go w.process(context.Background())
 	return w, w.clusters
+}
+
+func (w *Worker) Self() model.Instance {
+	return w.self
 }
 
 // Connect handles connection of a consumer to a local coordinator
@@ -127,7 +132,7 @@ func (w *Worker) join(ctx context.Context) {
 
 		log.Infof(ctx, "Worker %v attempting to join leader", w.self)
 
-		err := w.joinFn(wctx, func(ctx context.Context, in <-chan leader.Message) (<-chan leader.Message, error) {
+		err := w.joinFn(wctx, w.self.Instance(), func(ctx context.Context, in <-chan leader.Message) (<-chan leader.Message, error) {
 			return syncx.Txn1(ctx, w.txn, func() (<-chan leader.Message, error) {
 				return w.joinLeader(ctx, in)
 			})

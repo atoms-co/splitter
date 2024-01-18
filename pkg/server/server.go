@@ -42,22 +42,22 @@ func WithFastActivation(fastActivation bool) Option {
 
 // Server holds all service components.
 type Server struct {
-	cl clock.Clock
+	cl  clock.Clock
+	loc location.Location
 
-	location location.Location
 	cluster  *cluster.Cluster
 	manager  *leader.Manager
 	resolver core.ServiceResolver
 	worker   *worker.Worker
 }
 
-func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *cluster.Cluster, manager *leader.Manager, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint string, cluster *cluster.Cluster, manager *leader.Manager, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
 	}
 
-	joinFn := func(ctx context.Context, handler grpcx.Handler[leader.Message, leader.Message]) error {
+	joinFn := func(ctx context.Context, self location.Instance, handler grpcx.Handler[leader.Message, leader.Message]) error {
 		client, err := manager.Resolve(ctx, model.ZeroDomainKey)
 		if err != nil {
 			return grpcx.ShortCircuit(ctx, handler, func(ctx context.Context, in <-chan leader.Message) (<-chan leader.Message, error) {
@@ -65,7 +65,7 @@ func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *clus
 			})
 		}
 
-		sess, establish, out := session.NewClient(ctx, cl, self.Client())
+		sess, establish, out := session.NewClient(ctx, cl, self)
 		defer sess.Close()
 		wctx, _ := contextx.WithQuitCancel(ctx, sess.Closed()) // cancel context if session client closes
 
@@ -93,15 +93,15 @@ func New(ctx context.Context, cl clock.Clock, self model.Instance, cluster *clus
 		if opt.fastActivation {
 			lopts = append(lopts, coordinator.WithFastActivation())
 		}
-		return coordinator.New(ctx, cl, self.Location(), service, state, updates, lopts...)
+		return coordinator.New(ctx, cl, loc, service, state, updates, lopts...)
 	}
 
-	w, out := worker.New(cl, self, joinFn, factoryFn)
-	resolver := core.NewServiceResolver(ctx, self, out, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	w, out := worker.New(cl, loc, endpoint, joinFn, factoryFn)
+	resolver := core.NewServiceResolver(ctx, w.Self(), out, grpc.WithTransportCredentials(insecure.NewCredentials()))
 
 	return &Server{
 		cl:       cl,
-		location: self.Location(),
+		loc:      loc,
 		cluster:  cluster,
 		manager:  manager,
 		resolver: resolver,
@@ -114,7 +114,7 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	placement := frontend.NewInternalPlacementService(s.manager, s.manager)
 
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
-	public_v1.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.cl, s.location, s.worker, s.resolver))
+	public_v1.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.cl, s.worker, s.resolver))
 	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.manager, s.manager))
 	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService(placement))
 	internal_v1.RegisterPlacementManagementServiceServer(gs, placement)
@@ -125,8 +125,8 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 // ServeInternal starts the internal grpc server on the given port. Blocking.
 func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error {
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
-	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.manager))
-	internal_v1.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.cl, s.worker, s.resolver))
+	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.loc, s.manager))
+	internal_v1.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.cl, s.worker))
 	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cluster))
 	internal_v1.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.manager, s.manager))
 

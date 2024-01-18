@@ -14,7 +14,7 @@ type Instance struct {
 
 func NewInstance(instance location.Instance, endpoint string) Instance {
 	return WrapInstance(&public_v1.Instance{
-		Client:   location.UnwrapInstance(instance),
+		Instance: location.UnwrapInstance(instance),
 		Endpoint: endpoint,
 	})
 }
@@ -28,15 +28,15 @@ func UnwrapInstance(instance Instance) *public_v1.Instance {
 }
 
 func (i Instance) ID() InstanceID {
-	return InstanceID(i.pb.GetClient().GetId())
+	return InstanceID(i.pb.GetInstance().GetId())
 }
 
-func (i Instance) Client() location.Instance {
-	return location.WrapInstance(i.pb.GetClient())
+func (i Instance) Instance() location.Instance {
+	return location.WrapInstance(i.pb.GetInstance())
 }
 
 func (i Instance) Location() location.Location {
-	return location.Parse(i.pb.GetClient().GetLocation())
+	return location.Parse(i.pb.GetInstance().GetLocation())
 }
 
 func (i Instance) Endpoint() string {

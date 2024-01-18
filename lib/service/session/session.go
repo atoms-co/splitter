@@ -1,12 +1,14 @@
 package session
 
 import (
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session/pb"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"time"
+
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session/pb"
 )
 
 // ClientID identifies a live session client instance. It is transient and bound in-memory
@@ -35,6 +37,17 @@ func NewEstablishMessage(sid ID, client location.Instance) Message {
 	})
 }
 
+func NewEstablishedMessage(ttl time.Time, server location.Instance) Message {
+	return WrapMessage(&session_v1.Message{
+		Request: &session_v1.Message_Established_{
+			Established: &session_v1.Message_Established{
+				Ttl:    timestamppb.New(ttl),
+				Server: location.UnwrapInstance(server),
+			},
+		},
+	})
+}
+
 func NewHeartbeatMessage(now time.Time) Message {
 	return WrapMessage(&session_v1.Message{
 		Request: &session_v1.Message_Heartbeat_{
@@ -45,10 +58,10 @@ func NewHeartbeatMessage(now time.Time) Message {
 	})
 }
 
-func NewEstablishedMessage(ttl time.Time) Message {
+func NewHeartbeakAckMessage(ttl time.Time) Message {
 	return WrapMessage(&session_v1.Message{
-		Request: &session_v1.Message_Established_{
-			Established: &session_v1.Message_Established{
+		Request: &session_v1.Message_Ack{
+			Ack: &session_v1.Message_HeartbeatAck{
 				Ttl: timestamppb.New(ttl),
 			},
 		},
@@ -83,6 +96,10 @@ func (m Message) IsHeartbeat() bool {
 	return m.pb.GetHeartbeat() != nil
 }
 
+func (m Message) IsHeartbeatAck() bool {
+	return m.pb.GetAck() != nil
+}
+
 func (m Message) IsClosed() bool {
 	return m.pb.GetClosed() != nil
 }
@@ -93,14 +110,14 @@ func (m Message) Establish() (Establish, bool) {
 	}
 	establish := m.pb.GetEstablish()
 	return Establish{
-		Instance: location.WrapInstance(establish.GetClient()),
-		ID:       ID(establish.GetId()),
+		Client: location.WrapInstance(establish.GetClient()),
+		ID:     ID(establish.GetId()),
 	}, true
 }
 
 type Establish struct {
-	Instance location.Instance
-	ID       ID
+	Client location.Instance
+	ID     ID
 }
 
 func (m Message) Heartbeat() (time.Time, bool) {
@@ -110,11 +127,27 @@ func (m Message) Heartbeat() (time.Time, bool) {
 	return m.pb.GetHeartbeat().GetNow().AsTime(), true
 }
 
-func (m Message) Established() (time.Time, bool) {
-	if !m.IsEstablished() {
+func (m Message) HeartbeatAck() (time.Time, bool) {
+	if !m.IsHeartbeatAck() {
 		return time.Time{}, false
 	}
-	return m.pb.GetEstablished().GetTtl().AsTime(), true
+	return m.pb.GetAck().GetTtl().AsTime(), true
+}
+
+func (m Message) Established() (Established, bool) {
+	if !m.IsEstablished() {
+		return Established{}, false
+	}
+	established := m.pb.GetEstablished()
+	return Established{
+		Ttl:    established.GetTtl().AsTime(),
+		Server: location.WrapInstance(established.GetServer()),
+	}, true
+}
+
+type Established struct {
+	Ttl    time.Time
+	Server location.Instance
 }
 
 func (m Message) MessageType() string {
@@ -127,6 +160,8 @@ func (m Message) MessageType() string {
 		return "session_closed"
 	case m.IsHeartbeat():
 		return "session_heartbeat"
+	case m.IsHeartbeatAck():
+		return "session_heartbeat_ack"
 	default:
 		return "session_unknown"
 	}

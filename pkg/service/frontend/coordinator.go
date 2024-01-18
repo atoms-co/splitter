@@ -8,7 +8,6 @@ import (
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
@@ -19,22 +18,20 @@ import (
 
 // CoordinatorService is a grpc frontend for the internal coordinator api.
 type CoordinatorService struct {
-	cl       clock.Clock
-	worker   *worker.Worker
-	resolver core.ServiceResolver
+	cl     clock.Clock
+	worker *worker.Worker
 }
 
-func NewCoordinatorService(cl clock.Clock, worker *worker.Worker, resolver core.ServiceResolver) *CoordinatorService {
+func NewCoordinatorService(cl clock.Clock, worker *worker.Worker) *CoordinatorService {
 	c := CoordinatorService{
-		cl:       cl,
-		worker:   worker,
-		resolver: resolver,
+		cl:     cl,
+		worker: worker,
 	}
 	return &c
 }
 
 func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_ConnectServer) error {
-	sess, out := session.NewServer(server.Context(), c.cl)
+	sess, out := session.NewServer(server.Context(), c.cl, c.worker.Self().Instance())
 	defer sess.Close()
 	wctx, _ := contextx.WithQuitCancel(server.Context(), sess.Closed()) // cancel context if session server closes
 

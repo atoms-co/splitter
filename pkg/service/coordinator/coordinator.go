@@ -89,7 +89,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, service mod
 	c := &coordinator{
 		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
 		cl:          cl,
-		id:          location.NewInstance(loc),
+		id:          location.NewNamedInstance("coordinator", loc),
 		name:        service,
 		cache:       storage.NewCache(),
 		consumers:   map[model.InstanceID]*consumerSession{},
@@ -177,7 +177,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	lease := c.cl.Now().Add(leaseDuration)
 	s.TrySend(ctx, model.NewExtend(lease)) // grants will be covered under this lease
 
-	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Client().ID(), consumer.instance), lease, active...); ok {
+	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Instance().ID(), consumer.instance), lease, active...); ok {
 		if len(assigned.Active) > 0 {
 			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Active, toGrant)...))
 		}

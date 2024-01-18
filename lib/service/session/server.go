@@ -2,14 +2,15 @@ package session
 
 import (
 	"context"
+	"fmt"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
-	"fmt"
-	"time"
 )
 
 const (
@@ -35,6 +36,7 @@ type Server struct {
 	cl clock.Clock
 
 	sid         ID
+	self        location.Instance
 	client      location.Instance
 	establish   chan Establish
 	established bool
@@ -43,11 +45,12 @@ type Server struct {
 	out chan<- Message
 }
 
-func NewServer(ctx context.Context, cl clock.Clock) (*Server, <-chan Message) {
+func NewServer(ctx context.Context, cl clock.Clock, self location.Instance) (*Server, <-chan Message) {
 	out := make(chan Message, serverBufChanSize)
 	s := &Server{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
+		self:        self,
 		establish:   make(chan Establish, 1),
 		in:          make(chan Message, serverBufChanSize),
 		out:         out,
@@ -92,7 +95,7 @@ func (s *Server) process(ctx context.Context) {
 			// First message must be an Establish
 			if !s.established {
 				if !msg.IsEstablish() {
-					log.Errorf(ctx, "Initial session message must be establish %v", msg)
+					log.Errorf(ctx, "Initial session message must be Establish, got %v", msg)
 					return
 				}
 			}
@@ -100,36 +103,37 @@ func (s *Server) process(ctx context.Context) {
 			switch {
 			case msg.IsEstablish():
 				establish, _ := msg.Establish()
-				log.Infof(ctx, "Received establish for sid %v, client: %v", establish.ID, establish.Instance)
 
 				s.established = true
-				s.client = establish.Instance
+				s.client = establish.Client
 				s.sid = establish.ID
 				s.establish <- establish
 
+				log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, s.self)
+
 				expirationTime := s.cl.Now().Add(keepAliveTimeout)
-				s.send(ctx, NewEstablishedMessage(expirationTime))
+				s.send(ctx, NewEstablishedMessage(expirationTime, s.self))
 				expiration.Reset(s.cl.Until(expirationTime))
 
 			case msg.IsHeartbeat():
 				now, _ := msg.Heartbeat()
 				serverHeartbeatLag.Observe(ctx, s.cl.Now().Sub(now))
 				expirationTime := s.cl.Now().Add(keepAliveTimeout)
-				s.send(ctx, NewEstablishedMessage(expirationTime))
+				s.send(ctx, NewHeartbeakAckMessage(expirationTime))
 				expiration.Reset(s.cl.Until(expirationTime))
 
 			case msg.IsClosed():
 				return
 
 			default:
-				log.Warnf(ctx, "Received unknown session message for sid %v: %v", s.sid, msg)
+				log.Warnf(ctx, "Received unknown session message for sid %v, (client: %v -> self: %v): %v", s.sid, s.client, s.self, msg)
 			}
 
 		case <-expiration.C:
 			if s.established {
-				log.Infof(ctx, "Session expired. sid: %v, client: %v", s.sid, s.client)
+				log.Infof(ctx, "Session expired. sid: %v, (client: %v -> self: %v)", s.sid, s.client, s.self)
 			} else {
-				log.Infof(ctx, "Session expired before establish message.")
+				log.Infof(ctx, "Session expired before establish message, self %v.", s.self)
 			}
 			return
 

@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
@@ -314,7 +315,7 @@ func (c *client) Join(ctx context.Context, consumer Consumer, service QualifiedS
 	quit := iox.NewAsyncCloser()
 
 	joinFn := func(ctx context.Context, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
-		sess, establish, out := session.NewClient(ctx, c.clock, consumer.Client())
+		sess, establish, out := session.NewClient(ctx, c.clock, location.NewInstance(consumer.Location(), location.WithName("workpool")))
 		defer sess.Close()
 		wctx, _ := contextx.WithQuitCancel(ctx, sess.Closed()) // cancel context if session client closes
 

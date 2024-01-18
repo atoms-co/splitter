@@ -19,4 +19,5 @@ message Instance {
   string id = 1;
   atoms.splitter.lib.service.location.Location location = 2;
   google.protobuf.Timestamp created = 3;
+  string name = 4;
 }

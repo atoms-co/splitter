@@ -18,14 +18,20 @@ message Message {
     string id = 2;
   }
 
-  // Established extends the session to the given lease timestamp. Sent in response to Establish/Heartbeat.
+  // Established acknowledges an Establish and extends the session to the given lease timestamp. Sent in response to Establish.
   message Established {
     google.protobuf.Timestamp ttl = 1;
+    atoms.splitter.lib.service.location.Instance server = 2;
   }
 
   // Heartbeat is a request to extend the session lease.
   message Heartbeat {
     google.protobuf.Timestamp now = 1;
+  }
+
+  // HeartbeatAck extends the session to the given lease timestamp. Sent in response to Heartbeat
+  message HeartbeatAck {
+    google.protobuf.Timestamp ttl = 1;
   }
 
   // Closed is a sentinel that terminates the session by either side. The session lease is valid until the
@@ -36,8 +42,9 @@ message Message {
 
   oneof request {
     Establish establish = 1;
-    Established established = 2;
+    Established established = 4;
     Heartbeat heartbeat = 3;
+    HeartbeatAck ack = 2;
     Closed closed = 5;
   }
 }
