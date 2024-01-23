@@ -21,6 +21,8 @@ const (
 	Lead       DirectiveType = "lead"
 	Follow     DirectiveType = "follow"
 	Disconnect DirectiveType = "disconnect"
+
+	leaderDrainTime = 5 * time.Second
 )
 
 // Directive is a leadership directive used by the manager.
@@ -55,17 +57,26 @@ type Manager struct {
 	local  Proxy                           // nil if remote
 	halt   iox.AsyncCloser                 // stop signal for local/remote re-creation if active
 	mu     sync.Mutex
+
+	drain iox.AsyncCloser
 }
 
 func NewManager(cl clock.Clock, in <-chan Directive, factory Factory) *Manager {
+	quit := iox.NewAsyncCloser()
 	ret := &Manager{
-		AsyncCloser: iox.NewAsyncCloser(),
+		AsyncCloser: quit,
 		cl:          cl,
 		factory:     factory,
+		drain:       iox.WithQuit(quit.Closed(), iox.NewAsyncCloser()),
 	}
 	go ret.process(context.Background(), in)
 
 	return ret
+}
+
+func (m *Manager) Drain(timeout time.Duration) {
+	m.drain.Close()
+	m.cl.AfterFunc(timeout, m.Close)
 }
 
 func (m *Manager) Resolve(ctx context.Context, key model.DomainKey) (internal_v1.LeaderServiceClient, error) {
@@ -93,6 +104,7 @@ func (m *Manager) process(ctx context.Context, in <-chan Directive) {
 	defer m.Close()
 	defer m.reset()
 
+steady:
 	for {
 		select {
 		case directive, ok := <-in:
@@ -121,9 +133,23 @@ func (m *Manager) process(ctx context.Context, in <-chan Directive) {
 				log.Errorf(ctx, "Internal: invalid directive type: %v", directive)
 			}
 
+		case <-m.drain.Closed():
+			break steady
+
 		case <-m.Closed():
 			return
 		}
+	}
+
+	log.Infof(ctx, "Leader Manager draining")
+
+	m.mu.Lock()
+	isLeader := m.local != nil
+	m.mu.Unlock()
+
+	// Gives time to reassign Coordinators to other nodes
+	if isLeader {
+		m.cl.Sleep(leaderDrainTime)
 	}
 }
 

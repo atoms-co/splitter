@@ -122,11 +122,8 @@ func (w *Worker) Drain(timeout time.Duration) {
 }
 
 func (w *Worker) join(ctx context.Context) {
-	wctx, _ := contextx.WithQuitCancel(ctx, w.drain.Closed())
-
+	wctx, _ := contextx.WithQuitCancel(ctx, w.Closed())
 	for !w.drain.IsClosed() {
-		// subctx here that cancels on disconnect
-
 		// Not connected. Establish connection with leader with blocking join call. The worker is either
 		// connecting or connected while in the join call.
 
@@ -235,14 +232,14 @@ steady:
 	}
 
 	for {
-		if len(w.grants) == 0 {
-			log.Infof(ctx, "Worked %v drained after %v", w.self, w.cl.Since(now))
-			return
-		}
-
 		select {
 		case msg, ok := <-w.in:
 			if !ok {
+				if len(w.grants) == 0 {
+					log.Infof(ctx, "Worker %v drained after %v", w.self, w.cl.Since(now))
+					w.lostLeader(ctx)
+					return
+				}
 				log.Errorf(ctx, "Leader connection unexpectedly closed while draining. Hard close")
 				w.lostLeader(ctx)
 				return
@@ -283,6 +280,8 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 		assign, _ := msg.Assign()
 		grant, state := assign.Grant(), assign.State()
 
+		log.Infof(ctx, "Received assign %v", grant)
+
 		w.services[grant.Service()] = grant.ID()
 		if old, ok := w.grants[grant.ID()]; ok {
 			if old.State == LeaseStale {
@@ -322,9 +321,12 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 		log.Debugf(ctx, "Created coordinator %v for grant %v", c, grant)
 
 	case msg.IsRevoke():
+
 		revoke, _ := msg.Revoke()
 		grants := revoke.Grants()
 		leases := map[time.Time]*clockx.Timer{}
+
+		log.Infof(ctx, "Received revoke %v", grants)
 
 		for _, g := range grants {
 			gid := g.ID()
@@ -350,12 +352,6 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 
 			grant.Coordinator.Drain(w.cl.Until(ttl))
 		}
-
-	case msg.IsDisconnect():
-		log.Infof(ctx, "Leader requested disconnect for worker %v", w.self)
-
-		// TODO(jhhurwitz) 10/32/2023: add a closer that will cancel the the joinFn context
-		w.lostLeader(ctx)
 
 	case msg.IsLeaseUpdate():
 		lease, _ := msg.LeaseUpdate()

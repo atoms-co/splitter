@@ -85,15 +85,6 @@ func NewDeregister() Message {
 		},
 	}})
 }
-
-func NewDisconnect() Message {
-	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Disconnect_{
-			Disconnect: &internal_v1.WorkerMessage_Disconnect{},
-		},
-	}})
-}
-
 func NewLeaseUpdate(ttl time.Time) Message {
 	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
 		Msg: &internal_v1.WorkerMessage_Lease{
@@ -237,8 +228,6 @@ func (m WorkerMessage) Type() string {
 		return "revoke"
 	case m.IsRelinquished():
 		return "relinquished"
-	case m.IsDisconnect():
-		return "disconnect"
 	default:
 		return "unknown"
 	}
@@ -275,17 +264,6 @@ func (m WorkerMessage) LeaseUpdate() (LeaseUpdateMessage, bool) {
 		return LeaseUpdateMessage{}, false
 	}
 	return LeaseUpdateMessage{pb: m.pb.GetLease()}, true
-}
-
-func (m WorkerMessage) IsDisconnect() bool {
-	return m.pb.GetDisconnect() != nil
-}
-
-func (m WorkerMessage) Disconnect() (DisconnectMessage, bool) {
-	if !m.IsDisconnect() {
-		return DisconnectMessage{}, false
-	}
-	return DisconnectMessage{pb: m.pb.GetDisconnect()}, true
 }
 
 func (m WorkerMessage) IsAssign() bool {
@@ -357,10 +335,6 @@ type LeaseUpdateMessage struct {
 
 func (m LeaseUpdateMessage) Ttl() time.Time {
 	return m.pb.GetTtl().AsTime()
-}
-
-type DisconnectMessage struct {
-	pb *internal_v1.WorkerMessage_Disconnect
 }
 
 type AssignMessage struct {

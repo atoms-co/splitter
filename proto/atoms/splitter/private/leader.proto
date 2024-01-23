@@ -160,12 +160,6 @@ message WorkerMessage {
     google.protobuf.Timestamp ttl = 1;
   }
 
-  // Disconnect indicates that the worker should immediately disconnect. The server will generally only send
-  // DISCONNECT when draining.
-  // TODO(jhhurwitz): 11/30/23 Remove inplace of session library
-  message Disconnect {
-  }
-
   // Assign grants an exclusive tenant lease to the worker, under the worker lease. The worker must create a
   // tenant coordinator and lease domain ownership to its clients. The tenant state is sent out with the assignment.
   //
@@ -198,7 +192,6 @@ message WorkerMessage {
     Register register = 1;
     Deregister deregister = 2;
     LeaseUpdate lease = 3;
-    Disconnect disconnect = 4;
     Assign assign = 5;
     Update update = 8;
     Revoke revoke = 6;

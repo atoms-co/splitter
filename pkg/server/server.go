@@ -138,17 +138,36 @@ func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) {
 	log.Infof(ctx, "Shutting down server")
 	now := time.Now()
 
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
+	workerDrainTimeout := time.NewTimer(timeout)
+	defer workerDrainTimeout.Stop()
+
+	s.worker.Drain(timeout)
+	select {
+	case <-s.worker.Closed():
+		log.Infof(ctx, "Successfully drained worker in %v", time.Since(now))
+	case <-workerDrainTimeout.C:
+		log.Warnf(ctx, "Failed to drain worker gracefully in %v", time.Since(now))
+	}
+
+	clusterDrainTimeout := time.NewTimer(timeout)
+	defer clusterDrainTimeout.Stop()
 
 	s.cluster.Drain(timeout)
-	s.worker.Drain(timeout)
-
 	select {
 	case <-s.cluster.Closed():
 		log.Infof(ctx, "Successfully drained RAFT cluster in %v", time.Since(now))
-	case <-timer.C:
-		log.Warnf(ctx, "Failed to drain gracefully in %v", time.Since(now))
+	case <-clusterDrainTimeout.C:
+		log.Warnf(ctx, "Failed to drain cluster gracefully in %v", time.Since(now))
 	}
-	<-s.worker.Closed()
+
+	managerDrainTimeout := time.NewTimer(timeout)
+	defer managerDrainTimeout.Stop()
+
+	s.manager.Drain(timeout)
+	select {
+	case <-s.manager.Closed():
+		log.Infof(ctx, "Successfully drained Leader manager in %v", time.Since(now))
+	case <-managerDrainTimeout.C:
+		log.Warnf(ctx, "Failed to drain manager gracefully in %v", time.Since(now))
+	}
 }

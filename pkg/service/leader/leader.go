@@ -200,7 +200,6 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 
 	// Close worker connections
 	for _, w := range l.workers {
-		w.TrySend(ctx, NewDisconnect())
 		w.connection.Disconnect()
 	}
 
@@ -395,6 +394,7 @@ func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregis
 
 func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relinquished RelinquishedMessage) {
 	now := l.cl.Now()
+	log.Infof(ctx, "Received relinquished %v from worker %v", relinquished, w)
 
 	// (1) Release relinquished grants. Check deregister status
 
@@ -482,8 +482,6 @@ func (l *Leader) disconnect(ctx context.Context, reason string, workers ...*work
 				log.Warnf(ctx, "Detached worker %v with active services: %v ", w, assigned.Active)
 			}
 		} // else: already detached
-
-		w.TrySend(ctx, NewDisconnect()) // TODO(herohde) 11/12/2023: needed with session terminated?
 		w.connection.Disconnect()
 		delete(l.workers, w.instance.ID())
 	}

@@ -108,8 +108,6 @@ func TestWorker(t *testing.T) {
 	// (3) Worker disconnect and reconnect to Leader
 
 	t.Run("worker/disconnect", func(t *testing.T) {
-		leaderCon.Out <- leader.NewDisconnect()
-
 		// Shut down leader connection to force reconnect
 		oldLeaderCon := leaderCon
 		leaderCon = newFakeCon[leader.Message]()
