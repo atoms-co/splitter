@@ -34,7 +34,7 @@ var (
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.StatusKey)...),
 	)
 	numAssignments = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.StateKey)...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey)...),
 	)
 
 	numShards = metrics.NewTrackedGauge(
@@ -178,6 +178,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	s.TrySend(ctx, model.NewExtend(lease)) // grants will be covered under this lease
 
 	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Instance().ID(), consumer.instance), lease, active...); ok {
+		log.Infof(ctx, "attached returned: %v", assigned)
 		if len(assigned.Active) > 0 {
 			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Active, toGrant)...))
 		}
@@ -602,7 +603,7 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 	}
 	for domain, counts := range assigned {
 		for state, count := range counts {
-			numAssignments.Set(ctx, float64(count), slicex.CopyAppend(core.QualifiedDomainTags(domain), core.StateTag(state))...)
+			numAssignments.Set(ctx, float64(count), slicex.CopyAppend(core.QualifiedDomainTags(domain), core.GrantStateTag(state))...)
 		}
 	}
 }

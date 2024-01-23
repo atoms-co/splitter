@@ -6,6 +6,7 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/contextx"
@@ -13,6 +14,7 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/randx"
+	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -26,6 +28,10 @@ import (
 const (
 	statsDuration             = 15 * time.Second
 	coordinatorStateBufferLen = 20
+)
+
+var (
+	numGrants = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/worker_grants", "Worker grants", slicex.CopyAppend(core.QualifiedServiceKeys, core.LeaseStateKey)...))
 )
 
 type JoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[leader.Message, leader.Message]) error
@@ -214,6 +220,7 @@ steady:
 		case <-statsTimer.C:
 			// record metrics
 			log.Debugf(ctx, "Worker %v, joined=%v, #services=%v, #grants=%v", w.self, w.status != nil, len(w.services), len(w.grants))
+			w.emitMetrics(ctx)
 
 		case <-w.drain.Closed():
 			break steady
@@ -440,6 +447,29 @@ func (w *Worker) removeGrant(ctx context.Context, gid core.GrantID) {
 	}
 
 	log.Debugf(ctx, "Worker %v removed grant %v", w.self, grant)
+}
+
+func (w *Worker) emitMetrics(ctx context.Context) {
+	w.resetMetrics(ctx)
+
+	grants := map[model.QualifiedServiceName]map[LeaseState]int{}
+	for _, grant := range w.grants {
+		service := grant.Grant.Service()
+		if grants[service] == nil {
+			grants[service] = map[LeaseState]int{}
+		}
+		grants[service][grant.State] += 1
+	}
+
+	for service, counts := range grants {
+		for state, count := range counts {
+			numGrants.Set(ctx, float64(count), slicex.CopyAppend(core.QualifiedServiceTags(service), core.LeaseStateTag(string(state)))...)
+		}
+	}
+}
+
+func (w *Worker) resetMetrics(ctx context.Context) {
+	numGrants.Reset(ctx)
 }
 
 func (w *Worker) trySend(ctx context.Context, msg leader.Message) bool {

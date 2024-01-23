@@ -4,6 +4,7 @@ import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/contextx"
@@ -11,6 +12,7 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/randx"
+	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
 	"sync"
 	"time"
@@ -18,6 +20,10 @@ import (
 
 const (
 	statsDuration = 15 * time.Second
+)
+
+var (
+	numGrants = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/client/workpool_grants", "Workpool grants", slicex.CopyAppend(qualifiedDomainKeys, leaseStateKey)...))
 )
 
 type JoinFn func(ctx context.Context, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error
@@ -188,6 +194,7 @@ steady:
 		case <-statsTimer.C:
 			// record metrics
 			log.Debugf(ctx, "WorkPool %v, joined=%v, #shards=%v, #grants=%v", p.self, p.status != nil, len(p.shards), len(p.grants))
+			p.emitMetrics(ctx)
 
 		case <-p.drain.Closed():
 			break steady
@@ -261,7 +268,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 					old.Lease = p.lease
 
 					log.Debugf(ctx, "Re-activating stale grant %v", old)
-					return
+					continue
 				} else {
 					log.Errorf(ctx, "Internal: unexpected re-grant of non-stale grant %v. Re-creating", old)
 
@@ -460,6 +467,29 @@ func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
 	}
 
 	log.Debugf(ctx, "WorkPool %v removed grant %v", p.self, grant)
+}
+
+func (p *WorkPool) emitMetrics(ctx context.Context) {
+	p.resetMetrics(ctx)
+
+	grants := map[QualifiedDomainName]map[LeaseState]int{}
+	for _, grant := range p.grants {
+		service := grant.Grant.Shard().Domain
+		if grants[service] == nil {
+			grants[service] = map[LeaseState]int{}
+		}
+		grants[service][grant.LeaseState] += 1
+	}
+
+	for domain, counts := range grants {
+		for state, count := range counts {
+			numGrants.Set(ctx, float64(count), slicex.CopyAppend(qualifiedDomainTags(domain), leaseStateTag(string(state)))...)
+		}
+	}
+}
+
+func (p *WorkPool) resetMetrics(ctx context.Context) {
+	numGrants.Reset(ctx)
 }
 
 func (p *WorkPool) trySend(ctx context.Context, msg ConsumerMessage) bool {
