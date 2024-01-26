@@ -397,11 +397,11 @@ func (w *Worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMes
 
 	case msg.IsUpdate():
 		update, _ := msg.Update()
-		w.cluster.Update(update.Assignments())
+		w.cluster = core.UpdateCluster(w.cluster, update.Assignments(), nil)
 
 	case msg.IsRemove():
 		remove, _ := msg.Remove()
-		w.cluster.Remove(remove.Services())
+		w.cluster = core.UpdateCluster(w.cluster, nil, remove.Services())
 
 	default:
 		log.Errorf(ctx, "Invalid cluster message: %v", msg)
@@ -413,10 +413,10 @@ func (w *Worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMes
 
 func (w *Worker) emitExpirationCheck() {
 	select {
-	case <-w.expire:
+	case w.expire <- true:
 	default:
+		// skip: already flagged
 	}
-	w.expire <- true
 }
 
 func (w *Worker) checkExpiration(ctx context.Context) {

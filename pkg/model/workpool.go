@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/chanx"
@@ -14,6 +15,7 @@ import (
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/splitter/lib/service/location/pb"
 	"sync"
 	"time"
 )
@@ -53,7 +55,7 @@ type WorkPool struct {
 	in     <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
 	out    chan<- ConsumerMessage // coordinator outgoing messages (empty and not closed, if disconnected)
 
-	cluster  Cluster
+	cluster  *ClusterMap
 	clusters chan Cluster
 
 	grants map[GrantID]*grant
@@ -376,23 +378,32 @@ func (p *WorkPool) handleClusterMessage(ctx context.Context, msg ClusterMessage)
 	switch {
 	case msg.IsSnapshot():
 		m, _ := msg.Snapshot()
-		p.handleClusterSnapshot(ctx, m, msg.ID(), msg.Version())
+		p.handleClusterSnapshot(ctx, m, msg.ID(), msg.Version(), msg.Timestamp())
 	case msg.IsChange():
 		m, _ := msg.Change()
-		p.handleClusterChange(ctx, m, msg.ID(), msg.Version())
+		p.handleClusterChange(ctx, m, msg.ID(), msg.Version(), msg.Timestamp())
 	default:
 		log.Errorf(ctx, "Unexpected cluster message: %v", msg)
 	}
 
 }
 
-func (p *WorkPool) handleClusterSnapshot(ctx context.Context, snapshot ClusterSnapshot, id ClusterId, version int) {
+func (p *WorkPool) handleClusterSnapshot(ctx context.Context, snapshot ClusterSnapshot, id InstanceID, version int, timestamp time.Time) {
 	log.Debugf(ctx, "Storing initial assignments from cluster snapshot.")
 	consumers, grants := parseAssignments(snapshot.Assignments())
 
+	cid := ClusterID{
+		Origin:    location.WrapInstance(&location_v1.Instance{Id: string(id)}),
+		Version:   version,
+		Timestamp: timestamp,
+	}
+	if instance, ok := snapshot.Origin(); ok {
+		cid.Origin = instance
+	}
+
 	// TODO(jhhurwitz): 11/30/23 Likely shouldn't have an error here at all
 	var err error
-	p.cluster, err = NewCluster(id, version, consumers, grants)
+	p.cluster, err = NewCluster(cid, consumers, grants)
 	if err != nil {
 		log.Errorf(ctx, "Invalid cluster %v: %v", snapshot, err)
 		return
@@ -403,14 +414,18 @@ func (p *WorkPool) handleClusterSnapshot(ctx context.Context, snapshot ClusterSn
 	p.clusters <- p.cluster
 }
 
-func (p *WorkPool) handleClusterChange(ctx context.Context, change ClusterChange, id ClusterId, version int) {
+func (p *WorkPool) handleClusterChange(ctx context.Context, change ClusterChange, id InstanceID, version int, timestamp time.Time) {
 	consumers, grants := parseAssignments(change.Assign().Assignments())
 	updated := change.Update().Grants()
 	unassigned := change.Unassign().Grants()
 	removed := change.Remove().Consumers()
 
+	if p.cluster.ID().Origin.ID() != id || p.cluster.ID().Version+1 != version {
+		log.Errorf(ctx, "Internal: unexpected incremental update for %v: %v v%v", p.cluster.ID(), id, version)
+	}
+
 	// TODO(jhhurwitz): 11/30/23 Likely shouldn't have an error here at all
-	err := p.cluster.Update(consumers, grants, updated, unassigned, removed)
+	err := p.cluster.Update(consumers, grants, updated, unassigned, removed, timestamp)
 	if err != nil {
 		log.Errorf(ctx, "Invalid update %v: %v", change, err)
 		return
@@ -419,7 +434,7 @@ func (p *WorkPool) handleClusterChange(ctx context.Context, change ClusterChange
 	log.Infof(ctx, "Updated cluster: %v", p.cluster)
 
 	chanx.Clear(p.clusters)
-	p.clusters <- p.cluster
+	p.clusters <- p.cluster.Clone()
 }
 
 func parseAssignments(assignments []Assignment) ([]Consumer, map[ConsumerID][]GrantInfo) {

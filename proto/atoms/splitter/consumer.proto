@@ -136,6 +136,7 @@ message ClusterMessage {
   // Snapshot contains assignments for all known consumers, including consumers without grants.
   message Snapshot {
     repeated Assignment assignments = 1;
+    atoms.splitter.lib.service.location.Instance origin = 2; // coordinator instance (for debugging)
   }
 
   // Assign contains changes in grant ownership. The list of consumer grants is partial and only contains
@@ -172,8 +173,9 @@ message ClusterMessage {
     Change change = 2;
   }
 
-  string id = 3;
-  int64 version = 4;
+  string id = 3;     // coordinator instance id
+  int64 version = 4; // cluster version (strictly sequential if change)
+  google.protobuf.Timestamp timestamp = 5;
 }
 
 

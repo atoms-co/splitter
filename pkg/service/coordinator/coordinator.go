@@ -77,7 +77,7 @@ type coordinator struct {
 
 	consumers map[model.InstanceID]*consumerSession
 	alloc     *Allocation
-	cluster   model.Cluster
+	cluster   *model.ClusterMap
 	messages  chan *sessionx.Message[model.ConsumerMessage]
 
 	inject chan func()
@@ -188,7 +188,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	}
 
 	// Send full cluster to the consumer
-	if !s.TrySend(ctx, model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Version(), model.ClusterToAssignments(c.cluster)...)) {
+	if !s.TrySend(ctx, model.NewClusterSnapshot(c.cluster.ID(), model.ClusterToAssignments(c.cluster)...)) {
 		log.Errorf(ctx, "Internal: failed to send initial cluster map to consumer: %v. Closing", s)
 		connection.Disconnect()
 	}
@@ -232,7 +232,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 		delay = 0
 	}
 	c.alloc = newAllocation(c.id.ID(), info, c.cache.Placements(c.name.Tenant), c.cl.Now().Add(delay))
-	c.cluster, _ = toCluster(c.alloc, model.NewClusterID(), 0)
+	c.cluster, _ = toCluster(c.alloc, model.ClusterID{Origin: c.id, Version: 1, Timestamp: c.cl.Now()})
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
 	recordAction(ctx, "init", "ok")
@@ -520,7 +520,7 @@ func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, re
 }
 
 func (c *coordinator) broadcast(ctx context.Context) {
-	newCluster, err := toCluster(c.alloc, c.cluster.ID(), c.cluster.Version()+1)
+	newCluster, err := toCluster(c.alloc, model.ClusterID{Origin: c.id, Version: c.cluster.ID().Version + 1, Timestamp: c.cl.Now()})
 	if err != nil {
 		log.Errorf(ctx, "Internal: unable to create cluster from allocation: %v", err)
 		return
@@ -532,14 +532,14 @@ func (c *coordinator) broadcast(ctx context.Context) {
 	}
 
 	assigned := mapx.MapToSlice(d.Assigned, func(cid model.ConsumerID, grants []model.GrantInfo) model.Assignment {
-		consumer, _ := newCluster.Consumer(cid)
+		consumer, _, _ := newCluster.Consumer(cid)
 		return model.NewAssignment(consumer, grants...)
 	})
 
 	c.cluster = newCluster
 
 	for _, s := range c.consumers {
-		c.mustSend(ctx, s, model.NewClusterChange(newCluster.ID(), newCluster.Version(), assigned, d.Updated, d.Unassigned, d.Removed))
+		c.mustSend(ctx, s, model.NewClusterChange(newCluster.ID(), assigned, d.Updated, d.Unassigned, d.Removed))
 	}
 
 	log.Debugf(ctx, "Sent cluster update: %v/%v. Cluster: %v", c.name, c.alloc, newCluster)

@@ -54,21 +54,20 @@ func NewCluster(assignments []Assignment) Cluster {
 	return Cluster{services: services}
 }
 
-func (c Cluster) Update(assignments []Assignment) {
-	for _, assignment := range assignments {
+func UpdateCluster(c Cluster, add []Assignment, remove []model.QualifiedServiceName) Cluster {
+	ret := Cluster{services: mapx.Clone(c.services)}
+	for _, assignment := range add {
 		for _, grant := range assignment.Grants {
-			c.services[grant.Service()] = Coordinator{
+			ret.services[grant.Service()] = Coordinator{
 				instance: assignment.Worker,
 				grant:    grant,
 			}
 		}
 	}
-}
-
-func (c Cluster) Remove(services []model.QualifiedServiceName) {
-	for _, service := range services {
-		delete(c.services, service)
+	for _, service := range remove {
+		delete(ret.services, service)
 	}
+	return ret
 }
 
 func (c Cluster) Service(service model.QualifiedServiceName) (Coordinator, bool) {

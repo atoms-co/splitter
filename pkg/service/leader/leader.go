@@ -440,9 +440,11 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, reg
 
 	lease := l.cl.Now().Add(leaseDuration)
 	w.TrySend(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
+	w.TrySend(ctx, NewClusterSnapshot(l.snapshot()))
 
-	// TODO(jhhurwitz): 12/06/23: Claim grants
 	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Instance().ID(), w.instance), lease, active...); ok {
+		var regrants []Grant
+
 		for _, grant := range assigned.Active {
 			tenant := grant.Unit.Tenant
 			state, _ := l.cache.State(tenant)
@@ -453,14 +455,13 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, reg
 
 				log.Errorf(ctx, "Internal: failed to send regrant %v to worker: %v. Revoking", grant, w)
 				l.alloc.Revoke(w.instance.ID(), now, grant)
+				continue
 			}
+			regrants = append(regrants, grant)
 		}
 		// NOTE(herohde) 11/4/2023: Ignore Allocated and let Revoked expire.
-	}
 
-	if !w.TrySend(ctx, NewClusterSnapshot(l.snapshot())) {
-		log.Errorf(ctx, "Internal: failed to send initial cluster map to worker: %v. Closing", w)
-		connection.Disconnect()
+		l.broadcast(ctx, regrants...)
 	}
 
 	return w, out

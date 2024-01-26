@@ -1,6 +1,7 @@
 package model
 
 import (
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
@@ -135,22 +136,25 @@ func NewReleased(grants ...Grant) ConsumerMessage {
 	}})
 }
 
-func NewClusterSnapshot(id ClusterId, version int, assignments ...Assignment) ConsumerMessage {
+func NewClusterSnapshot(id ClusterID, assignments ...Assignment) ConsumerMessage {
 	return NewClusterMessage(ClusterMessage{pb: &public_v1.ClusterMessage{
-		Id:      string(id),
-		Version: int64(version),
+		Id:        string(id.Origin.ID()),
+		Version:   int64(id.Version),
+		Timestamp: timestamppb.New(id.Timestamp),
 		Msg: &public_v1.ClusterMessage_Snapshot_{
 			Snapshot: &public_v1.ClusterMessage_Snapshot{
 				Assignments: slicex.Map(assignments, UnwrapAssignment),
+				Origin:      location.UnwrapInstance(id.Origin),
 			},
 		},
 	}})
 }
 
-func NewClusterChange(id ClusterId, version int, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID) ConsumerMessage {
+func NewClusterChange(id ClusterID, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID) ConsumerMessage {
 	return NewClusterMessage(ClusterMessage{pb: &public_v1.ClusterMessage{
-		Id:      string(id),
-		Version: int64(version),
+		Id:        string(id.Origin.ID()),
+		Version:   int64(id.Version),
+		Timestamp: timestamppb.New(id.Timestamp),
 		Msg: &public_v1.ClusterMessage_Change_{
 			Change: &public_v1.ClusterMessage_Change{
 				Assign: &public_v1.ClusterMessage_Assign{
@@ -202,12 +206,16 @@ func (m ConsumerMessage) ClusterMessage() (ClusterMessage, bool) {
 	return WrapClusterMessage(m.pb.GetCluster()), true
 }
 
-func (m ClusterMessage) ID() ClusterId {
-	return ClusterId(m.pb.Id)
+func (m ClusterMessage) ID() InstanceID {
+	return InstanceID(m.pb.GetId())
 }
 
 func (m ClusterMessage) Version() int {
-	return int(m.pb.Version)
+	return int(m.pb.GetVersion())
+}
+
+func (m ClusterMessage) Timestamp() time.Time {
+	return m.pb.GetTimestamp().AsTime()
 }
 
 func (m ConsumerMessage) String() string {
@@ -537,7 +545,8 @@ func (a Assignment) Grants() []GrantInfo {
 
 func ClusterToAssignments(c Cluster) []Assignment {
 	return slicex.Map(c.Consumers(), func(consumer Consumer) Assignment {
-		return NewAssignment(consumer, c.Grants(consumer.ID())...)
+		_, grants, _ := c.Consumer(consumer.ID())
+		return NewAssignment(consumer, grants...)
 	})
 }
 
@@ -555,6 +564,11 @@ func UnwrapClusterSnapshot(s ClusterSnapshot) *public_v1.ClusterMessage_Snapshot
 
 func (s ClusterSnapshot) Assignments() []Assignment {
 	return slicex.Map(s.pb.GetAssignments(), WrapAssignment)
+}
+
+func (s ClusterSnapshot) Origin() (location.Instance, bool) {
+	pb := s.pb.GetOrigin()
+	return location.WrapInstance(pb), pb != nil
 }
 
 func (s ClusterSnapshot) String() string {

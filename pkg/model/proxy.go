@@ -2,7 +2,6 @@ package model
 
 import (
 	"context"
-	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/net/grpcx"
 	"errors"
@@ -102,16 +101,19 @@ type resolver[T any] struct {
 	pool    ConnectionPool
 	fn      RemoteFn[T]
 	cluster ClusterProvider
+	states  []GrantState // Grant state resolution. Empty if default.
 }
 
-// NewResolver creates a resolve to reach domain owners over grpc. Callers must check if locally owned first.
-// If an ownership failure occurs, the local check must be re-done before a retry.
-func NewResolver[T any](self InstanceID, provider ClusterProvider, pool ConnectionPool, fn RemoteFn[T]) Resolver[T, QualifiedDomainKey] {
+// NewResolver creates a resolver to reach domain owners over grpc. If an ownership failure occurs, the
+// local check must be re-done before a retry. The resolver uses the default notion of ownership, unless
+// a custom list of grant states are provided.
+func NewResolver[T any](self ConsumerID, provider ClusterProvider, pool ConnectionPool, fn RemoteFn[T], states ...GrantState) Resolver[T, QualifiedDomainKey] {
 	return &resolver[T]{
 		self:    self,
 		pool:    pool,
 		fn:      fn,
 		cluster: provider,
+		states:  states,
 	}
 }
 
@@ -119,11 +121,8 @@ func NewResolver[T any](self InstanceID, provider ClusterProvider, pool Connecti
 func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, error) {
 	var zero T
 
-	if cluster, ok := r.cluster.V(); ok {
-		if instance, _, ok := cluster.Owner(key); ok {
-			// TOOD(herohde) 1/12/2024: the current Owner method implies Active/Revoked state if ok.
-			// But we need resolves that make a different decision.
-
+	if c, ok := r.cluster.V(); ok {
+		if instance, _, ok := c.Lookup(key, r.states...); ok {
 			if instance.ID() == r.self {
 				return zero, ErrNoResolution
 			}
@@ -145,13 +144,16 @@ type connectionPool struct {
 	provider ClusterProvider
 	opts     []grpc.DialOption
 
-	connections map[InstanceID]Connection
+	connections map[ConsumerID]Connection
 	mu          sync.RWMutex
 }
 
 func NewConnectionPool(provider ClusterProvider, opts ...grpc.DialOption) ConnectionPool {
-	p := connectionPool{provider: provider, opts: opts, connections: map[InstanceID]Connection{}}
-	return &p
+	return &connectionPool{
+		provider:    provider,
+		opts:        opts,
+		connections: map[ConsumerID]Connection{},
+	}
 }
 
 func (p *connectionPool) Connect(ctx context.Context, id InstanceID) (Connection, error) {
@@ -171,15 +173,14 @@ func (p *connectionPool) Connect(ctx context.Context, id InstanceID) (Connection
 		return Connection{}, fmt.Errorf("clustermap not initialized: %w", ErrNotFound)
 	}
 
-	instance, ok := cluster.Consumer(id)
+	instance, _, ok := cluster.Consumer(id)
 	if !ok {
 		return Connection{}, fmt.Errorf("consumer %v: %w", id, ErrNotFound)
 	}
 
 	cc, err := grpcx.DialNonBlocking(ctx, instance.Endpoint(), p.opts...)
 	if err != nil {
-		log.Errorf(ctx, "Failed to create connection to %v: %v", instance, err)
-		return Connection{}, err
+		return Connection{}, fmt.Errorf("failed to create connection to %v: %w", instance, err)
 	}
 	c = Connection{Instance: instance, Conn: cc}
 	p.connections[id] = c
