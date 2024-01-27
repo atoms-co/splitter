@@ -11,6 +11,7 @@ import (
 
 type (
 	Allocation = allocation.Allocation[model.QualifiedServiceName, location.Location, location.InstanceID, model.Instance]
+	Placement  = allocation.Placement[model.QualifiedServiceName, location.Location, location.InstanceID, model.Instance]
 	Grant      = allocation.Grant[model.QualifiedServiceName, location.InstanceID]
 	Worker     = allocation.Worker[location.InstanceID, model.Instance]
 	Work       = allocation.Work[model.QualifiedServiceName, location.Location]
@@ -24,12 +25,55 @@ func HasRegionAffinity(worker Worker, work Work) bool {
 	return work.Data.Region == "" || worker.Data.Location().Region == work.Data.Region
 }
 
-func NewAllocation(id location.InstanceID, snapshot core.Snapshot, activation time.Time) *Allocation {
-	return allocation.New(id, slicex.New(regionAffinity), nil, findWork(snapshot), activation)
+func newAllocation(id location.InstanceID, snapshot core.Snapshot, activation time.Time) *Allocation {
+	return allocation.New(id, findPlacements(snapshot), nil, findWork(snapshot), activation)
 }
 
-func UpdateAllocation(alloc *Allocation, snapshot core.Snapshot, activation time.Time) (*Allocation, []Grant) {
-	return allocation.Update(alloc, slicex.New(regionAffinity), nil, findWork(snapshot), activation)
+func updateAllocation(alloc *Allocation, snapshot core.Snapshot, activation time.Time) (*Allocation, []Grant) {
+	return allocation.Update(alloc, findPlacements(snapshot), nil, findWork(snapshot), activation)
+}
+
+// control handles placement control.
+type serviceRegion struct {
+	service model.QualifiedServiceName
+	region  model.Region
+}
+
+type Control struct {
+	Banned map[serviceRegion]bool
+}
+
+func NewControl(snapshot core.Snapshot) *Control {
+	banned := make(map[serviceRegion]bool)
+	for _, state := range snapshot.Tenants() {
+		t := state.Tenant().Tenant().Config().BannedRegions()
+
+		for _, info := range state.Services() {
+			s := info.Service().Config().BannedRegions()
+
+			for _, b := range [][]model.Region{t, s} {
+				for _, region := range b {
+					banned[serviceRegion{service: info.Name(), region: region}] = true
+				}
+			}
+		}
+	}
+	return &Control{Banned: banned}
+}
+
+func (c *Control) ID() allocation.Rule {
+	return "control"
+}
+
+func (c *Control) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
+	if c.Banned[serviceRegion{service: work.Unit, region: worker.Data.Location().Region}] {
+		return 0, false
+	}
+	return 0, true
+}
+
+func findPlacements(snapshot core.Snapshot) []Placement {
+	return slicex.New[Placement](regionAffinity, NewControl(snapshot))
 }
 
 func findWork(snapshot core.Snapshot) []Work {

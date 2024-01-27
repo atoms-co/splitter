@@ -138,6 +138,17 @@ func WithServiceDefaultShardingPolicy(policy ShardingPolicy) ServiceConfigOption
 	}
 }
 
+func WithServiceBannedRegions(regions ...Region) ServiceConfigOption {
+	return func(cfg *public_v1.Service_Config) {
+		if cfg.Operational == nil {
+			cfg.Operational = &public_v1.Service_Config_Operational{}
+		}
+		cfg.Operational.BannedRegions = slicex.Map(regions, func(r Region) string {
+			return string(r)
+		})
+	}
+}
+
 // ServiceConfig holds tenant configuration.
 type ServiceConfig struct {
 	pb *public_v1.Service_Config
@@ -174,8 +185,18 @@ func UnwrapServiceConfig(cfg ServiceConfig) *public_v1.Service_Config {
 	return cfg.pb
 }
 
+func (c ServiceConfig) Region() Region {
+	return Region(c.pb.GetRegion())
+}
+
 func (c ServiceConfig) DefaultShardingPolicy() ShardingPolicy {
 	return WrapShardingPolicy(c.pb.GetDefaultShardingPolicy())
+}
+
+func (c ServiceConfig) BannedRegions() []Region {
+	return slicex.Map(c.pb.GetOperational().GetBannedRegions(), func(r string) Region {
+		return Region(r)
+	})
 }
 
 // ServiceInfo captures the full service information.

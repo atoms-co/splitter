@@ -220,6 +220,17 @@ func WithDomainAntiAffinity(domains ...DomainName) DomainConfigOption {
 	}
 }
 
+func WithDomainBannedRegions(regions ...Region) DomainConfigOption {
+	return func(cfg *public_v1.Domain_Config) {
+		if cfg.Operational == nil {
+			cfg.Operational = &public_v1.Domain_Config_Operational{}
+		}
+		cfg.Operational.BannedRegions = slicex.Map(regions, func(r Region) string {
+			return string(r)
+		})
+	}
+}
+
 // DomainConfig holds domain configuration.
 type DomainConfig struct {
 	pb *public_v1.Domain_Config
@@ -271,6 +282,13 @@ func (c DomainConfig) Regions() []Region {
 func (c DomainConfig) AntiAffinity() []DomainName {
 	return slicex.Map(c.pb.GetAntiAffinity(), func(r string) DomainName { return DomainName(r) })
 }
+
+func (c DomainConfig) BannedRegions() []Region {
+	return slicex.Map(c.pb.GetOperational().GetBannedRegions(), func(r string) Region {
+		return Region(r)
+	})
+}
+
 func (c DomainConfig) Equals(o DomainConfig) bool {
 	return proto.Equal(c.pb, o.pb)
 }

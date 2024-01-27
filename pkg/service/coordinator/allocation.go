@@ -39,30 +39,52 @@ func HasRegionAffinity(worker Worker, work Work) bool {
 	return work.Data.Region == "" || worker.Data.Location().Region == work.Data.Region
 }
 
-func newAllocation(id location.InstanceID, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, activation time.Time) *Allocation {
-	return allocation.New(id, findPlacements(info), findColocations(info), findWork(info, placements), activation)
+func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, activation time.Time) *Allocation {
+	return allocation.New(id, findPlacements(tenant, info), findColocations(info), findWork(info, placements), activation)
 }
 
-func updateAllocation(a *Allocation, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, activation time.Time) (*Allocation, []Grant) {
-	return allocation.Update(a, findPlacements(info), findColocations(info), findWork(info, placements), activation)
+func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, activation time.Time) (*Allocation, []Grant) {
+	return allocation.Update(a, findPlacements(tenant, info), findColocations(info), findWork(info, placements), activation)
 }
 
 // control handles placement control.
-type control struct {
-	domains map[model.DomainName]model.Domain
+type domainRegion struct {
+	domain model.QualifiedDomainName
+	region model.Region
 }
 
-func newControl(info model.ServiceInfoEx) *control {
-	return &control{domains: mapx.New(info.Domains(), model.Domain.ShortName)}
+type Control struct {
+	Domains map[model.DomainName]model.Domain
+	Banned  map[domainRegion]bool
 }
 
-func (c *control) ID() allocation.Rule {
+func NewControl(tenant model.TenantInfo, info model.ServiceInfoEx) *Control {
+	banned := make(map[domainRegion]bool)
+
+	t := tenant.Tenant().Config().BannedRegions()
+	s := info.Service().Config().BannedRegions()
+	for _, domain := range info.Domains() {
+		d := domain.Config().BannedRegions()
+
+		for _, b := range [][]model.Region{t, s, d} {
+			for _, region := range b {
+				banned[domainRegion{domain: domain.Name(), region: region}] = true
+			}
+		}
+	}
+	return &Control{Domains: mapx.New(info.Domains(), model.Domain.ShortName), Banned: banned}
+}
+
+func (c *Control) ID() allocation.Rule {
 	return "control"
 }
 
-func (c *control) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
-	if domain, ok := c.domains[work.Unit.Domain.Domain]; ok && domain.State() != model.DomainActive {
+func (c *Control) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
+	if domain, ok := c.Domains[work.Unit.Domain.Domain]; ok && domain.State() != model.DomainActive {
 		return 0, false // no placement allowed
+	}
+	if c.Banned[domainRegion{domain: work.Unit.Domain, region: worker.Data.Location().Region}] {
+		return 0, false
 	}
 	return 0, true
 }
@@ -94,8 +116,8 @@ func (c *affinity) Colocate(worker Worker, work map[model.Shard]Work) map[model.
 	return nil
 }
 
-func findPlacements(info model.ServiceInfoEx) []Placement {
-	return slicex.New[Placement](regionAffinity, newControl(info))
+func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx) []Placement {
+	return slicex.New[Placement](regionAffinity, NewControl(tenant, info))
 }
 
 func findColocations(info model.ServiceInfoEx) []Colocation {

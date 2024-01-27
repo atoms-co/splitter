@@ -184,7 +184,7 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 		delay = 0
 	}
 	log.Infof(ctx, "Activating at %v", now.Add(delay))
-	l.alloc = NewAllocation(l.id.ID(), snapshot, now.Add(delay))
+	l.alloc = newAllocation(l.id.ID(), snapshot, now.Add(delay))
 
 	if l.drain.IsClosed() {
 		log.Errorf(ctx, "Unexpected: leader %v lost leadership while loading", l.id)
@@ -495,7 +495,7 @@ func (l *Leader) refresh(ctx context.Context) {
 	// (1) Update work in allocation and revoke invalid grants. There is no mutations possible for service
 	// names, so no need to delay newly created grants.
 
-	upd, rejected := UpdateAllocation(l.alloc, l.cache.Snapshot(), now)
+	upd, rejected := updateAllocation(l.alloc, l.cache.Snapshot(), now)
 	l.alloc = upd
 
 	l.revoke(ctx, rejected...)

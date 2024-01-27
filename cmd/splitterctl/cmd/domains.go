@@ -163,6 +163,7 @@ func makeUpdateDomainCmd() *cobra.Command {
 	}
 
 	state := cmd.Flags().String("state", "", "State")
+	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
@@ -178,8 +179,16 @@ func makeUpdateDomainCmd() *cobra.Command {
 			}
 			opts = append(opts, splitter.WithUpdateDomainState(s))
 		}
-		if len(opts) == 0 {
-			return nil
+
+		var cfgOpts []splitter.DomainConfigOption
+		if len(*banned) > 0 {
+			cfgOpts = append(cfgOpts, splitter.WithDomainBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
+				return splitter.Region(r)
+			})...))
+		}
+
+		if len(opts) == 0 && len(cfgOpts) == 0 {
+			return nil // nothing to update
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
@@ -187,6 +196,19 @@ func makeUpdateDomainCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			domain, ok := service.Domain(name.Domain)
+			if !ok {
+				return fmt.Errorf("unknown domain: %v", name)
+			}
+
+			if len(cfgOpts) > 0 {
+				cfg, err := splitter.UpdateDomainConfig(domain, cfgOpts...)
+				if err != nil {
+					return err
+				}
+				opts = append(opts, splitter.WithUpdateDomainConfig(cfg))
+			}
+
 			t, err := client.UpdateDomain(ctx, name, service.Info().Version(), opts...)
 			if err != nil {
 				return fmt.Errorf("update domain failed: %v", err)

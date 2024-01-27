@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
 	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
@@ -95,8 +96,21 @@ func makeUpdateTenantCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 
+	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
+
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name := splitter.TenantName(args[0])
+
+		var opts []splitter.TenantConfigOption
+		if len(*banned) > 0 {
+			opts = append(opts, splitter.WithTenantBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
+				return splitter.Region(r)
+			})...))
+		}
+
+		if len(opts) == 0 {
+			return nil // Nothing to update
+		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
 			info, err := client.InfoTenant(ctx, name)
@@ -104,8 +118,6 @@ func makeUpdateTenantCmd() *cobra.Command {
 				return err
 			}
 
-			var opts []splitter.TenantConfigOption
-			// TODO(jhhurwitz): 11/1/23 Add flags to update when something to update
 			cfg, err := splitter.UpdateTenantConfig(info.Tenant(), opts...)
 			if err != nil {
 				return err
@@ -116,6 +128,7 @@ func makeUpdateTenantCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			printJson(model.UnwrapTenantInfo(info), true)
 			return nil
 		})

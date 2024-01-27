@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
 	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
@@ -105,11 +106,26 @@ func makeUpdateServiceCmd() *cobra.Command {
 	}
 
 	region := cmd.Flags().String("region", "", "Region")
+	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified service name: %v", args[0])
+		}
+
+		var opts []splitter.ServiceConfigOption
+		if *region != "" {
+			opts = append(opts, splitter.WithServiceRegion(splitter.Region(*region)))
+		}
+		if len(*banned) > 0 {
+			opts = append(opts, splitter.WithServiceBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
+				return splitter.Region(r)
+			})...))
+		}
+
+		if len(opts) == 0 {
+			return nil // Nothing to update
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
@@ -118,10 +134,6 @@ func makeUpdateServiceCmd() *cobra.Command {
 				return err
 			}
 
-			var opts []splitter.ServiceConfigOption
-			if *region != "" {
-				opts = append(opts, splitter.WithServiceRegion(splitter.Region(*region)))
-			}
 			cfg, err := splitter.UpdateServiceConfig(ex.Info().Service(), opts...)
 			if err != nil {
 				return err

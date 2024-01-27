@@ -71,9 +71,10 @@ type coordinator struct {
 	// options
 	fastActivation bool
 
-	name  model.QualifiedServiceName
-	info  model.ServiceInfoEx
-	cache *storage.Cache
+	name   model.QualifiedServiceName
+	tenant model.TenantInfo
+	info   model.ServiceInfoEx
+	cache  *storage.Cache
 
 	consumers map[model.InstanceID]*consumerSession
 	alloc     *Allocation
@@ -220,9 +221,16 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	c.cache.Restore(core.NewSnapshot(state))
 
+	tenant, ok := c.cache.Tenant(c.name.Tenant)
+	if !ok {
+		log.Errorf(ctx, "Internal: invalid state for coordinator, tenant not found %v/%v", c.name, c.id)
+		return
+	}
+	c.tenant = tenant
+
 	info, ok := c.cache.Service(c.name)
 	if !ok {
-		log.Errorf(ctx, "Internal: invalid state for coordinator %v/%v", c.name, c.id)
+		log.Errorf(ctx, "Internal: invalid state for coordinator, service not found %v/%v", c.name, c.id)
 		return
 	}
 	c.info = info
@@ -231,7 +239,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	if c.fastActivation {
 		delay = 0
 	}
-	c.alloc = newAllocation(c.id.ID(), info, c.cache.Placements(c.name.Tenant), c.cl.Now().Add(delay))
+	c.alloc = newAllocation(c.id.ID(), tenant, info, c.cache.Placements(c.name.Tenant), c.cl.Now().Add(delay))
 	c.cluster, _ = toCluster(c.alloc, model.ClusterID{Origin: c.id, Version: 1, Timestamp: c.cl.Now()})
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
@@ -278,6 +286,14 @@ steady:
 				log.Errorf(ctx, "Internal: invalid state update %v", err)
 				return
 			}
+
+			tenant, ok := c.cache.Tenant(c.name.Tenant)
+			if !ok {
+				log.Errorf(ctx, "Internal: coordinator tenant not present in updated state. Closing")
+				return
+			}
+			c.tenant = tenant
+
 			info, ok := c.cache.Service(c.name)
 			if !ok {
 				log.Errorf(ctx, "Internal: coordinator service not present in updated state. Closing")
@@ -333,7 +349,7 @@ steady:
 func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	now := c.cl.Now()
 
-	upd, rejected := updateAllocation(c.alloc, c.info, c.cache.Placements(c.name.Tenant), now.Add(delay))
+	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, c.cache.Placements(c.name.Tenant), now.Add(delay))
 	c.alloc = upd
 
 	for _, g := range rejected {

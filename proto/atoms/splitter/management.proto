@@ -13,7 +13,11 @@ message Tenant {
   string name = 1;
 
   message Config {
-    // TODO(jhhurwitz): 11/01/23 Define Tenant level config
+    message Operational {
+      repeated string banned_regions = 1;
+    }
+    // Operational controls on Tenant state (manually controlled)
+    Operational operational = 1;
   }
   Config config = 2;
 
@@ -40,6 +44,12 @@ message Service {
     string region = 1;
     // Default sharding policy. Optional.
     ShardingPolicy default_sharding_policy = 2;
+
+    message Operational {
+      repeated string banned_regions = 1;
+    }
+    // Operational controls on Service state (manually controlled)
+    Operational operational = 3;
   }
   Config config = 2;
 
@@ -101,6 +111,12 @@ message Domain {
     // allocation and may thus be more volatile, not the targets. UNIT domains overlap with every shard.
     // The target domains must be for the enclosing service.
     repeated string anti_affinity = 4;
+
+    message Operational {
+      repeated string banned_regions = 1;
+    }
+    // Operational controls on Domain state (manually controlled)
+    Operational operational = 5;
   }
   Config config = 4;
 
