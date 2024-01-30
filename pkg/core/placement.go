@@ -347,12 +347,20 @@ func (t InternalPlacement) BlocksPerCycle() int {
 	return int(t.pb.GetConfig().GetBlocksPerCycle())
 }
 
+func (t InternalPlacement) Created() time.Time {
+	return t.pb.GetCreated().AsTime()
+}
+
 func (t InternalPlacement) ToPlacement() model.Placement {
 	return model.NewPlacement(t.Name(), t.Current().ToDistribution())
 }
 
 func (t InternalPlacement) String() string {
 	return proto.MarshalTextString(t.pb)
+}
+
+func (t InternalPlacement) Equals(o InternalPlacement) bool {
+	return proto.Equal(t.pb, o.pb)
 }
 
 type InternalPlacementInfo struct {
@@ -397,4 +405,8 @@ func (t InternalPlacementInfo) ToPlacementInfo() model.PlacementInfo {
 
 func (t InternalPlacementInfo) String() string {
 	return proto.MarshalTextString(t.pb)
+}
+
+func (t InternalPlacementInfo) Equals(o InternalPlacementInfo) bool {
+	return proto.Equal(t.pb, o.pb)
 }
