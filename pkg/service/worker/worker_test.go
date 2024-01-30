@@ -99,12 +99,6 @@ func TestWorker(t *testing.T) {
 		assertx.Element(t, c.updates)
 	})
 
-	// (2) Grant/Revoke
-
-	t.Run("update", func(t *testing.T) {
-
-	})
-
 	// (3) Worker disconnect and reconnect to Leader
 
 	t.Run("worker/disconnect", func(t *testing.T) {
