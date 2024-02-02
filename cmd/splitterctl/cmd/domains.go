@@ -179,15 +179,14 @@ func makeUpdateDomainCmd() *cobra.Command {
 			}
 			opts = append(opts, splitter.WithUpdateDomainState(s))
 		}
-
-		var cfgOpts []splitter.DomainConfigOption
+		var opOptions []splitter.DomainOperationalOption
 		if len(*banned) > 0 {
-			cfgOpts = append(cfgOpts, splitter.WithDomainBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
+			opOptions = append(opOptions, splitter.WithDomainOperationalBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
 				return splitter.Region(r)
 			})...))
 		}
 
-		if len(opts) == 0 && len(cfgOpts) == 0 {
+		if len(opts) == 0 && len(opOptions) == 0 {
 			return nil // nothing to update
 		}
 
@@ -201,12 +200,12 @@ func makeUpdateDomainCmd() *cobra.Command {
 				return fmt.Errorf("unknown domain: %v", name)
 			}
 
-			if len(cfgOpts) > 0 {
-				cfg, err := splitter.UpdateDomainConfig(domain, cfgOpts...)
+			if len(opOptions) > 0 {
+				op, err := splitter.UpdateDomainOperational(domain, opOptions...)
 				if err != nil {
 					return err
 				}
-				opts = append(opts, splitter.WithUpdateDomainConfig(cfg))
+				opts = append(opts, splitter.WithUpdateDomainOperational(op))
 			}
 
 			t, err := client.UpdateDomain(ctx, name, service.Info().Version(), opts...)

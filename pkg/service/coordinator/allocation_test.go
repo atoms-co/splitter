@@ -12,13 +12,13 @@ import (
 )
 
 func TestControl(t *testing.T) {
-	t1, err := model.NewTenant("tenant1", time.Time{}, model.WithTenantConfig(
-		model.NewTenantConfig(model.WithTenantBannedRegions("centralus")),
+	t1, err := model.NewTenant("tenant1", time.Time{}, model.WithTenantOperational(
+		model.NewTenantOperational(model.WithTenantOperationalBannedRegions("centralus")),
 	))
 	require.NoError(t, err)
 
-	s1, err := model.NewService(model.QualifiedServiceName{Tenant: t1.Name(), Service: "service1"}, time.Time{}, model.WithServiceConfig(
-		model.NewServiceConfig(model.WithServiceBannedRegions("northcentralus")),
+	s1, err := model.NewService(model.QualifiedServiceName{Tenant: t1.Name(), Service: "service1"}, time.Time{}, model.WithServiceOperational(
+		model.NewServiceOperational(model.WithServiceOperationalBannedRegions("northcentralus")),
 	))
 	require.NoError(t, err)
 
@@ -27,9 +27,14 @@ func TestControl(t *testing.T) {
 	))
 	require.NoError(t, err)
 
-	d2, err := model.NewDomain(model.QualifiedDomainName{Service: s1.Name(), Domain: "domain2"}, model.Regional, time.Time{}, model.WithDomainConfig(
-		model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(4)), model.WithDomainBannedRegions("eastus2")),
-	))
+	d2, err := model.NewDomain(model.QualifiedDomainName{Service: s1.Name(), Domain: "domain2"}, model.Regional, time.Time{},
+		model.WithDomainConfig(
+			model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(4))),
+		),
+		model.WithDomainOperational(
+			model.NewDomainOperational(model.WithDomainOperationalBannedRegions("eastus2")),
+		),
+	)
 	require.NoError(t, err)
 
 	d3, err := model.NewDomain(model.QualifiedDomainName{Service: s1.Name(), Domain: "domain3"}, model.Regional, time.Time{},

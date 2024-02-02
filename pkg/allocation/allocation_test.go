@@ -23,6 +23,27 @@ func hasRegionAffinity(worker allocation.Worker[string, location.Location], work
 	return work.Data.Region == "" || worker.Data.Region == work.Data.Region
 }
 
+type regionBan struct {
+	region location.Region
+}
+
+func newRegionBan(region location.Region) allocation.Placement[string, location.Location, string, location.Location] {
+	return &regionBan{
+		region: region,
+	}
+}
+
+func (r regionBan) ID() allocation.Rule {
+	return "region-ban"
+}
+
+func (r regionBan) TryPlace(worker allocation.Worker[string, location.Location], work allocation.Work[string, location.Location]) (allocation.Load, bool) {
+	if worker.Data.Region == r.region {
+		return 0, false
+	}
+	return 0, true
+}
+
 func TestAllocation(t *testing.T) {
 	cl := mockclock.NewUnsynchronized()
 	cl.Set(time.Now())
@@ -311,7 +332,7 @@ func TestAllocation(t *testing.T) {
 		require.NoError(t, alloc.Check())
 	})
 
-	t.Run("update", func(t *testing.T) {
+	t.Run("update/change-work", func(t *testing.T) {
 		// Update functionality
 
 		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
@@ -380,6 +401,54 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, m["d"].State, allocation.Active)
 		assertx.Equal(t, m["a"].Unit, "a")
 		assertx.Equal(t, m["a"].State, allocation.Allocated)
+	})
+
+	t.Run("update/add-rules", func(t *testing.T) {
+		// Update functionality
+
+		region := allocation.NewPreference("region-affinity", 5, hasRegionAffinity)
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", slicex.New(region), nil, work, cl.Now())
+		assert.Len(t, alloc.Work(), 3)
+
+		// (1) Setup a situation: a, b, c assigned to regional preference
+
+		lease := cl.Now().Add(time.Minute)
+
+		us := allocation.Worker[string, location.Location]{ID: "us", Data: us}
+		eu := allocation.Worker[string, location.Location]{ID: "eu", Data: eu}
+
+		_, ok := alloc.Attach(us, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(eu, lease)
+		assert.True(t, ok)
+
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 3)
+		require.NoError(t, alloc.Check())
+
+		assert.Len(t, alloc.Assigned(us.ID).Active, 2)
+		assert.Len(t, alloc.Assigned(eu.ID).Active, 1)
+
+		// (2) Update allocation to ban the eu region for workers
+
+		cl.Add(time.Second)
+
+		alloc2, rejects := allocation.Update(alloc, slicex.New(region, newRegionBan(eu.Data.Region)), nil, work, cl.Now().Add(10*time.Second))
+
+		require.Len(t, rejects, 1)
+		assertx.Equal(t, rejects[0].Unit, "c")
+		require.NoError(t, alloc2.Check())
+
+		_, ok = alloc2.Release(rejects[0], cl.Now()) // Release rejected grant
+		assert.False(t, ok)
+
+		grants = alloc2.Allocate(cl.Now())
+		assert.Len(t, grants, 1)
+		require.NoError(t, alloc2.Check())
+
+		assert.Len(t, alloc2.Assigned(us.ID).Active, 3)
+		assert.Len(t, alloc2.Assigned(eu.ID).Active, 0)
 	})
 
 	t.Run("load-balance/region-affinity", func(t *testing.T) {

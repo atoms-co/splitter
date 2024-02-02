@@ -1,7 +1,6 @@
 package model
 
 import (
-	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
 	"fmt"
 	"github.com/golang/protobuf/proto"
@@ -12,6 +11,12 @@ import (
 type TenantName string
 
 type TenantOption func(tenant *public_v1.Tenant)
+
+func WithTenantOperational(t TenantOperational) TenantOption {
+	return func(tenant *public_v1.Tenant) {
+		tenant.Operational = UnwrapTenantOperational(t)
+	}
+}
 
 func WithTenantConfig(cfg TenantConfig) TenantOption {
 	return func(tenant *public_v1.Tenant) {
@@ -67,6 +72,10 @@ func (t Tenant) Name() TenantName {
 	return TenantName(t.pb.GetName())
 }
 
+func (t Tenant) Operational() TenantOperational {
+	return WrapTenantOperational(t.pb.GetOperational())
+}
+
 func (t Tenant) Config() TenantConfig {
 	return WrapTenantConfig(t.pb.GetConfig())
 }
@@ -80,17 +89,6 @@ func (t Tenant) String() string {
 }
 
 type TenantConfigOption func(cfg *public_v1.Tenant_Config)
-
-func WithTenantBannedRegions(regions ...Region) TenantConfigOption {
-	return func(cfg *public_v1.Tenant_Config) {
-		if cfg.Operational == nil {
-			cfg.Operational = &public_v1.Tenant_Config_Operational{}
-		}
-		cfg.Operational.BannedRegions = slicex.Map(regions, func(r Region) string {
-			return string(r)
-		})
-	}
-}
 
 // TenantConfig holds tenant configuration.
 type TenantConfig struct {
@@ -128,10 +126,12 @@ func UnwrapTenantConfig(cfg TenantConfig) *public_v1.Tenant_Config {
 	return cfg.pb
 }
 
-func (c TenantConfig) BannedRegions() []Region {
-	return slicex.Map(c.pb.GetOperational().GetBannedRegions(), func(r string) Region {
-		return Region(r)
-	})
+func (c TenantConfig) Equals(o TenantConfig) bool {
+	return proto.Equal(c.pb, o.pb)
+}
+
+func (c TenantConfig) String() string {
+	return proto.MarshalTextString(c.pb)
 }
 
 // TenantInfo captures the full tenant information.

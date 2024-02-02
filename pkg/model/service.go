@@ -49,11 +49,17 @@ func (n QualifiedServiceName) String() string {
 	return fmt.Sprintf("%v/%v", n.Tenant, n.Service)
 }
 
-type ServiceOption func(tenant *public_v1.Service)
+type ServiceOption func(service *public_v1.Service)
+
+func WithServiceOperational(t ServiceOperational) ServiceOption {
+	return func(service *public_v1.Service) {
+		service.Operational = UnwrapServiceOperational(t)
+	}
+}
 
 func WithServiceConfig(cfg ServiceConfig) ServiceOption {
-	return func(tenant *public_v1.Service) {
-		tenant.Config = UnwrapServiceConfig(cfg)
+	return func(service *public_v1.Service) {
+		service.Config = UnwrapServiceConfig(cfg)
 	}
 }
 
@@ -76,7 +82,7 @@ func NewService(name QualifiedServiceName, now time.Time, opts ...ServiceOption)
 
 func ParseService(pb *public_v1.Service) (Service, error) {
 	if err := validateService(pb); err != nil {
-		return Service{}, fmt.Errorf("invalid tenant: %w", err)
+		return Service{}, fmt.Errorf("invalid service: %w", err)
 	}
 	return Service{pb: proto.Clone(pb).(*public_v1.Service)}, nil
 }
@@ -85,20 +91,20 @@ func validateService(pb *public_v1.Service) error {
 	return nil // TODO(jhhurwitz): 08/18/2023 Actually validate
 }
 
-func UpdateService(tenant Service, opts ...ServiceOption) (Service, error) {
-	upd := proto.Clone(tenant.pb).(*public_v1.Service)
+func UpdateService(service Service, opts ...ServiceOption) (Service, error) {
+	upd := proto.Clone(service.pb).(*public_v1.Service)
 	for _, fn := range opts {
 		fn(upd)
 	}
 	return ParseService(upd)
 }
 
-func WrapService(tenant *public_v1.Service) Service {
-	return Service{pb: tenant}
+func WrapService(service *public_v1.Service) Service {
+	return Service{pb: service}
 }
 
-func UnwrapService(tenant Service) *public_v1.Service {
-	return tenant.pb
+func UnwrapService(service Service) *public_v1.Service {
+	return service.pb
 }
 
 func (t Service) Name() QualifiedServiceName {
@@ -106,14 +112,12 @@ func (t Service) Name() QualifiedServiceName {
 	return ret
 }
 
-func (t Service) Config() ServiceConfig {
-	return WrapServiceConfig(t.pb.GetConfig())
+func (t Service) Operational() ServiceOperational {
+	return WrapServiceOperational(t.pb.GetOperational())
 }
 
-// Region returns a region preference for coordinator and UNIT/GLOBAL domains. Optional.
-func (t Service) Region() (Region, bool) {
-	r := t.pb.GetConfig().GetRegion()
-	return Region(r), r != ""
+func (t Service) Config() ServiceConfig {
+	return WrapServiceConfig(t.pb.GetConfig())
 }
 
 func (t Service) Equals(t1 Service) bool {
@@ -138,18 +142,7 @@ func WithServiceDefaultShardingPolicy(policy ShardingPolicy) ServiceConfigOption
 	}
 }
 
-func WithServiceBannedRegions(regions ...Region) ServiceConfigOption {
-	return func(cfg *public_v1.Service_Config) {
-		if cfg.Operational == nil {
-			cfg.Operational = &public_v1.Service_Config_Operational{}
-		}
-		cfg.Operational.BannedRegions = slicex.Map(regions, func(r Region) string {
-			return string(r)
-		})
-	}
-}
-
-// ServiceConfig holds tenant configuration.
+// ServiceConfig holds service configuration.
 type ServiceConfig struct {
 	pb *public_v1.Service_Config
 }
@@ -162,8 +155,8 @@ func NewServiceConfig(opts ...ServiceConfigOption) ServiceConfig {
 	return WrapServiceConfig(pb)
 }
 
-func UpdateServiceConfig(tenant Service, opts ...ServiceConfigOption) (ServiceConfig, error) {
-	pb := UnwrapService(tenant).Config
+func UpdateServiceConfig(service Service, opts ...ServiceConfigOption) (ServiceConfig, error) {
+	pb := UnwrapService(service).Config
 	if pb == nil {
 		pb = &public_v1.Service_Config{}
 	}
@@ -171,7 +164,7 @@ func UpdateServiceConfig(tenant Service, opts ...ServiceConfigOption) (ServiceCo
 	for _, fn := range opts {
 		fn(pb)
 	}
-	if _, err := UpdateService(tenant, WithServiceConfig(WrapServiceConfig(pb))); err != nil {
+	if _, err := UpdateService(service, WithServiceConfig(WrapServiceConfig(pb))); err != nil {
 		return ServiceConfig{}, err
 	}
 	return WrapServiceConfig(pb), nil
@@ -189,14 +182,12 @@ func (c ServiceConfig) Region() Region {
 	return Region(c.pb.GetRegion())
 }
 
-func (c ServiceConfig) DefaultShardingPolicy() ShardingPolicy {
-	return WrapShardingPolicy(c.pb.GetDefaultShardingPolicy())
+func (c ServiceConfig) Equals(c1 ServiceConfig) bool {
+	return proto.Equal(c.pb, c1.pb)
 }
 
-func (c ServiceConfig) BannedRegions() []Region {
-	return slicex.Map(c.pb.GetOperational().GetBannedRegions(), func(r string) Region {
-		return Region(r)
-	})
+func (c ServiceConfig) DefaultShardingPolicy() ShardingPolicy {
+	return WrapShardingPolicy(c.pb.GetDefaultShardingPolicy())
 }
 
 // ServiceInfo captures the full service information.

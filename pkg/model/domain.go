@@ -94,11 +94,17 @@ func ParseDomainState(str string) (DomainState, bool) {
 	return DomainState(v), ok && v != 0
 }
 
-type DomainOption func(tenant *public_v1.Domain)
+type DomainOption func(domain *public_v1.Domain)
 
 func WithDomainState(state public_v1.Domain_State) DomainOption {
 	return func(domain *public_v1.Domain) {
 		domain.State = state
+	}
+}
+
+func WithDomainOperational(t DomainOperational) DomainOption {
+	return func(domain *public_v1.Domain) {
+		domain.Operational = UnwrapDomainOperational(t)
 	}
 }
 
@@ -182,6 +188,10 @@ func (t Domain) State() DomainState {
 	return t.pb.GetState()
 }
 
+func (t Domain) Operational() DomainOperational {
+	return WrapDomainOperational(t.pb.GetOperational())
+}
+
 func (t Domain) Equals(t1 Domain) bool {
 	return proto.Equal(t.pb, t1.pb)
 }
@@ -216,17 +226,6 @@ func WithDomainAntiAffinity(domains ...DomainName) DomainConfigOption {
 	return func(cfg *public_v1.Domain_Config) {
 		cfg.AntiAffinity = slicex.Map(domains, func(t DomainName) string {
 			return string(t)
-		})
-	}
-}
-
-func WithDomainBannedRegions(regions ...Region) DomainConfigOption {
-	return func(cfg *public_v1.Domain_Config) {
-		if cfg.Operational == nil {
-			cfg.Operational = &public_v1.Domain_Config_Operational{}
-		}
-		cfg.Operational.BannedRegions = slicex.Map(regions, func(r Region) string {
-			return string(r)
 		})
 	}
 }
@@ -281,12 +280,6 @@ func (c DomainConfig) Regions() []Region {
 
 func (c DomainConfig) AntiAffinity() []DomainName {
 	return slicex.Map(c.pb.GetAntiAffinity(), func(r string) DomainName { return DomainName(r) })
-}
-
-func (c DomainConfig) BannedRegions() []Region {
-	return slicex.Map(c.pb.GetOperational().GetBannedRegions(), func(r string) Region {
-		return Region(r)
-	})
 }
 
 func (c DomainConfig) Equals(o DomainConfig) bool {

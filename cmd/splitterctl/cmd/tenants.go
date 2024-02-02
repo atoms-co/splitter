@@ -101,9 +101,9 @@ func makeUpdateTenantCmd() *cobra.Command {
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name := splitter.TenantName(args[0])
 
-		var opts []splitter.TenantConfigOption
+		var opts []splitter.TenantOperationalOption
 		if len(*banned) > 0 {
-			opts = append(opts, splitter.WithTenantBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
+			opts = append(opts, splitter.WithTenantOperationalBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
 				return splitter.Region(r)
 			})...))
 		}
@@ -118,13 +118,13 @@ func makeUpdateTenantCmd() *cobra.Command {
 				return err
 			}
 
-			cfg, err := splitter.UpdateTenantConfig(info.Tenant(), opts...)
+			op, err := splitter.UpdateTenantOperational(info.Tenant(), opts...)
 			if err != nil {
 				return err
 			}
 
-			updateOpts := []splitter.UpdateTenantOption{splitter.WithUpdateTenantConfig(cfg)}
-			info, err = client.UpdateTenant(ctx, info, updateOpts...)
+			updateOpts := []splitter.UpdateTenantOption{splitter.WithUpdateTenantOperational(op)}
+			info, err = client.UpdateTenant(ctx, info.Name(), info.Version(), updateOpts...)
 			if err != nil {
 				return err
 			}

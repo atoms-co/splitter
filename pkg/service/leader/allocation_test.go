@@ -46,21 +46,21 @@ func TestHasRegionAffinity(t *testing.T) {
 }
 
 func TestControl(t *testing.T) {
-	t1, err := model.NewTenant("tenant1", time.Time{}, model.WithTenantConfig(
-		model.NewTenantConfig(model.WithTenantBannedRegions("centralus")),
+	t1, err := model.NewTenant("tenant1", time.Time{}, model.WithTenantOperational(
+		model.NewTenantOperational(model.WithTenantOperationalBannedRegions("centralus")),
 	))
 	require.NoError(t, err)
 
-	t2, err := model.NewTenant("tenant2", time.Time{}, model.WithTenantConfig(
-		model.NewTenantConfig(model.WithTenantBannedRegions("northcentralus", "eastus2")),
+	t2, err := model.NewTenant("tenant2", time.Time{}, model.WithTenantOperational(
+		model.NewTenantOperational(model.WithTenantOperationalBannedRegions("northcentralus", "eastus2")),
 	))
 	require.NoError(t, err)
 
 	s1, err := model.NewService(model.QualifiedServiceName{Tenant: t1.Name(), Service: "service1"}, time.Time{})
 	require.NoError(t, err)
 
-	s2, err := model.NewService(model.QualifiedServiceName{Tenant: t1.Name(), Service: "service2"}, time.Time{}, model.WithServiceConfig(
-		model.NewServiceConfig(model.WithServiceBannedRegions("northcentralus"))),
+	s2, err := model.NewService(model.QualifiedServiceName{Tenant: t1.Name(), Service: "service2"}, time.Time{}, model.WithServiceOperational(
+		model.NewServiceOperational(model.WithServiceOperationalBannedRegions("northcentralus"))),
 	)
 	require.NoError(t, err)
 

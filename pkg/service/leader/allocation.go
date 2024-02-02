@@ -46,10 +46,10 @@ type Control struct {
 func NewControl(snapshot core.Snapshot) *Control {
 	banned := make(map[serviceRegion]bool)
 	for _, state := range snapshot.Tenants() {
-		t := state.Tenant().Tenant().Config().BannedRegions()
+		t := state.Tenant().Tenant().Operational().BannedRegions()
 
 		for _, info := range state.Services() {
-			s := info.Service().Config().BannedRegions()
+			s := info.Service().Operational().BannedRegions()
 
 			for _, b := range [][]model.Region{t, s} {
 				for _, region := range b {
@@ -80,7 +80,7 @@ func findWork(snapshot core.Snapshot) []Work {
 	var ret []Work
 	for _, tenant := range snapshot.Tenants() {
 		for _, info := range tenant.Services() {
-			r, _ := info.Info().Service().Region()
+			r := info.Info().Service().Config().Region()
 
 			w := Work{
 				Unit: info.Info().Name(),

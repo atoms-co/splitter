@@ -186,6 +186,9 @@ func (w *Writer) handleUpdateTenantRequest(ctx context.Context, req *public_v1.U
 	if req.GetConfig() != nil {
 		opts = append(opts, model.WithTenantConfig(model.WrapTenantConfig(req.GetConfig())))
 	}
+	if req.GetOperational() != nil {
+		opts = append(opts, model.WithTenantOperational(model.WrapTenantOperational(req.GetOperational())))
+	}
 	if len(opts) == 0 {
 		return nil, nil, fmt.Errorf("no tenant options: %w", model.ErrInvalid)
 	}
@@ -283,6 +286,9 @@ func (w *Writer) handleUpdateServiceRequest(ctx context.Context, req *public_v1.
 	var opts []model.ServiceOption
 	if req.GetConfig() != nil {
 		opts = append(opts, model.WithServiceConfig(model.WrapServiceConfig(req.GetConfig())))
+	}
+	if req.GetOperational() != nil {
+		opts = append(opts, model.WithServiceOperational(model.WrapServiceOperational(req.GetOperational())))
 	}
 	if len(opts) == 0 {
 		return nil, nil, fmt.Errorf("no service options: %w", model.ErrInvalid)
@@ -395,6 +401,9 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.U
 	}
 	if req.GetState() != 0 {
 		opts = append(opts, model.WithDomainState(req.GetState()))
+	}
+	if req.GetOperational() != nil {
+		opts = append(opts, model.WithDomainOperational(model.WrapDomainOperational(req.GetOperational())))
 	}
 	cur, err := model.UpdateDomain(existing, opts...)
 	if err != nil {

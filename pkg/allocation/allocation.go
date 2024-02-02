@@ -348,10 +348,12 @@ func (a *Allocation[T, W, K, V]) Release(grant Grant[T, K], now time.Time) (Gran
 	t := grant.Unit
 
 	if w, ok := a.workers[grant.Worker]; ok {
+		// Expected case
 		if g, ok := w.revoked[t]; ok && g.ID == grant.ID {
 			delete(w.revoked, t)
 			return a.tryPromote(t, now)
 		}
+		// Unexpected release of live grant, deliberate delay of assignment
 		if l, ok := w.live[t]; ok && l.grant == grant.ID {
 			delete(w.live, t)
 			delete(a.live, t)
@@ -366,8 +368,14 @@ func (a *Allocation[T, W, K, V]) Release(grant Grant[T, K], now time.Time) (Gran
 			} else {
 				a.unassigned[t] = newUnassigned(l.state, w.info.Lease)
 			}
+			return Grant[T, K]{}, false
 		}
 	}
+	// Release of unassigned Grant, make eligible for activation immediately
+	if u, ok := a.unassigned[t]; ok && u.state == Active {
+		a.unassigned[t] = newUnassigned(Active, now)
+	}
+
 	return Grant[T, K]{}, false
 }
 

@@ -37,6 +37,7 @@ message UpdateTenantRequest {
   string name = 1;
   int64 version = 2;
   Tenant.Config config = 3;
+  Tenant.Operational operational = 4;
 }
 
 message UpdateTenantResponse {
@@ -80,6 +81,7 @@ message UpdateServiceRequest {
   QualifiedServiceName name = 1;
   int64 version = 2;
   Service.Config config = 3;
+  Service.Operational operational = 4;
 }
 
 message UpdateServiceResponse {
@@ -118,6 +120,7 @@ message UpdateDomainRequest {
   int64 service_version = 2;
   Domain.Config config = 3;
   Domain.State state = 4;
+  Domain.Operational operational = 5;
 }
 
 message UpdateDomainResponse {

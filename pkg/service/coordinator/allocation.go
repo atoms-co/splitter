@@ -61,10 +61,10 @@ type Control struct {
 func NewControl(tenant model.TenantInfo, info model.ServiceInfoEx) *Control {
 	banned := make(map[domainRegion]bool)
 
-	t := tenant.Tenant().Config().BannedRegions()
-	s := info.Service().Config().BannedRegions()
+	t := tenant.Tenant().Operational().BannedRegions()
+	s := info.Service().Operational().BannedRegions()
 	for _, domain := range info.Domains() {
-		d := domain.Config().BannedRegions()
+		d := domain.Operational().BannedRegions()
 
 		for _, b := range [][]model.Region{t, s, d} {
 			for _, region := range b {
@@ -134,7 +134,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 	for _, domain := range state.Domains() {
 		switch domain.Type() {
 		case model.Unit:
-			region, _ := state.Info().Service().Region()
+			region := state.Info().Service().Config().Region()
 
 			w := Work{
 				Unit: model.Shard{
@@ -179,7 +179,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 				}
 
 			} else {
-				region, _ := state.Info().Service().Region()
+				region := state.Info().Service().Config().Region()
 
 				for _, shard := range shards {
 					w := Work{

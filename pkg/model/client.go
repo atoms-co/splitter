@@ -39,6 +39,13 @@ type Ownership interface {
 // UpdateTenantOption represents an option to NewTenant.
 type UpdateTenantOption func(*public_v1.UpdateTenantRequest)
 
+// WithUpdateTenantOperational update the operational metadata of a tenant.
+func WithUpdateTenantOperational(operational TenantOperational) UpdateTenantOption {
+	return func(request *public_v1.UpdateTenantRequest) {
+		request.Operational = UnwrapTenantOperational(operational)
+	}
+}
+
 // WithUpdateTenantConfig defines config for a tenant.
 func WithUpdateTenantConfig(config TenantConfig) UpdateTenantOption {
 	return func(request *public_v1.UpdateTenantRequest) {
@@ -48,6 +55,13 @@ func WithUpdateTenantConfig(config TenantConfig) UpdateTenantOption {
 
 // UpdateServiceOption represents an option to NewService.
 type UpdateServiceOption func(*public_v1.UpdateServiceRequest)
+
+// WithUpdateServiceOperational update the operational metadata of a service.
+func WithUpdateServiceOperational(operational ServiceOperational) UpdateServiceOption {
+	return func(request *public_v1.UpdateServiceRequest) {
+		request.Operational = UnwrapServiceOperational(operational)
+	}
+}
 
 // WithUpdateServiceConfig defines config for a tenant.
 func WithUpdateServiceConfig(config ServiceConfig) UpdateServiceOption {
@@ -69,10 +83,10 @@ func WithNewDomainState(state DomainState) NewDomainOption {
 // UpdateDomainOption represents an option to UpdateDomain.
 type UpdateDomainOption func(*public_v1.UpdateDomainRequest)
 
-// WithUpdateDomainConfig defines config for a domain.
-func WithUpdateDomainConfig(config DomainConfig) UpdateDomainOption {
+// WithUpdateDomainOperational update the operational metadata of a domain.
+func WithUpdateDomainOperational(operational DomainOperational) UpdateDomainOption {
 	return func(request *public_v1.UpdateDomainRequest) {
-		request.Config = UnwrapDomainConfig(config)
+		request.Operational = UnwrapDomainOperational(operational)
 	}
 }
 
@@ -80,6 +94,13 @@ func WithUpdateDomainConfig(config DomainConfig) UpdateDomainOption {
 func WithUpdateDomainState(state DomainState) UpdateDomainOption {
 	return func(request *public_v1.UpdateDomainRequest) {
 		request.State = state
+	}
+}
+
+// WithUpdateDomainConfig defines config for a domain.
+func WithUpdateDomainConfig(config DomainConfig) UpdateDomainOption {
+	return func(request *public_v1.UpdateDomainRequest) {
+		request.Config = UnwrapDomainConfig(config)
 	}
 }
 
@@ -91,13 +112,13 @@ type Client interface {
 	ListTenants(ctx context.Context) ([]TenantInfo, error)
 	NewTenant(ctx context.Context, name TenantName, cfg TenantConfig) (TenantInfo, error)
 	InfoTenant(ctx context.Context, name TenantName) (TenantInfo, error)
-	UpdateTenant(ctx context.Context, tenant TenantInfo, opts ...UpdateTenantOption) (TenantInfo, error)
+	UpdateTenant(ctx context.Context, name TenantName, guard Version, opts ...UpdateTenantOption) (TenantInfo, error)
 	DeleteTenant(ctx context.Context, name TenantName) error
 
 	ListServices(ctx context.Context, tenant TenantName) ([]ServiceInfoEx, error)
 	NewService(ctx context.Context, name QualifiedServiceName, cfg ServiceConfig) (ServiceInfo, error)
 	InfoService(ctx context.Context, name QualifiedServiceName) (ServiceInfoEx, error)
-	UpdateService(ctx context.Context, service ServiceInfo, opts ...UpdateServiceOption) (ServiceInfo, error)
+	UpdateService(ctx context.Context, name QualifiedServiceName, guard Version, opts ...UpdateServiceOption) (ServiceInfo, error)
 	DeleteService(ctx context.Context, name QualifiedServiceName) error
 
 	ListDomains(ctx context.Context, service QualifiedServiceName) ([]Domain, error)
@@ -161,11 +182,10 @@ func (c *client) InfoTenant(ctx context.Context, name TenantName) (TenantInfo, e
 	return WrapTenantInfo(resp.GetTenant()), nil
 }
 
-func (c *client) UpdateTenant(ctx context.Context, tenant TenantInfo, opts ...UpdateTenantOption) (TenantInfo, error) {
+func (c *client) UpdateTenant(ctx context.Context, name TenantName, guard Version, opts ...UpdateTenantOption) (TenantInfo, error) {
 	req := &public_v1.UpdateTenantRequest{
-		Name:    string(tenant.Name()),
-		Version: int64(tenant.Version()),
-		Config:  UnwrapTenantConfig(tenant.Tenant().Config()),
+		Name:    string(name),
+		Version: int64(guard),
 	}
 	for _, opt := range opts {
 		opt(req)
@@ -216,11 +236,10 @@ func (c *client) InfoService(ctx context.Context, name QualifiedServiceName) (Se
 	return WrapServiceInfoEx(resp.GetService()), nil
 }
 
-func (c *client) UpdateService(ctx context.Context, service ServiceInfo, opts ...UpdateServiceOption) (ServiceInfo, error) {
+func (c *client) UpdateService(ctx context.Context, name QualifiedServiceName, guard Version, opts ...UpdateServiceOption) (ServiceInfo, error) {
 	req := &public_v1.UpdateServiceRequest{
-		Name:    service.Name().ToProto(),
-		Version: int64(service.Version()),
-		Config:  UnwrapServiceConfig(service.Service().Config()),
+		Name:    name.ToProto(),
+		Version: int64(guard),
 	}
 	for _, opt := range opts {
 		opt(req)

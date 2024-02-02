@@ -114,17 +114,19 @@ func makeUpdateServiceCmd() *cobra.Command {
 			return fmt.Errorf("invalid qualified service name: %v", args[0])
 		}
 
-		var opts []splitter.ServiceConfigOption
+		var cfgOpts []splitter.ServiceConfigOption
 		if *region != "" {
-			opts = append(opts, splitter.WithServiceRegion(splitter.Region(*region)))
+			cfgOpts = append(cfgOpts, splitter.WithServiceRegion(splitter.Region(*region)))
 		}
+
+		var opOpts []splitter.ServiceOperationalOption
 		if len(*banned) > 0 {
-			opts = append(opts, splitter.WithServiceBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
+			opOpts = append(opOpts, splitter.WithServiceOperationalBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
 				return splitter.Region(r)
 			})...))
 		}
 
-		if len(opts) == 0 {
+		if len(cfgOpts) == 0 && len(opOpts) == 0 {
 			return nil // Nothing to update
 		}
 
@@ -134,13 +136,19 @@ func makeUpdateServiceCmd() *cobra.Command {
 				return err
 			}
 
-			cfg, err := splitter.UpdateServiceConfig(ex.Info().Service(), opts...)
+			// Updated config
+			cfg, err := splitter.UpdateServiceConfig(ex.Info().Service(), cfgOpts...)
+			if err != nil {
+				return err
+			}
+			// Updated operational metadata
+			op, err := splitter.UpdateServiceOperational(ex.Info().Service(), opOpts...)
 			if err != nil {
 				return err
 			}
 
-			updateOpts := []splitter.UpdateServiceOption{splitter.WithUpdateServiceConfig(cfg)}
-			info, err := client.UpdateService(ctx, ex.Info(), updateOpts...)
+			updateOpts := []splitter.UpdateServiceOption{splitter.WithUpdateServiceConfig(cfg), splitter.WithUpdateServiceOperational(op)}
+			info, err := client.UpdateService(ctx, ex.Name(), ex.Info().Version(), updateOpts...)
 			if err != nil {
 				return err
 			}
