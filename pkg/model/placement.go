@@ -76,6 +76,14 @@ func ParseQualifiedPlacementNameStr(name string) (QualifiedPlacementName, bool) 
 	}, true
 }
 
+func MustParseQualifiedPlacementNameStr(name string) QualifiedPlacementName {
+	n, ok := ParseQualifiedPlacementNameStr(name)
+	if !ok {
+		panic(fmt.Sprintf("invalid qualified placement name: %v", name))
+	}
+	return n
+}
+
 func ParseQualifiedPlacementName(pb *public_v1.QualifiedPlacementName) (QualifiedPlacementName, error) {
 	if pb.GetTenant() == "" || pb.GetName() == "" {
 		return QualifiedPlacementName{}, fmt.Errorf("invalid placement name: %v", proto.MarshalTextString(pb))
