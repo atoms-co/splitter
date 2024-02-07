@@ -28,7 +28,7 @@ var (
 	numGrants = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/client/workpool_grants", "Workpool grants", slicex.CopyAppend(qualifiedDomainKeys, leaseStateKey)...))
 )
 
-type JoinFn func(ctx context.Context, self Consumer, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error
+type JoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error
 
 type joinStatus struct {
 	connected time.Time
@@ -111,7 +111,7 @@ func (p *WorkPool) join(ctx context.Context) {
 
 		log.Infof(ctx, "WorkPool %v attempting to join coordinator", p.self)
 
-		err := p.joinFn(wctx, p.self, func(ctx context.Context, in <-chan ConsumerMessage) (<-chan ConsumerMessage, error) {
+		err := p.joinFn(wctx, p.self.Instance(), func(ctx context.Context, in <-chan ConsumerMessage) (<-chan ConsumerMessage, error) {
 			return syncx.Txn1(ctx, p.txn, func() (<-chan ConsumerMessage, error) {
 				return p.joinCoordinator(ctx, in)
 			})

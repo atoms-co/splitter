@@ -29,7 +29,7 @@ func TestWorkpool(t *testing.T) {
 
 	consumer := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 	w, _ := model.NewWorkPool(cl, consumer, service1, []model.QualifiedDomainName{domain1},
-		func(ctx context.Context, self model.Consumer, handler grpcx.Handler[model.ConsumerMessage, model.ConsumerMessage]) error {
+		func(ctx context.Context, self location.Instance, handler grpcx.Handler[model.ConsumerMessage, model.ConsumerMessage]) error {
 			return coordinatorCon.connect(ctx, handler)
 		},
 		func(ctx context.Context, id model.GrantID, shard model.Shard, ownership model.Ownership) {

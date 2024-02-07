@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
@@ -11,8 +12,14 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
+	"errors"
 	"google.golang.org/grpc"
 	"time"
+)
+
+var (
+	ErrRevoked = errors.New("grant revoked")
+	ErrExpired = errors.New("grant expired")
 )
 
 type Ownership interface {
@@ -34,6 +41,41 @@ type Ownership interface {
 	// normal circumstances. When the expiration time is past the current moment the grant is no longer assigned
 	// to the current consumer and the consumer must abort processing immediately.
 	Expiration() time.Time
+}
+
+// WaitForActive blocks on Grant activation. Returns an error if the grant is revoked or expires before then. Cancellable.
+func WaitForActive(ctx context.Context, o Ownership) error {
+	select {
+	case <-o.Active():
+		return nil
+	case <-o.Revoked():
+		return ErrRevoked
+	case <-o.Expired():
+		return ErrExpired
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// WaitForRevoke blocks on Grant revocation. Returns an error if the grant expires before then. Cancellable.
+// Does not error on grant activation, since activation does not preclude revocation.
+func WaitForRevoke(ctx context.Context, o Ownership) error {
+	select {
+	case <-o.Revoked():
+		return nil
+	case <-o.Expired():
+		return ErrExpired
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func WaitForLoad(ctx context.Context, o Ownership) error {
+	return nil
+}
+
+func WaitForUnload(ctx context.Context, o Ownership) error {
+	return nil
 }
 
 // UpdateTenantOption represents an option to NewTenant.
@@ -137,7 +179,7 @@ type Client interface {
 }
 
 type client struct {
-	clock      clock.Clock
+	cl         clock.Clock
 	consumer   public_v1.ConsumerServiceClient
 	management public_v1.ManagementServiceClient
 	placement  public_v1.PlacementServiceClient
@@ -145,7 +187,7 @@ type client struct {
 
 func NewClient(cc *grpc.ClientConn) Client {
 	return &client{
-		clock:      clock.New(),
+		cl:         clock.New(),
 		consumer:   public_v1.NewConsumerServiceClient(cc),
 		management: public_v1.NewManagementServiceClient(cc),
 		placement:  public_v1.NewPlacementServiceClient(cc),
@@ -332,8 +374,8 @@ func (c *client) InfoPlacement(ctx context.Context, name QualifiedPlacementName)
 func (c *client) Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.AsyncCloser) {
 	quit := iox.NewAsyncCloser()
 
-	joinFn := func(ctx context.Context, self Consumer, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
-		sess, establish, out := session.NewClient(ctx, c.clock, self.Instance())
+	joinFn := func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
+		sess, establish, out := session.NewClient(ctx, c.cl, self)
 		defer sess.Close()
 		wctx, _ := contextx.WithQuitCancel(ctx, sess.Closed()) // cancel context if session client closes
 
@@ -355,14 +397,14 @@ func (c *client) Join(ctx context.Context, consumer Consumer, service QualifiedS
 			return chanx.Map(joined, UnwrapJoinMessage), nil
 		})
 	}
-	pool, clusters := NewWorkPool(c.clock, consumer, service, domains, joinFn, handler)
+	pool, clusters := NewWorkPool(c.cl, consumer, service, domains, joinFn, handler)
 
 	go func() {
 		defer quit.Close()
 		<-ctx.Done()
 
 		pool.Drain(1 * time.Minute)
-		now := c.clock.Now()
+		now := c.cl.Now()
 		<-pool.Closed()
 		log.Infof(ctx, "Closed work pool in %v", time.Since(now))
 	}()
