@@ -91,29 +91,53 @@ func (c *Control) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
 
 // affinity handles domain anti-affinity.
 type affinity struct {
+	targets map[model.DomainName]bool
 	domains map[model.DomainName][]model.DomainName // directional domain -> targets: domain has the penalty
-	targets map[model.DomainName]bool               // target filter
 }
 
-func newAffinity(info model.ServiceInfoEx) *affinity {
-	return &affinity{
-		domains: map[model.DomainName][]model.DomainName{},
-		targets: map[model.DomainName]bool{},
+func NewAffinity(info model.ServiceInfoEx) *affinity {
+	domains := map[model.DomainName][]model.DomainName{}
+	targets := map[model.DomainName]bool{}
+	for _, d := range info.Domains() {
+		for _, t := range d.Config().AntiAffinity() {
+			targets[t] = true
+			domains[d.ShortName()] = append(domains[d.ShortName()], t)
+		}
 	}
-	// TODO(herohde) 11/12/2023: implement
+	return &affinity{domains: domains, targets: targets}
 }
 
 func (c *affinity) ID() allocation.Rule {
 	return "anti-affinity"
 }
 
+// Colocate calculates anti-affinity load associated with individual work when allocating all the work together on the worker.
+// This evaluation only penalizes the allocation iff there is a range overlap between shards that violates the anti-affinity rule.
 func (c *affinity) Colocate(worker Worker, work map[model.Shard]Work) map[model.Shard]allocation.Load {
-	if len(c.domains) == 0 {
+	if len(c.targets) == 0 {
 		return nil
 	}
-
-	// TODO(herohde) 11/12/2023: implement
-	return nil
+	ret := map[model.Shard]allocation.Load{}
+	shards := map[model.DomainName][]model.Shard{}
+	for shard := range work {
+		if _, ok := c.targets[shard.Domain.Domain]; ok {
+			shards[shard.Domain.Domain] = append(shards[shard.Domain.Domain], shard)
+		}
+	}
+	for shard := range work {
+		load := 0
+		for _, target := range c.domains[shard.Domain.Domain] { // (anti-affinity) domain * shard <= work
+			for _, s := range shards[target] {
+				if s.IntersectsRange(shard) {
+					load += 20
+				}
+			}
+		}
+		if load != 0 {
+			ret[shard] = allocation.Load(load)
+		}
+	}
+	return ret
 }
 
 func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx) []Placement {
@@ -121,7 +145,7 @@ func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx) []Placeme
 }
 
 func findColocations(info model.ServiceInfoEx) []Colocation {
-	return slicex.New[Colocation](newAffinity(info))
+	return slicex.New[Colocation](NewAffinity(info))
 }
 
 func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo) []Work {

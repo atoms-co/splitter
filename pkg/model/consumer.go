@@ -111,6 +111,27 @@ func (s Shard) Contains(key QualifiedDomainKey) bool {
 	}
 }
 
+// IntersectsRange evaluates if two shards intersect over a key range while ignoring domain.
+func (s Shard) IntersectsRange(t Shard) bool {
+	switch {
+	case s.Type == Unit || t.Type == Unit:
+		return true
+
+	case s.Type == Regional && t.Type == Regional:
+		return s.Region == t.Region && s.hasRangeOverlap(t)
+
+	default:
+		return s.hasRangeOverlap(t)
+	}
+}
+
+func (s Shard) hasRangeOverlap(t Shard) bool {
+	r1, _ := uuidx.NewRange(uuid.UUID(s.From), uuid.UUID(s.To))
+	r2, _ := uuidx.NewRange(uuid.UUID(t.From), uuid.UUID(t.To))
+	_, res := r1.Intersects(r2)
+	return res
+}
+
 func (s Shard) ToProto() *public_v1.Shard {
 	return &public_v1.Shard{
 		Region: string(s.Region),

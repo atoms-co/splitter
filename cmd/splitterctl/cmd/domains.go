@@ -90,6 +90,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 
 	placement := cmd.Flags().String("placement", "", "Placement name")
 	shards := cmd.Flags().Int("shards", 4, "Target shards")
+	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
@@ -102,6 +103,9 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 				splitter.NewDomainConfig(
 					splitter.WithDomainPlacement(splitter.PlacementName(*placement)),
 					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
+					splitter.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) splitter.DomainName {
+						return splitter.DomainName(t)
+					})...),
 				),
 			)
 			if err != nil {
@@ -126,6 +130,7 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 	placement := cmd.Flags().String("placement", "", "Placement name")
 	shards := cmd.Flags().Int("shards", 4, "Target shards")
 	regions := cmd.Flags().StringSlice("regions", []string{"centralus"}, "Regions")
+	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
@@ -140,6 +145,9 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
 					splitter.WithDomainRegions(slicex.Map(*regions, func(t string) splitter.Region {
 						return splitter.Region(t)
+					})...),
+					splitter.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) splitter.DomainName {
+						return splitter.DomainName(t)
 					})...),
 				),
 			)
