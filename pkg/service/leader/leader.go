@@ -67,6 +67,7 @@ type Leader struct {
 
 	workers  map[location.InstanceID]*workerSession
 	alloc    *Allocation
+	cluster  core.Cluster // latest cluster generated from alloc
 	messages chan *sessionx.Message[Message]
 
 	upd    <-chan core.Update
@@ -185,6 +186,7 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 	}
 	log.Infof(ctx, "Activating at %v", now.Add(delay))
 	l.alloc = newAllocation(l.id.ID(), snapshot, now.Add(delay))
+	l.cluster = core.NewCluster(model.ClusterID{Origin: l.id, Version: 1, Timestamp: now}, nil)
 
 	if l.drain.IsClosed() {
 		log.Errorf(ctx, "Unexpected: leader %v lost leadership while loading", l.id)
@@ -257,7 +259,8 @@ steady:
 		case <-slow.C:
 			// Move placements by N blocks every 5 minutes, if needed.
 
-			cutoff := l.cl.Now().Add(-5 * time.Minute)
+			now := l.cl.Now()
+			cutoff := now.Add(-5 * time.Minute)
 
 			for _, t := range l.cache.Tenants() {
 				for _, info := range l.cache.Placements(t.Name()) {
@@ -282,6 +285,8 @@ steady:
 					}
 				}
 			}
+
+			l.broadcast(ctx, now)
 
 		case fn := <-l.inject:
 			fn()
@@ -440,11 +445,9 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, reg
 
 	lease := l.cl.Now().Add(leaseDuration)
 	w.TrySend(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
-	w.TrySend(ctx, NewClusterSnapshot(l.snapshot()))
+	w.TrySend(ctx, NewClusterSnapshot(l.cluster.ID(), l.cluster.Assignments()))
 
 	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Instance().ID(), w.instance), lease, active...); ok {
-		var regrants []Grant
-
 		for _, grant := range assigned.Active {
 			tenant := grant.Unit.Tenant
 			state, _ := l.cache.State(tenant)
@@ -457,12 +460,11 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, reg
 				l.alloc.Revoke(w.instance.ID(), now, grant)
 				continue
 			}
-			regrants = append(regrants, grant)
 		}
 		// NOTE(herohde) 11/4/2023: Ignore Allocated and let Revoked expire.
-
-		l.broadcast(ctx, regrants...)
 	}
+
+	l.broadcast(ctx, now)
 
 	return w, out
 }
@@ -560,7 +562,6 @@ func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
 
 	// (1) Assign all grant, if possible.
 
-	var assigned []Grant
 	for _, grant := range grants {
 		if grant.IsAllocated() {
 			continue // skip: only active grants are sent
@@ -586,12 +587,11 @@ func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
 		recordAction(ctx, "assign", "ok")
 
 		log.Infof(ctx, "Assigned new grant to worker %v: %v.", w, tenant)
-		assigned = append(assigned, grant)
 	}
 
 	// (2) Broadcast incremental cluster updates based on the actual updates made.
 
-	l.broadcast(ctx, assigned...)
+	l.broadcast(ctx, now)
 }
 
 func (l *Leader) update(ctx context.Context, upd core.Update) {
@@ -613,23 +613,39 @@ func (l *Leader) update(ctx context.Context, upd core.Update) {
 	}
 }
 
-func (l *Leader) broadcast(ctx context.Context, grants ...Grant) {
-	if len(grants) == 0 {
+// broadcast updated the cluster to reflect the current allocation and, if changed, broadcasts
+// an incremental update.
+func (l *Leader) broadcast(ctx context.Context, now time.Time) {
+	upd := map[model.InstanceID][]core.Grant{}
+
+	for _, worker := range l.alloc.Workers() {
+		wid := worker.Instance.ID
+		assign := l.alloc.Assigned(wid)
+		grants := slicex.Map(append(assign.Active, assign.Revoked...), toGrant)
+
+		for _, g := range grants {
+			if old, ok := l.cluster.Lookup(g.Service()); !ok || old.Grant.ID() != g.ID() {
+				upd[wid] = append(upd[wid], g)
+			}
+		}
+	}
+
+	if len(upd) == 0 {
 		return
 	}
 
 	var assignments []core.Assignment
-	for wid, assigned := range byWorker(grants...) {
+	for wid, grants := range upd {
 		info, _ := l.alloc.Worker(wid)
-
-		assignments = append(assignments, core.Assignment{
-			Worker: info.Instance.Data,
-			Grants: slicex.Map(assigned, toGrant),
-		})
+		assignments = append(assignments, core.Assignment{Worker: info.Instance.Data, Grants: grants})
 	}
 
+	l.cluster = core.UpdateCluster(l.cluster, assignments, nil, now)
+
+	log.Debugf(ctx, "Broadcasting cluster update %v to %v workers", l.cluster.ID(), len(l.workers))
+
 	for _, w := range l.workers {
-		if !w.TrySend(ctx, NewClusterUpdate(assignments)) {
+		if !w.TrySend(ctx, NewClusterUpdate(l.cluster.ID(), assignments)) {
 			log.Errorf(ctx, "Failed to send cluster update to worker: %v. Disconnecting", w)
 			l.disconnect(ctx, "stuck", w)
 			continue

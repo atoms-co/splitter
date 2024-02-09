@@ -42,6 +42,7 @@ type joinStatus struct {
 	connected time.Time
 }
 
+// Worker manages coordinators and emits internal cluster updates from the leader.
 type Worker struct {
 	iox.AsyncCloser
 
@@ -196,6 +197,7 @@ func (w *Worker) lostLeader(ctx context.Context) {
 
 func (w *Worker) process(ctx context.Context) {
 	defer w.Close()
+	defer w.resetMetrics(ctx)
 
 	statsTimer := w.cl.NewTicker(statsDuration)
 	defer statsTimer.Stop()
@@ -266,7 +268,6 @@ steady:
 }
 
 func (w *Worker) handleMessage(ctx context.Context, msg leader.Message) {
-
 	switch {
 	case msg.IsWorkerMessage():
 		worker, _ := msg.WorkerMessage()
@@ -390,21 +391,47 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 }
 
 func (w *Worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMessage) {
+	version := msg.Version()
+	timestamp := msg.Timestamp()
+
 	switch {
 	case msg.IsSnapshot():
 		snapshot, _ := msg.Snapshot()
-		w.cluster = core.NewCluster(snapshot.Assignments())
 
-	case msg.IsUpdate():
-		update, _ := msg.Update()
-		w.cluster = core.UpdateCluster(w.cluster, update.Assignments(), nil)
+		id := model.ClusterID{
+			Version:   version,
+			Timestamp: timestamp,
+		}
+		if instance, ok := snapshot.Origin(); ok {
+			id.Origin = instance
+		}
 
-	case msg.IsRemove():
-		remove, _ := msg.Remove()
-		w.cluster = core.UpdateCluster(w.cluster, nil, remove.Services())
+		w.cluster = core.NewCluster(id, snapshot.Assignments())
+
+		log.Debugf(ctx, "Received cluster snapshot %v", w.cluster.ID())
+
+	case msg.IsUpdate(), msg.IsRemove():
+		id := msg.ID()
+
+		if id != "" && !w.cluster.ID().IsNext(id, version) {
+			log.Errorf(ctx, "Internal: unexpected incremental update for %v: %v v%v. Disconnecting", w.cluster.ID(), id, version)
+			w.lostLeader(ctx)
+			return
+		}
+
+		switch {
+		case msg.IsUpdate():
+			update, _ := msg.Update()
+			w.cluster = core.UpdateCluster(w.cluster, update.Assignments(), nil, timestamp)
+
+		case msg.IsRemove():
+			remove, _ := msg.Remove()
+			w.cluster = core.UpdateCluster(w.cluster, nil, remove.Services(), timestamp)
+		}
 
 	default:
 		log.Errorf(ctx, "Invalid cluster message: %v", msg)
+		return
 	}
 
 	chanx.Clear(w.clusters)

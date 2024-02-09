@@ -21,7 +21,6 @@ import (
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"net"
 	"time"
 )
@@ -97,7 +96,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 	}
 
 	w, out := worker.New(cl, loc, endpoint, joinFn, factoryFn)
-	resolver := core.NewServiceResolver(ctx, w.Self(), out, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	resolver := core.NewServiceResolver(ctx, cl, w.Self(), out, grpcx.WithInsecure())
 
 	return &Server{
 		cl:       cl,

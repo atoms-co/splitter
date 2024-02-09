@@ -420,7 +420,7 @@ func (p *WorkPool) handleClusterChange(ctx context.Context, change ClusterChange
 	unassigned := change.Unassign().Grants()
 	removed := change.Remove().Consumers()
 
-	if p.cluster.ID().Origin.ID() != id || p.cluster.ID().Version+1 != version {
+	if !p.cluster.ID().IsNext(id, version) {
 		log.Errorf(ctx, "Internal: unexpected incremental update for %v: %v v%v", p.cluster.ID(), id, version)
 	}
 

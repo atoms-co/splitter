@@ -2,11 +2,14 @@ package core
 
 import (
 	"context"
+	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"google.golang.org/grpc"
 	"sync"
+	"time"
 )
 
 type Connection struct {
@@ -18,22 +21,34 @@ type Connection struct {
 // to indicate that service is local.
 type ServiceResolver = model.Resolver[Connection, model.QualifiedServiceName]
 
-// NewServiceResolver creates a new resolver that finds service's coordinator location and returns a connection to that instance.
-// The resolver keeps connections to all known service instances, disconnecting instances that have no coordinators.
-// Thread-safe.
-func NewServiceResolver(ctx context.Context, self model.Instance, clusters <-chan Cluster, opts ...grpc.DialOption) ServiceResolver {
+// NewServiceResolver creates a new resolver that finds service's coordinator location and returns a
+// connection to that instance. The resolver keeps connections to all known service instances,
+// disconnecting instances that have no coordinators after a minute. Thread-safe.
+func NewServiceResolver(ctx context.Context, cl clock.Clock, self model.Instance, clusters <-chan Cluster, opts ...grpc.DialOption) ServiceResolver {
 	r := &resolver{
-		self:  self,
-		peers: map[string]*grpc.ClientConn{},
+		cl:       cl,
+		self:     self,
+		peers:    map[model.InstanceID]*grpc.ClientConn{},
+		inactive: map[model.InstanceID]inactive{},
 	}
 	go r.process(ctx, clusters, opts)
+
 	return r
 }
 
+type inactive struct {
+	worker     model.Instance
+	cc         *grpc.ClientConn
+	expiration time.Time
+}
+
 type resolver struct {
+	cl   clock.Clock
 	self model.Instance
 
-	peers   map[string]*grpc.ClientConn
+	inactive map[model.InstanceID]inactive
+
+	peers   map[model.InstanceID]*grpc.ClientConn
 	cluster Cluster
 	mu      sync.RWMutex
 }
@@ -42,65 +57,103 @@ func (r *resolver) Resolve(ctx context.Context, service model.QualifiedServiceNa
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	c, ok := r.cluster.Service(service)
+	c, ok := r.cluster.Lookup(service)
 	if !ok {
-		return Connection{}, fmt.Errorf("no coordinator found for service %v: %w", service, model.ErrInvalid)
+		return Connection{}, model.ErrNotFound
 	}
-	if c.instance.Endpoint() == r.self.Endpoint() {
-		return Connection{GID: c.grant.ID()}, model.ErrNoResolution
+
+	wid := c.Worker.ID()
+	gid := c.Grant.ID()
+
+	if wid == r.self.ID() {
+		return Connection{GID: gid}, model.ErrNoResolution
 	}
-	return Connection{
-		GID:  c.grant.ID(),
-		Conn: r.peers[c.instance.Endpoint()],
-	}, nil
+	cc, ok := r.peers[wid]
+	if !ok {
+		return Connection{GID: gid}, fmt.Errorf("internal: no connection to %v", c.Worker)
+	}
+	return Connection{GID: gid, Conn: cc}, nil
 }
 
 func (r *resolver) process(ctx context.Context, clusters <-chan Cluster, opts []grpc.DialOption) {
-	for cluster := range clusters {
-		// (1) New cluster. Establish new connections, if any.
+	ticker := r.cl.NewTicker(10 * time.Second)
+	defer ticker.Stop()
 
-		log.Debugf(ctx, "Received cluster: %v", cluster)
-
-		r.mu.RLock()
-		old := r.peers
-		r.mu.RUnlock()
-
-		upd := map[string]*grpc.ClientConn{}
-
-		for service, c := range cluster.Services() {
-			if c.instance.ID() == r.self.ID() {
-				continue // ignore self
-			}
-			endpoint := c.instance.Endpoint()
-			if cc, ok := old[endpoint]; ok {
-				upd[endpoint] = cc
-				continue
+	for {
+		select {
+		case cluster, ok := <-clusters:
+			if !ok {
+				return
 			}
 
-			log.Debugf(ctx, "Opening connection to %v located at coordinator %v", service, c)
+			// (1) New cluster. Establish new connections, if any.
 
-			cc, err := grpc.DialContext(ctx, endpoint, opts...)
-			if err != nil {
-				// Highly unexpected. A new cluster update will force a retry. We choose not to panic.
+			// log.Debugf(ctx, "Received cluster: %v", cluster.ID())
 
-				log.Errorf(ctx, "CRITICAL: Failed to create connection to %v: %v", c, err)
-				continue
+			r.mu.RLock()
+			old := r.peers
+			r.mu.RUnlock()
+
+			active := map[model.InstanceID]*grpc.ClientConn{}
+
+			workers := cluster.Workers()
+			for id, w := range workers {
+				if cc, ok := old[id]; ok {
+					active[id] = cc // keep
+					continue
+				}
+				if info, ok := r.inactive[id]; ok {
+					active[id] = info.cc // re-activate
+					delete(r.inactive, id)
+					continue
+				}
+
+				cc, err := grpcx.DialNonBlocking(ctx, w.Endpoint(), opts...)
+				if err != nil {
+					// Highly unexpected. A new cluster update will force a retry. We choose not to panic.
+
+					log.Errorf(ctx, "CRITICAL: Failed to create connection to %v: %v", w, err)
+					continue
+				}
+				active[id] = cc
 			}
-			upd[endpoint] = cc
-		}
 
-		// (2) Swap state. Remove old connections.
+			// (2) Find inactive connections.
 
-		r.mu.Lock()
-		r.peers = upd
-		r.cluster = cluster
-		r.mu.Unlock()
-
-		for endpoint, cc := range old {
-			if _, ok := upd[endpoint]; !ok {
-				log.Debugf(ctx, "Closing connection to %v", endpoint)
-				_ = cc.Close()
+			for id, cc := range old {
+				if _, ok := active[id]; !ok {
+					r.inactive[id] = inactive{worker: workers[id], cc: cc, expiration: r.cl.Now().Add(time.Minute)}
+				}
 			}
+
+			// (3) Swap cluster map and peer connections.
+
+			r.mu.Lock()
+			r.peers = active
+			r.cluster = cluster
+			r.mu.Unlock()
+
+		case <-ticker.C:
+			// Remove old stale connections. We delay a min to handle partial cluster updates
+			// from a new leader until all workers have re-registered.
+
+			if len(r.inactive) == 0 {
+				break
+			}
+
+			now := r.cl.Now()
+
+			r.mu.Lock()
+			for id, info := range r.inactive {
+				if now.After(info.expiration) {
+					continue // skip
+				}
+
+				log.Debugf(ctx, "Closing connection to inactive worker: %v", info.worker)
+				_ = info.cc.Close()
+				delete(r.inactive, id)
+			}
+			r.mu.Unlock()
 		}
 	}
 }

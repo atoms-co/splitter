@@ -1,6 +1,7 @@
 package leader
 
 import (
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/core"
@@ -137,18 +138,25 @@ func NewRelinquished(grants ...core.Grant) Message {
 	}})
 }
 
-func NewClusterSnapshot(assignments []core.Assignment) Message {
+func NewClusterSnapshot(id model.ClusterID, assignments []core.Assignment) Message {
 	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
+		Id:        string(id.Origin.ID()),
+		Version:   int64(id.Version),
+		Timestamp: timestamppb.New(id.Timestamp),
 		Msg: &internal_v1.ClusterMessage_Snapshot_{
 			Snapshot: &internal_v1.ClusterMessage_Snapshot{
 				Assignments: slicex.Map(assignments, core.Assignment.ToProto),
+				Origin:      location.UnwrapInstance(id.Origin),
 			},
 		},
 	}})
 }
 
-func NewClusterUpdate(assignments []core.Assignment) Message {
+func NewClusterUpdate(id model.ClusterID, assignments []core.Assignment) Message {
 	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
+		Id:        string(id.Origin.ID()),
+		Version:   int64(id.Version),
+		Timestamp: timestamppb.New(id.Timestamp),
 		Msg: &internal_v1.ClusterMessage_Update_{
 			Update: &internal_v1.ClusterMessage_Update{
 				Assignments: slicex.Map(assignments, core.Assignment.ToProto),
@@ -157,8 +165,11 @@ func NewClusterUpdate(assignments []core.Assignment) Message {
 	}})
 }
 
-func NewClusterRemove(remove []model.QualifiedServiceName) Message {
+func NewClusterRemove(id model.ClusterID, remove []model.QualifiedServiceName) Message {
 	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
+		Id:        string(id.Origin.ID()),
+		Version:   int64(id.Version),
+		Timestamp: timestamppb.New(id.Timestamp),
 		Msg: &internal_v1.ClusterMessage_Remove_{
 			Remove: &internal_v1.ClusterMessage_Remove{
 				Services: slicex.Map(remove, model.QualifiedServiceName.ToProto),
@@ -435,6 +446,18 @@ func (m ClusterMessage) Remove() (ClusterRemoveMessage, bool) {
 	return ClusterRemoveMessage{pb: m.pb.GetRemove()}, true
 }
 
+func (m ClusterMessage) ID() model.InstanceID {
+	return model.InstanceID(m.pb.GetId())
+}
+
+func (m ClusterMessage) Version() int {
+	return int(m.pb.GetVersion())
+}
+
+func (m ClusterMessage) Timestamp() time.Time {
+	return m.pb.GetTimestamp().AsTime()
+}
+
 func (m ClusterMessage) String() string {
 	return proto.MarshalTextString(m.pb)
 }
@@ -445,6 +468,11 @@ type ClusterSnapshotMessage struct {
 
 func (m ClusterSnapshotMessage) Assignments() []core.Assignment {
 	return slicex.Map(m.pb.GetAssignments(), core.ParseClusterAssignment)
+}
+
+func (m ClusterSnapshotMessage) Origin() (location.Instance, bool) {
+	pb := m.pb.GetOrigin()
+	return location.WrapInstance(pb), pb != nil
 }
 
 type ClusterUpdateMessage struct {

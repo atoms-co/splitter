@@ -9,6 +9,7 @@ import "splitter/proto/internal_v1/operation.proto";
 import "splitter/proto/internal_v1/placement.proto";
 import "splitter/proto/internal_v1/state.proto";
 import "atoms/splitter/lib/service/session/session.proto";
+import "atoms/splitter/lib/service/location/location.proto";
 import "google/protobuf/timestamp.proto";
 
 option java_multiple_files = true;
@@ -208,6 +209,7 @@ message ClusterMessage {
 
   message Snapshot {
     repeated Assignment assignments = 1;
+    atoms.splitter.lib.service.location.Instance origin = 2; // leader instance (for debugging)
   }
 
   message Update {
@@ -223,6 +225,10 @@ message ClusterMessage {
     Update update = 2;
     Remove remove = 3;
   }
+
+  string id = 4;     // leader instance id
+  int64 version = 5; // cluster version (strictly sequential if change)
+  google.protobuf.Timestamp timestamp = 6;
 }
 
 message LeaderMessage {

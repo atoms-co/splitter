@@ -17,8 +17,13 @@ type ClusterID struct {
 	Timestamp time.Time
 }
 
+// IsNext returns true if the id and version matches the next incremental update.
+func (c ClusterID) IsNext(id location.InstanceID, version int) bool {
+	return c.Origin.ID() == id && c.Version+1 == version
+}
+
 func (c ClusterID) String() string {
-	return fmt.Sprintf("%v[origin=%v, updated=%v]", c.Version, c.Origin, c.Timestamp)
+	return fmt.Sprintf("%v[origin=%v, updated=+%v]", c.Version, c.Origin, c.Timestamp.Sub(c.Origin.Created()).Round(time.Millisecond))
 }
 
 // Cluster contains information about all consumers and grants in the work distribution process.

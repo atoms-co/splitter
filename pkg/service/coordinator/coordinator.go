@@ -390,7 +390,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	c.assign(ctx, now, grants...)
 	c.promote(ctx, promoted...)
 
-	log.Debugf(ctx, "Allocation: %v", c.alloc)
+	log.Debugf(ctx, "Allocation %v: %v", c.name, c.alloc)
 }
 
 func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant) {

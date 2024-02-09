@@ -206,18 +206,6 @@ func (m ConsumerMessage) ClusterMessage() (ClusterMessage, bool) {
 	return WrapClusterMessage(m.pb.GetCluster()), true
 }
 
-func (m ClusterMessage) ID() InstanceID {
-	return InstanceID(m.pb.GetId())
-}
-
-func (m ClusterMessage) Version() int {
-	return int(m.pb.GetVersion())
-}
-
-func (m ClusterMessage) Timestamp() time.Time {
-	return m.pb.GetTimestamp().AsTime()
-}
-
 func (m ConsumerMessage) String() string {
 	return proto.MarshalTextString(m.pb)
 }
@@ -508,6 +496,18 @@ func (m ClusterMessage) Change() (ClusterChange, bool) {
 		return ClusterChange{}, false
 	}
 	return WrapClusterChange(m.pb.GetChange()), true
+}
+
+func (m ClusterMessage) ID() InstanceID {
+	return InstanceID(m.pb.GetId())
+}
+
+func (m ClusterMessage) Version() int {
+	return int(m.pb.GetVersion())
+}
+
+func (m ClusterMessage) Timestamp() time.Time {
+	return m.pb.GetTimestamp().AsTime()
 }
 
 func (m ClusterMessage) String() string {
