@@ -179,7 +179,6 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	s.TrySend(ctx, model.NewExtend(lease)) // grants will be covered under this lease
 
 	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Instance().ID(), consumer.instance), lease, active...); ok {
-		log.Infof(ctx, "attached returned: %v", assigned)
 		if len(assigned.Active) > 0 {
 			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Active, toGrant)...))
 		}
