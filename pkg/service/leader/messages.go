@@ -336,8 +336,16 @@ func (m RegisterMessage) Active() []core.Grant {
 	return slicex.Map(m.pb.GetActive(), core.WrapGrant)
 }
 
+func (m RegisterMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
 type DeregisterMessage struct {
 	pb *internal_v1.WorkerMessage_Deregister
+}
+
+func (m DeregisterMessage) String() string {
+	return proto.MarshalTextString(m.pb)
 }
 
 type LeaseUpdateMessage struct {
@@ -346,6 +354,10 @@ type LeaseUpdateMessage struct {
 
 func (m LeaseUpdateMessage) Ttl() time.Time {
 	return m.pb.GetTtl().AsTime()
+}
+
+func (m LeaseUpdateMessage) String() string {
+	return proto.MarshalTextString(m.pb)
 }
 
 type AssignMessage struct {
@@ -360,6 +372,10 @@ func (m AssignMessage) State() core.State {
 	return core.WrapState(m.pb.GetState())
 }
 
+func (m AssignMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
 type UpdateMessage struct {
 	pb *internal_v1.WorkerMessage_Update
 }
@@ -372,6 +388,10 @@ func (m UpdateMessage) State() core.Update {
 	return core.WrapUpdate(m.pb.GetState())
 }
 
+func (m UpdateMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
 type RevokeMessage struct {
 	pb *internal_v1.WorkerMessage_Revoke
 }
@@ -380,12 +400,20 @@ func (m RevokeMessage) Grants() []core.Grant {
 	return slicex.Map(m.pb.GetGrants(), core.WrapGrant)
 }
 
+func (m RevokeMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
 type RelinquishedMessage struct {
 	pb *internal_v1.WorkerMessage_Relinquished
 }
 
 func (m RelinquishedMessage) Grants() []core.Grant {
 	return slicex.Map(m.pb.GetGrants(), core.WrapGrant)
+}
+
+func (m RelinquishedMessage) String() string {
+	return proto.MarshalTextString(m.pb)
 }
 
 type ClusterMessage struct {

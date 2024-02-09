@@ -442,7 +442,7 @@ func (c *coordinator) promote(ctx context.Context, grants ...Grant) {
 		}
 		recordAction(ctx, "promote", "ok")
 
-		log.Infof(ctx, "Allocated new grant to consumer %v: %v.", s, grant)
+		log.Infof(ctx, "Promoted new grant for consumer %v: %v.", s, grant)
 	}
 }
 

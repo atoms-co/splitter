@@ -321,6 +321,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				candidate.Handler.Close()
 				continue
 			}
+			candidate.Grant = g                      // Overwrite allocated grant with active grant
 			candidate.Handler.Ownership().Activate() // Signal consumer that grant is activated
 		}
 
