@@ -26,7 +26,7 @@ func (c ClusterID) String() string {
 	return fmt.Sprintf("%v[origin=%v, updated=+%v]", c.Version, c.Origin, c.Timestamp.Sub(c.Origin.Created()).Round(time.Millisecond))
 }
 
-// Cluster contains information about all consumers and grants in the work distribution process.
+// Cluster contains information about all consumers and grants in the work distribution process. Immutable.
 type Cluster interface {
 	ID() ClusterID
 

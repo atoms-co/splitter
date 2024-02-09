@@ -145,7 +145,7 @@ func (r *resolver) process(ctx context.Context, clusters <-chan Cluster, opts []
 
 			r.mu.Lock()
 			for id, info := range r.inactive {
-				if now.After(info.expiration) {
+				if now.Before(info.expiration) {
 					continue // skip
 				}
 
