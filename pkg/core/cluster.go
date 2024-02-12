@@ -49,18 +49,18 @@ type Cluster struct {
 	services map[model.QualifiedServiceName]Coordinator
 }
 
-func NewCluster(id model.ClusterID, assignments []Assignment) Cluster {
+func NewCluster(id model.ClusterID, assignments []Assignment) *Cluster {
 	services := map[model.QualifiedServiceName]Coordinator{}
 	for _, a := range assignments {
 		for _, grant := range a.Grants {
 			services[grant.Service()] = Coordinator{Worker: a.Worker, Grant: grant}
 		}
 	}
-	return Cluster{id: id, services: services}
+	return &Cluster{id: id, services: services}
 }
 
-func UpdateCluster(c Cluster, add []Assignment, remove []model.QualifiedServiceName, now time.Time) Cluster {
-	ret := Cluster{
+func UpdateCluster(c *Cluster, add []Assignment, remove []model.QualifiedServiceName, now time.Time) *Cluster {
+	ret := &Cluster{
 		id: model.ClusterID{
 			Origin:    c.id.Origin,
 			Version:   c.id.Version + 1,
@@ -83,25 +83,22 @@ func UpdateCluster(c Cluster, add []Assignment, remove []model.QualifiedServiceN
 	return ret
 }
 
-func (c Cluster) ID() model.ClusterID {
+func (c *Cluster) ID() model.ClusterID {
 	return c.id
 }
 
-func (c Cluster) Workers() map[model.InstanceID]model.Instance {
-	return mapx.Map(c.services, func(k model.QualifiedServiceName, v Coordinator) (model.InstanceID, model.Instance) {
+func (c *Cluster) Workers() []model.Instance {
+	return mapx.Values(mapx.Map(c.services, func(k model.QualifiedServiceName, v Coordinator) (model.InstanceID, model.Instance) {
 		return v.Worker.ID(), v.Worker
-	})
+	}))
 }
 
-func (c Cluster) Lookup(service model.QualifiedServiceName) (Coordinator, bool) {
-	if len(c.services) == 0 {
-		return Coordinator{}, false
-	}
+func (c *Cluster) Lookup(service model.QualifiedServiceName) (Coordinator, bool) {
 	ret, ok := c.services[service]
 	return ret, ok
 }
 
-func (c Cluster) Assignments() []Assignment {
+func (c *Cluster) Assignments() []Assignment {
 	workers := map[model.InstanceID]model.Instance{}
 	grants := map[model.InstanceID][]Grant{}
 
@@ -118,6 +115,6 @@ func (c Cluster) Assignments() []Assignment {
 	return ret
 }
 
-func (c Cluster) String() string {
+func (c *Cluster) String() string {
 	return fmt.Sprintf("%v{%v}", c.id, c.services)
 }

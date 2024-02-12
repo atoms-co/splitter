@@ -107,7 +107,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 	})
 }
 
-func (s *ConsumerService) forwardRemote(ctx context.Context, consumerSession *session.Server, cc core.Connection, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (s *ConsumerService) forwardRemote(ctx context.Context, consumerSession *session.Server, client internal_v1.CoordinatorServiceClient, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	// Create a client session with the coordinator instance
 	coordinatorSession, establish, sessionOut := session.NewClient(ctx, s.cl, s.self)
 	wctx, _ := contextx.WithQuitCancel(ctx, coordinatorSession.Closed()) // cancel context if session closes
@@ -119,7 +119,7 @@ func (s *ConsumerService) forwardRemote(ctx context.Context, consumerSession *se
 	out := make(chan model.ConsumerMessage, 100)
 	go func() {
 		defer coordinatorSession.Close()
-		err := grpcx.Connect(wctx, internal_v1.NewCoordinatorServiceClient(cc.Conn).Connect, func(ctx context.Context, coordinatorIn <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
+		err := grpcx.Connect(wctx, client.Connect, func(ctx context.Context, coordinatorIn <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
 			// Process incoming messages by either copying to the output buffer or sending to the session
 			go func() {
 				for pb := range coordinatorIn {

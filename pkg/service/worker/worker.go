@@ -55,8 +55,8 @@ type Worker struct {
 	in     <-chan leader.Message // leader incoming messages (empty and not closed, if disconnected)
 	out    chan<- leader.Message // leader outgoing messages (empty and not closed, if disconnected)
 
-	cluster  core.Cluster
-	clusters chan core.Cluster
+	cluster  *core.Cluster
+	clusters chan *core.Cluster
 
 	grants   map[core.GrantID]*Grant
 	services map[model.QualifiedServiceName]core.GrantID
@@ -68,7 +68,7 @@ type Worker struct {
 	drain iox.AsyncCloser
 }
 
-func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, factory CoordinatorFactory) (*Worker, <-chan core.Cluster) {
+func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, factory CoordinatorFactory) (*Worker, <-chan *core.Cluster) {
 	quit := iox.NewAsyncCloser()
 	w := &Worker{
 		AsyncCloser: quit,
@@ -78,7 +78,7 @@ func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, 
 		factory:     factory,
 		in:          make(chan leader.Message),
 		out:         make(chan leader.Message),
-		clusters:    make(chan core.Cluster, 1),
+		clusters:    make(chan *core.Cluster, 1),
 		grants:      map[core.GrantID]*Grant{},
 		services:    map[model.QualifiedServiceName]core.GrantID{},
 		expire:      make(chan bool, 1),
@@ -413,6 +413,11 @@ func (w *Worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMes
 	case msg.IsUpdate(), msg.IsRemove():
 		id := msg.ID()
 
+		if w.cluster == nil {
+			log.Errorf(ctx, "Internal: unexpected incremental update for uninitialized cluster: %v v%v. Disconnecting", id, version)
+			w.lostLeader(ctx)
+			return
+		}
 		if id != "" && !w.cluster.ID().IsNext(id, version) {
 			log.Errorf(ctx, "Internal: unexpected incremental update for %v: %v v%v. Disconnecting", w.cluster.ID(), id, version)
 			w.lostLeader(ctx)

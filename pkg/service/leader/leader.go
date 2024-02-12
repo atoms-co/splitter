@@ -67,7 +67,7 @@ type Leader struct {
 
 	workers  map[location.InstanceID]*workerSession
 	alloc    *Allocation
-	cluster  core.Cluster // latest cluster generated from alloc
+	cluster  *core.Cluster // latest cluster generated from alloc
 	messages chan *sessionx.Message[Message]
 
 	upd    <-chan core.Update

@@ -95,8 +95,8 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 		return coordinator.New(ctx, cl, loc, service, state, updates, lopts...)
 	}
 
-	w, out := worker.New(cl, loc, endpoint, joinFn, factoryFn)
-	resolver := core.NewServiceResolver(ctx, cl, w.Self(), out, grpcx.WithInsecure())
+	w, clusters := worker.New(cl, loc, endpoint, joinFn, factoryFn)
+	resolver := core.NewServiceResolver(ctx, cl, w.Self().ID(), clusters, grpcx.WithInsecure())
 
 	return &Server{
 		cl:       cl,

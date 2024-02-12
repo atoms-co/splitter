@@ -1,9 +1,7 @@
 package model
 
 import (
-	"context"
 	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"fmt"
@@ -441,13 +439,4 @@ func (c *ClusterMap) deleteGrant(g GrantID) {
 	delete(c.g2c, g)
 	delete(c.d2g[grant.Shard().Domain], g)
 	delete(c.s2g[grant.Shard()], g)
-}
-
-// ClusterProvider returns the latest Cluster, if one is present. Thread-safe.
-type ClusterProvider interface {
-	V() (Cluster, bool)
-}
-
-func NewClusterProvider(ctx context.Context, clusters <-chan Cluster) ClusterProvider {
-	return chanx.NewProvider(ctx, clusters)
 }

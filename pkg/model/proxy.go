@@ -2,12 +2,9 @@ package model
 
 import (
 	"context"
-	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/net/grpcx"
 	"errors"
 	"fmt"
 	"google.golang.org/grpc"
-	"sync"
 )
 
 var (
@@ -47,7 +44,7 @@ func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn f
 // may use a different signature and by unrelated to grpc. It is called only on no resolution.
 // Any retry -- notably on ErrNotOwned -- should re-resolve the owner.
 //
-// For example, using Proxy[v1.FooServiceClient], the extended call looks like the following:
+// For example, using Resolver[v1.FooServiceClient, K], the extended call looks like the following:
 //
 //  parsed := parse(req)
 //  ... determine key ...
@@ -78,42 +75,22 @@ type RemoteFn[T any] func(grpc.ClientConnInterface) T
 // The InvokeEx is an attempt at what a unified call may look like. Use func(ctx, a) (B, error) to
 // not force a closure as a variant?
 
-// Connection represents an addressable instance and an optional grpc connection to its endpoint.
-type Connection struct {
-	Instance Instance
-	Conn     grpc.ClientConnInterface // nil if local
-}
-
-// ConnectionPool maintains connections to various instances for redirection. Multiple
-// proxies with different service contracts can use the same resolver. Thead-safe.
-type ConnectionPool interface {
-	Connect(ctx context.Context, id InstanceID) (Connection, error)
-}
-
-var (
-	numForwards = metrics.NewCounter("go.atoms.co/splitter/forwarder_requests", "Number of forward requests", resultKey)
-)
-
 // resolver is a low-level helper for redirecting requests to the shard owner, using a connection pool. Multiple
 // proxies with different service contracts can use the same resolver.
 type resolver[T any] struct {
-	self    InstanceID
-	pool    ConnectionPool
-	fn      RemoteFn[T]
-	cluster ClusterProvider
-	states  []GrantState // Grant state resolution. Empty if default.
+	pool   ConnectionPool
+	fn     RemoteFn[T]
+	states []GrantState // Grant state resolution. Empty if default.
 }
 
 // NewResolver creates a resolver to reach domain owners over grpc. If an ownership failure occurs, the
 // local check must be re-done before a retry. The resolver uses the default notion of ownership, unless
 // a custom list of grant states are provided.
-func NewResolver[T any](self ConsumerID, provider ClusterProvider, pool ConnectionPool, fn RemoteFn[T], states ...GrantState) Resolver[T, QualifiedDomainKey] {
+func NewResolver[T any](pool ConnectionPool, fn RemoteFn[T], states ...GrantState) Resolver[T, QualifiedDomainKey] {
 	return &resolver[T]{
-		self:    self,
-		pool:    pool,
-		fn:      fn,
-		cluster: provider,
-		states:  states,
+		pool:   pool,
+		fn:     fn,
+		states: states,
 	}
 }
 
@@ -121,87 +98,29 @@ func NewResolver[T any](self ConsumerID, provider ClusterProvider, pool Connecti
 func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, error) {
 	var zero T
 
-	if c, ok := r.cluster.V(); ok {
+	if c, ok := r.pool.Cluster(); ok {
 		if instance, _, ok := c.Lookup(key, r.states...); ok {
-			if instance.ID() == r.self {
-				return zero, ErrNoResolution
-			}
-			con, err := r.pool.Connect(ctx, instance.ID())
+			con, err := r.pool.Resolve(ctx, instance)
 			if err != nil {
-				numForwards.Increment(ctx, 1, resultTag("no_connection"))
-				return zero, fmt.Errorf("no connection: %w", err)
+				return zero, err
 			}
-			numForwards.Increment(ctx, 1, resultTag("ok"))
-			return r.fn(con.Conn), nil
+			return r.fn(con), nil
 		}
 	}
 
-	numForwards.Increment(ctx, 1, resultTag("not_initialized"))
 	return zero, fmt.Errorf("not initialized: %w", ErrNotFound)
 }
 
-type connectionPool struct {
-	provider ClusterProvider
-	opts     []grpc.DialOption
-
-	connections map[ConsumerID]Connection
-	mu          sync.RWMutex
-}
-
-func NewConnectionPool(provider ClusterProvider, opts ...grpc.DialOption) ConnectionPool {
-	return &connectionPool{
-		provider:    provider,
-		opts:        opts,
-		connections: map[ConsumerID]Connection{},
-	}
-}
-
-func (p *connectionPool) Connect(ctx context.Context, id InstanceID) (Connection, error) {
-	p.mu.RLock()
-	c, ok := p.connections[id]
-	p.mu.RUnlock()
-
-	if ok {
-		return c, nil
-	}
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	cluster, ok := p.provider.V()
-	if !ok {
-		return Connection{}, fmt.Errorf("clustermap not initialized: %w", ErrNotFound)
-	}
-
-	instance, _, ok := cluster.Consumer(id)
-	if !ok {
-		return Connection{}, fmt.Errorf("consumer %v: %w", id, ErrNotFound)
-	}
-
-	cc, err := grpcx.DialNonBlocking(ctx, instance.Endpoint(), p.opts...)
-	if err != nil {
-		return Connection{}, fmt.Errorf("failed to create connection to %v: %w", instance, err)
-	}
-	c = Connection{Instance: instance, Conn: cc}
-	p.connections[id] = c
-	return c, nil
-}
-
-// DomainResolver is a convenience wrapper for single-domain resolution using the cluster resolver.
-type DomainResolver[T, K any] struct {
-	name     QualifiedDomainName
+type domainResolver[T, K any] struct {
 	resolver Resolver[T, QualifiedDomainKey]
-	fn       func(K) DomainKey
+	fn       func(K) QualifiedDomainKey
 }
 
-func NewDomainResolver[T, K any](name QualifiedDomainName, resolver Resolver[T, QualifiedDomainKey], fn func(K) DomainKey) *DomainResolver[T, K] {
-	return &DomainResolver[T, K]{name: name, resolver: resolver, fn: fn}
+// NewDomainResolver is a convenience wrapper for custom key resolution, such as single domains with a uuid key.
+func NewDomainResolver[T, K any](pool ConnectionPool, fn RemoteFn[T], kfn func(K) QualifiedDomainKey, states ...GrantState) Resolver[T, K] {
+	return &domainResolver[T, K]{resolver: NewResolver(pool, fn, states...), fn: kfn}
 }
 
-func (d *DomainResolver[T, K]) Resolve(ctx context.Context, key K) (T, error) {
-	return d.resolver.Resolve(ctx, QualifiedDomainKey{Domain: d.name, Key: d.fn(key)})
-}
-
-func (d *DomainResolver[T, K]) String() string {
-	return d.name.String()
+func (d *domainResolver[T, K]) Resolve(ctx context.Context, key K) (T, error) {
+	return d.resolver.Resolve(ctx, d.fn(key))
 }
