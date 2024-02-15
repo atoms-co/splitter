@@ -186,7 +186,7 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 	}
 	log.Infof(ctx, "Activating at %v", now.Add(delay))
 	l.alloc = newAllocation(l.id.ID(), snapshot, now.Add(delay))
-	l.cluster = core.NewCluster(model.ClusterID{Origin: l.id, Version: 1, Timestamp: now}, nil)
+	l.cluster = core.NewCluster(model.NewClusterID(l.id, now))
 
 	if l.drain.IsClosed() {
 		log.Errorf(ctx, "Unexpected: leader %v lost leadership while loading", l.id)

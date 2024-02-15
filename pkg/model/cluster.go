@@ -5,6 +5,7 @@ import (
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -13,6 +14,22 @@ type ClusterID struct {
 	Origin    location.Instance
 	Version   int
 	Timestamp time.Time
+}
+
+func NewClusterID(origin location.Instance, now time.Time) ClusterID {
+	return ClusterID{
+		Origin:    origin,
+		Version:   1,
+		Timestamp: now,
+	}
+}
+
+// Next returns a ClusterID for the next incremental update.
+func (c ClusterID) Next(now time.Time) ClusterID {
+	ret := c
+	ret.Version++
+	ret.Timestamp = now
+	return ret
 }
 
 // IsNext returns true if the id and version matches the next incremental update.
@@ -41,402 +58,254 @@ type Cluster interface {
 	Lookup(key QualifiedDomainKey, states ...GrantState) (Consumer, GrantInfo, bool)
 }
 
-// ClusterDiff contains changes in a cluster map
-type ClusterDiff struct {
-	Assigned   map[ConsumerID][]GrantInfo
-	Updated    []GrantInfo
-	Unassigned []GrantID
-	Removed    []ConsumerID
+type consumerInfo struct {
+	consumer Consumer
+	grants   []GrantInfo
 }
 
-func (d ClusterDiff) IsEmpty() bool {
-	return len(d.Assigned) == 0 && len(d.Updated) == 0 && len(d.Unassigned) == 0 && len(d.Removed) == 0
+type grantInfo struct {
+	consumer Consumer
+	grant    GrantInfo
 }
 
+// ClusterMap is lookup-optimized Cluster representation, updated by ClusterMessages. Immutable.
 type ClusterMap struct {
-	id ClusterID
+	id        ClusterID
+	consumers map[ConsumerID]consumerInfo
+	grants    map[GrantID]grantInfo
 
-	consumers map[ConsumerID]Consumer
-	grants    map[GrantID]GrantInfo
-
-	c2g map[ConsumerID]map[GrantID]bool
-	g2c map[GrantID]ConsumerID
-	d2g map[QualifiedDomainName]map[GrantID]bool
-	s2g map[Shard]map[GrantID]bool
+	cache *ShardMap[GrantID, grantInfo]
 }
 
-func NewCluster(id ClusterID, consumers []Consumer, grants map[ConsumerID][]GrantInfo) (*ClusterMap, error) {
-	c := &ClusterMap{
+func NewClusterMap(id ClusterID, assignments ...Assignment) *ClusterMap {
+	ret := &ClusterMap{
 		id:        id,
-		consumers: map[ConsumerID]Consumer{},
-		grants:    map[GrantID]GrantInfo{},
-		c2g:       map[ConsumerID]map[GrantID]bool{},
-		g2c:       map[GrantID]ConsumerID{},
-		d2g:       map[QualifiedDomainName]map[GrantID]bool{},
-		s2g:       map[Shard]map[GrantID]bool{},
+		consumers: map[ConsumerID]consumerInfo{},
+		grants:    map[GrantID]grantInfo{},
+		cache:     NewShardMap[GrantID, grantInfo](),
 	}
-	err := c.assign(consumers, grants)
-	if err != nil {
-		return nil, err
+	ret.initAssignments(assignments)
+
+	return ret
+}
+
+func UpdateClusterMap(c *ClusterMap, msg ClusterMessage) (*ClusterMap, error) {
+	version := msg.Version()
+	timestamp := msg.Timestamp()
+
+	switch {
+	case msg.IsSnapshot():
+		snapshot, _ := msg.Snapshot()
+
+		id := ClusterID{
+			Version:   version,
+			Timestamp: timestamp,
+		}
+		id.Origin, _ = snapshot.Origin()
+
+		return NewClusterMap(id, snapshot.Assignments()...), nil
+
+	case msg.IsChange():
+		change, _ := msg.Change()
+
+		id := msg.ID()
+
+		if !c.ID().IsNext(id, version) {
+			return nil, fmt.Errorf("unexpected incremental update for %v: %v v%v", c.ID(), id, version)
+		}
+
+		ret := &ClusterMap{
+			id:        c.ID().Next(timestamp),
+			consumers: make(map[ConsumerID]consumerInfo, len(c.consumers)),
+			grants:    make(map[GrantID]grantInfo, len(c.grants)),
+			cache:     NewShardMap[GrantID, grantInfo](),
+		}
+
+		// (1) Add new assignments
+
+		ret.initAssignments(change.Assign().Assignments())
+
+		// (2) Copy over retained or updated values
+
+		upd := mapx.New(change.Update().Grants(), GrantInfo.ID)
+		rem := mapx.New(change.Unassign().Grants(), idFn[GrantID])
+		del := mapx.New(change.Remove().Consumers(), idFn[ConsumerID])
+
+		for cid, info := range c.consumers {
+			if _, ok := del[cid]; ok {
+				continue // skip: consumer removed
+			}
+
+			grants := make([]GrantInfo, 0, len(info.grants))
+
+			for _, g := range info.grants {
+				if _, ok := rem[g.ID()]; ok {
+					continue // skip: grant removed
+				}
+
+				keep := grantInfo{consumer: info.consumer, grant: g}
+				if v, ok := upd[g.ID()]; ok {
+					keep.grant = v // grant updated
+				}
+
+				ret.grants[g.ID()] = keep
+				ret.cache.Write(g.Shard(), g.ID(), keep)
+				grants = append(grants, keep.grant)
+			}
+
+			if fresh, ok := ret.consumers[cid]; ok {
+				grants = append(grants, fresh.grants...)
+			}
+			ret.consumers[cid] = consumerInfo{consumer: info.consumer, grants: grants}
+		}
+
+		return ret, nil
+
+	default:
+		return nil, fmt.Errorf("unexpected message type: %v", msg)
 	}
-	return c, nil
+}
+
+func (c *ClusterMap) initAssignments(assignments []Assignment) {
+	for _, a := range assignments {
+		grants := a.Grants()
+		consumer := a.Consumer()
+
+		c.consumers[consumer.ID()] = consumerInfo{consumer: consumer, grants: grants}
+		for _, g := range grants {
+			info := grantInfo{consumer: consumer, grant: g}
+			c.grants[g.ID()] = info
+			c.cache.Write(g.Shard(), g.ID(), info)
+		}
+	}
 }
 
 func (c *ClusterMap) ID() ClusterID {
 	return c.id
 }
 
-func (c *ClusterMap) Clone() *ClusterMap {
-	ret, _ := NewCluster(c.ID(), c.Consumers(), mapx.Map(c.consumers, func(k ConsumerID, v Consumer) (ConsumerID, []GrantInfo) {
-		return k, c.Grants(k)
-	}))
-	return ret
+func (c *ClusterMap) Consumers() []Consumer {
+	return mapx.MapValues(c.consumers, func(v consumerInfo) Consumer {
+		return v.consumer
+	})
 }
 
-func (c *ClusterMap) String() string {
-	return fmt.Sprintf("cluster{id=%v, #consumers=%v, #grants=%v}", c.id, len(c.consumers), len(c.grants))
+func (c *ClusterMap) Consumer(id ConsumerID) (Consumer, []GrantInfo, bool) {
+	info, ok := c.consumers[id]
+	return info.consumer, info.grants, ok
 }
 
-func (c *ClusterMap) Lookup(key QualifiedDomainKey, states ...GrantState) (Instance, GrantInfo, bool) {
+func (c *ClusterMap) Grant(id GrantID) (Consumer, GrantInfo, bool) {
+	info, ok := c.grants[id]
+	return info.consumer, info.grant, ok
+}
+
+func (c *ClusterMap) Lookup(key QualifiedDomainKey, states ...GrantState) (Consumer, GrantInfo, bool) {
 	if len(states) == 0 {
 		states = []GrantState{ActiveGrantState, RevokedGrantState}
 	}
 
-	if grants, ok := c.d2g[key.Domain]; ok {
-		candidates := map[GrantState]GrantInfo{}
-		for gid := range grants {
-			if g, ok := c.grants[gid]; ok && g.Shard().Contains(key) {
-				candidates[g.State()] = g
-			}
+	byState := mapx.New(c.cache.Lookup(key), func(v ShardKV[GrantID, grantInfo]) GrantState {
+		return v.V.grant.State()
+	})
+
+	for _, state := range states {
+		if elm, ok := byState[state]; ok {
+			return elm.V.consumer, elm.V.grant, true
 		}
-
-		for _, state := range states {
-			if info, ok := candidates[state]; ok {
-				return c.consumers[c.g2c[info.ID()]], info, true
-			}
-		} // else: no grant in requested state
-
-	}
-	return Instance{}, GrantInfo{}, false
-}
-
-func (c *ClusterMap) Owner(key QualifiedDomainKey) (Instance, GrantState, bool) {
-	if grants, ok := c.d2g[key.Domain]; ok {
-		for gid := range grants {
-			grant := c.grants[gid]
-			if grant.Shard().Contains(key) && (IsActiveGrant(grant.State()) || IsRevokedGrant(grant.State())) {
-				return c.consumers[c.g2c[gid]], grant.State(), true
-			}
-		}
-	}
-	return Instance{}, InvalidGrantState, false
-}
-
-func (c *ClusterMap) OwnerWithState(key QualifiedDomainKey, state GrantState) (Instance, bool) {
-	if grants, ok := c.d2g[key.Domain]; ok {
-		for gid := range grants {
-			grant := c.grants[gid]
-			if grant.Shard().Contains(key) && grant.State() == state {
-				return c.consumers[c.g2c[gid]], true
-			}
-		}
-	}
-	return Instance{}, false
-}
-
-func (c *ClusterMap) Consumers() []Consumer {
-	return mapx.Values(c.consumers)
-}
-
-func (c *ClusterMap) Consumer(id ConsumerID) (Consumer, []GrantInfo, bool) {
-	if consumer, ok := c.consumers[id]; ok {
-		return consumer, c.Grants(id), true
-	}
-	return Consumer{}, nil, false
-}
-
-func (c *ClusterMap) Grant(gid GrantID) (Consumer, GrantInfo, bool) {
-	if g, ok := c.grants[gid]; ok {
-		return c.consumers[c.g2c[gid]], g, true
 	}
 	return Consumer{}, GrantInfo{}, false
 }
 
-func (c *ClusterMap) Grants(cid ConsumerID) []GrantInfo {
-	return slicex.Map(mapx.Keys(c.c2g[cid]), func(gid GrantID) GrantInfo { return c.grants[gid] })
+func (c *ClusterMap) Assignments() []Assignment {
+	return slicex.Map(c.Consumers(), func(consumer Consumer) Assignment {
+		_, grants, _ := c.Consumer(consumer.ID())
+		return NewAssignment(consumer, grants...)
+	})
 }
 
-func (c *ClusterMap) ShardGrants(shard Shard) []GrantID {
-	return mapx.Keys(c.s2g[shard])
+func (c *ClusterMap) String() string {
+	return fmt.Sprintf("%v{%v}", c.id, c.consumers)
 }
 
-func (c *ClusterMap) GrantConsumer(gid GrantID) (Consumer, bool) {
-	if cid, ok := c.g2c[gid]; ok {
-		consumer, ok := c.consumers[cid]
-		return consumer, ok
-	}
-	return Consumer{}, false
+func idFn[T any](t T) T {
+	return t
 }
 
-func (c *ClusterMap) Update(consumers []Consumer, assigned map[ConsumerID][]GrantInfo, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID, now time.Time) error {
-	err := c.assign(consumers, assigned)
-	if err != nil {
-		return err
-	}
-	err = c.update(updated...)
-	if err != nil {
-		return err
-	}
-	err = c.unassign(unassigned...)
-	if err != nil {
-		return err
-	}
-	err = c.remove(removed...)
-	if err != nil {
-		return err
-	}
-	c.id.Version++
-	c.id.Timestamp = now
-	return nil
+type grantMapElm[T any] struct {
+	state GrantState
+	value T
 }
 
-func (c *ClusterMap) assign(consumers []Consumer, grants map[ConsumerID][]GrantInfo) error {
-	ids := mapx.MapNew(consumers, func(c Consumer) (ConsumerID, bool) {
-		return c.ID(), true
+// GrantMap is a map Grant -> T optimized for domain key lookup. Thread-safe.
+type GrantMap[T any] struct {
+	m  *ShardMap[GrantID, grantMapElm[T]]
+	mu sync.RWMutex
+}
+
+func NewGrantMap[T any]() *GrantMap[T] {
+	return &GrantMap[T]{
+		m: NewShardMap[GrantID, grantMapElm[T]](),
+	}
+}
+
+func (m *GrantMap[T]) Domains() []QualifiedDomainName {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return m.m.Domains()
+}
+
+func (m *GrantMap[T]) Domain(name QualifiedDomainName) []T {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return slicex.Map(m.m.Domain(name), func(t ShardKV[GrantID, grantMapElm[T]]) T {
+		return t.V.value
+	})
+}
+
+func (m *GrantMap[T]) Activate(id GrantID, shard Shard, value T) {
+	m.Write(id, shard, ActiveGrantState, value)
+}
+
+func (m *GrantMap[T]) Revoke(id GrantID, shard Shard, value T) {
+	m.Write(id, shard, RevokedGrantState, value)
+}
+
+func (m *GrantMap[T]) Write(id GrantID, shard Shard, state GrantState, value T) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.m.Write(shard, id, grantMapElm[T]{state: state, value: value})
+}
+
+func (m *GrantMap[T]) Delete(id GrantID, shard Shard) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	m.m.Delete(shard, id)
+}
+
+func (m *GrantMap[T]) Lookup(key QualifiedDomainKey, states ...GrantState) (T, bool) {
+	if len(states) == 0 {
+		states = []GrantState{ActiveGrantState, RevokedGrantState}
+	}
+
+	m.mu.RLock()
+	candidates := m.m.Lookup(key)
+	m.mu.RUnlock()
+
+	byState := mapx.New(candidates, func(v ShardKV[GrantID, grantMapElm[T]]) GrantState {
+		return v.V.state
 	})
 
-	// Verify integrity before mutating data
-	for cid := range grants {
-		if _, ok := ids[cid]; !ok {
-			return fmt.Errorf("consumer information is missing in assignments: %v", cid)
+	for _, state := range states {
+		if elm, ok := byState[state]; ok {
+			return elm.V.value, true
 		}
 	}
 
-	for _, consumer := range consumers {
-		// Store consumer information on first assignment
-		if _, ok := c.consumers[consumer.ID()]; !ok {
-			c.consumers[consumer.ID()] = consumer
-			c.ensureConsumer(consumer.ID())
-		}
-	}
-
-	for cid, consumerGrants := range grants {
-		for _, g := range consumerGrants {
-			c.activateGrantIfNeeded(g)
-			c.revokeGrantIfNeeded(g)
-
-			// Check shard moved to another consumer
-			if gid, ok := c.findGrant(g.Shard(), g.State()); ok && c.g2c[gid] != cid {
-				c.deleteGrant(gid)
-			}
-
-			c.grants[g.ID()] = g
-			c.c2g[cid][g.ID()] = true
-			c.g2c[g.ID()] = cid
-			c.ensureShard(g.Shard())
-			c.s2g[g.Shard()][g.ID()] = true
-
-			// Not checking for changes in shard domain, not supported
-			c.ensureDomain(g.Shard().Domain)
-			c.d2g[g.Shard().Domain][g.ID()] = true
-		}
-	}
-	return nil
-}
-
-func (c *ClusterMap) update(grants ...GrantInfo) error {
-	for _, g := range grants {
-		if _, ok := c.grants[g.ID()]; !ok {
-			return fmt.Errorf("unknown grant: %v", g)
-		}
-	}
-	for _, g := range grants {
-		c.activateGrantIfNeeded(g)
-		c.grants[g.ID()] = g
-	}
-	return nil
-}
-
-func (c *ClusterMap) unassign(grants ...GrantID) error {
-	for _, g := range grants {
-		if _, ok := c.grants[g]; !ok {
-			return fmt.Errorf("unknown grant: %v", g)
-		}
-	}
-	for _, g := range grants {
-		c.deleteGrant(g)
-	}
-	return nil
-}
-
-func (c *ClusterMap) remove(consumers ...ConsumerID) error {
-	for _, consumer := range consumers {
-		if _, ok := c.consumers[consumer]; !ok {
-			return fmt.Errorf("unknown consumer: %v", consumer)
-		}
-	}
-	for _, consumer := range consumers {
-		delete(c.consumers, consumer)
-		for g := range c.c2g[consumer] {
-			c.deleteGrant(g)
-		}
-		delete(c.c2g, consumer)
-	}
-	return nil
-}
-
-func (c *ClusterMap) Diff(old *ClusterMap) ClusterDiff {
-	var removed []ConsumerID
-	oldGrants := map[GrantID]GrantInfo{}
-	for _, consumer := range old.Consumers() {
-		if _, ok := c.consumers[consumer.ID()]; !ok {
-			removed = append(removed, consumer.ID())
-		}
-		for _, g := range old.Grants(consumer.ID()) {
-			oldGrants[g.ID()] = g
-		}
-	}
-
-	assigned := map[ConsumerID][]GrantInfo{}
-	var toDelete []GrantID
-
-	// Process new grants only
-	for newGid, newGrant := range c.grants {
-		if _, ok := oldGrants[newGid]; ok {
-			continue
-		}
-
-		assigned[c.g2c[newGid]] = append(assigned[c.g2c[newGid]], newGrant)
-
-		// Old grant implicitly removed when shard is assigned with a new grant ID
-		// This optimization avoids surfacing implicit revokes in the Diff
-		for _, gid := range old.ShardGrants(newGrant.Shard()) {
-			_, g, _ := old.Grant(gid)
-			if g.State() == newGrant.State() {
-				toDelete = append(toDelete, gid)
-			}
-		}
-
-		// When a new allocated grant is created, another active grant for the same shard is revoked implicitly
-		if IsAllocatedGrant(newGrant.State()) {
-			for gid := range c.s2g[newGrant.Shard()] {
-				if IsActiveOrRevokedGrant(c.grants[gid].State()) {
-					// Remove potential update (or no update)
-					if _, oldGrant, ok := old.Grant(gid); ok && IsActiveOrRevokedGrant(oldGrant.State()) {
-						toDelete = append(toDelete, gid)
-					}
-				}
-			}
-		}
-	}
-
-	for _, gid := range toDelete {
-		delete(oldGrants, gid)
-	}
-
-	var updated []GrantInfo
-
-	// Process updated grants
-	for newGid, newGrant := range c.grants {
-		oldGrant, ok := oldGrants[newGid]
-		if !ok {
-			continue
-		}
-		if oldGrant.Equals(newGrant) {
-			continue
-		}
-		updated = append(updated, newGrant)
-
-		// On a transition from allocated to active, the revoked grant is removed implicitly
-		if IsAllocatedGrant(oldGrant.State()) && IsActiveGrant(newGrant.State()) {
-			// Removal of revoked is implicit
-			for _, gid := range old.ShardGrants(oldGrant.Shard()) {
-				if _, grant, _ := old.Grant(gid); IsRevokedGrant(grant.State()) {
-					delete(oldGrants, gid)
-				}
-			}
-		}
-	}
-
-	var unassigned []GrantID
-
-	for gid := range oldGrants {
-		if _, ok := c.grants[gid]; !ok {
-			unassigned = append(unassigned, gid)
-		}
-	}
-
-	return ClusterDiff{
-		Assigned:   assigned,
-		Updated:    updated,
-		Unassigned: unassigned,
-		Removed:    removed,
-	}
-}
-
-func (c *ClusterMap) findGrant(s Shard, state GrantState) (GrantID, bool) {
-	if grants, ok := c.s2g[s]; ok {
-		for id := range grants {
-			if c.grants[id].State() == state {
-				return id, true
-			}
-		}
-	}
-	return "", false
-}
-
-func (c *ClusterMap) ensureConsumer(cid ConsumerID) {
-	if _, ok := c.c2g[cid]; !ok {
-		c.c2g[cid] = map[GrantID]bool{}
-	}
-}
-
-func (c *ClusterMap) ensureShard(s Shard) {
-	if _, ok := c.s2g[s]; !ok {
-		c.s2g[s] = map[GrantID]bool{}
-	}
-}
-
-func (c *ClusterMap) ensureDomain(domain QualifiedDomainName) {
-	if _, ok := c.d2g[domain]; !ok {
-		c.d2g[domain] = map[GrantID]bool{}
-	}
-}
-
-func (c *ClusterMap) activateGrantIfNeeded(g GrantInfo) {
-	// On transition from allocated to active, remove the revoked grant for the same shard, but different ID
-	if IsActiveGrant(g.State()) {
-		if old, ok := c.grants[g.ID()]; ok && IsAllocatedGrant(old.State()) {
-			c.deleteRevokedGrant(g.Shard())
-		}
-	}
-}
-
-func (c *ClusterMap) revokeGrantIfNeeded(g GrantInfo) {
-	// On Allocation, previous Active grant should be transitioned to Revoked state
-	if IsAllocatedGrant(g.State()) {
-		if gid, ok := c.findGrant(g.Shard(), ActiveGrantState); ok {
-			c.grants[gid] = NewGrantInfo(gid, c.grants[gid].Shard(), RevokedGrantState)
-		}
-	}
-}
-
-func (c *ClusterMap) deleteRevokedGrant(shard Shard) {
-	for gid := range c.s2g[shard] {
-		grant := c.grants[gid]
-		if IsRevokedGrant(grant.State()) {
-			c.deleteGrant(gid)
-			return
-		}
-	}
-}
-
-func (c *ClusterMap) deleteGrant(g GrantID) {
-	grant := c.grants[g]
-	consumer := c.g2c[g]
-	delete(c.grants, g)
-	delete(c.c2g[consumer], g)
-	delete(c.g2c, g)
-	delete(c.d2g[grant.Shard().Domain], g)
-	delete(c.s2g[grant.Shard()], g)
+	var zero T
+	return zero, false
 }

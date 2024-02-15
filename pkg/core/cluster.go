@@ -49,7 +49,7 @@ type Cluster struct {
 	services map[model.QualifiedServiceName]Coordinator
 }
 
-func NewCluster(id model.ClusterID, assignments []Assignment) *Cluster {
+func NewCluster(id model.ClusterID, assignments ...Assignment) *Cluster {
 	services := map[model.QualifiedServiceName]Coordinator{}
 	for _, a := range assignments {
 		for _, grant := range a.Grants {
@@ -61,11 +61,7 @@ func NewCluster(id model.ClusterID, assignments []Assignment) *Cluster {
 
 func UpdateCluster(c *Cluster, add []Assignment, remove []model.QualifiedServiceName, now time.Time) *Cluster {
 	ret := &Cluster{
-		id: model.ClusterID{
-			Origin:    c.id.Origin,
-			Version:   c.id.Version + 1,
-			Timestamp: now,
-		},
+		id:       c.id.Next(now),
 		services: mapx.Clone(c.services),
 	}
 

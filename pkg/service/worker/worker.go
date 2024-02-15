@@ -406,7 +406,7 @@ func (w *Worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMes
 			id.Origin = instance
 		}
 
-		w.cluster = core.NewCluster(id, snapshot.Assignments())
+		w.cluster = core.NewCluster(id, snapshot.Assignments()...)
 
 		log.Debugf(ctx, "Received cluster snapshot %v", w.cluster.ID())
 

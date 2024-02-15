@@ -136,8 +136,8 @@ func NewReleased(grants ...Grant) ConsumerMessage {
 	}})
 }
 
-func NewClusterSnapshot(id ClusterID, assignments ...Assignment) ConsumerMessage {
-	return NewClusterMessage(ClusterMessage{pb: &public_v1.ClusterMessage{
+func NewClusterSnapshot(id ClusterID, assignments ...Assignment) ClusterMessage {
+	return ClusterMessage{pb: &public_v1.ClusterMessage{
 		Id:        string(id.Origin.ID()),
 		Version:   int64(id.Version),
 		Timestamp: timestamppb.New(id.Timestamp),
@@ -147,11 +147,11 @@ func NewClusterSnapshot(id ClusterID, assignments ...Assignment) ConsumerMessage
 				Origin:      location.UnwrapInstance(id.Origin),
 			},
 		},
-	}})
+	}}
 }
 
-func NewClusterChange(id ClusterID, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID) ConsumerMessage {
-	return NewClusterMessage(ClusterMessage{pb: &public_v1.ClusterMessage{
+func NewClusterChange(id ClusterID, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID) ClusterMessage {
+	return ClusterMessage{pb: &public_v1.ClusterMessage{
 		Id:        string(id.Origin.ID()),
 		Version:   int64(id.Version),
 		Timestamp: timestamppb.New(id.Timestamp),
@@ -171,7 +171,7 @@ func NewClusterChange(id ClusterID, assigned []Assignment, updated []GrantInfo, 
 				},
 			},
 		},
-	}})
+	}}
 }
 
 func (m ConsumerMessage) Type() string {
@@ -541,13 +541,6 @@ func (a Assignment) Consumer() Consumer {
 
 func (a Assignment) Grants() []GrantInfo {
 	return slicex.Map(a.pb.GetGrants(), WrapGrantInfo)
-}
-
-func ClusterToAssignments(c Cluster) []Assignment {
-	return slicex.Map(c.Consumers(), func(consumer Consumer) Assignment {
-		_, grants, _ := c.Consumer(consumer.ID())
-		return NewAssignment(consumer, grants...)
-	})
 }
 
 type ClusterSnapshot struct {

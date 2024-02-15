@@ -301,23 +301,6 @@ func fromGrantState(s model.GrantState) (allocation.GrantState, bool) {
 	}
 }
 
-func toCluster(a *Allocation, id model.ClusterID) (*model.ClusterMap, error) {
-	workers := a.Workers()
-	var consumers []model.Consumer
-	grants := map[model.ConsumerID][]model.GrantInfo{}
-
-	for _, w := range workers {
-		assigned := a.Assigned(w.Instance.ID)
-		info := slicex.Map(assigned.Allocated, toGrantInfo)
-		info = append(info, slicex.Map(assigned.Active, toGrantInfo)...)
-		info = append(info, slicex.Map(assigned.Revoked, toGrantInfo)...)
-
-		grants[w.Instance.ID] = info
-		consumers = append(consumers, w.Instance.Data)
-	}
-	return model.NewCluster(id, consumers, grants)
-}
-
 func toGrantInfo(g Grant) model.GrantInfo {
 	return model.WrapGrantInfo(&public_v1.ClusterMessage_GrantInfo{
 		Id:    string(g.ID),

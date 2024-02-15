@@ -10,7 +10,6 @@ import (
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
-	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
@@ -188,7 +187,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	}
 
 	// Send full cluster to the consumer
-	if !s.TrySend(ctx, model.NewClusterSnapshot(c.cluster.ID(), model.ClusterToAssignments(c.cluster)...)) {
+	if !s.TrySend(ctx, model.NewClusterMessage(model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments()...))) {
 		log.Errorf(ctx, "Internal: failed to send initial cluster map to consumer: %v. Closing", s)
 		connection.Disconnect()
 	}
@@ -239,7 +238,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 		delay = 0
 	}
 	c.alloc = newAllocation(c.id.ID(), tenant, info, c.cache.Placements(c.name.Tenant), c.cl.Now().Add(delay))
-	c.cluster, _ = toCluster(c.alloc, model.ClusterID{Origin: c.id, Version: 1, Timestamp: c.cl.Now()})
+	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, c.cl.Now()))
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
 	recordAction(ctx, "init", "ok")
@@ -535,29 +534,76 @@ func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, re
 }
 
 func (c *coordinator) broadcast(ctx context.Context) {
-	newCluster, err := toCluster(c.alloc, model.ClusterID{Origin: c.id, Version: c.cluster.ID().Version + 1, Timestamp: c.cl.Now()})
-	if err != nil {
-		log.Errorf(ctx, "Internal: unable to create cluster from allocation: %v", err)
+	// (1) Compute difference, if any
+
+	var assigned []model.Assignment
+	var updated []model.GrantInfo
+	var unassigned []model.GrantID
+	var removed []model.ConsumerID
+
+	for _, info := range c.alloc.Workers() {
+		consumer := info.Instance.Data
+		grants := c.alloc.Assigned(info.ID())
+
+		if _, old, ok := c.cluster.Consumer(info.ID()); ok {
+			present := map[model.GrantID]bool{}
+
+			var fresh []model.GrantInfo
+
+			for _, list := range [][]Grant{grants.Allocated, grants.Active, grants.Revoked} {
+				for _, g := range list {
+					ginfo := toGrantInfo(g)
+					if _, prior, ok := c.cluster.Grant(g.ID); ok && !ginfo.Equals(prior) {
+						updated = append(updated, ginfo)
+					} else if !ok {
+						fresh = append(fresh, ginfo)
+					} // else: unchanged
+
+					present[g.ID] = true
+				}
+			}
+
+			for _, ginfo := range old {
+				if !present[ginfo.ID()] {
+					unassigned = append(unassigned, ginfo.ID())
+				}
+			}
+
+			if len(fresh) > 0 {
+				assigned = append(assigned, model.NewAssignment(consumer, fresh...))
+			}
+			continue
+		} // else: new consumer. Add assignment regardless of any grants
+
+		current := slicex.Map(grants.Allocated, toGrantInfo)
+		current = append(current, slicex.Map(grants.Active, toGrantInfo)...)
+		current = append(current, slicex.Map(grants.Revoked, toGrantInfo)...)
+
+		assigned = append(assigned, model.NewAssignment(consumer, current...))
+	}
+	for _, consumer := range c.cluster.Consumers() {
+		if _, ok := c.alloc.Worker(consumer.ID()); !ok {
+			removed = append(removed, consumer.ID())
+		}
+	}
+
+	// (2) If anything changed, emit update
+
+	if len(assigned)+len(updated)+len(unassigned)+len(removed) == 0 {
 		return
 	}
 
-	d := newCluster.Diff(c.cluster)
-	if d.IsEmpty() {
-		return
-	}
+	change := model.NewClusterChange(c.cluster.ID().Next(c.cl.Now()), assigned, updated, unassigned, removed)
+	upd, _ := model.UpdateClusterMap(c.cluster, change)
 
-	assigned := mapx.MapToSlice(d.Assigned, func(cid model.ConsumerID, grants []model.GrantInfo) model.Assignment {
-		consumer, _, _ := newCluster.Consumer(cid)
-		return model.NewAssignment(consumer, grants...)
-	})
+	c.cluster = upd
 
-	c.cluster = newCluster
-
+	msg := model.NewClusterMessage(change)
 	for _, s := range c.consumers {
-		c.mustSend(ctx, s, model.NewClusterChange(newCluster.ID(), assigned, d.Updated, d.Unassigned, d.Removed))
+		c.mustSend(ctx, s, msg)
 	}
 
-	log.Debugf(ctx, "Sent cluster update: %v/%v. Cluster: %v", c.name, c.alloc, newCluster)
+	log.Debugf(ctx, "Sent cluster update %v/%v: %v", c.name, c.alloc, c.cluster.ID())
 }
 
 // mustSend attempts to send a message on a consumer connection. If it fails, disconnect the consumer
