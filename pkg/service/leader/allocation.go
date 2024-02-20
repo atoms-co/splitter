@@ -95,7 +95,7 @@ func findWork(snapshot core.Snapshot) []Work {
 }
 
 func fromGrant(worker location.InstanceID, g core.Grant) Grant {
-	return allocation.NewGrant(g.ID(), allocation.Active, g.Service(), worker, g.Assigned(), g.Lease())
+	return allocation.NewGrant(g.ID(), allocation.Active, allocation.None, g.Service(), worker, g.Assigned(), g.Lease())
 }
 
 func toGrant(g Grant) core.Grant {

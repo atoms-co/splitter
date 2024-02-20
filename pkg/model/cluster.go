@@ -202,7 +202,7 @@ func (c *ClusterMap) Grant(id GrantID) (Consumer, GrantInfo, bool) {
 
 func (c *ClusterMap) Lookup(key QualifiedDomainKey, states ...GrantState) (Consumer, GrantInfo, bool) {
 	if len(states) == 0 {
-		states = []GrantState{ActiveGrantState, RevokedGrantState}
+		states = []GrantState{ActiveGrantState, RevokedGrantState, LoadedGrantState, UnloadedGrantState}
 	}
 
 	byState := mapx.New(c.cache.Lookup(key), func(v ShardKV[GrantID, grantInfo]) GrantState {
@@ -289,7 +289,7 @@ func (m *GrantMap[T]) Delete(id GrantID, shard Shard) {
 
 func (m *GrantMap[T]) Lookup(key QualifiedDomainKey, states ...GrantState) (T, bool) {
 	if len(states) == 0 {
-		states = []GrantState{ActiveGrantState, RevokedGrantState}
+		states = []GrantState{ActiveGrantState, RevokedGrantState, LoadedGrantState, UnloadedGrantState}
 	}
 
 	m.mu.RLock()

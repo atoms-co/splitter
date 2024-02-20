@@ -48,6 +48,10 @@ enum GrantState {
   ALLOCATED = 2;
   // Revoked indicates the source location for work movement, matching an Allocated grant (possibly unassigned).
   REVOKED = 3;
+  // Allocated_Loaded is sub-state to Allocated that indicates a consumer has signaled that the grant has been Loaded.
+  ALLOCATED_LOADED = 4;
+  // Revoked_Unloaded is sub-state to Revoked that indicates a consumer has signaled that the grant has been Unloaded.
+  REVOKED_UNLOADED = 5;
 }
 
 // Grant represents a shard with a lease.
@@ -106,6 +110,17 @@ message ClientMessage {
     repeated Grant grants = 1;
   }
 
+  // Update informs the coordinator of a Grant update
+  message Update {
+    Grant grant = 1;
+  }
+
+  // Notify informs a consumer of a Grant update and intended target for the notify
+  message Notify {
+    Grant update = 1;
+    Grant target = 2;
+  }
+
   oneof msg {
     Register register = 1;
     Deregister deregister = 2;
@@ -114,6 +129,8 @@ message ClientMessage {
     Promote promote = 5;
     Revoke revoke = 6;
     Released released = 7;
+    Update update = 8;
+    Notify notify = 9;
   }
 }
 

@@ -22,20 +22,20 @@ var (
 	ErrExpired = errors.New("grant expired")
 )
 
+// TODO(jhhurwitz): 02/19/24: Flesh out comments on types
+
 type Ownership interface {
 	// Active returns a quit channel to signal that the Grant has been activated.
-	Active() <-chan struct{}
+	Active() iox.RAsyncCloser
 	// Revoked returns a quit channel to signal that the Grant has been revoked.
-	Revoked() <-chan struct{}
+	Revoked() iox.RAsyncCloser
 	// Expired returns a quit channel to signal that the Grant lease has expired.
-	Expired() <-chan struct{}
+	Expired() iox.RAsyncCloser
 
-	// IsActive returns if the Grant has been activated.
-	IsActive() bool
-	// IsRevoked returns if the Grant has been revoked.
-	IsRevoked() bool
-	// IsExpired returns if the Grant has been expired.
-	IsExpired() bool
+	// Loader
+	Loader() Loader
+	// Unloader
+	Unloader() Unloader
 
 	// Expiration returns the expiration time of the lease. The expiration is updated periodically by the server under
 	// normal circumstances. When the expiration time is past the current moment the grant is no longer assigned
@@ -43,14 +43,24 @@ type Ownership interface {
 	Expiration() time.Time
 }
 
+type Loader interface {
+	Unloaded() iox.RAsyncCloser
+	Load() iox.WAsyncCloser
+}
+
+type Unloader interface {
+	Loaded() iox.RAsyncCloser
+	Unload() iox.WAsyncCloser
+}
+
 // WaitForActive blocks on Grant activation. Returns an error if the grant is revoked or expires before then. Cancellable.
 func WaitForActive(ctx context.Context, o Ownership) error {
 	select {
-	case <-o.Active():
+	case <-o.Active().Closed():
 		return nil
-	case <-o.Revoked():
+	case <-o.Revoked().Closed():
 		return ErrRevoked
-	case <-o.Expired():
+	case <-o.Expired().Closed():
 		return ErrExpired
 	case <-ctx.Done():
 		return ctx.Err()
@@ -61,21 +71,41 @@ func WaitForActive(ctx context.Context, o Ownership) error {
 // Does not error on grant activation, since activation does not preclude revocation.
 func WaitForRevoke(ctx context.Context, o Ownership) error {
 	select {
-	case <-o.Revoked():
+	case <-o.Revoked().Closed():
 		return nil
-	case <-o.Expired():
+	case <-o.Expired().Closed():
 		return ErrExpired
 	case <-ctx.Done():
 		return ctx.Err()
 	}
 }
 
-func WaitForLoad(ctx context.Context, o Ownership) error {
-	return nil
+func WaitForLoad(ctx context.Context, o Ownership, unloader Unloader) error {
+	select {
+	case <-unloader.Loaded().Closed():
+		return nil
+	case <-o.Expired().Closed():
+		return ErrExpired
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
-func WaitForUnload(ctx context.Context, o Ownership) error {
-	return nil
+func WaitForUnload(ctx context.Context, o Ownership) (Loader, error) {
+	loader := o.Loader()
+
+	select {
+	case <-o.Active().Closed():
+		return loader, nil // Consider unloaded if shard is activated before unload
+	case <-loader.Unloaded().Closed():
+		return loader, nil
+	case <-o.Revoked().Closed():
+		return nil, ErrRevoked
+	case <-o.Expired().Closed():
+		return nil, ErrExpired
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 }
 
 // UpdateTenantOption represents an option to NewTenant.

@@ -39,6 +39,8 @@ func TestWorkpool(t *testing.T) {
 				shards <- shard
 				for {
 					select {
+					case <-ownership.Revoked().Closed():
+						return
 					case <-ctx.Done():
 						return
 					}
@@ -80,6 +82,8 @@ func TestWorkpool(t *testing.T) {
 				shards <- shard
 				for {
 					select {
+					case <-ownership.Revoked().Closed():
+						return
 					case <-ctx.Done():
 						return
 					}

@@ -23,6 +23,19 @@ const (
 	Revoked GrantState = "revoked"
 )
 
+// GrantModifier describes any modifications on the Grant. Currently two modifications as support, Loaded and Unloaded.
+// TODO(jhhurwitz): 02/19/23 Consider making generic at some point
+type GrantModifier string
+
+const (
+	// None indicates no modifier.
+	None GrantModifier = ""
+	// Loaded indicates the Grant has been Loaded by the worker of an Allocated Grant.
+	Loaded GrantModifier = "loaded"
+	// Unloaded indicates the Grant has been Unloaded by the worker of a Revoked Grant.
+	Unloaded GrantModifier = "unloaded"
+)
+
 func (s GrantState) InvertIfTransitional() GrantState {
 	switch s {
 	case Revoked:
@@ -38,16 +51,18 @@ func (s GrantState) InvertIfTransitional() GrantState {
 type Grant[T, K comparable] struct {
 	ID         GrantID
 	State      GrantState
+	Mod        GrantModifier
 	Unit       T
 	Worker     K
 	Assigned   time.Time
 	Expiration time.Time
 }
 
-func NewGrant[T, K comparable](id GrantID, state GrantState, unit T, worker K, assigned, expiration time.Time) Grant[T, K] {
+func NewGrant[T, K comparable](id GrantID, state GrantState, mod GrantModifier, unit T, worker K, assigned, expiration time.Time) Grant[T, K] {
 	return Grant[T, K]{
 		ID:         id,
 		State:      state,
+		Mod:        mod,
 		Unit:       unit,
 		Worker:     worker,
 		Assigned:   assigned,
@@ -67,12 +82,16 @@ func (g Grant[T, K]) IsRevoked() bool {
 	return g.State == Revoked
 }
 
+func (g Grant[T, K]) WithModifier(mod GrantModifier) Grant[T, K] {
+	return NewGrant(g.ID, g.State, mod, g.Unit, g.Worker, g.Assigned, g.Expiration)
+}
+
 func (g Grant[T, K]) WithState(state GrantState) Grant[T, K] {
-	return NewGrant(g.ID, state, g.Unit, g.Worker, g.Assigned, g.Expiration)
+	return NewGrant(g.ID, state, None, g.Unit, g.Worker, g.Assigned, g.Expiration)
 }
 
 func (g Grant[T, K]) WithExpiration(expiration time.Time) Grant[T, K] {
-	return NewGrant(g.ID, g.State, g.Unit, g.Worker, g.Assigned, expiration)
+	return NewGrant(g.ID, g.State, g.Mod, g.Unit, g.Worker, g.Assigned, expiration)
 }
 
 func (g Grant[T, K]) String() string {

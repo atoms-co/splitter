@@ -136,6 +136,27 @@ func NewReleased(grants ...Grant) ConsumerMessage {
 	}})
 }
 
+func NewUpdate(grant Grant) ConsumerMessage {
+	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
+		Msg: &public_v1.ClientMessage_Update_{
+			Update: &public_v1.ClientMessage_Update{
+				Grant: UnwrapGrant(grant),
+			},
+		},
+	}})
+}
+
+func NewNotify(update, target Grant) ConsumerMessage {
+	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
+		Msg: &public_v1.ClientMessage_Notify_{
+			Notify: &public_v1.ClientMessage_Notify{
+				Update: UnwrapGrant(update),
+				Target: UnwrapGrant(target),
+			},
+		},
+	}})
+}
+
 func NewClusterSnapshot(id ClusterID, assignments ...Assignment) ClusterMessage {
 	return ClusterMessage{pb: &public_v1.ClusterMessage{
 		Id:        string(id.Origin.ID()),
@@ -238,6 +259,10 @@ func (m ClientMessage) Type() string {
 		return "revoke"
 	case m.IsReleased():
 		return "Released"
+	case m.IsUpdate():
+		return "Update"
+	case m.IsNotify():
+		return "Notify"
 	default:
 		return "unknown"
 	}
@@ -318,6 +343,28 @@ func (m ClientMessage) Released() (ReleasedMessage, bool) {
 		return ReleasedMessage{}, false
 	}
 	return ReleasedMessage{pb: m.pb.GetReleased()}, true
+}
+
+func (m ClientMessage) IsUpdate() bool {
+	return m.pb.GetUpdate() != nil
+}
+
+func (m ClientMessage) Update() (UpdateMessage, bool) {
+	if !m.IsUpdate() {
+		return UpdateMessage{}, false
+	}
+	return UpdateMessage{pb: m.pb.GetUpdate()}, true
+}
+
+func (m ClientMessage) IsNotify() bool {
+	return m.pb.GetNotify() != nil
+}
+
+func (m ClientMessage) Notify() (NotifyMessage, bool) {
+	if !m.IsNotify() {
+		return NotifyMessage{}, false
+	}
+	return NotifyMessage{pb: m.pb.GetNotify()}, true
 }
 
 func (m ClientMessage) String() string {
@@ -450,6 +497,50 @@ func (m ReleasedMessage) Grants() []Grant {
 }
 
 func (m ReleasedMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
+type UpdateMessage struct {
+	pb *public_v1.ClientMessage_Update
+}
+
+func WrapUpdateMessage(pb *public_v1.ClientMessage_Update) UpdateMessage {
+	return UpdateMessage{pb: pb}
+}
+
+func UnwrapUpdateMessage(m UpdateMessage) *public_v1.ClientMessage_Update {
+	return m.pb
+}
+
+func (m UpdateMessage) Grant() Grant {
+	return WrapGrant(m.pb.GetGrant())
+}
+
+func (m UpdateMessage) String() string {
+	return proto.MarshalTextString(m.pb)
+}
+
+type NotifyMessage struct {
+	pb *public_v1.ClientMessage_Notify
+}
+
+func WrapNotifyMessage(pb *public_v1.ClientMessage_Notify) NotifyMessage {
+	return NotifyMessage{pb: pb}
+}
+
+func UnwrapNotifyMessage(m NotifyMessage) *public_v1.ClientMessage_Notify {
+	return m.pb
+}
+
+func (m NotifyMessage) Update() Grant {
+	return WrapGrant(m.pb.GetUpdate())
+}
+
+func (m NotifyMessage) Target() Grant {
+	return WrapGrant(m.pb.GetTarget())
+}
+
+func (m NotifyMessage) String() string {
 	return proto.MarshalTextString(m.pb)
 }
 

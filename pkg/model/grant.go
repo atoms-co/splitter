@@ -31,6 +31,10 @@ type grant struct {
 	Handler    *handler
 }
 
+func (g *grant) ToState(state GrantState) Grant {
+	return NewGrant(g.Grant.ID(), g.Grant.Shard(), state, g.Lease.Ttl(), g.Grant.Assigned())
+}
+
 func (g *grant) ToUpdated() Grant {
 	return NewGrant(g.Grant.ID(), g.Grant.Shard(), g.Grant.State(), g.Lease.Ttl(), g.Grant.Assigned())
 }
@@ -48,11 +52,11 @@ type handler struct {
 	drain iox.AsyncCloser
 }
 
-func newHandler(ctx context.Context, cl clock.Clock, grant Grant, expiration time.Time, handlerFn Handler) *handler {
+func newHandler(ctx context.Context, cl clock.Clock, grant Grant, expiration time.Time, loader *loader, unloader *unloader, handlerFn Handler) *handler {
 	h := &handler{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
-		own:         newOwnership(cl, grant.State(), expiration),
+		own:         newOwnership(cl, grant.State(), expiration, loader, unloader),
 		drain:       iox.NewAsyncCloser(),
 	}
 
@@ -64,19 +68,16 @@ func newHandler(ctx context.Context, cl clock.Clock, grant Grant, expiration tim
 	}()
 
 	go func() {
-		defer cancel()
-		defer h.Ownership().Expire()
+		<-h.Closed()
 
-		select {
-		case <-h.drain.Closed():
-		case <-h.Closed():
-		}
+		cancel()
+		h.own.expire()
 	}()
 
 	return h
 }
 
-func (h *handler) Ownership() *ownership {
+func (h *handler) Ownership() Ownership {
 	return h.own
 }
 
@@ -86,21 +87,25 @@ func (h *handler) Drain(timeout time.Duration) {
 }
 
 type ownership struct {
-	cl      clock.Clock
-	active  iox.AsyncCloser
-	revoked iox.AsyncCloser
-	expired iox.AsyncCloser
+	cl       clock.Clock
+	active   iox.AsyncCloser
+	revoked  iox.AsyncCloser
+	expired  iox.AsyncCloser
+	loader   *loader
+	unloader *unloader
 
 	mu         sync.RWMutex
 	expiration time.Time
 }
 
-func newOwnership(cl clock.Clock, state GrantState, expiration time.Time) *ownership {
+func newOwnership(cl clock.Clock, state GrantState, expiration time.Time, loader *loader, unloader *unloader) *ownership {
 	ret := &ownership{
 		cl:         cl,
 		active:     iox.NewAsyncCloser(),
 		revoked:    iox.NewAsyncCloser(),
 		expired:    iox.NewAsyncCloser(),
+		loader:     loader,
+		unloader:   unloader,
 		expiration: expiration,
 	}
 
@@ -119,46 +124,98 @@ func newOwnership(cl clock.Clock, state GrantState, expiration time.Time) *owner
 	return ret
 }
 
-func (o *ownership) Activate() {
+func (o *ownership) Active() iox.RAsyncCloser {
+	return o.active
+}
+
+func (o *ownership) Revoked() iox.RAsyncCloser {
+	return o.revoked
+}
+
+func (o *ownership) Expired() iox.RAsyncCloser {
+	return o.expired
+}
+
+func (o *ownership) activate() {
 	o.active.Close()
 }
 
-func (o *ownership) Revoke() {
+func (o *ownership) revoke() {
 	o.revoked.Close()
 }
 
-func (o *ownership) Expire() {
+func (o *ownership) expire() {
 	o.expired.Close()
 }
 
-func (o *ownership) SetExpiration(expiration time.Time) {
+func (o *ownership) setExpiration(expiration time.Time) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.expiration = expiration
 }
 
-func (o *ownership) Active() <-chan struct{} {
-	return o.active.Closed()
+type loader struct {
+	unloaded iox.AsyncCloser
+	load     iox.AsyncCloser
 }
 
-func (o *ownership) Revoked() <-chan struct{} {
-	return o.revoked.Closed()
+func newLoader() *loader {
+	return &loader{
+		unloaded: iox.NewAsyncCloser(),
+		load:     iox.NewAsyncCloser(),
+	}
 }
 
-func (o *ownership) Expired() <-chan struct{} {
-	return o.expired.Closed()
+func (l *loader) Unloaded() iox.RAsyncCloser {
+	return l.unloaded
 }
 
-func (o *ownership) IsActive() bool {
-	return o.active.IsClosed()
+func (l *loader) Load() iox.WAsyncCloser {
+	return l.load
 }
 
-func (o *ownership) IsRevoked() bool {
-	return o.revoked.IsClosed()
+func (l *loader) unload() {
+	l.unloaded.Close()
 }
 
-func (o *ownership) IsExpired() bool {
-	return o.expired.IsClosed()
+func (l *loader) loaded() iox.RAsyncCloser {
+	return l.load
+}
+
+func (o *ownership) Loader() Loader {
+	return o.loader
+}
+
+type unloader struct {
+	loaded iox.AsyncCloser
+	unload iox.AsyncCloser
+}
+
+func newUnloader() *unloader {
+	return &unloader{
+		loaded: iox.NewAsyncCloser(),
+		unload: iox.NewAsyncCloser(),
+	}
+}
+
+func (u *unloader) Loaded() iox.RAsyncCloser {
+	return u.loaded
+}
+
+func (u *unloader) Unload() iox.WAsyncCloser {
+	return u.unload
+}
+
+func (u *unloader) load() {
+	u.loaded.Close()
+}
+
+func (u *unloader) unloaded() iox.RAsyncCloser {
+	return u.unload
+}
+
+func (o *ownership) Unloader() Unloader {
+	return o.unloader
 }
 
 func (o *ownership) Expiration() time.Time {

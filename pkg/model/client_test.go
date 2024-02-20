@@ -98,16 +98,56 @@ type testOwnership struct {
 	expired iox.AsyncCloser
 }
 
-func (t *testOwnership) Active() <-chan struct{} {
-	return t.active.Closed()
+func (t *testOwnership) Active() iox.RAsyncCloser {
+	return t.active
 }
 
-func (t *testOwnership) Revoked() <-chan struct{} {
-	return t.revoked.Closed()
+func (t *testOwnership) Revoked() iox.RAsyncCloser {
+	return t.revoked
 }
 
-func (t *testOwnership) Expired() <-chan struct{} {
-	return t.expired.Closed()
+type loader struct {
+	unloaded iox.AsyncCloser
+	load     iox.AsyncCloser
+}
+
+func (l *loader) Unloaded() iox.RAsyncCloser {
+	return l.unloaded
+}
+
+func (l *loader) Load() iox.WAsyncCloser {
+	return l.load
+}
+
+func (t *testOwnership) Loader() model.Loader {
+	return &loader{
+		unloaded: iox.NewAsyncCloser(),
+		load:     iox.NewAsyncCloser(),
+	}
+}
+
+type unloader struct {
+	loaded iox.AsyncCloser
+	unload iox.AsyncCloser
+}
+
+func (u *unloader) Loaded() iox.RAsyncCloser {
+	return u.loaded
+}
+
+func (u *unloader) Unload() iox.WAsyncCloser {
+	return u.unload
+}
+
+func (t *testOwnership) Unloader() model.Unloader {
+	return &unloader{
+		loaded: iox.NewAsyncCloser(),
+		unload: iox.NewAsyncCloser(),
+	}
+}
+
+func (t *testOwnership) Expired() iox.RAsyncCloser {
+	return t.expired
 }
 
 func (t *testOwnership) IsActive() bool {

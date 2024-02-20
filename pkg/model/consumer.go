@@ -162,6 +162,8 @@ var (
 	ActiveGrantState    = public_v1.GrantState_ACTIVE
 	AllocatedGrantState = public_v1.GrantState_ALLOCATED
 	RevokedGrantState   = public_v1.GrantState_REVOKED
+	LoadedGrantState    = public_v1.GrantState_ALLOCATED_LOADED
+	UnloadedGrantState  = public_v1.GrantState_REVOKED_UNLOADED
 )
 
 func IsActiveGrant(state GrantState) bool {
@@ -174,6 +176,14 @@ func IsAllocatedGrant(state GrantState) bool {
 
 func IsRevokedGrant(state GrantState) bool {
 	return state == RevokedGrantState
+}
+
+func IsLoadedGrant(state GrantState) bool {
+	return state == LoadedGrantState
+}
+
+func IsUnloadedGrant(state GrantState) bool {
+	return state == UnloadedGrantState
 }
 
 func IsActiveOrRevokedGrant(state GrantState) bool {
@@ -227,7 +237,7 @@ func (g Grant) Assigned() time.Time {
 }
 
 func (g Grant) String() string {
-	return fmt.Sprintf("%v[shard=%v, state=%v, lease=%v, assinged=%v]", g.ID(), g.Shard(), g.State(), g.Lease(), g.Assigned())
+	return fmt.Sprintf("%v[shard=%v, state=%v, lease=%v, assigned=%v]", g.ID(), g.Shard(), g.State(), g.Lease(), g.Assigned())
 }
 
 type GrantInfo struct {

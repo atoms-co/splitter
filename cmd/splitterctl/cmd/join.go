@@ -35,9 +35,9 @@ func joinCmd() *cobra.Command {
 					fmt.Println(fmt.Sprintf("Received shard %v with lease %v", shard, ownership.Expiration()))
 
 					select {
-					case <-ownership.Revoked():
+					case <-ownership.Revoked().Closed():
 						fmt.Println(fmt.Sprintf("Shard %v revoked", shard))
-					case <-ownership.Expired():
+					case <-ownership.Expired().Closed():
 						fmt.Println(fmt.Sprintf("Shard %v expired", shard))
 					case <-ctx.Done():
 						fmt.Println(fmt.Sprintf("Shard %v closed", shard))

@@ -389,6 +389,58 @@ func (a *Allocation[T, W, K, V]) Extend(id K, expiration time.Time) (WorkerInfo[
 	return WorkerInfo[K, V]{}, false
 }
 
+// Modify changes a Grant's Modifier value. Returns false if invalid change or Grant does not exist.
+func (a *Allocation[T, W, K, V]) Modify(id K, grant Grant[T, K]) bool {
+	w, ok := a.workers[id]
+	if !ok {
+		return false
+	}
+
+	switch grant.Mod {
+	case Loaded:
+		g, ok := w.live[grant.Unit]
+		if !ok || g.grant != grant.ID || g.state != Allocated {
+			return false
+		}
+		g.mod = grant.Mod
+		return true
+	case Unloaded:
+		g, ok := w.revoked[grant.Unit]
+		if !ok || g.ID != grant.ID || g.State != Revoked {
+			return false
+		}
+		g.Mod = grant.Mod
+		return true
+	default:
+		return false
+	}
+}
+
+// Transition returns, for a given Grant, the corresponding Allocated or Revoked Grant associated with it.
+func (a *Allocation[T, W, K, V]) Transition(grant Grant[T, K]) (K, Grant[T, K], bool) {
+	switch grant.State {
+	case Allocated:
+		for id, w := range a.workers {
+			if g, ok := w.revoked[grant.Unit]; ok {
+				return id, g, true
+			}
+		}
+		var k K
+		return k, Grant[T, K]{}, false
+	case Revoked:
+		for id, w := range a.workers {
+			if g, ok := w.live[grant.Unit]; ok {
+				return id, w.ToGrant(g), true
+			}
+		}
+		var k K
+		return k, Grant[T, K]{}, false
+	default:
+		var k K
+		return k, Grant[T, K]{}, false
+	}
+}
+
 // Expire expires any revoked and inactive grants and workers. If a Revoked grant or unassigned work expires,
 // it promotes the Allocated counterpart to Active. Returns promoted grants.
 func (a *Allocation[T, W, K, V]) Expire(now time.Time) []Grant[T, K] {
@@ -580,7 +632,7 @@ func (a *Allocation[T, W, K, V]) tryAllocate(work Work[T, W], state GrantState, 
 	if best != nil {
 		w := best.w
 
-		fresh := NewGrant(a.newGrantID(), state, work.Unit, w.info.Instance.ID, now, w.info.Lease)
+		fresh := NewGrant(a.newGrantID(), state, None, work.Unit, w.info.Instance.ID, now, w.info.Lease)
 		if a.tryAssign(w, fresh) {
 			w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
 			ret = &fresh
@@ -742,7 +794,7 @@ func (a *Allocation[T, W, K, V]) move(from *worker[T, W, K, V], grant live[T, W]
 	work := grant.work
 
 	revoked := a.revoke(from, now, grant)
-	allocated := NewGrant(a.newGrantID(), Allocated, work.Unit, to.info.Instance.ID, now, to.info.Lease)
+	allocated := NewGrant(a.newGrantID(), Allocated, None, work.Unit, to.info.Instance.ID, now, to.info.Lease)
 	_ = a.tryAssign(to, allocated)
 
 	return Move[T, K]{From: revoked, To: allocated}

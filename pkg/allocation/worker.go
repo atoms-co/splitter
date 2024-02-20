@@ -53,6 +53,7 @@ type live[T comparable, W any] struct {
 	work     Work[T, W]
 	grant    GrantID
 	state    GrantState
+	mod      GrantModifier
 	assigned time.Time
 }
 
@@ -123,7 +124,7 @@ func (w *worker[T, W, K, V]) Grant(t T) (Grant[T, K], bool) {
 }
 
 func (w *worker[T, W, K, V]) ToGrant(l live[T, W]) Grant[T, K] {
-	return NewGrant(l.grant, l.state, l.work.Unit, w.info.Instance.ID, l.assigned, w.info.Lease)
+	return NewGrant(l.grant, l.state, l.mod, l.work.Unit, w.info.Instance.ID, l.assigned, w.info.Lease)
 }
 
 func (w *worker[T, W, K, V]) Less(o *worker[T, W, K, V]) bool {

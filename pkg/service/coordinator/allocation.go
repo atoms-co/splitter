@@ -262,42 +262,53 @@ func toGrants(grants []Grant) []model.Grant {
 }
 
 func toGrant(g Grant) model.Grant {
-	return model.NewGrant(g.ID, g.Unit, toGrantState(g.State), g.Expiration, g.Assigned)
+	return model.NewGrant(g.ID, g.Unit, toGrantState(g.State, g.Mod), g.Expiration, g.Assigned)
 }
 
 func fromGrant(consumer Consumer) func(g model.Grant) (Grant, error) {
 	return func(g model.Grant) (Grant, error) {
-		state, ok := fromGrantState(g.State())
+		state, mod, ok := fromGrantState(g.State())
 		if !ok {
 			return Grant{}, fmt.Errorf("internal: unknown grant state: %v", g.State())
 		}
-		return allocation.NewGrant(g.ID(), state, g.Shard(), consumer.ID(), g.Assigned(), g.Lease()), nil
+		return allocation.NewGrant(g.ID(), state, mod, g.Shard(), consumer.ID(), g.Assigned(), g.Lease()), nil
 	}
 }
 
-func toGrantState(s allocation.GrantState) model.GrantState {
+func toGrantState(s allocation.GrantState, mod allocation.GrantModifier) model.GrantState {
 	switch s {
 	case allocation.Active:
 		return model.ActiveGrantState
 	case allocation.Allocated:
+		if mod == allocation.Loaded {
+			return model.LoadedGrantState
+		}
 		return model.AllocatedGrantState
 	case allocation.Revoked:
+		if mod == allocation.Unloaded {
+			return model.UnloadedGrantState
+		}
 		return model.RevokedGrantState
 	default:
 		return model.InvalidGrantState
 	}
 }
 
-func fromGrantState(s model.GrantState) (allocation.GrantState, bool) {
+func fromGrantState(s model.GrantState) (allocation.GrantState, allocation.GrantModifier, bool) {
 	switch s {
 	case model.ActiveGrantState:
-		return allocation.Active, true
+		return allocation.Active, allocation.None, true
 	case model.AllocatedGrantState:
-		return allocation.Allocated, true
+		return allocation.Allocated, allocation.None, true
+	case model.LoadedGrantState:
+		return allocation.Allocated, allocation.Loaded, true
 	case model.RevokedGrantState:
-		return allocation.Revoked, true
+		return allocation.Revoked, allocation.None, true
+	case model.UnloadedGrantState:
+		return allocation.Revoked, allocation.Unloaded, true
+
 	default:
-		return "", false
+		return "", "", false
 	}
 }
 
@@ -305,6 +316,6 @@ func toGrantInfo(g Grant) model.GrantInfo {
 	return model.WrapGrantInfo(&public_v1.ClusterMessage_GrantInfo{
 		Id:    string(g.ID),
 		Shard: g.Unit.ToProto(),
-		State: toGrantState(g.State),
+		State: toGrantState(g.State, g.Mod),
 	})
 }

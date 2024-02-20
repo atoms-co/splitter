@@ -33,7 +33,7 @@ var (
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.StatusKey)...),
 	)
 	numAssignments = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey)...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey, core.GrantModificationKey)...),
 	)
 
 	numShards = metrics.NewTrackedGauge(
@@ -458,6 +458,10 @@ func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSess
 		deregister, _ := msg.Deregister()
 		c.handleDeregister(ctx, s, deregister)
 
+	case msg.IsUpdate():
+		update, _ := msg.Update()
+		c.handleUpdate(ctx, s, update)
+
 	case msg.IsReleased():
 		released, _ := msg.Released()
 		c.handleReleased(ctx, s, released)
@@ -531,6 +535,43 @@ func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, re
 	// (2) Promote grants, if any
 
 	c.promote(ctx, promoted...)
+}
+
+func (c *coordinator) handleUpdate(ctx context.Context, s *consumerSession, update model.UpdateMessage) {
+	log.Infof(ctx, "Received update %v from consumer %v", update, s)
+
+	// (1) Update internal grant modifier and notify affected grant targets
+
+	g, err := fromGrant(s.consumer)(update.Grant())
+	if err != nil {
+		log.Errorf(ctx, "Internal: invalid grant %v: %v", g, err)
+		return
+	}
+
+	if !c.alloc.Modify(s.consumer.ID(), g) {
+		log.Warnf(ctx, "Unable to modify grant %v", g)
+		return
+	}
+
+	id, transition, ok := c.alloc.Transition(g)
+	if !ok {
+		log.Warnf(ctx, "Unable to find buddy for grant %v", g)
+		return
+	}
+
+	t, ok := c.consumers[id]
+	if !ok {
+		log.Warnf(ctx, "Buddy grant owner %v not currently connected for transition grant %v", id, transition)
+		return
+	}
+
+	if !t.TrySend(ctx, model.NewNotify(update.Grant(), toGrant(transition))) {
+		log.Errorf(ctx, "Failed to send notify for grant %v for target %v on session %v. Disconnecting", g, transition, t)
+		c.disconnect(ctx, "stuck", s)
+		recordAction(ctx, "notify", "failed")
+	}
+	recordAction(ctx, "notify", "ok")
+
 }
 
 func (c *coordinator) broadcast(ctx context.Context) {
@@ -640,31 +681,44 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 	}
 
 	// Assignments with state
-	assigned := map[model.QualifiedDomainName]map[model.GrantState]int{}
+	type grantState struct {
+		state model.GrantState
+		mod   model.GrantState
+	}
+
+	assigned := map[model.QualifiedDomainName]map[grantState]int{}
 	for _, worker := range c.alloc.Workers() {
 		assign := c.alloc.Assigned(worker.ID())
 		for _, active := range assign.Active {
 			if assigned[active.Unit.Domain] == nil {
-				assigned[active.Unit.Domain] = map[model.GrantState]int{}
+				assigned[active.Unit.Domain] = map[grantState]int{}
 			}
-			assigned[active.Unit.Domain][model.ActiveGrantState] += 1
+			assigned[active.Unit.Domain][grantState{state: model.ActiveGrantState}] += 1
 		}
 		for _, allocated := range assign.Allocated {
 			if assigned[allocated.Unit.Domain] == nil {
-				assigned[allocated.Unit.Domain] = map[model.GrantState]int{}
+				assigned[allocated.Unit.Domain] = map[grantState]int{}
 			}
-			assigned[allocated.Unit.Domain][model.AllocatedGrantState] += 1
+			if allocated.Mod == allocation.Loaded {
+				assigned[allocated.Unit.Domain][grantState{state: model.AllocatedGrantState, mod: model.LoadedGrantState}] += 1
+			} else {
+				assigned[allocated.Unit.Domain][grantState{state: model.AllocatedGrantState}] += 1
+			}
 		}
 		for _, revoked := range assign.Revoked {
 			if assigned[revoked.Unit.Domain] == nil {
-				assigned[revoked.Unit.Domain] = map[model.GrantState]int{}
+				assigned[revoked.Unit.Domain] = map[grantState]int{}
 			}
-			assigned[revoked.Unit.Domain][model.RevokedGrantState] += 1
+			if revoked.Mod == allocation.Unloaded {
+				assigned[revoked.Unit.Domain][grantState{state: model.RevokedGrantState, mod: model.UnloadedGrantState}] += 1
+			} else {
+				assigned[revoked.Unit.Domain][grantState{state: model.RevokedGrantState}] += 1
+			}
 		}
 	}
 	for domain, counts := range assigned {
 		for state, count := range counts {
-			numAssignments.Set(ctx, float64(count), slicex.CopyAppend(core.QualifiedDomainTags(domain), core.GrantStateTag(state))...)
+			numAssignments.Set(ctx, float64(count), slicex.CopyAppend(core.QualifiedDomainTags(domain), core.GrantStateTag(state.state), core.GrantModificationTag(state.mod))...)
 		}
 	}
 }
