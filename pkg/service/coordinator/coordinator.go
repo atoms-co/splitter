@@ -489,9 +489,8 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 		c.alloc.Release(g, now) // no promotion
 	}
 	if len(assigned.Active) > 0 {
-		c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
-
-		if !s.TrySend(ctx, model.NewRevoke(slicex.Map(assigned.Active, toGrant)...)) {
+		revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
+		if !s.TrySend(ctx, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
 			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(assigned.Active), s)
 			c.disconnect(ctx, "stuck", s)
 			return
