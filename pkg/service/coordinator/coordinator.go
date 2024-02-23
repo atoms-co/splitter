@@ -504,6 +504,10 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 		return
 	}
 
+	// (4) Allocate unassigned grants
+	c.allocate(ctx, c.cl.Now(), false)
+	c.broadcast(ctx)
+
 	log.Infof(ctx, "Deregistered consumer %v with %v active grants", s, len(assigned.Active))
 }
 

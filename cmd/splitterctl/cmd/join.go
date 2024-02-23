@@ -8,6 +8,7 @@ import (
 	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"github.com/spf13/cobra"
+	"time"
 )
 
 func joinCmd() *cobra.Command {
@@ -55,19 +56,22 @@ func joinCmd() *cobra.Command {
 					fmt.Println(fmt.Sprintf("Received '%v' signal. Draining Consumer.", sig))
 					cancel()
 
+					time.Sleep(100 * time.Millisecond)
+
 					select {
 					case <-quit.Closed(): // wait for drain
+						fmt.Println("Consumer drained. Exiting")
 					case <-signal: // or 2nd termination
 					}
 
 					return nil
 				case <-quit.Closed():
 					fmt.Println("Consumer closed. Exiting")
+					time.Sleep(100 * time.Millisecond)
 					return nil
 				}
 			}
 		})
 	}
-
 	return cmd
 }
