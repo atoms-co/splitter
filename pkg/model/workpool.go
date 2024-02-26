@@ -215,14 +215,14 @@ steady:
 	}
 
 	for {
-		if len(p.grants) == 0 {
-			log.Infof(ctx, "Worked %v drained after %v", p.self, p.cl.Since(now))
-			return
-		}
-
 		select {
 		case msg, ok := <-p.in:
 			if !ok {
+				if len(p.grants) == 0 {
+					log.Infof(ctx, "Workpool %v drained after %v", p.self, p.cl.Since(now))
+					p.lostCoordinator(ctx)
+					return
+				}
 				log.Errorf(ctx, "Coordinator connection unexpectedly closed while draining. Hard close")
 				p.lostCoordinator(ctx)
 				return
