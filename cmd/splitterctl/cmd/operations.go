@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"go.atoms.co/splitter/pkg/core"
+	"go.atoms.co/splitter/pkg/model"
 	"encoding/json"
 	"fmt"
 	"github.com/spf13/cobra"
@@ -14,6 +15,36 @@ var (
 		Short: "Operations",
 	}
 )
+
+func makeCoordinatorInfoCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "coordinator",
+		Short:        "Show coordinator information",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+	}
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		name, ok := model.ParseQualifiedServiceNameStr(args[0])
+		if !ok {
+			return fmt.Errorf("invalid qualified service name: %v", args[0])
+		}
+
+		return withInternalClient(func(ctx context.Context, client core.Client) error {
+			consumers, snapshot, err := client.CoordinatorInfo(ctx, name)
+			if err != nil {
+				return err
+			}
+			for _, info := range consumers {
+				printJson(model.UnwrapInstance(info), false)
+			}
+			printJson(model.UnwrapClusterSnapshot(snapshot), false)
+			return nil
+		})
+	}
+
+	return cmd
+}
 
 func makeRaftInfoCmd() *cobra.Command {
 	cmd := &cobra.Command{

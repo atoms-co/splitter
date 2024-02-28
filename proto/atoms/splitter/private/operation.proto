@@ -3,6 +3,8 @@ syntax = "proto3";
 package atoms.splitter.private;
 
 import "splitter/proto/internal_v1/state.proto";
+import "splitter/proto/public_v1/consumer.proto";
+import "splitter/proto/public_v1/management.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
@@ -23,6 +25,14 @@ message RestoreResponse {
   atoms.splitter.private.Snapshot snapshot = 1;
 }
 
+message CoordinatorInfoRequest {
+  atoms.splitter.QualifiedServiceName service = 1;
+}
+
+message CoordinatorInfoResponse {
+  repeated atoms.splitter.Instance consumers = 1;
+  atoms.splitter.ClusterMessage.Snapshot snapshot = 2;
+}
 
 // OperationService is the internal service for operational apis.
 service OperationService {
@@ -31,4 +41,7 @@ service OperationService {
 
   // Restore flushes the current leader snapshot to the storage.
   rpc Restore (RestoreRequest) returns (RestoreResponse);
+
+  // CoordinatorInfo sends an info request to a Coordinator.
+  rpc CoordinatorInfo (CoordinatorInfoRequest) returns (CoordinatorInfoResponse);
 }

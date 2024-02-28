@@ -20,6 +20,7 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
+	"go.atoms.co/splitter/pb/private"
 	"fmt"
 	"sync"
 	"time"
@@ -121,6 +122,20 @@ func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.Co
 		return nil, err
 	}
 	return c.Connect(ctx, sid, chanx.Prepend(in, msg))
+}
+
+func (w *Worker) Handle(ctx context.Context, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+	c, err := syncx.Txn1(ctx, w.txn, func() (coordinator.Coordinator, error) {
+		gid, ok := w.services[req.Service()]
+		if !ok {
+			return nil, fmt.Errorf("service %v not found: %w", req.Service(), model.ErrNotOwned)
+		}
+		return w.grants[gid].Coordinator, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return c.Handle(ctx, req)
 }
 
 func (w *Worker) Drain(timeout time.Duration) {

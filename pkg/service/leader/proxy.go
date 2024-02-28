@@ -99,6 +99,23 @@ func (m HandleRequest) IsMutation() bool {
 
 }
 
+func (m HandleRequest) MessageType() string {
+	switch {
+	case m.Proto.GetTenant() != nil:
+		return "tenant"
+	case m.Proto.GetService() != nil:
+		return "service"
+	case m.Proto.GetDomain() != nil:
+		return "domain"
+	case m.Proto.GetPlacement() != nil:
+		return "placement"
+	case m.Proto.GetOperation() != nil:
+		return "operation"
+	default:
+		return "unknown"
+	}
+}
+
 func (m HandleRequest) String() string {
 	return proto.CompactTextString(m.Proto)
 }

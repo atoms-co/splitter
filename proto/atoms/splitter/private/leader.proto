@@ -247,6 +247,7 @@ message JoinMessage {
 
 // LeaderService is the internal service for leader communication.
 service LeaderService {
+
   // Join establishes a bi-directional connection between a worker and the leader. The leader will assign
   // and load-balance tenants to each worker.
   rpc Join (stream JoinMessage) returns (stream JoinMessage);

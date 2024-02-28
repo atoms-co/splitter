@@ -3,10 +3,39 @@ syntax = "proto3";
 package atoms.splitter.private;
 
 import "splitter/proto/public_v1/consumer.proto";
+import "splitter/proto/public_v1/management.proto";
+import "splitter/proto/internal_v1/operation.proto";
 import "atoms/splitter/lib/service/session/session.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
+
+message CoordinatorOperationRequest {
+  oneof req {
+    atoms.splitter.private.CoordinatorInfoRequest info = 1;
+  }
+}
+
+message CoordinatorOperationResponse {
+  oneof resp {
+    atoms.splitter.private.CoordinatorInfoResponse info = 1;
+  }
+}
+
+// CoordinatorHandleRequest represents a request to the coordinator
+message CoordinatorHandleRequest {
+  atoms.splitter.QualifiedServiceName service = 1;
+  oneof req {
+    CoordinatorOperationRequest operation = 2;
+  }
+}
+
+// CoordinatorHandleResponse represents a response from the coordinator
+message CoordinatorHandleResponse {
+  oneof resp {
+    CoordinatorOperationResponse operation = 1;
+  }
+}
 
 message ConnectMessage {
   oneof msg {
@@ -19,4 +48,7 @@ message ConnectMessage {
 service CoordinatorService {
   // Connect establishes a bi-directional connection between a proxy and a coordinator.
   rpc Connect (stream ConnectMessage) returns (stream ConnectMessage);
+
+  // Handle sends a request to the coordinator. It returns a matching response. Mainly for Operations
+  rpc Handle (CoordinatorHandleRequest) returns (CoordinatorHandleResponse);
 }

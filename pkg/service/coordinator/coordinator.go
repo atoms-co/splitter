@@ -10,6 +10,7 @@ import (
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
+	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
@@ -18,12 +19,16 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
+	"go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pb"
 	"fmt"
 	"sync"
 	"time"
 )
 
 const (
+	// handleTimeout is the timeout for handle requests.
+	handleTimeout = 5 * time.Second
 	// leaseDuration is the duration of a consumer lease.
 	leaseDuration = 40 * time.Second
 )
@@ -48,6 +53,7 @@ type Coordinator interface {
 	iox.AsyncCloser
 
 	Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
+	Handle(ctx context.Context, request HandleRequest) (*internal_v1.CoordinatorHandleResponse, error)
 	Drain(timeout time.Duration)
 }
 
@@ -141,6 +147,66 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, in <-chan mod
 		}()
 		return out, nil
 	})
+}
+
+func (c *coordinator) Handle(ctx context.Context, req HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+	wctx, cancel := context.WithTimeout(ctx, handleTimeout)
+	defer cancel()
+
+	resp, err := c.handle(wctx, req)
+	if err != nil {
+		log.Debugf(ctx, "Coordinator %v request %v failed: %v", c.id, req, err)
+		return nil, model.WrapError(err)
+	}
+	return resp, nil
+}
+
+func (c *coordinator) handle(ctx context.Context, req HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+	switch {
+	case req.Proto.GetOperation() != nil:
+		ret, err := c.handleOperationRequest(ctx, req.Proto.GetOperation())
+		if err != nil {
+			return nil, err
+		}
+		return NewHandleCoordinatorOperationResponse(ret), nil
+
+	default:
+		return nil, fmt.Errorf("invalid handle request: %v", req)
+	}
+}
+
+func (c *coordinator) handleOperationRequest(ctx context.Context, op *internal_v1.CoordinatorOperationRequest) (*internal_v1.CoordinatorOperationResponse, error) {
+	switch {
+	case op.GetInfo() != nil:
+		return c.handleServiceInfoRequest(ctx)
+
+	default:
+		return nil, fmt.Errorf("invalid operation request: %v", op)
+	}
+}
+
+func (c *coordinator) handleServiceInfoRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {
+	consumers, snapshot, err := syncx.Txn2(ctx, c.txn, func() ([]model.Consumer, model.ClusterSnapshot, error) {
+		consumers := mapx.MapValues(c.consumers, func(s *consumerSession) model.Consumer {
+			return s.consumer.Instance()
+		})
+		snapshot := model.WrapClusterSnapshot(&public_v1.ClusterMessage_Snapshot{
+			Assignments: slicex.Map(c.cluster.Assignments(), model.UnwrapAssignment),
+			Origin:      location.UnwrapInstance(c.cluster.ID().Origin),
+		})
+		return consumers, snapshot, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &internal_v1.CoordinatorOperationResponse{
+		Resp: &internal_v1.CoordinatorOperationResponse_Info{
+			Info: &internal_v1.CoordinatorInfoResponse{
+				Consumers: slicex.Map(consumers, model.UnwrapInstance),
+				Snapshot:  model.UnwrapClusterSnapshot(snapshot),
+			},
+		},
+	}, nil
 }
 
 func (c *coordinator) Initialized() iox.AsyncCloser {

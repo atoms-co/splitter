@@ -30,6 +30,7 @@ type Client interface {
 	UpdatePlacement(ctx context.Context, name model.QualifiedPlacementName, guard model.Version, opts ...UpdatePlacementOption) (InternalPlacementInfo, error)
 	DeletePlacement(ctx context.Context, name model.QualifiedPlacementName) error
 
+	CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error)
 	RaftInfo(ctx context.Context) (map[string]string, error)
 	Restore(ctx context.Context, nuke bool) (Snapshot, error)
 }
@@ -103,6 +104,18 @@ func (c *client) DeletePlacement(ctx context.Context, name model.QualifiedPlacem
 	}
 	_, err := c.placement.Delete(ctx, req)
 	return err
+}
+
+func (c *client) CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error) {
+	req := &internal_v1.CoordinatorInfoRequest{
+		Service: service.ToProto(),
+	}
+
+	resp, err := c.operation.CoordinatorInfo(ctx, req)
+	if err != nil {
+		return nil, model.ClusterSnapshot{}, err
+	}
+	return slicex.Map(resp.GetConsumers(), model.WrapInstance), model.WrapClusterSnapshot(resp.GetSnapshot()), nil
 }
 
 func (c *client) RaftInfo(ctx context.Context) (map[string]string, error) {

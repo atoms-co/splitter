@@ -14,6 +14,7 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
+	"go.atoms.co/splitter/pb/private"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -141,6 +142,10 @@ type fakeCoordinator struct {
 	t       *testing.T
 	service model.QualifiedServiceName
 	updates <-chan core.Update
+}
+
+func (f *fakeCoordinator) Handle(ctx context.Context, request coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+	return nil, nil
 }
 
 func newFakeCoordinator(service model.QualifiedServiceName, updates <-chan core.Update) *fakeCoordinator {

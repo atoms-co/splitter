@@ -63,9 +63,17 @@ type consumerInfo struct {
 	grants   []GrantInfo
 }
 
+func (c consumerInfo) String() string {
+	return fmt.Sprintf("%v{%v}", c.consumer, c.grants)
+}
+
 type grantInfo struct {
 	consumer Consumer
 	grant    GrantInfo
+}
+
+func (g grantInfo) String() string {
+	return fmt.Sprintf("%v{%v}", g.consumer, g.grant)
 }
 
 // ClusterMap is lookup-optimized Cluster representation, updated by ClusterMessages. Immutable.

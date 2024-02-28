@@ -127,7 +127,7 @@ func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error
 	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.loc, s.manager))
 	internal_v1.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.cl, s.worker))
 	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cluster))
-	internal_v1.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.manager, s.manager))
+	internal_v1.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.worker, s.resolver, s.manager, s.manager))
 
 	return grpcx.Serve(ctx, gs, listener)
 }

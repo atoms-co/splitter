@@ -65,3 +65,8 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 		return chanx.Map(joined, coordinator.UnwrapConnectMessage), nil
 	})
 }
+
+func (c *CoordinatorService) Handle(ctx context.Context, request *internal_v1.CoordinatorHandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+	resp, err := c.worker.Handle(ctx, coordinator.HandleRequest{Proto: request})
+	return resp, model.WrapError(err)
+}
