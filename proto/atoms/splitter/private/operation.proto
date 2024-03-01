@@ -34,6 +34,14 @@ message CoordinatorInfoResponse {
   atoms.splitter.ClusterMessage.Snapshot snapshot = 2;
 }
 
+message CoordinatorRestartRequest {
+  atoms.splitter.QualifiedServiceName service = 1;
+}
+
+message CoordinatorRestartResponse {
+
+}
+
 // OperationService is the internal service for operational apis.
 service OperationService {
   // RaftInfo sends an info request to a raft server.
@@ -44,4 +52,7 @@ service OperationService {
 
   // CoordinatorInfo sends an info request to a Coordinator.
   rpc CoordinatorInfo (CoordinatorInfoRequest) returns (CoordinatorInfoResponse);
+
+  // CoordinatorRestart sends an restart request to a Coordinator.
+  rpc CoordinatorRestart (CoordinatorRestartRequest) returns (CoordinatorRestartResponse);
 }

@@ -10,6 +10,7 @@ import (
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
+	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -35,7 +36,7 @@ func NewOperationService(cluster *cluster.Cluster, worker *worker.Worker, servic
 func (o *OperationService) CoordinatorInfo(ctx context.Context, request *internal_v1.CoordinatorInfoRequest) (*internal_v1.CoordinatorInfoResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid service name %v", err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
@@ -56,6 +57,32 @@ func (o *OperationService) CoordinatorInfo(ctx context.Context, request *interna
 	}
 
 	return resp.GetOperation().GetInfo(), nil
+}
+
+func (o *OperationService) CoordinatorRestart(ctx context.Context, request *internal_v1.CoordinatorRestartRequest) (*internal_v1.CoordinatorRestartResponse, error) {
+	name, err := model.ParseQualifiedServiceName(request.GetService())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name %v", err)
+	}
+
+	req := coordinator.NewHandleCoordinatorOperationRequest(name,
+		&internal_v1.CoordinatorOperationRequest{
+			Req: &internal_v1.CoordinatorOperationRequest_Restart{
+				Restart: request,
+			},
+		})
+
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
+		return model.InvokeEx(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+			return o.worker.Handle(ctx, req)
+		})
+	})
+	if err != nil {
+		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
+		return nil, model.WrapError(err)
+	}
+
+	return resp.GetOperation().GetRestart(), nil
 }
 
 func (o *OperationService) RaftInfo(ctx context.Context, request *internal_v1.RaftInfoRequest) (*internal_v1.RaftInfoResponse, error) {

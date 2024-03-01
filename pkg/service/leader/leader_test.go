@@ -51,6 +51,11 @@ func TestLeader_SingleConsumer(t *testing.T) {
 	assign := readFn(t, out, isAssign)
 	assert.Equal(t, s.Name(), assign.Grant().Service())
 
+	in <- leader.NewDeregister()
+
+	revoke := readFn(t, out, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
+
 	l.Close()
 	assertx.Closed(t, out)
 }
@@ -77,6 +82,11 @@ func TestLeader_SingleConsumerReattach(t *testing.T) {
 
 	assign := readFn(t, out, isAssign)
 	assert.Equal(t, s1, assign.Grant().Service())
+
+	in <- leader.NewDeregister()
+
+	revoke := readFn(t, out, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
 
 	l.Close()
 	assertx.Closed(t, out)
@@ -105,6 +115,15 @@ func isAssign(msg leader.Message) (leader.AssignMessage, bool) {
 	}
 	return leader.AssignMessage{}, false
 }
+
+func isRevoke(msg leader.Message) (leader.RevokeMessage, bool) {
+	if msg.IsWorkerMessage() {
+		w, _ := msg.WorkerMessage()
+		return w.Revoke()
+	}
+	return leader.RevokeMessage{}, false
+}
+
 func readFn[T any](t *testing.T, in <-chan leader.Message, fn func(message leader.Message) (T, bool)) T {
 	t.Helper()
 	for {

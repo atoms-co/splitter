@@ -378,10 +378,10 @@ func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregis
 		l.alloc.Release(g, now) // no promotion
 	}
 	if len(assigned.Active) > 0 {
-		l.alloc.Revoke(w.instance.ID(), now, assigned.Active...)
+		revoked, _ := l.alloc.Revoke(w.instance.ID(), now, assigned.Active...)
 
-		if !w.TrySend(ctx, NewRevoke(slicex.Map(assigned.Active, toGrant)...)) {
-			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(assigned.Active), w)
+		if !w.TrySend(ctx, NewRevoke(slicex.Map(revoked, toGrant)...)) {
+			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(revoked), w)
 			l.disconnect(ctx, "stuck", w)
 			return
 		}
@@ -403,22 +403,16 @@ func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relin
 
 	// (1) Release relinquished grants. Check deregister status
 
-	var promoted []Grant
 	for _, g := range relinquished.Grants() {
 		grant := fromGrant(w.instance.ID(), g)
 
-		if promo, ok := l.alloc.Release(grant, now); ok {
-			promoted = append(promoted, promo)
-		}
+		// No need to promote, since leader does not use the promotion feature of the allocation library
+		l.alloc.Release(grant, now)
 	}
 
 	if w.draining && l.alloc.Assigned(w.instance.ID()).IsEmpty() {
 		l.disconnect(ctx, "complete deregister", w)
 	}
-
-	// (2) Assign promoted, if any
-
-	l.assign(ctx, now, promoted...)
 }
 
 func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, register RegisterMessage, in <-chan Message) (*workerSession, <-chan Message) {

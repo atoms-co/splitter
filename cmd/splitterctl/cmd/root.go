@@ -56,7 +56,9 @@ func init() {
 	placementCmd.AddCommand(makePublicInfoPlacementCmd())
 
 	rootCmd.AddCommand(operationCmd)
-	operationCmd.AddCommand(makeCoordinatorInfoCmd())
+	operationCmd.AddCommand(coordinatorCommand)
+	coordinatorCommand.AddCommand(makeCoordinatorInfoCmd())
+	coordinatorCommand.AddCommand(makeCoordinatorRestartCmd())
 	operationCmd.AddCommand(makeRaftInfoCmd())
 	operationCmd.AddCommand(makeRestoreCmd())
 

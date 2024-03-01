@@ -16,9 +16,18 @@ var (
 	}
 )
 
+var (
+	coordinatorCommand = &cobra.Command{
+		Use:          "coordinator",
+		Short:        "Coordinator operation",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+	}
+)
+
 func makeCoordinatorInfoCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "coordinator",
+		Use:          "info",
 		Short:        "Show coordinator information",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
@@ -39,6 +48,31 @@ func makeCoordinatorInfoCmd() *cobra.Command {
 				printJson(model.UnwrapInstance(info), false)
 			}
 			printJson(model.UnwrapClusterSnapshot(snapshot), false)
+			return nil
+		})
+	}
+
+	return cmd
+}
+
+func makeCoordinatorRestartCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "restart",
+		Short:        "Restart coordinator",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+	}
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		name, ok := model.ParseQualifiedServiceNameStr(args[0])
+		if !ok {
+			return fmt.Errorf("invalid qualified service name: %v", args[0])
+		}
+
+		return withInternalClient(func(ctx context.Context, client core.Client) error {
+			if err := client.CoordinatorRestart(ctx, name); err != nil {
+				return err
+			}
 			return nil
 		})
 	}

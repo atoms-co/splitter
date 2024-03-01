@@ -180,33 +180,12 @@ func (c *coordinator) handleOperationRequest(ctx context.Context, op *internal_v
 	case op.GetInfo() != nil:
 		return c.handleServiceInfoRequest(ctx)
 
+	case op.GetRestart() != nil:
+		return c.handleServiceRestartRequest(ctx)
+
 	default:
 		return nil, fmt.Errorf("invalid operation request: %v", op)
 	}
-}
-
-func (c *coordinator) handleServiceInfoRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {
-	consumers, snapshot, err := syncx.Txn2(ctx, c.txn, func() ([]model.Consumer, model.ClusterSnapshot, error) {
-		consumers := mapx.MapValues(c.consumers, func(s *consumerSession) model.Consumer {
-			return s.consumer.Instance()
-		})
-		snapshot := model.WrapClusterSnapshot(&public_v1.ClusterMessage_Snapshot{
-			Assignments: slicex.Map(c.cluster.Assignments(), model.UnwrapAssignment),
-			Origin:      location.UnwrapInstance(c.cluster.ID().Origin),
-		})
-		return consumers, snapshot, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &internal_v1.CoordinatorOperationResponse{
-		Resp: &internal_v1.CoordinatorOperationResponse_Info{
-			Info: &internal_v1.CoordinatorInfoResponse{
-				Consumers: slicex.Map(consumers, model.UnwrapInstance),
-				Snapshot:  model.UnwrapClusterSnapshot(snapshot),
-			},
-		},
-	}, nil
 }
 
 func (c *coordinator) Initialized() iox.AsyncCloser {
@@ -714,6 +693,40 @@ func (c *coordinator) broadcast(ctx context.Context) {
 	}
 
 	log.Debugf(ctx, "Sent cluster update %v/%v: %v", c.name, c.alloc, c.cluster.ID())
+}
+
+func (c *coordinator) handleServiceInfoRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {
+	consumers, snapshot, err := syncx.Txn2(ctx, c.txn, func() ([]model.Consumer, model.ClusterSnapshot, error) {
+		consumers := mapx.MapValues(c.consumers, func(s *consumerSession) model.Consumer {
+			return s.consumer.Instance()
+		})
+		snapshot := model.WrapClusterSnapshot(&public_v1.ClusterMessage_Snapshot{
+			Assignments: slicex.Map(c.cluster.Assignments(), model.UnwrapAssignment),
+			Origin:      location.UnwrapInstance(c.cluster.ID().Origin),
+		})
+		return consumers, snapshot, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &internal_v1.CoordinatorOperationResponse{
+		Resp: &internal_v1.CoordinatorOperationResponse_Info{
+			Info: &internal_v1.CoordinatorInfoResponse{
+				Consumers: slicex.Map(consumers, model.UnwrapInstance),
+				Snapshot:  model.UnwrapClusterSnapshot(snapshot),
+			},
+		},
+	}, nil
+}
+
+func (c *coordinator) handleServiceRestartRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {
+	log.Infof(ctx, "Received restart request for %v, draining the coordinator", c.info.Name())
+	c.Drain(20 * time.Second)
+	return &internal_v1.CoordinatorOperationResponse{
+		Resp: &internal_v1.CoordinatorOperationResponse_Restart{
+			Restart: &internal_v1.CoordinatorRestartResponse{},
+		},
+	}, nil
 }
 
 // mustSend attempts to send a message on a consumer connection. If it fails, disconnect the consumer

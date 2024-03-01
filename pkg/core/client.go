@@ -31,6 +31,8 @@ type Client interface {
 	DeletePlacement(ctx context.Context, name model.QualifiedPlacementName) error
 
 	CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error)
+	CoordinatorRestart(ctx context.Context, name model.QualifiedServiceName) error
+
 	RaftInfo(ctx context.Context) (map[string]string, error)
 	Restore(ctx context.Context, nuke bool) (Snapshot, error)
 }
@@ -103,6 +105,15 @@ func (c *client) DeletePlacement(ctx context.Context, name model.QualifiedPlacem
 		Name: name.ToProto(),
 	}
 	_, err := c.placement.Delete(ctx, req)
+	return err
+}
+
+func (c *client) CoordinatorRestart(ctx context.Context, service model.QualifiedServiceName) error {
+	req := &internal_v1.CoordinatorRestartRequest{
+		Service: service.ToProto(),
+	}
+
+	_, err := c.operation.CoordinatorRestart(ctx, req)
 	return err
 }
 

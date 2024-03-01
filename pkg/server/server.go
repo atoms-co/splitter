@@ -137,14 +137,13 @@ func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) {
 	log.Infof(ctx, "Shutting down server")
 	now := time.Now()
 
-	workerDrainTimeout := time.NewTimer(timeout)
-	defer workerDrainTimeout.Stop()
+	drainTimeout := time.NewTimer(timeout)
 
 	s.worker.Drain(timeout)
 	select {
 	case <-s.worker.Closed():
 		log.Infof(ctx, "Successfully drained worker in %v", time.Since(now))
-	case <-workerDrainTimeout.C:
+	case <-drainTimeout.C:
 		log.Warnf(ctx, "Failed to drain worker gracefully in %v", time.Since(now))
 	}
 
@@ -155,18 +154,15 @@ func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) {
 	select {
 	case <-s.cluster.Closed():
 		log.Infof(ctx, "Successfully drained RAFT cluster in %v", time.Since(now))
-	case <-clusterDrainTimeout.C:
+	case <-drainTimeout.C:
 		log.Warnf(ctx, "Failed to drain cluster gracefully in %v", time.Since(now))
 	}
-
-	managerDrainTimeout := time.NewTimer(timeout)
-	defer managerDrainTimeout.Stop()
 
 	s.manager.Drain(timeout)
 	select {
 	case <-s.manager.Closed():
 		log.Infof(ctx, "Successfully drained Leader manager in %v", time.Since(now))
-	case <-managerDrainTimeout.C:
+	case <-drainTimeout.C:
 		log.Warnf(ctx, "Failed to drain manager gracefully in %v", time.Since(now))
 	}
 }

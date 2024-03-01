@@ -46,6 +46,12 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 	assign := readFn(t, out, isAssign)
 	assert.Len(t, assign.Grants(), 1)
 
+	in <- model.NewDeregister()
+
+	revoke := readFn(t, out, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
+	assert.Equal(t, revoke.Grants()[0].State(), model.RevokedGrantState)
+
 	coord.Close()
 	assertx.Closed(t, out)
 }
@@ -98,6 +104,16 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 	promote := readFn(t, out2, isPromote) // grant activated for consumer2
 	assert.Len(t, promote.Grants(), 1)
 	assert.Equal(t, model.ActiveGrantState, promote.Grants()[0].State())
+
+	in <- model.NewDeregister()
+
+	revoke1 := readFn(t, out, isRevoke)
+	assert.Len(t, revoke1.Grants(), 3)
+
+	in2 <- model.NewDeregister()
+
+	revoke2 := readFn(t, out2, isRevoke)
+	assert.Len(t, revoke2.Grants(), 1)
 
 	coord.Close()
 	assertx.Closed(t, out)
