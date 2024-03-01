@@ -8,18 +8,17 @@ import (
 )
 
 const (
-	TenantKey            metrics.Key = "tenant"
-	ServiceKey           metrics.Key = "service"
-	DomainKey            metrics.Key = "domain"
-	PlacementKey         metrics.Key = "placement"
-	RaftServerIdKey      metrics.Key = "raft_server_id"
-	ResultKey            metrics.Key = "result"
-	ActionKey            metrics.Key = "action"
-	StatusKey            metrics.Key = "status"
-	GrantStateKey        metrics.Key = "grant_state"
-	GrantModificationKey metrics.Key = "grant_modification"
-	LeaseStateKey        metrics.Key = "lease_state"
-	MessageTypeKey       metrics.Key = "message_type"
+	TenantKey       metrics.Key = "tenant"
+	ServiceKey      metrics.Key = "service"
+	DomainKey       metrics.Key = "domain"
+	PlacementKey    metrics.Key = "placement"
+	RaftServerIdKey metrics.Key = "raft_server_id"
+	ResultKey       metrics.Key = "result"
+	ActionKey       metrics.Key = "action"
+	StatusKey       metrics.Key = "status"
+	GrantStateKey   metrics.Key = "grant_state"
+	LeaseStateKey   metrics.Key = "lease_state"
+	MessageTypeKey  metrics.Key = "message_type"
 )
 
 var (
@@ -85,10 +84,6 @@ func StatusTag(v any) metrics.Tag {
 
 func GrantStateTag(v model.GrantState) metrics.Tag {
 	return metrics.Tag{Key: GrantStateKey, Value: fmt.Sprintf("%v", v)}
-}
-
-func GrantModificationTag(v model.GrantState) metrics.Tag {
-	return metrics.Tag{Key: GrantModificationKey, Value: fmt.Sprintf("%v", v)}
 }
 
 func LeaseStateTag(v string) metrics.Tag {

@@ -38,7 +38,7 @@ var (
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.StatusKey)...),
 	)
 	numAssignments = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey, core.GrantModificationKey)...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey)...),
 	)
 
 	numShards = metrics.NewTrackedGauge(
@@ -749,45 +749,39 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 		numShards.Set(ctx, float64(shards), core.QualifiedDomainTags(domain.Name())...)
 	}
 
-	// Assignments with state
-	type grantState struct {
-		state model.GrantState
-		mod   model.GrantState
-	}
-
-	assigned := map[model.QualifiedDomainName]map[grantState]int{}
+	assigned := map[model.QualifiedDomainName]map[model.GrantState]int{}
 	for _, worker := range c.alloc.Workers() {
 		assign := c.alloc.Assigned(worker.ID())
 		for _, active := range assign.Active {
 			if assigned[active.Unit.Domain] == nil {
-				assigned[active.Unit.Domain] = map[grantState]int{}
+				assigned[active.Unit.Domain] = map[model.GrantState]int{}
 			}
-			assigned[active.Unit.Domain][grantState{state: model.ActiveGrantState}] += 1
+			assigned[active.Unit.Domain][model.ActiveGrantState] += 1
 		}
 		for _, allocated := range assign.Allocated {
 			if assigned[allocated.Unit.Domain] == nil {
-				assigned[allocated.Unit.Domain] = map[grantState]int{}
+				assigned[allocated.Unit.Domain] = map[model.GrantState]int{}
 			}
 			if allocated.Mod == allocation.Loaded {
-				assigned[allocated.Unit.Domain][grantState{state: model.AllocatedGrantState, mod: model.LoadedGrantState}] += 1
+				assigned[allocated.Unit.Domain][model.LoadedGrantState] += 1
 			} else {
-				assigned[allocated.Unit.Domain][grantState{state: model.AllocatedGrantState}] += 1
+				assigned[allocated.Unit.Domain][model.AllocatedGrantState] += 1
 			}
 		}
 		for _, revoked := range assign.Revoked {
 			if assigned[revoked.Unit.Domain] == nil {
-				assigned[revoked.Unit.Domain] = map[grantState]int{}
+				assigned[revoked.Unit.Domain] = map[model.GrantState]int{}
 			}
 			if revoked.Mod == allocation.Unloaded {
-				assigned[revoked.Unit.Domain][grantState{state: model.RevokedGrantState, mod: model.UnloadedGrantState}] += 1
+				assigned[revoked.Unit.Domain][model.UnloadedGrantState] += 1
 			} else {
-				assigned[revoked.Unit.Domain][grantState{state: model.RevokedGrantState}] += 1
+				assigned[revoked.Unit.Domain][model.RevokedGrantState] += 1
 			}
 		}
 	}
 	for domain, counts := range assigned {
 		for state, count := range counts {
-			numAssignments.Set(ctx, float64(count), slicex.CopyAppend(core.QualifiedDomainTags(domain), core.GrantStateTag(state.state), core.GrantModificationTag(state.mod))...)
+			numAssignments.Set(ctx, float64(count), slicex.CopyAppend(core.QualifiedDomainTags(domain), core.GrantStateTag(state))...)
 		}
 	}
 }
