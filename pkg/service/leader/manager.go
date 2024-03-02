@@ -47,7 +47,16 @@ type Factory func(ctx context.Context) (iox.AsyncCloser, Proxy)
 
 // Manager handles a proxy lifecycle and remote resolution. It is controlled by a stream
 // of leadership change directives.
-type Manager struct {
+type Manager interface {
+	iox.RAsyncCloser
+
+	Resolve(ctx context.Context, key model.DomainKey) (internal_v1.LeaderServiceClient, error)
+	Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error)
+	Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error)
+	Drain(timeout time.Duration)
+}
+
+type ResolvingManager struct {
 	iox.AsyncCloser
 
 	cl      clock.Clock
@@ -61,9 +70,9 @@ type Manager struct {
 	drain iox.AsyncCloser
 }
 
-func NewManager(cl clock.Clock, in <-chan Directive, factory Factory) *Manager {
+func NewManager(cl clock.Clock, in <-chan Directive, factory Factory) *ResolvingManager {
 	quit := iox.NewAsyncCloser()
-	ret := &Manager{
+	ret := &ResolvingManager{
 		AsyncCloser: quit,
 		cl:          cl,
 		factory:     factory,
@@ -74,33 +83,33 @@ func NewManager(cl clock.Clock, in <-chan Directive, factory Factory) *Manager {
 	return ret
 }
 
-func (m *Manager) Drain(timeout time.Duration) {
+func (m *ResolvingManager) Drain(timeout time.Duration) {
 	m.drain.Close()
 	m.cl.AfterFunc(timeout, m.Close)
 }
 
-func (m *Manager) Resolve(ctx context.Context, key model.DomainKey) (internal_v1.LeaderServiceClient, error) {
+func (m *ResolvingManager) Resolve(ctx context.Context, key model.DomainKey) (internal_v1.LeaderServiceClient, error) {
 	if client, ok := m.tryRemote(); ok {
 		return client, nil
 	}
 	return nil, model.ErrNoResolution
 }
 
-func (m *Manager) Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error) {
+func (m *ResolvingManager) Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error) {
 	if l, ok := m.tryLocal(); ok {
 		return l.Join(ctx, sid, in)
 	}
 	return nil, model.ErrNotOwned
 }
 
-func (m *Manager) Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (m *ResolvingManager) Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	if l, ok := m.tryLocal(); ok {
 		return l.Handle(ctx, request)
 	}
 	return nil, model.ErrNotOwned
 }
 
-func (m *Manager) process(ctx context.Context, in <-chan Directive) {
+func (m *ResolvingManager) process(ctx context.Context, in <-chan Directive) {
 	defer m.Close()
 	defer m.reset()
 
@@ -153,7 +162,7 @@ steady:
 	}
 }
 
-func (m *Manager) lead(ctx context.Context, halt iox.AsyncCloser, id string) {
+func (m *ResolvingManager) lead(ctx context.Context, halt iox.AsyncCloser, id string) {
 	wctx, cancel := contextx.WithQuitCancel(ctx, halt.Closed())
 	defer cancel()
 
@@ -183,7 +192,7 @@ func (m *Manager) lead(ctx context.Context, halt iox.AsyncCloser, id string) {
 	}
 }
 
-func (m *Manager) follow(ctx context.Context, halt iox.AsyncCloser, id, endpoint string) {
+func (m *ResolvingManager) follow(ctx context.Context, halt iox.AsyncCloser, id, endpoint string) {
 	for !halt.IsClosed() {
 		// (1) Dial leader. If it (unexpectedly) fails, re-try until leader change.
 
@@ -212,21 +221,21 @@ func (m *Manager) follow(ctx context.Context, halt iox.AsyncCloser, id, endpoint
 	}
 }
 
-func (m *Manager) tryRemote() (internal_v1.LeaderServiceClient, bool) {
+func (m *ResolvingManager) tryRemote() (internal_v1.LeaderServiceClient, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	return m.remote, m.remote != nil
 }
 
-func (m *Manager) tryLocal() (Proxy, bool) {
+func (m *ResolvingManager) tryLocal() (Proxy, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	return m.local, m.local != nil
 }
 
-func (m *Manager) reset() iox.AsyncCloser {
+func (m *ResolvingManager) reset() iox.AsyncCloser {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

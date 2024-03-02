@@ -20,8 +20,10 @@ import (
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -45,12 +47,12 @@ type Server struct {
 	loc location.Location
 
 	cluster  *cluster.Cluster
-	manager  *leader.Manager
+	manager  leader.Manager
 	resolver core.ServiceResolver
 	worker   *worker.Worker
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint string, cluster *cluster.Cluster, manager *leader.Manager, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint string, cluster *cluster.Cluster, manager leader.Manager, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
@@ -109,7 +111,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 }
 
 // Serve starts the public grpc server on the given port. Blocking.
-func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
+func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 	placement := frontend.NewInternalPlacementService(s.manager, s.manager)
 
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
@@ -118,18 +120,64 @@ func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService(placement))
 	internal_v1.RegisterPlacementManagementServiceServer(gs, placement)
 
-	return grpcx.Serve(ctx, gs, listener)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var merr error
+	for _, l := range listeners {
+		listener := l
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := grpcx.Serve(ctx, gs, listener)
+			mu.Lock()
+			defer mu.Unlock()
+			merr = multierr.Append(merr, err)
+			// If one listener has died, signal the others to close also
+			for _, l2 := range listeners {
+				if l2 == listener {
+					continue
+				}
+				merr = multierr.Append(merr, l2.Close())
+			}
+		}()
+	}
+
+	wg.Wait()
+	return merr
 }
 
 // ServeInternal starts the internal grpc server on the given port. Blocking.
-func (s *Server) ServeInternal(ctx context.Context, listener net.Listener) error {
+func (s *Server) ServeInternal(ctx context.Context, listeners ...net.Listener) error {
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
 	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.loc, s.manager))
 	internal_v1.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.cl, s.worker))
 	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cluster))
 	internal_v1.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.worker, s.resolver, s.manager, s.manager))
 
-	return grpcx.Serve(ctx, gs, listener)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var merr error
+	for _, l := range listeners {
+		listener := l
+		wg.Add(1)
+		go func() {
+			err := grpcx.Serve(ctx, gs, listener)
+			mu.Lock()
+			defer mu.Unlock()
+			merr = multierr.Append(merr, err)
+			// If one listener has died, signal the others to close also
+			for _, l2 := range listeners {
+				if l2 == listener {
+					continue
+				}
+				merr = multierr.Append(merr, l2.Close())
+			}
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+	return merr
 }
 
 // Shutdown tries to gracefully shut down the instance components.

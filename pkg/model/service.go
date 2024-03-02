@@ -28,6 +28,14 @@ func ParseQualifiedServiceNameStr(name string) (QualifiedServiceName, bool) {
 	}, true
 }
 
+func MustParseQualifiedServiceNameStr(name string) QualifiedServiceName {
+	n, ok := ParseQualifiedServiceNameStr(name)
+	if !ok {
+		panic(fmt.Sprintf("invalid name: %v", name))
+	}
+	return n
+}
+
 func ParseQualifiedServiceName(pb *public_v1.QualifiedServiceName) (QualifiedServiceName, error) {
 	if pb.GetTenant() == "" || pb.GetService() == "" {
 		return QualifiedServiceName{}, fmt.Errorf("invalid service name: %v", proto.MarshalTextString(pb))
