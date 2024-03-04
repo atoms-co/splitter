@@ -38,7 +38,38 @@ message CoordinatorRestartRequest {
   atoms.splitter.QualifiedServiceName service = 1;
 }
 
+
 message CoordinatorRestartResponse {
+
+}
+
+message CoordinatorConsumerSuspendRequest {
+  atoms.splitter.QualifiedServiceName service = 1;
+  string consumer_id = 2;
+}
+
+
+message CoordinatorConsumerSuspendResponse {
+
+}
+
+message CoordinatorConsumerResumeRequest {
+  atoms.splitter.QualifiedServiceName service = 1;
+  string consumer_id = 2;
+}
+
+
+message CoordinatorConsumerResumeResponse {
+
+}
+
+message CoordinatorConsumerDrainRequest {
+  atoms.splitter.QualifiedServiceName service = 1;
+  string consumer_id = 2;
+}
+
+
+message CoordinatorConsumerDrainResponse {
 
 }
 
@@ -55,4 +86,13 @@ service OperationService {
 
   // CoordinatorRestart sends an restart request to a Coordinator.
   rpc CoordinatorRestart (CoordinatorRestartRequest) returns (CoordinatorRestartResponse);
+
+  // CoordinatorConsumerSuspend sends an consumer suspend request to a Coordinator.
+  rpc CoordinatorConsumerSuspend (CoordinatorConsumerSuspendRequest) returns (CoordinatorConsumerSuspendResponse);
+
+  // CoordinatorConsumerResume sends an consumer resume request to a Coordinator.
+  rpc CoordinatorConsumerResume (CoordinatorConsumerResumeRequest) returns (CoordinatorConsumerResumeResponse);
+
+  // CoordinatorConsumerDrain sends an consumer drain request to a Coordinator.
+  rpc CoordinatorConsumerDrain (CoordinatorConsumerDrainRequest) returns (CoordinatorConsumerDrainResponse);
 }

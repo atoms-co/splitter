@@ -183,6 +183,15 @@ func (c *coordinator) handleOperationRequest(ctx context.Context, op *internal_v
 	case op.GetRestart() != nil:
 		return c.handleServiceRestartRequest(ctx)
 
+	case op.GetSuspend() != nil:
+		return c.handleConsumerSuspendRequest(ctx, model.InstanceID(op.GetSuspend().GetConsumerId()))
+
+	case op.GetResume() != nil:
+		return c.handleConsumerResumeRequest(ctx, model.InstanceID(op.GetResume().GetConsumerId()))
+
+	case op.GetDrain() != nil:
+		return c.handleConsumerDrainRequest(ctx, model.InstanceID(op.GetDrain().GetConsumerId()))
+
 	default:
 		return nil, fmt.Errorf("invalid operation request: %v", op)
 	}
@@ -725,6 +734,93 @@ func (c *coordinator) handleServiceRestartRequest(ctx context.Context) (*interna
 	return &internal_v1.CoordinatorOperationResponse{
 		Resp: &internal_v1.CoordinatorOperationResponse_Restart{
 			Restart: &internal_v1.CoordinatorRestartResponse{},
+		},
+	}, nil
+}
+
+func (c *coordinator) handleConsumerSuspendRequest(ctx context.Context, id model.InstanceID) (*internal_v1.CoordinatorOperationResponse, error) {
+	_, err := syncx.Txn1(ctx, c.txn, func() (model.Consumer, error) {
+		s, ok := c.consumers[id]
+		if !ok {
+			return model.Consumer{}, fmt.Errorf("consumer not found, %v: %w", id, model.ErrNotFound)
+		}
+		if _, ok := c.alloc.Suspend(s.consumer.ID()); !ok {
+			return model.Consumer{}, fmt.Errorf("failed to suspend consumer, %v", id)
+		}
+
+		log.Infof(ctx, "Suspended consumer: %v", s.consumer.Instance())
+		return s.consumer.instance, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &internal_v1.CoordinatorOperationResponse{
+		Resp: &internal_v1.CoordinatorOperationResponse_Suspend{
+			Suspend: &internal_v1.CoordinatorConsumerSuspendResponse{},
+		},
+	}, nil
+}
+
+func (c *coordinator) handleConsumerResumeRequest(ctx context.Context, id model.InstanceID) (*internal_v1.CoordinatorOperationResponse, error) {
+	_, err := syncx.Txn1(ctx, c.txn, func() (model.Consumer, error) {
+		s, ok := c.consumers[id]
+		if !ok {
+			return model.Consumer{}, fmt.Errorf("consumer not found, %v: %w", id, model.ErrNotFound)
+		}
+		if _, ok := c.alloc.Resume(s.consumer.ID()); !ok {
+			return model.Consumer{}, fmt.Errorf("failed to resume consumer, %v", id)
+		}
+
+		log.Infof(ctx, "resumed consumer: %v", s.consumer.Instance())
+		return s.consumer.instance, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &internal_v1.CoordinatorOperationResponse{
+		Resp: &internal_v1.CoordinatorOperationResponse_Resume{
+			Resume: &internal_v1.CoordinatorConsumerResumeResponse{},
+		},
+	}, nil
+}
+
+func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.InstanceID) (*internal_v1.CoordinatorOperationResponse, error) {
+	_, err := syncx.Txn1(ctx, c.txn, func() (model.Consumer, error) {
+		s, ok := c.consumers[id]
+		if !ok {
+			return model.Consumer{}, fmt.Errorf("consumer not found, %v: %w", id, model.ErrNotFound)
+		}
+
+		now := c.cl.Now()
+
+		// Revoke assigned grants and release allocated grants
+		assigned := c.alloc.Assigned(s.consumer.ID())
+		for _, g := range assigned.Allocated {
+			c.alloc.Release(g, now) // no promotion
+		}
+		if len(assigned.Active) > 0 {
+			revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
+			if !s.TrySend(ctx, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
+				log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(assigned.Active), s)
+				c.disconnect(ctx, "stuck", s)
+				return model.Consumer{}, fmt.Errorf("failed to revoke grants: %v", revoked)
+			}
+		}
+
+		// Allocate unassigned grants
+		c.allocate(ctx, c.cl.Now(), false)
+		c.broadcast(ctx)
+
+		log.Infof(ctx, "drained consumer: %v", s.consumer.Instance())
+
+		return s.consumer.Instance(), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &internal_v1.CoordinatorOperationResponse{
+		Resp: &internal_v1.CoordinatorOperationResponse_Drain{
+			Drain: &internal_v1.CoordinatorConsumerDrainResponse{},
 		},
 	}, nil
 }

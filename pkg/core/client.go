@@ -32,6 +32,9 @@ type Client interface {
 
 	CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error)
 	CoordinatorRestart(ctx context.Context, name model.QualifiedServiceName) error
+	ConsumerSuspend(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
+	ConsumerResume(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
+	ConsumerDrain(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
 
 	RaftInfo(ctx context.Context) (map[string]string, error)
 	Restore(ctx context.Context, nuke bool) (Snapshot, error)
@@ -108,15 +111,6 @@ func (c *client) DeletePlacement(ctx context.Context, name model.QualifiedPlacem
 	return err
 }
 
-func (c *client) CoordinatorRestart(ctx context.Context, service model.QualifiedServiceName) error {
-	req := &internal_v1.CoordinatorRestartRequest{
-		Service: service.ToProto(),
-	}
-
-	_, err := c.operation.CoordinatorRestart(ctx, req)
-	return err
-}
-
 func (c *client) CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error) {
 	req := &internal_v1.CoordinatorInfoRequest{
 		Service: service.ToProto(),
@@ -127,6 +121,45 @@ func (c *client) CoordinatorInfo(ctx context.Context, service model.QualifiedSer
 		return nil, model.ClusterSnapshot{}, err
 	}
 	return slicex.Map(resp.GetConsumers(), model.WrapInstance), model.WrapClusterSnapshot(resp.GetSnapshot()), nil
+}
+
+func (c *client) CoordinatorRestart(ctx context.Context, service model.QualifiedServiceName) error {
+	req := &internal_v1.CoordinatorRestartRequest{
+		Service: service.ToProto(),
+	}
+
+	_, err := c.operation.CoordinatorRestart(ctx, req)
+	return err
+}
+
+func (c *client) ConsumerSuspend(ctx context.Context, service model.QualifiedServiceName, id model.InstanceID) error {
+	req := &internal_v1.CoordinatorConsumerSuspendRequest{
+		Service:    service.ToProto(),
+		ConsumerId: string(id),
+	}
+
+	_, err := c.operation.CoordinatorConsumerSuspend(ctx, req)
+	return err
+}
+
+func (c *client) ConsumerResume(ctx context.Context, service model.QualifiedServiceName, id model.InstanceID) error {
+	req := &internal_v1.CoordinatorConsumerResumeRequest{
+		Service:    service.ToProto(),
+		ConsumerId: string(id),
+	}
+
+	_, err := c.operation.CoordinatorConsumerResume(ctx, req)
+	return err
+}
+
+func (c *client) ConsumerDrain(ctx context.Context, service model.QualifiedServiceName, id model.InstanceID) error {
+	req := &internal_v1.CoordinatorConsumerDrainRequest{
+		Service:    service.ToProto(),
+		ConsumerId: string(id),
+	}
+
+	_, err := c.operation.CoordinatorConsumerDrain(ctx, req)
+	return err
 }
 
 func (c *client) RaftInfo(ctx context.Context) (map[string]string, error) {

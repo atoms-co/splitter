@@ -263,6 +263,16 @@ func (a *Allocation[T, W, K, V]) Suspend(id K) (WorkerInfo[K, V], bool) {
 	return WorkerInfo[K, V]{}, false
 }
 
+// Resume removes the suspended marker on a worker. Returns the updated worker. Returns false if not found
+// or detached.
+func (a *Allocation[T, W, K, V]) Resume(id K) (WorkerInfo[K, V], bool) {
+	if w, ok := a.workers[id]; ok && w.info.State != Detached {
+		w.info.State = Attached
+		return w.info, true
+	}
+	return WorkerInfo[K, V]{}, false
+}
+
 // Detach removes the worker from consideration. Returns false if not found or already detached.
 func (a *Allocation[T, W, K, V]) Detach(id K) bool {
 	if w, ok := a.workers[id]; ok {
