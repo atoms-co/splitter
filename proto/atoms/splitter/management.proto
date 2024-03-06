@@ -15,7 +15,7 @@ message Tenant {
   message Config {
   }
   Config config = 2;
-  
+
   google.protobuf.Timestamp created = 3;
 
   message Operational {
@@ -45,6 +45,13 @@ message Service {
     string region = 1;
     // Default sharding policy. Optional.
     ShardingPolicy default_sharding_policy = 2;
+
+    // LocalityOverride overrides what is considered region-local for shard and consumer. Optional.
+    message LocalityOverride {
+      string shard_region = 1;
+      string consumer_region = 2;
+    }
+    repeated LocalityOverride overrides = 3;
   }
   Config config = 2;
 

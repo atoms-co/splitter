@@ -25,15 +25,7 @@ type (
 	Assignment = allocation.Assignments[model.Shard, model.ConsumerID]
 )
 
-// TODO(herohde) 11/11/2023: need custom region-affinity that returns true if in the same region or buddy
-// region, with the exception thaeastus2 as an outpost has its CRDB leaseholders in northcentralus. Does not
-// apply to all services/domains, so it should be a configuration option.
-
 // TODO(herohde) 11/12/2023: intra-domain anti-affinity to spread out domains evenly. Similar to general LB.
-
-var (
-	regionAffinity = allocation.NewPreference("region-affinity", 20, HasRegionAffinity)
-)
 
 func HasRegionAffinity(worker Worker, work Work) bool {
 	return work.Data.Region == "" || worker.Data.Location().Region == work.Data.Region
@@ -47,12 +39,12 @@ func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.Service
 	return allocation.Update(a, findPlacements(tenant, info), findColocations(info), findWork(info, placements), activation)
 }
 
-// control handles placement control.
 type domainRegion struct {
 	domain model.QualifiedDomainName
 	region model.Region
 }
 
+// Control handles placement control.
 type Control struct {
 	Domains map[model.DomainName]model.Domain
 	Banned  map[domainRegion]bool
@@ -81,21 +73,46 @@ func (c *Control) ID() allocation.Rule {
 
 func (c *Control) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
 	if domain, ok := c.Domains[work.Unit.Domain.Domain]; ok && domain.State() != model.DomainActive {
-		return 0, false // no placement allowed
+		return 0, false // no placement allowed on non-active domains
 	}
 	if c.Banned[domainRegion{domain: work.Unit.Domain, region: worker.Data.Location().Region}] {
-		return 0, false
+		return 0, false // no placement allowed for banned worker regions
 	}
 	return 0, true
 }
 
-// affinity handles domain anti-affinity.
-type affinity struct {
-	targets map[model.DomainName]bool
-	domains map[model.DomainName][]model.DomainName // directional domain -> targets: domain has the penalty
+// RegionAffinity handles regional affinity preference.
+type RegionAffinity struct {
+	Overrides map[location.Region]location.Region
 }
 
-func NewAffinity(info model.ServiceInfoEx) *affinity {
+func NewRegionAffinity(info model.ServiceInfoEx) *RegionAffinity {
+	return &RegionAffinity{Overrides: info.Service().Config().Overrides()}
+}
+
+func (r *RegionAffinity) ID() allocation.Rule {
+	return "region-affinity"
+}
+
+func (r *RegionAffinity) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
+	pref := work.Data.Region
+
+	if override, ok := r.Overrides[pref]; ok {
+		pref = override
+	}
+	if pref == "" || worker.Data.Location().Region == pref {
+		return 0, true
+	}
+	return 20, true
+}
+
+// AntiAffinity handles domain anti-affinity.
+type AntiAffinity struct {
+	Targets map[model.DomainName]bool
+	Domains map[model.DomainName][]model.DomainName // directional domain -> targets: domain has the penalty
+}
+
+func NewAntiAffinity(info model.ServiceInfoEx) *AntiAffinity {
 	domains := map[model.DomainName][]model.DomainName{}
 	targets := map[model.DomainName]bool{}
 	for _, d := range info.Domains() {
@@ -104,29 +121,29 @@ func NewAffinity(info model.ServiceInfoEx) *affinity {
 			domains[d.ShortName()] = append(domains[d.ShortName()], t)
 		}
 	}
-	return &affinity{domains: domains, targets: targets}
+	return &AntiAffinity{Domains: domains, Targets: targets}
 }
 
-func (c *affinity) ID() allocation.Rule {
+func (c *AntiAffinity) ID() allocation.Rule {
 	return "anti-affinity"
 }
 
 // Colocate calculates anti-affinity load associated with individual work when allocating all the work together on the worker.
 // This evaluation only penalizes the allocation iff there is a range overlap between shards that violates the anti-affinity rule.
-func (c *affinity) Colocate(worker Worker, work map[model.Shard]Work) map[model.Shard]allocation.Load {
-	if len(c.targets) == 0 {
+func (c *AntiAffinity) Colocate(worker Worker, work map[model.Shard]Work) map[model.Shard]allocation.Load {
+	if len(c.Targets) == 0 {
 		return nil
 	}
 	ret := map[model.Shard]allocation.Load{}
 	shards := map[model.DomainName][]model.Shard{}
 	for shard := range work {
-		if _, ok := c.targets[shard.Domain.Domain]; ok {
+		if _, ok := c.Targets[shard.Domain.Domain]; ok {
 			shards[shard.Domain.Domain] = append(shards[shard.Domain.Domain], shard)
 		}
 	}
 	for shard := range work {
 		load := 0
-		for _, target := range c.domains[shard.Domain.Domain] { // (anti-affinity) domain * shard <= work
+		for _, target := range c.Domains[shard.Domain.Domain] { // (anti-affinity) domain * shard <= work
 			for _, s := range shards[target] {
 				if s.IntersectsRange(shard) {
 					load += 20
@@ -141,11 +158,11 @@ func (c *affinity) Colocate(worker Worker, work map[model.Shard]Work) map[model.
 }
 
 func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx) []Placement {
-	return slicex.New[Placement](regionAffinity, NewControl(tenant, info))
+	return slicex.New[Placement](NewRegionAffinity(info), NewControl(tenant, info))
 }
 
 func findColocations(info model.ServiceInfoEx) []Colocation {
-	return slicex.New[Colocation](NewAffinity(info))
+	return slicex.New[Colocation](NewAntiAffinity(info))
 }
 
 func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo) []Work {

@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"context"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
 	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"github.com/spf13/cobra"
+	"strings"
 )
 
 var (
@@ -106,6 +108,7 @@ func makeUpdateServiceCmd() *cobra.Command {
 	}
 
 	region := cmd.Flags().String("region", "", "Region")
+	overrides := cmd.Flags().StringSlice("locality-overrides", []string{}, "locality overrides. e.g. us-west1:centralus")
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -117,6 +120,17 @@ func makeUpdateServiceCmd() *cobra.Command {
 		var cfgOpts []splitter.ServiceConfigOption
 		if *region != "" {
 			cfgOpts = append(cfgOpts, splitter.WithServiceRegion(splitter.Region(*region)))
+		}
+		if len(*overrides) > 0 {
+			locality := map[location.Region]location.Region{}
+			for _, override := range *overrides {
+				parts := strings.Split(override, ":")
+				if len(parts) != 2 {
+					return fmt.Errorf("invalid region override: %v", override)
+				}
+				locality[location.Region(parts[0])] = location.Region(parts[1])
+			}
+			cfgOpts = append(cfgOpts, splitter.WithLocalityOverrides(locality))
 		}
 
 		var opOpts []splitter.ServiceOperationalOption

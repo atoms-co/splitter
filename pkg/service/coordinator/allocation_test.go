@@ -134,6 +134,44 @@ func TestControl(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestRegionAffinity(t *testing.T) {
+	s1, err := model.NewService(model.QualifiedServiceName{Tenant: "tenant1", Service: "service1"}, time.Time{}, model.WithServiceConfig(
+		model.NewServiceConfig(model.WithLocalityOverrides(map[location.Region]location.Region{
+			"us-central1": "centralus",
+		})),
+	))
+	require.NoError(t, err)
+	s1Info := model.NewServiceInfoEx(model.NewServiceInfo(s1, 1, time.Time{}), nil)
+
+	affinity := coordinator.NewRegionAffinity(s1Info)
+
+	w1 := allocation.NewWorker[location.InstanceID, model.Instance](
+		"worker1",
+		model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""),
+	)
+
+	penalty, ok := affinity.TryPlace(w1, allocation.Work[model.Shard, location.Location]{
+		Unit: model.Shard{},
+		Data: location.New("centralus", ""),
+	})
+	assert.True(t, ok)
+	assert.Equal(t, allocation.Load(0), penalty)
+
+	penalty, ok = affinity.TryPlace(w1, allocation.Work[model.Shard, location.Location]{
+		Unit: model.Shard{},
+		Data: location.New("us-central1", ""),
+	})
+	assert.True(t, ok)
+	assert.Equal(t, allocation.Load(0), penalty)
+
+	penalty, ok = affinity.TryPlace(w1, allocation.Work[model.Shard, location.Location]{
+		Unit: model.Shard{},
+		Data: location.New("northcentralus", ""),
+	})
+	assert.True(t, ok)
+	assert.Equal(t, allocation.Load(20), penalty)
+}
+
 func TestColocation(t *testing.T) {
 	a := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	b := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
@@ -170,7 +208,7 @@ func TestColocation(t *testing.T) {
 		service, _ := model.NewService(serviceName, cl.Now())
 		info := model.NewServiceInfoEx(model.NewServiceInfo(service, 1, cl.Now()), []model.Domain{dom1, dom2})
 		worker := allocation.NewWorker[model.ConsumerID, model.Consumer]("worker-id", prefab.Instance1)
-		affinity := coordinator.NewAffinity(info)
+		affinity := coordinator.NewAntiAffinity(info)
 		load := affinity.Colocate(worker, map[model.Shard]coordinator.Work{
 			tt.shard1: {Unit: tt.shard1},
 			tt.shard2: {Unit: tt.shard2},

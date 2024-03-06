@@ -1,6 +1,8 @@
 package model
 
 import (
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
 	"fmt"
@@ -150,6 +152,17 @@ func WithServiceDefaultShardingPolicy(policy ShardingPolicy) ServiceConfigOption
 	}
 }
 
+func WithLocalityOverrides(overrides map[location.Region]location.Region) ServiceConfigOption {
+	return func(cfg *public_v1.Service_Config) {
+		cfg.Overrides = mapx.MapToSlice(overrides, func(shard location.Region, consumer location.Region) *public_v1.Service_Config_LocalityOverride {
+			return &public_v1.Service_Config_LocalityOverride{
+				ShardRegion:    string(shard),
+				ConsumerRegion: string(consumer),
+			}
+		})
+	}
+}
+
 // ServiceConfig holds service configuration.
 type ServiceConfig struct {
 	pb *public_v1.Service_Config
@@ -190,12 +203,18 @@ func (c ServiceConfig) Region() Region {
 	return Region(c.pb.GetRegion())
 }
 
-func (c ServiceConfig) Equals(c1 ServiceConfig) bool {
-	return proto.Equal(c.pb, c1.pb)
-}
-
 func (c ServiceConfig) DefaultShardingPolicy() ShardingPolicy {
 	return WrapShardingPolicy(c.pb.GetDefaultShardingPolicy())
+}
+
+func (c ServiceConfig) Overrides() map[location.Region]location.Region {
+	return mapx.MapNew(c.pb.GetOverrides(), func(t *public_v1.Service_Config_LocalityOverride) (location.Region, location.Region) {
+		return location.Region(t.GetShardRegion()), location.Region(t.GetConsumerRegion())
+	})
+}
+
+func (c ServiceConfig) Equals(c1 ServiceConfig) bool {
+	return proto.Equal(c.pb, c1.pb)
 }
 
 // ServiceInfo captures the full service information.
