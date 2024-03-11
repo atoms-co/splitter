@@ -140,7 +140,68 @@ func ParseDomain(pb *public_v1.Domain) (Domain, error) {
 }
 
 func validateDomain(pb *public_v1.Domain) error {
-	return nil // TODO(jhhurwitz): 08/18/2023 Actually validate
+	// Validate state
+	switch pb.GetState() {
+	case DomainActive:
+	case DomainSuspended:
+	default:
+		return fmt.Errorf("invalid domain type: %v", pb.GetType())
+	}
+
+	// TODO(jhhurwitz) 03/06/24 Validate operational when something to validate
+
+	// Validate configuration based on type
+	switch pb.GetType() {
+	case Regional:
+		return validRegionalConfig(pb.GetConfig())
+	case Global:
+		return validateGlobalConfig(pb.GetConfig())
+	case Unit:
+		return validateUnitConfig(pb.GetConfig())
+	default:
+		return fmt.Errorf("invalid domain type: %v", pb.GetType())
+	}
+}
+
+func validRegionalConfig(config *public_v1.Domain_Config) error {
+	if err := validateShardingPolicy(config.GetRegions(), config.GetShardingPolicy()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateGlobalConfig(config *public_v1.Domain_Config) error {
+	if err := validateShardingPolicy(nil, config.GetShardingPolicy()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateShardingPolicy(regions []string, policy *public_v1.ShardingPolicy) error {
+	if policy.GetShards() < 1 {
+		return fmt.Errorf("shard count must be >= 1, given: %v", policy.GetShards())
+	}
+
+	for _, named := range policy.GetNamed() {
+		if _, err := ParseNamedDomainKey(named); err != nil {
+			return fmt.Errorf("invalid named domain key: %v", named)
+		}
+		if len(regions) > 0 {
+			r := named.GetKey().GetRegion()
+			if !slicex.ContainsT(regions, r) {
+				return fmt.Errorf("invalid region for named key, %v, allowed regions %v", r, regions)
+			}
+		}
+	}
+
+	return nil
+}
+
+func validateUnitConfig(config *public_v1.Domain_Config) error {
+
+	// TODO(jhhurwitz) 03/07/24 Validate unit when something to validate
+
+	return nil
 }
 
 func UpdateDomain(domain Domain, opts ...DomainOption) (Domain, error) {
@@ -358,6 +419,37 @@ func (k DomainKey) String() string {
 		return k.Key.String()
 	}
 	return "*"
+}
+
+// NamedDomainKey specifies a named domain key
+type NamedDomainKey struct {
+	Name string
+	Key  DomainKey
+}
+
+func ParseNamedDomainKey(key *public_v1.NamedDomainKey) (NamedDomainKey, error) {
+	if key.GetName() == "" {
+		return NamedDomainKey{}, fmt.Errorf("name must be non-empty")
+	}
+	k, err := ParseDomainKey(key.Key)
+	if err != nil {
+		return NamedDomainKey{}, err
+	}
+	return NamedDomainKey{
+		Name: key.GetName(),
+		Key:  k,
+	}, nil
+}
+
+func (k NamedDomainKey) ToProto() *public_v1.NamedDomainKey {
+	return &public_v1.NamedDomainKey{
+		Name: k.Name,
+		Key:  k.Key.ToProto(),
+	}
+}
+
+func (k NamedDomainKey) String() string {
+	return fmt.Sprintf("%v:%v", k.Name, k.Key)
 }
 
 // QualifiedDomainKey fully specifies a domain element.

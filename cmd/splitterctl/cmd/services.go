@@ -52,6 +52,8 @@ func makeNewServiceCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 
+	overrides := cmd.Flags().StringSlice("locality-overrides", []string{}, "locality overrides. e.g. us-west1:centralus")
+
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
 		if !ok {
@@ -59,8 +61,23 @@ func makeNewServiceCmd() *cobra.Command {
 		}
 		region := splitter.Region(args[1])
 
+		var cfgOpts []splitter.ServiceConfigOption
+		cfgOpts = append(cfgOpts, splitter.WithServiceRegion(region))
+
+		if len(*overrides) > 0 {
+			locality := map[location.Region]location.Region{}
+			for _, override := range *overrides {
+				parts := strings.Split(override, ":")
+				if len(parts) != 2 {
+					return fmt.Errorf("invalid region override: %v", override)
+				}
+				locality[location.Region(parts[0])] = location.Region(parts[1])
+			}
+			cfgOpts = append(cfgOpts, splitter.WithLocalityOverrides(locality))
+		}
+
 		return withClient(func(ctx context.Context, client model.Client) error {
-			service, err := client.NewService(ctx, name, splitter.NewServiceConfig(splitter.WithServiceRegion(region)))
+			service, err := client.NewService(ctx, name, splitter.NewServiceConfig(cfgOpts...))
 			if err != nil {
 				return err
 			}

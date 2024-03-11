@@ -6,7 +6,9 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"strings"
 )
 
 var (
@@ -91,6 +93,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 	placement := cmd.Flags().String("placement", "", "Placement name")
 	shards := cmd.Flags().Int("shards", 4, "Target shards")
 	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
+	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
@@ -98,11 +101,30 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
+		var keys []splitter.NamedDomainKey
+		for _, name := range *named {
+			parts := strings.Split(name, ":")
+			if len(parts) != 3 {
+				return fmt.Errorf("invalid named domain key: %v", name)
+			}
+			key, err := uuid.Parse(parts[2])
+			if err != nil {
+				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
+			}
+			keys = append(keys, splitter.NamedDomainKey{
+				Name: parts[0],
+				Key: splitter.DomainKey{
+					Region: splitter.Region(parts[1]),
+					Key:    splitter.Key(key),
+				},
+			})
+		}
+
 		return withClient(func(ctx context.Context, client model.Client) error {
 			domain, err := client.NewDomain(ctx, name, splitter.Global,
 				splitter.NewDomainConfig(
 					splitter.WithDomainPlacement(splitter.PlacementName(*placement)),
-					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
+					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards, splitter.WithNamed(keys...))),
 					splitter.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) splitter.DomainName {
 						return splitter.DomainName(t)
 					})...),
@@ -131,6 +153,7 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 	shards := cmd.Flags().Int("shards", 4, "Target shards")
 	regions := cmd.Flags().StringSlice("regions", []string{"centralus"}, "Regions")
 	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
+	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
@@ -138,11 +161,30 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
+		var keys []splitter.NamedDomainKey
+		for _, name := range *named {
+			parts := strings.Split(name, ":")
+			if len(parts) != 3 {
+				return fmt.Errorf("invalid named domain key: %v", name)
+			}
+			key, err := uuid.Parse(parts[2])
+			if err != nil {
+				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
+			}
+			keys = append(keys, splitter.NamedDomainKey{
+				Name: parts[0],
+				Key: splitter.DomainKey{
+					Region: splitter.Region(parts[1]),
+					Key:    splitter.Key(key),
+				},
+			})
+		}
+
 		return withClient(func(ctx context.Context, client model.Client) error {
 			domain, err := client.NewDomain(ctx, name, splitter.Regional,
 				splitter.NewDomainConfig(
 					splitter.WithDomainPlacement(splitter.PlacementName(*placement)),
-					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
+					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards, splitter.WithNamed(keys...))),
 					splitter.WithDomainRegions(slicex.Map(*regions, func(t string) splitter.Region {
 						return splitter.Region(t)
 					})...),
@@ -172,6 +214,8 @@ func makeUpdateDomainCmd() *cobra.Command {
 
 	state := cmd.Flags().String("state", "", "State")
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
+	shards := cmd.Flags().Int("shards", -1, "Shard count")
+	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
@@ -187,6 +231,31 @@ func makeUpdateDomainCmd() *cobra.Command {
 			}
 			opts = append(opts, splitter.WithUpdateDomainState(s))
 		}
+
+		var sCfgOpts []splitter.ShardingPolicyOption
+		if *shards != -1 {
+			sCfgOpts = append(sCfgOpts, splitter.WithShards(*shards))
+		}
+		var keys []splitter.NamedDomainKey
+		for _, name := range *named {
+			parts := strings.Split(name, ":")
+			if len(parts) != 3 {
+				return fmt.Errorf("invalid named domain key: %v", name)
+			}
+			key, err := uuid.Parse(parts[2])
+			if err != nil {
+				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
+			}
+			keys = append(keys, splitter.NamedDomainKey{
+				Name: parts[0],
+				Key: splitter.DomainKey{
+					Region: splitter.Region(parts[1]),
+					Key:    splitter.Key(key),
+				},
+			})
+		}
+		sCfgOpts = append(sCfgOpts, splitter.WithNamed(keys...))
+
 		var opOptions []splitter.DomainOperationalOption
 		if len(*banned) > 0 {
 			opOptions = append(opOptions, splitter.WithDomainOperationalBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
@@ -194,7 +263,7 @@ func makeUpdateDomainCmd() *cobra.Command {
 			})...))
 		}
 
-		if len(opts) == 0 && len(opOptions) == 0 {
+		if len(opts) == 0 && len(opOptions) == 0 && len(sCfgOpts) == 0 {
 			return nil // nothing to update
 		}
 
@@ -214,6 +283,19 @@ func makeUpdateDomainCmd() *cobra.Command {
 					return err
 				}
 				opts = append(opts, splitter.WithUpdateDomainOperational(op))
+			}
+
+			var cfgOptions []splitter.DomainConfigOption
+			if len(sCfgOpts) > 0 {
+				cfgOptions = append(cfgOptions, splitter.WithDomainShardingPolicy(splitter.UpdateShardingPolicy(domain.Config().ShardingPolicy(), sCfgOpts...)))
+			}
+
+			if len(cfgOptions) > 0 {
+				updCfg, err := splitter.UpdateDomainConfig(domain, cfgOptions...)
+				if err != nil {
+					return err
+				}
+				opts = append(opts, splitter.WithUpdateDomainConfig(updCfg))
 			}
 
 			t, err := client.UpdateDomain(ctx, name, service.Info().Version(), opts...)

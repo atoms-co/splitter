@@ -198,14 +198,33 @@ func TestColocation(t *testing.T) {
 
 	for _, tt := range tests {
 		var dom1 model.Domain
+		var err error
 		if tt.antiAffinity {
-			dom1, _ = model.NewDomain(d1, model.Global, cl.Now(), model.WithDomainConfig(model.NewDomainConfig(model.WithDomainAntiAffinity(d2.Domain))))
+			dom1, err = model.NewDomain(d1, model.Global, cl.Now(), model.WithDomainConfig(
+				model.NewDomainConfig(
+					model.WithDomainShardingPolicy(model.NewShardingPolicy(1)),
+					model.WithDomainAntiAffinity(d2.Domain),
+				),
+			))
+			assert.NoError(t, err)
 		} else {
-			dom1, _ = model.NewDomain(d1, model.Global, cl.Now())
+			dom1, err = model.NewDomain(d1, model.Global, cl.Now(), model.WithDomainConfig(
+				model.NewDomainConfig(
+					model.WithDomainShardingPolicy(model.NewShardingPolicy(1)),
+				),
+			))
+			assert.NoError(t, err)
 		}
-		dom2, _ := model.NewDomain(d2, model.Global, cl.Now())
+		dom2, err := model.NewDomain(d2, model.Global, cl.Now(), model.WithDomainConfig(
+			model.NewDomainConfig(
+				model.WithDomainShardingPolicy(model.NewShardingPolicy(1)),
+			),
+		))
+		assert.NoError(t, err)
 
-		service, _ := model.NewService(serviceName, cl.Now())
+		service, err := model.NewService(serviceName, cl.Now())
+		assert.NoError(t, err)
+
 		info := model.NewServiceInfoEx(model.NewServiceInfo(service, 1, cl.Now()), []model.Domain{dom1, dom2})
 		worker := allocation.NewWorker[model.ConsumerID, model.Consumer]("worker-id", prefab.Instance1)
 		affinity := coordinator.NewAntiAffinity(info)

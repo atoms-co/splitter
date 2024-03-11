@@ -5,17 +5,44 @@ import (
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"sort"
 	"sync"
 )
+
+type ShardingPolicyOption func(policy *public_v1.ShardingPolicy)
+
+func WithShards(shards int) ShardingPolicyOption {
+	return func(policy *public_v1.ShardingPolicy) {
+		policy.Shards = int64(shards)
+	}
+}
+
+func WithNamed(named ...NamedDomainKey) ShardingPolicyOption {
+	return func(policy *public_v1.ShardingPolicy) {
+		policy.Named = slicex.Map(named, NamedDomainKey.ToProto)
+	}
+}
 
 // ShardingPolicy represents a configurable shard policy for Splitter
 type ShardingPolicy struct {
 	pb *public_v1.ShardingPolicy
 }
 
-func NewShardingPolicy(shards int) ShardingPolicy {
-	return ShardingPolicy{pb: &public_v1.ShardingPolicy{Shards: int64(shards)}}
+func NewShardingPolicy(shards int, opts ...ShardingPolicyOption) ShardingPolicy {
+	pb := &public_v1.ShardingPolicy{Shards: int64(shards)}
+	for _, fn := range opts {
+		fn(pb)
+	}
+	return ShardingPolicy{pb: pb}
+}
+
+func UpdateShardingPolicy(policy ShardingPolicy, opts ...ShardingPolicyOption) ShardingPolicy {
+	pb := proto.Clone(UnwrapShardingPolicy(policy)).(*public_v1.ShardingPolicy)
+	for _, fn := range opts {
+		fn(pb)
+	}
+	return WrapShardingPolicy(pb)
 }
 
 func WrapShardingPolicy(pb *public_v1.ShardingPolicy) ShardingPolicy {

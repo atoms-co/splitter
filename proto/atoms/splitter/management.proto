@@ -8,6 +8,34 @@ option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
 option java_package = "co.atoms.splitter.pb";
 
+// Shard is a unit of work. Usually it is a continuous subrange of UUIDs, but can also span the whole UUID space.
+message Shard {
+  QualifiedDomainName domain = 1;
+  Domain.Type type = 2;
+  // Region is the optional region of the shard.
+  string region = 3;
+  string from = 4;
+  string to = 5;
+}
+
+// DomainKey specifies a domain element for an implicit domain.
+message DomainKey {
+  string region = 1;
+  string key = 2;
+}
+
+// NamedDomainKey specifies a named domain key
+message NamedDomainKey {
+  string name = 1;
+  DomainKey key = 2;
+}
+
+// QualifiedDomainKey fully specifies a domain element.
+message QualifiedDomainKey {
+  QualifiedDomainName domain = 1;
+  DomainKey key = 2;
+}
+
 // Tenant represents a top-level namespace.
 message Tenant {
   string name = 1;
@@ -133,4 +161,6 @@ message Domain {
 
 message ShardingPolicy {
   int64 shards = 1; // target #shards (guaranteed minimum)
+
+  repeated NamedDomainKey named = 2; // special designated keys. For use with canary
 }
