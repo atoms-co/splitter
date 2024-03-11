@@ -139,9 +139,14 @@ func TestWorker(t *testing.T) {
 
 type fakeCoordinator struct {
 	iox.AsyncCloser
-	t       *testing.T
-	service model.QualifiedServiceName
-	updates <-chan core.Update
+	t           *testing.T
+	service     model.QualifiedServiceName
+	updates     <-chan core.Update
+	initialized iox.RAsyncCloser
+}
+
+func (f *fakeCoordinator) Initialized() iox.RAsyncCloser {
+	return f.initialized
 }
 
 func (f *fakeCoordinator) Handle(ctx context.Context, request coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
@@ -149,8 +154,11 @@ func (f *fakeCoordinator) Handle(ctx context.Context, request coordinator.Handle
 }
 
 func newFakeCoordinator(service model.QualifiedServiceName, updates <-chan core.Update) *fakeCoordinator {
+	i := iox.NewAsyncCloser()
+	i.Close()
 	return &fakeCoordinator{
 		AsyncCloser: iox.NewAsyncCloser(),
+		initialized: i,
 		service:     service,
 		updates:     updates,
 	}

@@ -52,6 +52,7 @@ var (
 type Coordinator interface {
 	iox.AsyncCloser
 
+	Initialized() iox.RAsyncCloser
 	Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
 	Handle(ctx context.Context, request HandleRequest) (*internal_v1.CoordinatorHandleResponse, error)
 	Drain(timeout time.Duration)
@@ -65,6 +66,12 @@ func WithFastActivation() Option {
 	}
 }
 
+func WithRefreshDelay(delay time.Duration) Option {
+	return func(c *coordinator) {
+		c.refreshDelay = delay
+	}
+}
+
 // coordinator is responsible for managing a single service. It accepts incoming connections from consumers and
 // distributes work among the consumers by assigning shards with leases.
 type coordinator struct {
@@ -75,6 +82,7 @@ type coordinator struct {
 
 	// options
 	fastActivation bool
+	refreshDelay   time.Duration
 
 	name   model.QualifiedServiceName
 	tenant model.TenantInfo
@@ -91,18 +99,19 @@ type coordinator struct {
 	drain, initialized iox.AsyncCloser
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, service model.QualifiedServiceName, state core.State, updates <-chan core.Update, opts ...Option) *coordinator {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, service model.QualifiedServiceName, state core.State, updates <-chan core.Update, opts ...Option) Coordinator {
 	c := &coordinator{
-		AsyncCloser: iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
-		cl:          cl,
-		id:          location.NewNamedInstance("coordinator", loc),
-		name:        service,
-		cache:       storage.NewCache(),
-		consumers:   map[model.InstanceID]*consumerSession{},
-		messages:    make(chan *sessionx.Message[model.ConsumerMessage], 1000),
-		inject:      make(chan func()),
-		initialized: iox.NewAsyncCloser(),
-		drain:       iox.NewAsyncCloser(),
+		AsyncCloser:  iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
+		cl:           cl,
+		id:           location.NewNamedInstance("coordinator", loc),
+		refreshDelay: leaseDuration,
+		name:         service,
+		cache:        storage.NewCache(),
+		consumers:    map[model.InstanceID]*consumerSession{},
+		messages:     make(chan *sessionx.Message[model.ConsumerMessage], 1000),
+		inject:       make(chan func()),
+		initialized:  iox.NewAsyncCloser(),
+		drain:        iox.NewAsyncCloser(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -197,7 +206,7 @@ func (c *coordinator) handleOperationRequest(ctx context.Context, op *internal_v
 	}
 }
 
-func (c *coordinator) Initialized() iox.AsyncCloser {
+func (c *coordinator) Initialized() iox.RAsyncCloser {
 	return c.initialized
 }
 
@@ -353,7 +362,7 @@ steady:
 			}
 			c.info = info
 
-			c.refresh(ctx, leaseDuration)
+			c.refresh(ctx, c.refreshDelay)
 			c.allocate(ctx, c.cl.Now(), false)
 			c.broadcast(ctx)
 

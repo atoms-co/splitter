@@ -29,6 +29,7 @@ import (
 
 type options struct {
 	fastActivation bool
+	refreshDelay   *time.Duration
 }
 
 // Option is a server option.
@@ -38,6 +39,12 @@ type Option func(*options)
 func WithFastActivation(fastActivation bool) Option {
 	return func(o *options) {
 		o.fastActivation = fastActivation
+	}
+}
+
+func WithAllocationRefreshDelay(delay time.Duration) Option {
+	return func(c *options) {
+		c.refreshDelay = &delay
 	}
 }
 
@@ -90,11 +97,14 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 	}
 
 	factoryFn := func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator {
-		var lopts []coordinator.Option
+		var copts []coordinator.Option
 		if opt.fastActivation {
-			lopts = append(lopts, coordinator.WithFastActivation())
+			copts = append(copts, coordinator.WithFastActivation())
 		}
-		return coordinator.New(ctx, cl, loc, service, state, updates, lopts...)
+		if opt.refreshDelay != nil {
+			copts = append(copts, coordinator.WithRefreshDelay(*opt.refreshDelay))
+		}
+		return coordinator.New(ctx, cl, loc, service, state, updates, copts...)
 	}
 
 	w, clusters := worker.New(cl, loc, endpoint, joinFn, factoryFn)
