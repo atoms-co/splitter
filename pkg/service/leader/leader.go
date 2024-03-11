@@ -37,7 +37,12 @@ const (
 )
 
 var (
-	numWorkers  = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/leader_workers", "Connected worker status", core.StatusKey))
+	numWorkers = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/leader_workers", "Connected worker status", core.StatusKey))
+
+	numAssignments = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/leader_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedServiceKeys, core.GrantStateKey)...),
+	)
+
 	numServices = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/leader_services", "Service count", core.TenantKey))
 
 	numActions = metrics.NewCounter("go.atoms.co/splitter/leader_actions", "Leader actions", core.ActionKey, core.ResultKey)
@@ -403,16 +408,22 @@ func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relin
 
 	// (1) Release relinquished grants. Check deregister status
 
+	var promoted []Grant
 	for _, g := range relinquished.Grants() {
 		grant := fromGrant(w.instance.ID(), g)
 
-		// No need to promote, since leader does not use the promotion feature of the allocation library
-		l.alloc.Release(grant, now)
+		if promo, ok := l.alloc.Release(grant, now); ok {
+			promoted = append(promoted, promo)
+		}
 	}
 
 	if w.draining && l.alloc.Assigned(w.instance.ID()).IsEmpty() {
 		l.disconnect(ctx, "complete deregister", w)
 	}
+
+	// (2) Assign promoted, if any.
+
+	l.assign(ctx, now, promoted...)
 }
 
 func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, register RegisterMessage, in <-chan Message) (*workerSession, <-chan Message) {
@@ -540,6 +551,8 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 				log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
 			}
 
+			// No need to send Assign for move.To, since the Leader does not broadcast Allocated assignments
+
 			recordAction(ctx, "move", "ok")
 		}
 	}
@@ -580,7 +593,7 @@ func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
 		}
 		recordAction(ctx, "assign", "ok")
 
-		log.Infof(ctx, "Assigned new grant to worker %v: %v.", w, tenant)
+		log.Infof(ctx, "Assigned new grant to worker %v: %v", w, grant)
 	}
 
 	// (2) Broadcast incremental cluster updates based on the actual updates made.
@@ -891,11 +904,28 @@ func (l *Leader) emitMetrics(ctx context.Context) {
 		count := len(l.cache.Services(info.Name()))
 		numServices.Set(ctx, float64(count), core.TenantTag(info.Name()))
 	}
+
+	for _, worker := range l.alloc.Workers() {
+		assign := l.alloc.Assigned(worker.ID())
+		for _, active := range assign.Active {
+			service := model.QualifiedServiceName{Tenant: active.Unit.Tenant, Service: active.Unit.Service}
+			numAssignments.Set(ctx, 1, slicex.CopyAppend(core.QualifiedServiceTags(service), core.GrantStateTag(model.ActiveGrantState))...)
+		}
+		for _, allocated := range assign.Allocated {
+			service := model.QualifiedServiceName{Tenant: allocated.Unit.Tenant, Service: allocated.Unit.Service}
+			numAssignments.Set(ctx, 1, slicex.CopyAppend(core.QualifiedServiceTags(service), core.GrantStateTag(model.AllocatedGrantState))...)
+		}
+		for _, revoked := range assign.Revoked {
+			service := model.QualifiedServiceName{Tenant: revoked.Unit.Tenant, Service: revoked.Unit.Service}
+			numAssignments.Set(ctx, 1, slicex.CopyAppend(core.QualifiedServiceTags(service), core.GrantStateTag(model.RevokedGrantState))...)
+		}
+	}
 }
 
 func (l *Leader) resetMetrics(ctx context.Context) {
 	numWorkers.Reset(ctx)
 	numServices.Reset(ctx)
+	numAssignments.Reset(ctx)
 }
 
 func (l *Leader) txn(ctx context.Context, fn func() error) error {

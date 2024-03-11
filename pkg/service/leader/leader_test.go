@@ -20,21 +20,24 @@ import (
 
 const (
 	tenant1  model.TenantName  = "tenant1"
+	tenant2  model.TenantName  = "tenant2"
 	service1 model.ServiceName = "service1"
-	domain1  model.DomainName  = "domain1"
+	service2 model.ServiceName = "service2"
 )
 
 var (
 	s1 = model.QualifiedServiceName{Tenant: tenant1, Service: service1}
+	s2 = model.QualifiedServiceName{Tenant: tenant2, Service: service2}
 )
 
-func TestLeader_SingleConsumer(t *testing.T) {
+func TestLeader_SingleWorker(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 	loc := location.New("centralus", "splitter-0")
 
 	s, err := model.NewService(s1, cl.Now())
 	require.NoError(t, err)
+
 	db := setup(t, ctx, cl, s)
 
 	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
@@ -60,13 +63,14 @@ func TestLeader_SingleConsumer(t *testing.T) {
 	assertx.Closed(t, out)
 }
 
-func TestLeader_SingleConsumerReattach(t *testing.T) {
+func TestLeader_SingleWorkerReattach(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 	loc := location.New("centralus", "splitter-0")
 
 	s, err := model.NewService(s1, cl.Now())
 	require.NoError(t, err)
+
 	db := setup(t, ctx, cl, s)
 
 	l := leader.New(ctx, cl, loc, db /* no need for fast activation as regrant can occur before activation */)
@@ -90,6 +94,71 @@ func TestLeader_SingleConsumerReattach(t *testing.T) {
 
 	l.Close()
 	assertx.Closed(t, out)
+}
+
+func TestLeader_MultipleWorker(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+	loc := location.New("centralus", "splitter-0")
+
+	s1, err := model.NewService(s1, cl.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
+	require.NoError(t, err)
+	s2, err := model.NewService(s2, cl.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
+	require.NoError(t, err)
+
+	db := setup(t, ctx, cl, s1, s2)
+
+	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
+	<-l.Initialized().Closed()
+
+	w1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+
+	in1 := make(chan leader.Message, 1)
+	in1 <- leader.NewRegister(w1)
+
+	// Worker 1 joins and receives both assignment
+
+	out1, err := l.Join(ctx, session.NewID(), in1)
+	require.NoError(t, err, "worker 1 failed to join leader")
+
+	readFn(t, out1, isAssign)
+	readFn(t, out1, isAssign)
+
+	w2 := model.NewInstance(location.NewInstance(location.New("northcentralus", "pod1")), "endpoint")
+
+	in2 := make(chan leader.Message, 1)
+	in2 <- leader.NewRegister(w2)
+
+	// Worker 2 joins and receives an assignment after rebalance
+
+	out2, err := l.Join(ctx, session.NewID(), in2)
+	require.NoError(t, err, "worker 2 failed to join leader")
+
+	cl.Add(10 * time.Second) // advance to rebalance
+
+	revoke := readFn(t, out1, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
+	assert.Equal(t, s2.Name(), revoke.Grants()[0].Service()) // Should revoke service with regional preference for w2
+
+	in1 <- leader.NewRelinquished(revoke.Grants()[0])
+
+	assign := readFn(t, out2, isAssign)
+	assert.Equal(t, s2.Name(), assign.Grant().Service())
+
+	// Both Worker 1 and Worker 2 register and receive revokes
+
+	in1 <- leader.NewDeregister()
+
+	revoke = readFn(t, out1, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
+
+	in2 <- leader.NewDeregister()
+
+	revoke = readFn(t, out2, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
+
+	l.Close()
+	assertx.Closed(t, out1)
 }
 
 func setup(t *testing.T, ctx context.Context, cl clock.Clock, services ...model.Service) storage.Storage {

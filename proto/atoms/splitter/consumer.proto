@@ -52,6 +52,11 @@ message ClientMessage {
     QualifiedServiceName service = 2;
     repeated QualifiedDomainName domains = 3;
     repeated Grant active = 4; // Active grants with non-expired leases.
+
+    message Canary {
+      repeated string keys = 1;
+    }
+    Canary canary = 5;
   }
 
   // Deregister indicates that the consumer will soon disappear, usually restarted in ~30s. The server should initiate a
