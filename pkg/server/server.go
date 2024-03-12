@@ -129,6 +129,7 @@ func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.manager, s.manager))
 	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService(placement))
 	internal_v1.RegisterPlacementManagementServiceServer(gs, placement)
+	internal_v1.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.worker, s.resolver, s.manager, s.manager))
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -162,7 +163,6 @@ func (s *Server) ServeInternal(ctx context.Context, listeners ...net.Listener) e
 	internal_v1.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.loc, s.manager))
 	internal_v1.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.cl, s.worker))
 	internal_v1.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cluster))
-	internal_v1.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.worker, s.resolver, s.manager, s.manager))
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
