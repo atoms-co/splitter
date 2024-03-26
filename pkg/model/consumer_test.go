@@ -1,4 +1,4 @@
-package model
+package model_test
 
 import (
 	"go.atoms.co/splitter/pkg/model"
