@@ -317,3 +317,21 @@ func (m *GrantMap[T]) Lookup(key QualifiedDomainKey, states ...GrantState) (T, b
 	var zero T
 	return zero, false
 }
+
+// DomainShards returns a list of shards for the given domain
+func DomainShards(cluster Cluster, domain QualifiedDomainName) []Shard {
+	shards := map[Shard]bool{}
+
+	for _, consumer := range cluster.Consumers() {
+		_, grants, ok := cluster.Consumer(consumer.ID())
+		if !ok {
+			continue
+		}
+		for _, g := range grants {
+			if g.Shard().Domain == domain {
+				shards[g.Shard()] = true
+			}
+		}
+	}
+	return mapx.Keys(shards)
+}

@@ -3,9 +3,12 @@ package model_test
 import (
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/testing/prefab"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"sort"
 	"testing"
 	"time"
 )
@@ -181,5 +184,28 @@ func TestCluster(t *testing.T) {
 
 		_, _, ok = cluster.Lookup(prefab.NewQDK("t/s/d", "", "d"), model.ActiveGrantState)
 		assert.False(t, ok)
+	})
+
+	t.Run("domain shards", func(t *testing.T) {
+		g21 := prefab.NewGrantInfo("g1", "t/s/d2", model.Global, "", "0", "a", model.ActiveGrantState)
+		g22 := prefab.NewGrantInfo("g2", "t/s/d2", model.Global, "", "a", "d", model.ActiveGrantState)
+		cluster := model.NewClusterMap(id,
+			model.NewAssignment(prefab.Instance1, g1, g2),
+			model.NewAssignment(prefab.Instance2, g21, g22),
+		)
+
+		expected := slicex.New(g1.Shard(), g2.Shard())
+		sort.Slice(expected, func(i, j int) bool {
+			return expected[i].From.Less(expected[j].From)
+		})
+		assertx.Equal(t, model.DomainShards(cluster, prefab.QDN("t/s/d")), expected)
+
+		expected = slicex.New(g21.Shard(), g22.Shard())
+		sort.Slice(expected, func(i, j int) bool {
+			return expected[i].From.Less(expected[j].From)
+		})
+		assertx.Equal(t, model.DomainShards(cluster, prefab.QDN("t/s/d2")), expected)
+
+		require.Empty(t, model.DomainShards(cluster, prefab.QDN("t/s/d3")))
 	})
 }
