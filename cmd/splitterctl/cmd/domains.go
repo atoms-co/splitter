@@ -62,6 +62,7 @@ func makeNewUnitDomainCmd() *cobra.Command {
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
 	}
+	state := cmd.Flags().String("state", "", "Domain state")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
@@ -69,8 +70,17 @@ func makeNewUnitDomainCmd() *cobra.Command {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
+		var opts []splitter.NewDomainOption
+		if *state != "" {
+			s, ok := splitter.ParseDomainState(*state)
+			if !ok {
+				return fmt.Errorf("invalid state: %v", *state)
+			}
+			opts = append(opts, splitter.WithNewDomainState(s))
+		}
+
 		return withClient(func(ctx context.Context, client model.Client) error {
-			domain, err := client.NewDomain(ctx, name, splitter.Unit, splitter.NewDomainConfig())
+			domain, err := client.NewDomain(ctx, name, splitter.Unit, splitter.NewDomainConfig(), opts...)
 			if err != nil {
 				return err
 			}
@@ -94,6 +104,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 	shards := cmd.Flags().Int("shards", 4, "Target shards")
 	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
 	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
+	state := cmd.Flags().String("state", "", "Domain state")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
@@ -120,6 +131,15 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 			})
 		}
 
+		var opts []splitter.NewDomainOption
+		if *state != "" {
+			s, ok := splitter.ParseDomainState(*state)
+			if !ok {
+				return fmt.Errorf("invalid state: %v", *state)
+			}
+			opts = append(opts, splitter.WithNewDomainState(s))
+		}
+
 		return withClient(func(ctx context.Context, client model.Client) error {
 			domain, err := client.NewDomain(ctx, name, splitter.Global,
 				splitter.NewDomainConfig(
@@ -129,6 +149,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 						return splitter.DomainName(t)
 					})...),
 				),
+				opts...,
 			)
 			if err != nil {
 				return err
@@ -154,6 +175,7 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 	regions := cmd.Flags().StringSlice("regions", []string{"centralus"}, "Regions")
 	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
 	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
+	state := cmd.Flags().String("state", "", "Domain state")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
@@ -180,6 +202,15 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 			})
 		}
 
+		var opts []splitter.NewDomainOption
+		if *state != "" {
+			s, ok := splitter.ParseDomainState(*state)
+			if !ok {
+				return fmt.Errorf("invalid state: %v", *state)
+			}
+			opts = append(opts, splitter.WithNewDomainState(s))
+		}
+
 		return withClient(func(ctx context.Context, client model.Client) error {
 			domain, err := client.NewDomain(ctx, name, splitter.Regional,
 				splitter.NewDomainConfig(
@@ -192,6 +223,7 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 						return splitter.DomainName(t)
 					})...),
 				),
+				opts...,
 			)
 			if err != nil {
 				return err
@@ -236,28 +268,30 @@ func makeUpdateDomainCmd() *cobra.Command {
 		if *shards != -1 {
 			sCfgOpts = append(sCfgOpts, splitter.WithShards(*shards))
 		}
-		var keys []splitter.NamedDomainKey
-		for _, name := range *named {
-			parts := strings.Split(name, ":")
-			if len(parts) != 3 {
-				return fmt.Errorf("invalid named domain key: %v", name)
+		if cmd.Flags().Changed("named") {
+			var keys []splitter.NamedDomainKey
+			for _, name := range *named {
+				parts := strings.Split(name, ":")
+				if len(parts) != 3 {
+					return fmt.Errorf("invalid named domain key: %v", name)
+				}
+				key, err := uuid.Parse(parts[2])
+				if err != nil {
+					return fmt.Errorf("invalid uuid for named domain key: %v", parts[2])
+				}
+				keys = append(keys, splitter.NamedDomainKey{
+					Name: parts[0],
+					Key: splitter.DomainKey{
+						Region: splitter.Region(parts[1]),
+						Key:    splitter.Key(key),
+					},
+				})
 			}
-			key, err := uuid.Parse(parts[2])
-			if err != nil {
-				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
-			}
-			keys = append(keys, splitter.NamedDomainKey{
-				Name: parts[0],
-				Key: splitter.DomainKey{
-					Region: splitter.Region(parts[1]),
-					Key:    splitter.Key(key),
-				},
-			})
+			sCfgOpts = append(sCfgOpts, splitter.WithNamed(keys...))
 		}
-		sCfgOpts = append(sCfgOpts, splitter.WithNamed(keys...))
 
 		var opOptions []splitter.DomainOperationalOption
-		if len(*banned) > 0 {
+		if cmd.Flags().Changed("banned-regions") {
 			opOptions = append(opOptions, splitter.WithDomainOperationalBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
 				return splitter.Region(r)
 			})...))
