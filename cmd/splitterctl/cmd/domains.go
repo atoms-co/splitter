@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"sort"
 	"strings"
 )
 
@@ -36,6 +37,9 @@ func makeListDomainCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			sort.Slice(list, func(i, j int) bool {
+				return list[i].Name().Domain < list[j].Name().Domain
+			})
 			for _, info := range list {
 				printJson(model.UnwrapDomain(info), false)
 			}
