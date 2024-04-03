@@ -481,6 +481,8 @@ func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant
 
 		log.Infof(ctx, "Assigned new grant to consumer %v: %v.", s, grant)
 	}
+
+	c.broadcast(ctx)
 }
 
 func (c *coordinator) promote(ctx context.Context, grants ...Grant) {

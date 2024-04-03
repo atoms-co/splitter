@@ -43,14 +43,26 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 	out, err := coord.Connect(ctx, session.NewID(), in)
 	require.NoError(t, err, "consumer failed to join leader")
 
+	snapshot := readFn(t, out, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 0)
+
 	assign := readFn(t, out, isAssign)
 	assert.Len(t, assign.Grants(), 1)
+
+	change := readFn(t, out, isClusterChange)
+	assert.Len(t, change.Assign().Assignments(), 1)
 
 	in <- model.NewDeregister()
 
 	revoke := readFn(t, out, isRevoke)
 	assert.Len(t, revoke.Grants(), 1)
 	assert.Equal(t, revoke.Grants()[0].State(), model.RevokedGrantState)
+
+	change = readFn(t, out, isClusterChange)
+	assert.Len(t, change.Update().Grants(), 1)
+	assert.Equal(t, change.Update().Grants()[0].State(), model.RevokedGrantState)
+
+	in <- model.NewReleased(revoke.Grants()[0])
 
 	coord.Close()
 	assertx.Closed(t, out)
@@ -81,13 +93,25 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 	out, err := coord.Connect(ctx, session.NewID(), in)
 	require.NoError(t, err, "consumer1 failed to join leader")
 
+	snapshot := readFn(t, out, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 0)
+
 	for i := 0; i < 4; i++ {
 		assign := readFn(t, out, isAssign)
 		assert.Len(t, assign.Grants(), 1)
 	}
 
+	change := readFn(t, out, isClusterChange)
+	assert.Len(t, change.Remove().Consumers(), 0)
+	assert.Len(t, change.Unassign().Grants(), 0)
+	assert.Len(t, change.Update().Grants(), 0)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
 	out2, err := coord.Connect(ctx, session.NewID(), in2)
 	require.NoError(t, err, "consumer2 failed to join leader")
+
+	snapshot = readFn(t, out2, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 1)
 
 	cl.Add(15 * time.Second) // Loadbalancing interval
 	time.Sleep(50 * time.Millisecond)
@@ -99,21 +123,80 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 	assert.Len(t, allocate.Grants(), 1)
 	assert.Equal(t, model.AllocatedGrantState, allocate.Grants()[0].State())
 
+	change = readFn(t, out, isClusterChange)
+	assert.Len(t, change.Remove().Consumers(), 0)
+	assert.Len(t, change.Unassign().Grants(), 0)
+	assert.Len(t, change.Update().Grants(), 1)
+	assert.Equal(t, change.Update().Grants()[0].State(), model.RevokedGrantState)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
+	change = readFn(t, out2, isClusterChange)
+	assert.Len(t, change.Remove().Consumers(), 0)
+	assert.Len(t, change.Unassign().Grants(), 0)
+	assert.Len(t, change.Update().Grants(), 1)
+	assert.Equal(t, change.Update().Grants()[0].State(), model.RevokedGrantState)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
 	in <- model.NewReleased(revoke.Grants()[0]) // consumer1 releases grant
 
 	promote := readFn(t, out2, isPromote) // grant activated for consumer2
 	assert.Len(t, promote.Grants(), 1)
 	assert.Equal(t, model.ActiveGrantState, promote.Grants()[0].State())
 
+	cl.Add(300 * time.Millisecond) // 2x Broadcast interval
+	time.Sleep(50 * time.Millisecond)
+
+	change = readFn(t, out, isClusterChange)
+	assert.Len(t, change.Remove().Consumers(), 0)
+	assert.Len(t, change.Unassign().Grants(), 1)
+	assert.Len(t, change.Update().Grants(), 1)
+	assert.Equal(t, change.Update().Grants()[0].State(), model.ActiveGrantState)
+	assert.Len(t, change.Assign().Assignments(), 0)
+
+	change = readFn(t, out2, isClusterChange)
+	assert.Len(t, change.Remove().Consumers(), 0)
+	assert.Len(t, change.Unassign().Grants(), 1)
+	assert.Len(t, change.Update().Grants(), 1)
+	assert.Equal(t, change.Update().Grants()[0].State(), model.ActiveGrantState)
+	assert.Len(t, change.Assign().Assignments(), 0)
+
 	in <- model.NewDeregister()
 
 	revoke1 := readFn(t, out, isRevoke)
 	assert.Len(t, revoke1.Grants(), 3)
 
+	change = readFn(t, out, isClusterChange)
+	assert.Len(t, change.Remove().Consumers(), 0)
+	assert.Len(t, change.Unassign().Grants(), 0)
+	assert.Len(t, change.Update().Grants(), 3)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
+	change = readFn(t, out2, isClusterChange)
+	assert.Len(t, change.Remove().Consumers(), 0)
+	assert.Len(t, change.Unassign().Grants(), 0)
+	assert.Len(t, change.Update().Grants(), 3)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
+	in <- model.NewReleased(revoke1.Grants()...)
+
+	cl.Add(300 * time.Millisecond) // 2x Broadcast interval
+	time.Sleep(50 * time.Millisecond)
+
+	for i := 0; i < 3; i++ {
+		promote = readFn(t, out2, isPromote)
+		assert.Len(t, promote.Grants(), 1)
+	}
+
+	change = readFn(t, out2, isClusterChange)
+	assert.Len(t, change.Remove().Consumers(), 1)
+	assert.Len(t, change.Unassign().Grants(), 0)
+	assert.Len(t, change.Update().Grants(), 3)
+	assert.Len(t, change.Assign().Assignments(), 0)
+
 	in2 <- model.NewDeregister()
 
 	revoke2 := readFn(t, out2, isRevoke)
-	assert.Len(t, revoke2.Grants(), 1)
+	assert.Len(t, revoke2.Grants(), 4)
 
 	coord.Close()
 	assertx.Closed(t, out)
@@ -166,6 +249,22 @@ func isRevoke(msg model.ConsumerMessage) (model.RevokeMessage, bool) {
 		return c.Revoke()
 	}
 	return model.RevokeMessage{}, false
+}
+
+func isClusterSnapshot(msg model.ConsumerMessage) (model.ClusterSnapshot, bool) {
+	if msg.IsClusterMessage() {
+		c, _ := msg.ClusterMessage()
+		return c.Snapshot()
+	}
+	return model.ClusterSnapshot{}, false
+}
+
+func isClusterChange(msg model.ConsumerMessage) (model.ClusterChange, bool) {
+	if msg.IsClusterMessage() {
+		c, _ := msg.ClusterMessage()
+		return c.Change()
+	}
+	return model.ClusterChange{}, false
 }
 
 func readFn[T any](t *testing.T, in <-chan model.ConsumerMessage, fn func(message model.ConsumerMessage) (T, bool)) T {

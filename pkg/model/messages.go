@@ -634,6 +634,10 @@ func (a Assignment) Grants() []GrantInfo {
 	return slicex.Map(a.pb.GetGrants(), WrapGrantInfo)
 }
 
+func (s Assignment) String() string {
+	return proto.MarshalTextString(s.pb)
+}
+
 type ClusterSnapshot struct {
 	pb *public_v1.ClusterMessage_Snapshot
 }
