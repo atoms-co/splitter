@@ -66,18 +66,25 @@ func NewClusterMessage(m ClusterMessage) ConsumerMessage {
 	}}
 }
 
-func NewRegister(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant) ConsumerMessage {
+func NewRegister(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant, opts ...ConsumerOption) ConsumerMessage {
+	register := &public_v1.ClientMessage_Register{
+		Consumer: UnwrapInstance(consumer),
+		Service:  service.ToProto(),
+		Domains:  slicex.Map(domains, QualifiedDomainName.ToProto),
+		Active:   slicex.Map(grants, UnwrapGrant),
+		Options:  &public_v1.ClientMessage_Register_Options{},
+	}
+	for _, opt := range opts {
+		opt(register.Options)
+	}
+
 	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
 		Msg: &public_v1.ClientMessage_Register_{
-			Register: &public_v1.ClientMessage_Register{
-				Consumer: UnwrapInstance(consumer),
-				Service:  service.ToProto(),
-				Domains:  slicex.Map(domains, QualifiedDomainName.ToProto),
-				Active:   slicex.Map(grants, UnwrapGrant),
-			},
+			Register: register,
 		},
 	}})
 }
+
 func NewDeregister() ConsumerMessage {
 	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
 		Msg: &public_v1.ClientMessage_Deregister_{
@@ -383,17 +390,50 @@ func UnwrapRegisterMessage(m RegisterMessage) *public_v1.ClientMessage_Register 
 	return m.pb
 }
 
+func (m RegisterMessage) Consumer() Consumer {
+	return WrapInstance(m.pb.GetConsumer())
+}
+
 func (m RegisterMessage) Service() QualifiedServiceName {
 	ret, _ := ParseQualifiedServiceName(m.pb.GetService())
 	return ret
 }
 
-func (m RegisterMessage) Consumer() Consumer {
-	return WrapInstance(m.pb.GetConsumer())
+func (m RegisterMessage) Domains() []QualifiedDomainName {
+	domains := make([]QualifiedDomainName, len(m.pb.GetDomains()))
+	for i, d := range m.pb.GetDomains() {
+		domains[i], _ = ParseQualifiedDomainName(d)
+	}
+	return domains
 }
 
 func (m RegisterMessage) Active() []Grant {
 	return slicex.Map(m.pb.GetActive(), WrapGrant)
+}
+
+type Options struct {
+	pb *public_v1.ClientMessage_Register_Options
+}
+
+func WrapOptions(pb *public_v1.ClientMessage_Register_Options) Options {
+	return Options{pb: pb}
+}
+
+func UnwrapOptions(options Options) *public_v1.ClientMessage_Register_Options {
+	return options.pb
+}
+
+func (o Options) CanaryDomainKeyNames() []DomainKeyName {
+	return slicex.Map(o.pb.GetCanary().GetNames(), func(name *public_v1.DomainKeyName) DomainKeyName {
+		return DomainKeyName{
+			Domain: DomainName(name.Domain),
+			Name:   name.Name,
+		}
+	})
+}
+
+func (m RegisterMessage) Options() Options {
+	return WrapOptions(m.pb.GetOptions())
 }
 
 func (m RegisterMessage) String() string {

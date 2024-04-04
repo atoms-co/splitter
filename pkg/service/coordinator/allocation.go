@@ -15,28 +15,60 @@ import (
 )
 
 type (
-	Allocation = allocation.Allocation[model.Shard, location.Location, model.ConsumerID, model.Consumer]
-	Placement  = allocation.Placement[model.Shard, location.Location, model.ConsumerID, model.Consumer]
-	Colocation = allocation.Colocation[model.Shard, location.Location, model.ConsumerID, model.Consumer]
+	Allocation = allocation.Allocation[model.Shard, location.Location, model.ConsumerID, Consumer]
+	Placement  = allocation.Placement[model.Shard, location.Location, model.ConsumerID, Consumer]
+	Colocation = allocation.Colocation[model.Shard, location.Location, model.ConsumerID, Consumer]
 	Grant      = allocation.Grant[model.Shard, model.ConsumerID]
-	Worker     = allocation.Worker[model.ConsumerID, model.Consumer]
-	WorkerInfo = allocation.WorkerInfo[model.ConsumerID, model.Consumer]
+	Worker     = allocation.Worker[model.ConsumerID, Consumer]
+	WorkerInfo = allocation.WorkerInfo[model.ConsumerID, Consumer]
 	Work       = allocation.Work[model.Shard, location.Location]
 	Assignment = allocation.Assignments[model.Shard, model.ConsumerID]
 )
 
 // TODO(herohde) 11/12/2023: intra-domain anti-affinity to spread out domains evenly. Similar to general LB.
 
-func HasRegionAffinity(worker Worker, work Work) bool {
-	return work.Data.Region == "" || worker.Data.Location().Region == work.Data.Region
-}
-
 func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, activation time.Time) *Allocation {
 	return allocation.New(id, findPlacements(tenant, info), findColocations(info), findWork(info, placements), activation)
 }
 
-func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, activation time.Time) (*Allocation, []Grant) {
-	return allocation.Update(a, findPlacements(tenant, info), findColocations(info), findWork(info, placements), activation)
+func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, canaryShards []model.Shard, placements []core.InternalPlacementInfo, activation time.Time) (*Allocation, []Grant) {
+	return allocation.Update(a, findPlacements(tenant, info, canaryShards...), findColocations(info), findWork(info, placements), activation)
+}
+
+// Canary handles canary placement
+type Canary struct {
+	canaryShards map[model.Shard]bool
+}
+
+func NewCanary(canaryShards ...model.Shard) *Canary {
+	return &Canary{canaryShards: slicex.NewSet(canaryShards...)}
+}
+
+func (c *Canary) ID() allocation.Rule {
+	return "canary"
+}
+
+func (c *Canary) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
+	canaryShard := c.canaryShards[work.Unit]
+
+	if !worker.Data.IsCanary() {
+		if !canaryShard {
+			return 0, true // do not penalize normal shards for non-canary workers
+		}
+		return 20, true // penalty on canary shards for non-canary workers
+	}
+
+	if !canaryShard {
+		return 0, false // do not schedule non-canary shards on a canary pod
+	}
+
+	for _, key := range worker.Data.CanaryKeys() {
+		if work.Unit.Contains(key) {
+			return 0, true // no penalty if shard contains a requested canary key
+		}
+	}
+
+	return 0, false // do not schedule non-matching canary shards on a canary pod
 }
 
 type domainRegion struct {
@@ -44,13 +76,12 @@ type domainRegion struct {
 	region model.Region
 }
 
-// Control handles placement control.
-type Control struct {
+// DomainState handles domain state placement
+type DomainState struct {
 	Domains map[model.DomainName]model.Domain
-	Banned  map[domainRegion]bool
 }
 
-func NewControl(tenant model.TenantInfo, info model.ServiceInfoEx) *Control {
+func NewDomainState(tenant model.TenantInfo, info model.ServiceInfoEx) *DomainState {
 	banned := make(map[domainRegion]bool)
 
 	t := tenant.Tenant().Operational().BannedRegions()
@@ -64,18 +95,48 @@ func NewControl(tenant model.TenantInfo, info model.ServiceInfoEx) *Control {
 			}
 		}
 	}
-	return &Control{Domains: mapx.New(info.Domains(), model.Domain.ShortName), Banned: banned}
+	return &DomainState{Domains: mapx.New(info.Domains(), model.Domain.ShortName)}
 }
 
-func (c *Control) ID() allocation.Rule {
-	return "control"
+func (d *DomainState) ID() allocation.Rule {
+	return "domain-state"
 }
 
-func (c *Control) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
-	if domain, ok := c.Domains[work.Unit.Domain.Domain]; ok && domain.State() != model.DomainActive {
+func (d *DomainState) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
+	if domain, ok := d.Domains[work.Unit.Domain.Domain]; ok && domain.State() != model.DomainActive {
 		return 0, false // no placement allowed on non-active domains
 	}
-	if c.Banned[domainRegion{domain: work.Unit.Domain, region: worker.Data.Location().Region}] {
+	return 0, true
+}
+
+// BannedWorkerRegion handles banned worker region placement
+type BannedWorkerRegion struct {
+	Banned map[domainRegion]bool
+}
+
+func NewBannedWorkerRegion(tenant model.TenantInfo, info model.ServiceInfoEx) *BannedWorkerRegion {
+	banned := make(map[domainRegion]bool)
+
+	t := tenant.Tenant().Operational().BannedRegions()
+	s := info.Service().Operational().BannedRegions()
+	for _, domain := range info.Domains() {
+		d := domain.Operational().BannedRegions()
+
+		for _, b := range [][]model.Region{t, s, d} {
+			for _, region := range b {
+				banned[domainRegion{domain: domain.Name(), region: region}] = true
+			}
+		}
+	}
+	return &BannedWorkerRegion{Banned: banned}
+}
+
+func (d *BannedWorkerRegion) ID() allocation.Rule {
+	return "banned-worker-region"
+}
+
+func (d *BannedWorkerRegion) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
+	if d.Banned[domainRegion{domain: work.Unit.Domain, region: worker.Data.Instance().Location().Region}] {
 		return 0, false // no placement allowed for banned worker regions
 	}
 	return 0, true
@@ -100,7 +161,7 @@ func (r *RegionAffinity) TryPlace(worker Worker, work Work) (allocation.Load, bo
 	if override, ok := r.Overrides[pref]; ok {
 		pref = override
 	}
-	if pref == "" || worker.Data.Location().Region == pref {
+	if pref == "" || worker.Data.Instance().Location().Region == pref {
 		return 0, true
 	}
 	return 20, true
@@ -157,8 +218,12 @@ func (c *AntiAffinity) Colocate(worker Worker, work map[model.Shard]Work) map[mo
 	return ret
 }
 
-func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx) []Placement {
-	return slicex.New[Placement](NewRegionAffinity(info), NewControl(tenant, info))
+func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx, canaryShards ...model.Shard) []Placement {
+	ret := slicex.New[Placement](NewRegionAffinity(info), NewDomainState(tenant, info), NewBannedWorkerRegion(tenant, info))
+	if len(canaryShards) > 0 {
+		ret = append(ret, NewCanary(canaryShards...))
+	}
+	return ret
 }
 
 func findColocations(info model.ServiceInfoEx) []Colocation {

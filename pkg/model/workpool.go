@@ -49,6 +49,7 @@ type WorkPool struct {
 	domains []QualifiedDomainName
 	joinFn  JoinFn
 	handler Handler
+	opts    []ConsumerOption
 
 	status *joinStatus            // coordinator connectivity status
 	in     <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
@@ -67,7 +68,7 @@ type WorkPool struct {
 	drain  iox.AsyncCloser
 }
 
-func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler) (*WorkPool, <-chan Cluster) {
+func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler, opts ...ConsumerOption) (*WorkPool, <-chan Cluster) {
 	quit := iox.NewAsyncCloser()
 	p := &WorkPool{
 		AsyncCloser: quit,
@@ -77,6 +78,7 @@ func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName
 		domains:     domains,
 		joinFn:      joinFn,
 		handler:     handlerFn,
+		opts:        opts,
 		cluster:     NewClusterMap(NewClusterID(consumer.Instance(), cl.Now())), // empty self-origin map
 		clusters:    make(chan Cluster, 1),
 		grants:      map[GrantID]*grant{},
@@ -137,7 +139,7 @@ func (p *WorkPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessag
 	log.Debugf(ctx, "Connected to coordinator, #grants=%v, #active=%v", len(p.grants), len(active))
 
 	out := make(chan ConsumerMessage, 2_000)
-	out <- NewRegister(p.self, p.service, p.domains, active)
+	out <- NewRegister(p.self, p.service, p.domains, active, p.opts...)
 
 	p.in = in
 	p.out = out

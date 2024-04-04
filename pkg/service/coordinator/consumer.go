@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/sessionx"
@@ -15,12 +16,13 @@ var (
 )
 
 type Consumer struct {
-	instance model.Instance
-	joined   time.Time
+	instance   model.Instance
+	joined     time.Time
+	canaryKeys []model.QualifiedDomainKey
 }
 
-func NewConsumer(instance model.Instance, joined time.Time) Consumer {
-	return Consumer{instance: instance, joined: joined}
+func NewConsumer(instance model.Instance, joined time.Time, keys ...model.QualifiedDomainKey) Consumer {
+	return Consumer{instance: instance, joined: joined, canaryKeys: keys}
 }
 
 func (c Consumer) ID() model.InstanceID {
@@ -33,6 +35,14 @@ func (c Consumer) Instance() model.Instance {
 
 func (c Consumer) Region() model.Region {
 	return c.instance.Location().Region
+}
+
+func (c Consumer) IsCanary() bool {
+	return len(c.canaryKeys) > 0
+}
+
+func (c Consumer) CanaryKeys() []model.QualifiedDomainKey {
+	return slicex.Clone(c.canaryKeys)
 }
 
 func (c Consumer) Joined() time.Time {

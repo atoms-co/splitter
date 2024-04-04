@@ -18,12 +18,6 @@ func WithShards(shards int) ShardingPolicyOption {
 	}
 }
 
-func WithNamed(named ...NamedDomainKey) ShardingPolicyOption {
-	return func(policy *public_v1.ShardingPolicy) {
-		policy.Named = slicex.Map(named, NamedDomainKey.ToProto)
-	}
-}
-
 // ShardingPolicy represents a configurable shard policy for Splitter
 type ShardingPolicy struct {
 	pb *public_v1.ShardingPolicy

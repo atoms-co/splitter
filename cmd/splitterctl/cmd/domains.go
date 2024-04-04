@@ -148,7 +148,8 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 			domain, err := client.NewDomain(ctx, name, splitter.Global,
 				splitter.NewDomainConfig(
 					splitter.WithDomainPlacement(splitter.PlacementName(*placement)),
-					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards, splitter.WithNamed(keys...))),
+					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
+					splitter.WithDomainNamedKeys(keys...),
 					splitter.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) splitter.DomainName {
 						return splitter.DomainName(t)
 					})...),
@@ -219,7 +220,8 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 			domain, err := client.NewDomain(ctx, name, splitter.Regional,
 				splitter.NewDomainConfig(
 					splitter.WithDomainPlacement(splitter.PlacementName(*placement)),
-					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards, splitter.WithNamed(keys...))),
+					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
+					splitter.WithDomainNamedKeys(keys...),
 					splitter.WithDomainRegions(slicex.Map(*regions, func(t string) splitter.Region {
 						return splitter.Region(t)
 					})...),
@@ -268,30 +270,33 @@ func makeUpdateDomainCmd() *cobra.Command {
 			opts = append(opts, splitter.WithUpdateDomainState(s))
 		}
 
+		var keys []splitter.NamedDomainKey
+		for _, name := range *named {
+			parts := strings.Split(name, ":")
+			if len(parts) != 3 {
+				return fmt.Errorf("invalid named domain key: %v", name)
+			}
+			key, err := uuid.Parse(parts[2])
+			if err != nil {
+				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
+			}
+			keys = append(keys, splitter.NamedDomainKey{
+				Name: parts[0],
+				Key: splitter.DomainKey{
+					Region: splitter.Region(parts[1]),
+					Key:    splitter.Key(key),
+				},
+			})
+		}
+
+		var cfgOptions []splitter.DomainConfigOption
+		if len(keys) > 0 {
+			cfgOptions = append(cfgOptions, splitter.WithDomainNamedKeys(keys...))
+		}
+
 		var sCfgOpts []splitter.ShardingPolicyOption
 		if *shards != -1 {
 			sCfgOpts = append(sCfgOpts, splitter.WithShards(*shards))
-		}
-		if cmd.Flags().Changed("named") {
-			var keys []splitter.NamedDomainKey
-			for _, name := range *named {
-				parts := strings.Split(name, ":")
-				if len(parts) != 3 {
-					return fmt.Errorf("invalid named domain key: %v", name)
-				}
-				key, err := uuid.Parse(parts[2])
-				if err != nil {
-					return fmt.Errorf("invalid uuid for named domain key: %v", parts[2])
-				}
-				keys = append(keys, splitter.NamedDomainKey{
-					Name: parts[0],
-					Key: splitter.DomainKey{
-						Region: splitter.Region(parts[1]),
-						Key:    splitter.Key(key),
-					},
-				})
-			}
-			sCfgOpts = append(sCfgOpts, splitter.WithNamed(keys...))
 		}
 
 		var opOptions []splitter.DomainOperationalOption
@@ -323,7 +328,6 @@ func makeUpdateDomainCmd() *cobra.Command {
 				opts = append(opts, splitter.WithUpdateDomainOperational(op))
 			}
 
-			var cfgOptions []splitter.DomainConfigOption
 			if len(sCfgOpts) > 0 {
 				cfgOptions = append(cfgOptions, splitter.WithDomainShardingPolicy(splitter.UpdateShardingPolicy(domain.Config().ShardingPolicy(), sCfgOpts...)))
 			}

@@ -60,6 +60,44 @@ func withClient(fn func(ctx context.Context, client model.Client) error) error {
 	return fn(ctx, model.NewClient(cc))
 }
 
+func withConsumerClient(fn func(ctx context.Context, client model.ConsumerClient) error) error {
+	ctx := context.Background()
+
+	opts := []grpc.DialOption{
+		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(1 << 30)), // 1GB
+	}
+	if insecure {
+		opts = append(opts, grpcx.WithInsecure())
+	}
+
+	// simulate load-balancing using Jille/grpc-multi-resolver library
+	if len(endpoints) > 0 {
+		ctx, cancel := context.WithTimeout(ctx, dialTimeout)
+		defer cancel()
+		cc, err := grpc.DialContext(
+			ctx,
+			fmt.Sprintf("multi:///%s", strings.Join(endpoints, ",")),
+			append(opts, statshandlerx.WithClientGRPCStatsHandler())...,
+		)
+		if err != nil {
+			return err
+		}
+
+		defer func() { _ = cc.Close() }()
+
+		return fn(ctx, model.NewConsumerClient(cc))
+	}
+
+	cc, err := grpcx.Dial(ctx, endpoint, dialTimeout, opts...)
+	if err != nil {
+		return err
+	}
+
+	defer func() { _ = cc.Close() }()
+
+	return fn(ctx, model.NewConsumerClient(cc))
+}
+
 func withInternalClient(fn func(ctx context.Context, client core.Client) error) error {
 	ctx := context.Background()
 

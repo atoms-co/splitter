@@ -164,34 +164,34 @@ func validateDomain(pb *public_v1.Domain) error {
 }
 
 func validRegionalConfig(config *public_v1.Domain_Config) error {
-	if err := validateShardingPolicy(config.GetRegions(), config.GetShardingPolicy()); err != nil {
+	if err := validateShardingPolicy(config.GetShardingPolicy()); err != nil {
 		return err
+	}
+	// Validate named domain keys
+	for _, named := range config.GetNamed() {
+		if _, err := ParseNamedDomainKey(named); err != nil {
+			return fmt.Errorf("invalid named domain key: %v", named)
+		}
+		if len(config.GetRegions()) > 0 {
+			r := named.GetKey().GetRegion()
+			if !slicex.ContainsT(config.GetRegions(), r) {
+				return fmt.Errorf("invalid region for named key, %v, allowed regions %v", r, config.GetRegions())
+			}
+		}
 	}
 	return nil
 }
 
 func validateGlobalConfig(config *public_v1.Domain_Config) error {
-	if err := validateShardingPolicy(nil, config.GetShardingPolicy()); err != nil {
+	if err := validateShardingPolicy(config.GetShardingPolicy()); err != nil {
 		return err
 	}
 	return nil
 }
 
-func validateShardingPolicy(regions []string, policy *public_v1.ShardingPolicy) error {
+func validateShardingPolicy(policy *public_v1.ShardingPolicy) error {
 	if policy.GetShards() < 1 {
 		return fmt.Errorf("shard count must be >= 1, given: %v", policy.GetShards())
-	}
-
-	for _, named := range policy.GetNamed() {
-		if _, err := ParseNamedDomainKey(named); err != nil {
-			return fmt.Errorf("invalid named domain key: %v", named)
-		}
-		if len(regions) > 0 {
-			r := named.GetKey().GetRegion()
-			if !slicex.ContainsT(regions, r) {
-				return fmt.Errorf("invalid region for named key, %v, allowed regions %v", r, regions)
-			}
-		}
 	}
 
 	return nil
@@ -283,6 +283,12 @@ func WithDomainShardingPolicy(policy ShardingPolicy) DomainConfigOption {
 	}
 }
 
+func WithDomainNamedKeys(named ...NamedDomainKey) DomainConfigOption {
+	return func(cfg *public_v1.Domain_Config) {
+		cfg.Named = slicex.Map(named, NamedDomainKey.ToProto)
+	}
+}
+
 func WithDomainAntiAffinity(domains ...DomainName) DomainConfigOption {
 	return func(cfg *public_v1.Domain_Config) {
 		cfg.AntiAffinity = slicex.Map(domains, func(t DomainName) string {
@@ -343,6 +349,13 @@ func (c DomainConfig) AntiAffinity() []DomainName {
 	return slicex.Map(c.pb.GetAntiAffinity(), func(r string) DomainName { return DomainName(r) })
 }
 
+func (c DomainConfig) NamedDomainKeys() []NamedDomainKey {
+	return slicex.Map(c.pb.GetNamed(), func(key *public_v1.NamedDomainKey) NamedDomainKey {
+		ret, _ := ParseNamedDomainKey(key)
+		return ret
+	})
+}
+
 func (c DomainConfig) Equals(o DomainConfig) bool {
 	return proto.Equal(c.pb, o.pb)
 }
@@ -377,6 +390,18 @@ func MustParseKey(key string) Key {
 
 func (k Key) Less(o Key) bool {
 	return uuidx.Less(uuid.UUID(k), uuid.UUID(o))
+}
+
+func (k *Key) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var s string
+	err := unmarshal(&s)
+	if err != nil {
+		return err
+	}
+	id, err := uuid.Parse(s)
+	*k = Key(id)
+
+	return nil
 }
 
 func (k Key) String() string {
@@ -452,6 +477,33 @@ func (k NamedDomainKey) String() string {
 	return fmt.Sprintf("%v:%v", k.Name, k.Key)
 }
 
+type DomainKeyName struct {
+	Domain DomainName
+	Name   string
+}
+
+func ParseDomainKeyNameStr(name string) (DomainKeyName, bool) {
+	parts := slicex.Map(strings.SplitN(name, "/", 2), strings.TrimSpace)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return DomainKeyName{}, false
+	}
+	return DomainKeyName{
+		Domain: DomainName(parts[0]),
+		Name:   parts[1],
+	}, true
+}
+
+func (d DomainKeyName) ToProto() *public_v1.DomainKeyName {
+	return &public_v1.DomainKeyName{
+		Domain: string(d.Domain),
+		Name:   d.Name,
+	}
+}
+
+func (d DomainKeyName) String() string {
+	return fmt.Sprintf("%v/%v", d.Domain, d.Name)
+}
+
 // QualifiedDomainKey fully specifies a domain element.
 type QualifiedDomainKey struct {
 	Domain QualifiedDomainName
@@ -471,6 +523,14 @@ func ParseQualifiedDomainKey(key *public_v1.QualifiedDomainKey) (QualifiedDomain
 		Domain: domain,
 		Key:    k,
 	}, nil
+}
+
+func MustParseQualifiedDomainKey(key *public_v1.QualifiedDomainKey) QualifiedDomainKey {
+	ret, err := ParseQualifiedDomainKey(key)
+	if err != nil {
+		panic(err)
+	}
+	return ret
 }
 
 func (k QualifiedDomainKey) ToProto() *public_v1.QualifiedDomainKey {

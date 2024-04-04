@@ -30,6 +30,12 @@ message NamedDomainKey {
   DomainKey key = 2;
 }
 
+// DomainKeyName specifies a name for a domain key
+message DomainKeyName {
+  string domain = 1;
+  string name = 2;
+}
+
 // QualifiedDomainKey fully specifies a domain element.
 message QualifiedDomainKey {
   QualifiedDomainName domain = 1;
@@ -147,6 +153,9 @@ message Domain {
     // allocation and may thus be more volatile, not the targets. UNIT domains overlap with every shard.
     // The target domains must be for the enclosing service.
     repeated string anti_affinity = 4;
+
+    // Special designated keys. For use with canary if GLOBAL/REGIONAL.
+    repeated NamedDomainKey named = 5;
   }
   Config config = 4;
 
@@ -161,6 +170,4 @@ message Domain {
 
 message ShardingPolicy {
   int64 shards = 1; // target #shards (guaranteed minimum)
-
-  repeated NamedDomainKey named = 2; // special designated keys. For use with canary
 }

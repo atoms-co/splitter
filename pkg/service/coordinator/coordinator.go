@@ -139,7 +139,23 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, in <-chan mod
 	return syncx.Txn1(ctx, c.txn, func() (<-chan model.ConsumerMessage, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
 
-		s, out := c.connect(wctx, sid, register, in)
+		var canaryKeys []model.QualifiedDomainKey
+		var err error
+
+		opts := register.Options()
+		if len(opts.CanaryDomainKeyNames()) > 0 {
+			canaryKeys, err = c.findNamedKeys(opts.CanaryDomainKeyNames())
+			if err != nil {
+				return nil, model.WrapError(fmt.Errorf("invalid canary named keys, %v: %w", err, model.ErrInvalid))
+			}
+		}
+
+		s, out := c.connect(wctx, sid, register, canaryKeys, in)
+
+		// Refresh allocation rules on canary connect
+		if s.consumer.IsCanary() {
+			c.refresh(ctx, 0)
+		}
 		c.allocate(ctx, c.cl.Now(), false) // Allocate to assign work post connection
 
 		go func() {
@@ -210,9 +226,12 @@ func (c *coordinator) Initialized() iox.RAsyncCloser {
 	return c.initialized
 }
 
-func (c *coordinator) connect(ctx context.Context, sid session.ID, register model.RegisterMessage, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
-	consumer := NewConsumer(register.Consumer(), c.cl.Now())
+func (c *coordinator) connect(ctx context.Context, sid session.ID, register model.RegisterMessage, canaryKeys []model.QualifiedDomainKey, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
+	now := c.cl.Now()
 
+	consumer := NewConsumer(register.Consumer(), now, canaryKeys...)
+
+	// Parse returning grants, active grants will be retained by the consumer
 	var active []Grant
 	for _, g := range register.Active() {
 		grant, err := fromGrant(consumer)(g)
@@ -237,10 +256,10 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	}
 	c.consumers[consumer.ID()] = s
 
-	lease := c.cl.Now().Add(leaseDuration)
+	lease := now.Add(leaseDuration)
 	s.TrySend(ctx, model.NewExtend(lease)) // grants will be covered under this lease
 
-	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.Instance().ID(), consumer.instance), lease, active...); ok {
+	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.ID(), consumer), lease, active...); ok {
 		if len(assigned.Active) > 0 {
 			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Active, toGrant)...))
 		}
@@ -258,10 +277,39 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	return s, out
 }
 
+func (c *coordinator) findNamedKeys(named []model.DomainKeyName) ([]model.QualifiedDomainKey, error) {
+	var ret []model.QualifiedDomainKey
+
+	domains := mapx.New(c.info.Domains(), func(d model.Domain) model.DomainName {
+		return d.ShortName()
+	})
+
+	for _, name := range named {
+		d, ok := domains[name.Domain]
+		if !ok {
+			return nil, fmt.Errorf("unknown domain: %v", name.Domain)
+		}
+		first, ok := slicex.First(d.Config().NamedDomainKeys(), func(key model.NamedDomainKey) bool {
+			return key.Name == name.Name
+		})
+		if !ok {
+			return nil, fmt.Errorf("unknown named key: %v", name)
+		}
+		ret = append(ret, model.QualifiedDomainKey{Domain: d.Name(), Key: first.Key})
+	}
+
+	return ret, nil
+}
+
 func (c *coordinator) disconnect(ctx context.Context, reason string, consumers ...*consumerSession) {
 	for _, s := range consumers {
 		log.Infof(ctx, "Disconnecting consumer (reason: %v): %v", reason, s)
 		recordAction(ctx, "disconnect", "ok")
+
+		if s.consumer.IsCanary() {
+			// Refresh allocation rules on canary disconnect
+			c.refresh(ctx, 0)
+		}
 
 		if c.alloc.Detach(s.consumer.ID()) {
 			assigned := c.alloc.Assigned(s.ID())
@@ -300,8 +348,10 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	if c.fastActivation {
 		delay = 0
 	}
-	c.alloc = newAllocation(c.id.ID(), tenant, info, c.cache.Placements(c.name.Tenant), c.cl.Now().Add(delay))
-	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, c.cl.Now()))
+
+	now := c.cl.Now()
+	c.alloc = newAllocation(c.id.ID(), tenant, info, c.cache.Placements(c.name.Tenant), now.Add(delay))
+	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, now))
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
 	recordAction(ctx, "init", "ok")
@@ -338,6 +388,7 @@ steady:
 				break
 			}
 			c.handleConsumerMessage(ctx, s, msg.Msg)
+
 			broadcast = true // possible change
 
 		case upd := <-updates:
@@ -410,7 +461,30 @@ steady:
 func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	now := c.cl.Now()
 
-	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, c.cache.Placements(c.name.Tenant), now.Add(delay))
+	// Check if canary is attached
+	var canaryAttached bool
+	var canaryKeys []model.QualifiedDomainKey
+	for _, worker := range c.alloc.Workers() {
+		if len(worker.Instance.Data.CanaryKeys()) > 0 {
+			canaryAttached = true
+			canaryKeys = append(canaryKeys, worker.Instance.Data.CanaryKeys()...)
+		}
+	}
+
+	// Compute canary shards (if attached canary)
+	var canaryShards []model.Shard
+	if canaryAttached {
+		for _, work := range c.alloc.Work() {
+			for _, key := range canaryKeys {
+				if work.Unit.Contains(key) {
+					canaryShards = append(canaryShards, work.Unit)
+				}
+				break
+			}
+		}
+	}
+
+	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, canaryShards, c.cache.Placements(c.name.Tenant), now.Add(delay))
 	c.alloc = upd
 
 	for _, g := range rejected {
@@ -679,7 +753,7 @@ func (c *coordinator) broadcast(ctx context.Context) {
 			}
 
 			if len(fresh) > 0 {
-				assigned = append(assigned, model.NewAssignment(consumer, fresh...))
+				assigned = append(assigned, model.NewAssignment(consumer.instance, fresh...))
 			}
 			continue
 		} // else: new consumer. Add assignment regardless of any grants
@@ -688,7 +762,7 @@ func (c *coordinator) broadcast(ctx context.Context) {
 		current = append(current, slicex.Map(grants.Active, toGrantInfo)...)
 		current = append(current, slicex.Map(grants.Revoked, toGrantInfo)...)
 
-		assigned = append(assigned, model.NewAssignment(consumer, current...))
+		assigned = append(assigned, model.NewAssignment(consumer.instance, current...))
 	}
 	for _, consumer := range c.cluster.Consumers() {
 		if _, ok := c.alloc.Worker(consumer.ID()); !ok {
@@ -819,7 +893,7 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 		}
 
 		// Allocate unassigned grants
-		c.allocate(ctx, c.cl.Now(), false)
+		c.allocate(ctx, now, false)
 		c.broadcast(ctx)
 
 		log.Infof(ctx, "drained consumer: %v", s.consumer.Instance())

@@ -202,6 +202,66 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 	assertx.Closed(t, out)
 }
 
+func TestCoordinator_CanaryConsumer(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+
+	names := []model.NamedDomainKey{
+		{
+			Name: "test",
+			Key: model.DomainKey{
+				Region: "centralus",
+				Key:    model.MustParseKey("b188ea31-f889-4ce5-9fc9-77fda8ab5c83"),
+			},
+		},
+	}
+
+	domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+		model.NewDomainConfig(
+			model.WithDomainShardingPolicy(model.NewShardingPolicy(4)),
+			model.WithDomainRegions("centralus"),
+			model.WithDomainNamedKeys(names...),
+		),
+	))
+	require.NoError(t, err)
+
+	coord := setup(ctx, cl, t, []model.Domain{domain})
+
+	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+	in := make(chan model.ConsumerMessage, 1)
+	in <- model.NewRegister(w, serviceName, nil, nil, model.WithCanaryDomainKeyNames(model.DomainKeyName{
+		Domain: domainName.Domain,
+		Name:   "test",
+	}))
+
+	out, err := coord.Connect(ctx, session.NewID(), in)
+	require.NoError(t, err, "consumer failed to join leader")
+
+	snapshot := readFn(t, out, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 0)
+
+	assign := readFn(t, out, isAssign)
+	assert.Len(t, assign.Grants(), 1)
+
+	change := readFn(t, out, isClusterChange)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
+	in <- model.NewDeregister()
+
+	revoke := readFn(t, out, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
+	assert.Equal(t, revoke.Grants()[0].State(), model.RevokedGrantState)
+
+	change = readFn(t, out, isClusterChange)
+	assert.Len(t, change.Update().Grants(), 1)
+	assert.Equal(t, change.Update().Grants()[0].State(), model.RevokedGrantState)
+
+	in <- model.NewReleased(revoke.Grants()[0])
+
+	coord.Close()
+	assertx.Closed(t, out)
+}
+
 func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Domain) coordinator.Coordinator {
 	t.Helper()
 

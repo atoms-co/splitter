@@ -18,6 +18,7 @@ func joinCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 	region := cmd.Flags().String("region", "global", "Consumer region (optional)")
+	keyNames := cmd.Flags().StringSlice("key-names", []string{}, "Canary domain key names (optional). e.g. porc/ruff")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
@@ -25,12 +26,25 @@ func joinCmd() *cobra.Command {
 			return fmt.Errorf("invalid qualified service name: %v", args[0])
 		}
 
-		return withClient(func(ctx context.Context, client model.Client) error {
+		var opts []splitter.ConsumerOption
+		if len(*keyNames) > 0 {
+			var d []splitter.DomainKeyName
+			for _, keyName := range *keyNames {
+				parsed, ok := splitter.ParseDomainKeyNameStr(keyName)
+				if !ok {
+					return fmt.Errorf("invalid domain key name: %v", keyName)
+				}
+				d = append(d, parsed)
+			}
+			opts = append(opts, splitter.WithCanaryDomainKeyNames(d...))
+		}
+
+		return withConsumerClient(func(ctx context.Context, client model.ConsumerClient) error {
 			wctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 
 			instance := model.NewInstance(location.NewInstance(location.New(location.Region(*region), "local")), "localhost")
-			clusters, quit := client.Join(wctx, instance, name, nil,
+			clusters, quit := client.Join(wctx, instance, name,
 				func(ctx context.Context, id splitter.GrantID, shard splitter.Shard, ownership splitter.Ownership) {
 					fmt.Println(fmt.Sprintf("Received shard %v with lease %v", shard, ownership.Expiration()))
 
@@ -44,7 +58,7 @@ func joinCmd() *cobra.Command {
 					}
 
 					fmt.Println(fmt.Sprintf("Lost shard %v", shard))
-				})
+				}, opts...)
 
 			signal := signalx.InterruptChan()
 			for {

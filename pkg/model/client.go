@@ -205,7 +205,80 @@ type Client interface {
 	// assigned grants and, separately, grants assigned to all consumers.
 	// Non-blocking.
 	// Returns a channel with clusters and a closer to signal the consumer has closed
+	// TODO(jhhurwitz): 04/02/24 Remove join from Client in favor of ConsumerClient
 	Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.RAsyncCloser)
+}
+
+type ConsumerOption func(pb *public_v1.ClientMessage_Register_Options)
+
+func WithCanaryDomainKeyNames(names ...DomainKeyName) ConsumerOption {
+	return func(pb *public_v1.ClientMessage_Register_Options) {
+		if pb.Canary == nil {
+			pb.Canary = &public_v1.ClientMessage_Register_Options_Canary{}
+		}
+		pb.Canary.Names = slicex.Map(names, DomainKeyName.ToProto)
+	}
+}
+
+type ConsumerClient interface {
+	// Join adds the consumer to the work distribution process. During this process the consumer receives
+	// assigned grants and, separately, grants assigned to all consumers.
+	// Non-blocking.
+	// Returns a channel with clusters and a closer to signal the consumer has closed
+	Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, handler Handler, opts ...ConsumerOption) (<-chan Cluster, iox.RAsyncCloser)
+}
+
+type consumerClient struct {
+	cl       clock.Clock
+	consumer public_v1.ConsumerServiceClient
+}
+
+func (c consumerClient) Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, handler Handler, opts ...ConsumerOption) (<-chan Cluster, iox.RAsyncCloser) {
+	quit := iox.NewAsyncCloser()
+
+	joinFn := func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
+		sess, establish, out := session.NewClient(ctx, c.cl, self)
+		defer sess.Close()
+		wctx, _ := contextx.WithQuitCancel(ctx, sess.Closed()) // cancel context if session client closes
+
+		return grpcx.Connect(wctx, c.consumer.Join, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
+			ch := chanx.MapIf(in, func(pb *public_v1.JoinMessage) (ConsumerMessage, bool) {
+				if pb.GetSession() != nil {
+					sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session client
+					return ConsumerMessage{}, false
+				}
+				return WrapConsumerMessage(pb.GetConsumer()), true
+			})
+
+			resp, err := handler(ctx, ch)
+			if err != nil {
+				return nil, WrapError(err)
+			}
+
+			joined := session.Connect(sess, establish, chanx.Map(resp, NewJoinMessage), out, NewJoinSessionMessage)
+			return chanx.Map(joined, UnwrapJoinMessage), nil
+		})
+	}
+	pool, clusters := NewWorkPool(c.cl, consumer, service, nil, joinFn, handler, opts...)
+
+	go func() {
+		defer quit.Close()
+		<-ctx.Done()
+
+		pool.Drain(1 * time.Minute)
+		now := c.cl.Now()
+		<-pool.Closed()
+		log.Infof(ctx, "Closed work pool in %v", time.Since(now))
+	}()
+
+	return clusters, quit
+}
+
+func NewConsumerClient(cc *grpc.ClientConn) ConsumerClient {
+	return &consumerClient{
+		cl:       clock.New(),
+		consumer: public_v1.NewConsumerServiceClient(cc),
+	}
 }
 
 type client struct {
