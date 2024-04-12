@@ -5,15 +5,8 @@ import (
 	"go.atoms.co/lib/log"
 	"fmt"
 	"net/http"
-	_ "net/http/pprof"
 	"os"
 )
-
-func startPprofHandler(ctx context.Context, port int) {
-	// start the default pprof handlers on the pprof port: https://golang.org/pkg/net/http/pprof/.
-	log.Infof(ctx, "Setting up pprof on port: %v", port)
-	log.Fatal(ctx, http.ListenAndServe(fmt.Sprintf(":%v", port), nil))
-}
 
 func startHealthCheck(ctx context.Context, port int) {
 	// Set up http health check

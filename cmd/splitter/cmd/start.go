@@ -8,6 +8,7 @@ import (
 	"go.atoms.co/lib/service/envoyx"
 	"go.atoms.co/lib/service/locationx"
 	"go.atoms.co/lib/service/metricsx"
+	"go.atoms.co/lib/service/pprofx"
 	"go.atoms.co/lib/tracing"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
@@ -43,7 +44,6 @@ func makeStartCommand() *cobra.Command {
 	port := cmd.PersistentFlags().Int("port", 50051, "Grpc server port")
 	internalPort := cmd.PersistentFlags().Int("internal_port", 50052, "Grpc server port for pod-to-pod traffic")
 	healthPort := cmd.PersistentFlags().Int("health_port", 8081, "Http port for health check traffic")
-	pprofPort := cmd.PersistentFlags().Int("pprof_port", 6060, "Http port for pprof debug traffic")
 	fastActivation := cmd.PersistentFlags().Bool("fast_activation", false, "Fast Leader/Coordinator activation for testing")
 
 	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "Tcp port for raft traffic")
@@ -65,7 +65,7 @@ func makeStartCommand() *cobra.Command {
 			log.Warnf(ctx, "Could not register tracer: %v", err)
 		}
 
-		go startPprofHandler(ctx, *pprofPort)
+		go pprofx.Start(ctx)
 
 		loc := locationx.New()
 
