@@ -2,7 +2,6 @@ package core
 
 import (
 	"go.atoms.co/lib/container"
-	"go.atoms.co/lib/mathx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/model"
@@ -132,11 +131,11 @@ func MoveBlockDistribution(current, target BlockDistribution, n int) BlockDistri
 		if cur.Region == goal.Region {
 			// Match. Emit the common tail segment.
 
-			end = mathx.Max(cur.Block, goal.Block)
+			end = max(cur.Block, goal.Block)
 		} else {
 			// No match. Emit updated segment of size up to N.
 
-			next := mathx.Max(mathx.Max(cur.Block, goal.Block), end-Block(n))
+			next := max(cur.Block, goal.Block, end-Block(n))
 			n -= int(end - next)
 			end = next
 		}
@@ -263,7 +262,7 @@ func NewInternalPlacementConfig(target, current BlockDistribution, speed int) In
 	return WrapInternalPlacementConfig(&internal_v1.InternalPlacement_Config{
 		Target:         UnwrapBlockDistribution(target),
 		Current:        UnwrapBlockDistribution(current),
-		BlocksPerCycle: int32(mathx.Max(1, speed)),
+		BlocksPerCycle: int32(max(1, speed)),
 	})
 }
 

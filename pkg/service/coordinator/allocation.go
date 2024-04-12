@@ -3,7 +3,6 @@ package coordinator
 import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/mapx"
-	"go.atoms.co/lib/mathx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/allocation"
@@ -335,7 +334,7 @@ func findShards(service model.Service, domain model.Domain) []uuidx.Range {
 	if n < 1 {
 		n = service.Config().DefaultShardingPolicy().Shards()
 	}
-	shards, _ := uuidx.Split(uuidx.Domain, mathx.Min(mathx.Max(1, n), 1024))
+	shards, _ := uuidx.Split(uuidx.Domain, min(max(1, n), 1024))
 	return shards
 }
 

@@ -59,7 +59,7 @@ func New[T comparable, W any, K comparable, V any](id location.InstanceID, place
 	}
 
 	for _, w := range work {
-		w.Load = mathx.Max(w.Load, 1)
+		w.Load = max(w.Load, 1)
 
 		ret.work[w.Unit] = w
 		ret.load += w.Load
@@ -723,7 +723,7 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 
 	overload := map[K]Load{}
 	for _, w := range workers {
-		overload[w.info.Instance.ID] = mathx.Max(w.load.Load-cutoff, 0)
+		overload[w.info.Instance.ID] = max(w.load.Load-cutoff, 0)
 
 		for t, l := range w.live {
 			if l.state != Active {
@@ -775,7 +775,7 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 			colo, _ := a.colo.Colocate(w.info.Instance, w.LiveWith(work))
 
 			diff := AdjustedLoad{
-				Load:  (mathx.Max(intrin-cutoff, 0)*work.Load)/intrin - next.load.Load,
+				Load:  (max(intrin-cutoff, 0)*work.Load)/intrin - next.load.Load,
 				Place: place - next.load.Place,
 				Colo:  colo - w.load.Colo - bonus,
 			}
