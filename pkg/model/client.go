@@ -22,8 +22,36 @@ var (
 	ErrExpired = errors.New("grant expired")
 )
 
-// TODO(jhhurwitz): 02/19/24: Flesh out comments on types
-
+// Ownership holds information about the grant state and expiration, as well as signals for
+// participating in graceful transitions via load/unload. Ownership is meant to be used via
+// the WaitFor helpers to ensure correct progression through the grant lifecycle.
+//
+// Grant handlers that use graceful handover follow this sequence:
+//
+//	func handler(o Ownership) {
+//	  unloader := WaitForUnload  // wait for prior counterparty to be UNLOADED
+//	  unloader.Load()            // ALLOCATED -> LOADED
+//	  .. preferred part owner ..
+//	  WaitForActive              // LOADED    -> ACTIVE
+//	  .. exclusive owner ..
+//	  loader := WaitForRevoke    // ACTIVE    -> REVOKED
+//	  loader.Unload()            // REVOKED   -> UNLOADED
+//	  .. still part owner but not preferred ..
+//	  WaitForLoad                // wait for next counterparty to be LOADED
+//	}                            // returning relinquishes the grant
+//
+// The load/unload aspects are optional. If not needed, the handler can be:
+//
+//	func handler(o Ownership) {
+//	  WaitForActive              // ALLOCATED -> ACTIVE
+//	  .. exclusive owner ..
+//	  WaitForRevoke              // ACTIVE    -> REVOKED
+//	  .. still owner ..
+//	}                            // returning relinquishes the grant
+//
+// The WaitFor helpers ensure that if a step does not happen, such as a grant directly being
+// assigned in ACTIVE state, the logic progresses as expected. If the grant is unexpectedly lost,
+// the helpers return an error to let the handler exit.
 type Ownership interface {
 	// Active returns a quit channel to signal that the Grant has been activated.
 	Active() iox.RAsyncCloser
@@ -32,9 +60,9 @@ type Ownership interface {
 	// Expired returns a quit channel to signal that the Grant lease has expired.
 	Expired() iox.RAsyncCloser
 
-	// Loader
+	// Loader returns controls for the loading phase.
 	Loader() Loader
-	// Unloader
+	// Unloader returns controls for the unloading phase.
 	Unloader() Unloader
 
 	// Expiration returns the expiration time of the lease. The expiration is updated periodically by the server under
@@ -43,17 +71,49 @@ type Ownership interface {
 	Expiration() time.Time
 }
 
+// Loader is used during the loading phase of a grant to coordinate transfer of ownership. It
+// holds information about whether the prior counterpart grant (if any) has been unloaded and can signal
+// when its loading is complete, which will make it the target for resolution.
 type Loader interface {
+	// Unloaded returns a closer for when the counterpart transitions to Unloaded. It may never happen.
 	Unloaded() iox.RAsyncCloser
+	// Load transitions the grant from Allocated to Loaded. Has no effect if the grant is active.
 	Load() iox.WAsyncCloser
 }
 
+// Unloader is used during the unloading (or draining) phase of a grant to coordinate transfer of
+// ownership. It can signal when unloading is complete and holds information about whether the next
+// counterpart grant (if any) has been loaded, after which handover can complete.
 type Unloader interface {
-	Loaded() iox.RAsyncCloser
+	// Unload transitions the grant from Revoked to Unloaded.
 	Unload() iox.WAsyncCloser
+	// Loaded returns a closer for when the counterpart transitions to Loaded, usually in response to
+	// the Unload signal. It may never happen.
+	Loaded() iox.RAsyncCloser
 }
 
-// WaitForActive blocks on Grant activation. Returns an error if the grant is revoked or expires before then. Cancellable.
+// WaitForUnload blocks on prior counterpart Grant unloading. Typically, this signals that the handler
+// can safely initialize and become ready to assume ownership. The loader is returned to signal
+// initialization completion. Returns an error if the grant is revoked or expires before then. Cancellable.
+func WaitForUnload(ctx context.Context, o Ownership) (Loader, error) {
+	loader := o.Loader()
+
+	select {
+	case <-o.Active().Closed():
+		return loader, nil // Consider unloaded if shard is activated before unload
+	case <-loader.Unloaded().Closed():
+		return loader, nil
+	case <-o.Revoked().Closed():
+		return nil, ErrRevoked
+	case <-o.Expired().Closed():
+		return nil, ErrExpired
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// WaitForActive blocks on Grant activation. Returns an error if the grant is revoked or expires before
+// then. Cancellable.
 func WaitForActive(ctx context.Context, o Ownership) error {
 	select {
 	case <-o.Active().Closed():
@@ -69,42 +129,27 @@ func WaitForActive(ctx context.Context, o Ownership) error {
 
 // WaitForRevoke blocks on Grant revocation. Returns an error if the grant expires before then. Cancellable.
 // Does not error on grant activation, since activation does not preclude revocation.
-func WaitForRevoke(ctx context.Context, o Ownership) error {
+func WaitForRevoke(ctx context.Context, o Ownership) (Unloader, error) {
 	select {
 	case <-o.Revoked().Closed():
-		return nil
-	case <-o.Expired().Closed():
-		return ErrExpired
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func WaitForLoad(ctx context.Context, o Ownership, unloader Unloader) error {
-	select {
-	case <-unloader.Loaded().Closed():
-		return nil
-	case <-o.Expired().Closed():
-		return ErrExpired
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-func WaitForUnload(ctx context.Context, o Ownership) (Loader, error) {
-	loader := o.Loader()
-
-	select {
-	case <-o.Active().Closed():
-		return loader, nil // Consider unloaded if shard is activated before unload
-	case <-loader.Unloaded().Closed():
-		return loader, nil
-	case <-o.Revoked().Closed():
-		return nil, ErrRevoked
+		return o.Unloader(), nil
 	case <-o.Expired().Closed():
 		return nil, ErrExpired
 	case <-ctx.Done():
 		return nil, ctx.Err()
+	}
+}
+
+// WaitForLoad blocks on next counterpart Grant loading. Returns an error if the grant expires before then.
+// Cancellable.
+func WaitForLoad(ctx context.Context, o Ownership) error {
+	select {
+	case <-o.Unloader().Loaded().Closed():
+		return nil
+	case <-o.Expired().Closed():
+		return ErrExpired
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

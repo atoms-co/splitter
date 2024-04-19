@@ -273,12 +273,20 @@ func (m *GrantMap[T]) Domain(name QualifiedDomainName) []T {
 	})
 }
 
+func (m *GrantMap[T]) Loaded(id GrantID, shard Shard, value T) {
+	m.Write(id, shard, LoadedGrantState, value)
+}
+
 func (m *GrantMap[T]) Activate(id GrantID, shard Shard, value T) {
 	m.Write(id, shard, ActiveGrantState, value)
 }
 
 func (m *GrantMap[T]) Revoke(id GrantID, shard Shard, value T) {
 	m.Write(id, shard, RevokedGrantState, value)
+}
+
+func (m *GrantMap[T]) Unloaded(id GrantID, shard Shard, value T) {
+	m.Write(id, shard, UnloadedGrantState, value)
 }
 
 func (m *GrantMap[T]) Write(id GrantID, shard Shard, state GrantState, value T) {

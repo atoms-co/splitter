@@ -62,7 +62,7 @@ func TestCluster_WaitForRevoke(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		revoked := iox.NewAsyncCloser()
 		revoked.Close()
-		err := model.WaitForRevoke(context.Background(), &testOwnership{
+		_, err := model.WaitForRevoke(context.Background(), &testOwnership{
 			revoked: revoked,
 			expired: iox.NewAsyncCloser(),
 		})
@@ -72,7 +72,7 @@ func TestCluster_WaitForRevoke(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		err := model.WaitForRevoke(ctx, &testOwnership{
+		_, err := model.WaitForRevoke(ctx, &testOwnership{
 			revoked: iox.NewAsyncCloser(),
 			expired: iox.NewAsyncCloser(),
 		})
@@ -83,7 +83,7 @@ func TestCluster_WaitForRevoke(t *testing.T) {
 	t.Run("expired", func(t *testing.T) {
 		expired := iox.NewAsyncCloser()
 		expired.Close()
-		err := model.WaitForRevoke(context.Background(), &testOwnership{
+		_, err := model.WaitForRevoke(context.Background(), &testOwnership{
 			revoked: iox.NewAsyncCloser(),
 			expired: expired,
 		})
