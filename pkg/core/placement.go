@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -209,7 +210,7 @@ func (t BlockDistribution) Equals(o BlockDistribution) bool {
 	if t.Initial() != o.Initial() {
 		return false
 	}
-	return slicex.Equal(t.Splits(), o.Splits())
+	return slices.Equal(t.Splits(), o.Splits())
 }
 
 func (t BlockDistribution) String() string {

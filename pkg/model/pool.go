@@ -5,10 +5,10 @@ import (
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/slicex"
 	"fmt"
 	"google.golang.org/grpc"
 	"io"
+	"slices"
 	"sync"
 	"time"
 )
@@ -173,7 +173,7 @@ func (p *PeeredConnectionCache[T]) dial(ctx context.Context, reason string, inst
 // DialNonBlocking is a grpc DialFn.
 func DialNonBlocking(opts ...grpc.DialOption) DialFn[grpc.ClientConnInterface] {
 	return func(endpoint string) (io.Closer, grpc.ClientConnInterface, error) {
-		cc, err := grpcx.DialNonBlocking(context.Background(), endpoint, slicex.Clone(opts)...)
+		cc, err := grpcx.DialNonBlocking(context.Background(), endpoint, slices.Clone(opts)...)
 		return cc, cc, err
 	}
 }

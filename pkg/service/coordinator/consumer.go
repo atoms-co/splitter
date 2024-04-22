@@ -3,11 +3,11 @@ package coordinator
 import (
 	"context"
 	"go.atoms.co/lib/metrics"
-	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/sessionx"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -42,7 +42,7 @@ func (c Consumer) IsCanary() bool {
 }
 
 func (c Consumer) CanaryKeys() []model.QualifiedDomainKey {
-	return slicex.Clone(c.canaryKeys)
+	return slices.Clone(c.canaryKeys)
 }
 
 func (c Consumer) Joined() time.Time {

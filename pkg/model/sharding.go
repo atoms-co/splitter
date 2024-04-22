@@ -2,10 +2,10 @@ package model
 
 import (
 	"go.atoms.co/lib/mapx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	"slices"
 	"sort"
 	"sync"
 )
@@ -141,7 +141,7 @@ func (s *ShardMap[K, V]) Lookup(key QualifiedDomainKey) []ShardKV[K, V] {
 	domain.initIfNeeded()
 	switch domain.t {
 	case Unit:
-		return slicex.Clone(domain.unit)
+		return slices.Clone(domain.unit)
 	case Global:
 		return findEnclosing(key, domain.global)
 	case Regional:
