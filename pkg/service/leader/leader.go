@@ -707,6 +707,13 @@ func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 		}
 		return NewHandlePlacementResponse(ret), nil
 
+	case req.Proto.GetOperation() != nil:
+		ret, err := l.handleOperationRequest(ctx, req.Proto.GetOperation())
+		if err != nil {
+			return nil, err
+		}
+		return NewHandleOperationResponse(ret), nil
+
 	default:
 		return nil, fmt.Errorf("invalid handle request: %v", req)
 	}
@@ -869,6 +876,27 @@ func (l *Leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v
 		Resp: &internal_v1.PlacementResponse_Info{
 			Info: &internal_v1.InfoPlacementResponse{
 				Info: core.UnwrapInternalPlacementInfo(info),
+			},
+		},
+	}, nil
+}
+
+func (l *Leader) handleOperationRequest(ctx context.Context, req *internal_v1.OperationRequest) (*internal_v1.OperationResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.OperationResponse, error) {
+		switch {
+		case req.GetSnapshot() != nil:
+			return l.handleSnapshotRequest(ctx, req.GetSnapshot())
+		default:
+			return nil, fmt.Errorf("invalid operation request: %v", req)
+		}
+	})
+}
+
+func (l *Leader) handleSnapshotRequest(ctx context.Context, snapshot *internal_v1.Snapshot) (*internal_v1.OperationResponse, error) {
+	return &internal_v1.OperationResponse{
+		Resp: &internal_v1.OperationResponse_Snapshot{
+			Snapshot: &internal_v1.SnapshotResponse{
+				Snapshot: core.UnwrapSnapshot(l.cache.Snapshot()),
 			},
 		},
 	}, nil

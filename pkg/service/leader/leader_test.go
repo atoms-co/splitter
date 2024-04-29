@@ -12,6 +12,7 @@ import (
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/storage/memory"
+	"go.atoms.co/splitter/pb/private"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -159,6 +160,33 @@ func TestLeader_MultipleWorker(t *testing.T) {
 
 	l.Close()
 	assertx.Closed(t, out1)
+}
+
+func TestLeader_Operations(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+	loc := location.New("centralus", "splitter-0")
+
+	s1, err := model.NewService(s1, cl.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
+	require.NoError(t, err)
+	s2, err := model.NewService(s2, cl.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
+	require.NoError(t, err)
+
+	db := setup(t, ctx, cl, s1, s2)
+
+	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
+	<-l.Initialized().Closed()
+
+	resp, err := l.Handle(ctx, leader.NewHandleOperationRequest(&internal_v1.OperationRequest{
+		Req: &internal_v1.OperationRequest_Snapshot{Snapshot: &internal_v1.Snapshot{}},
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetOperation())
+
+	snap := resp.GetOperation().GetSnapshot()
+	require.NotNil(t, snap)
+
+	assert.Len(t, snap.GetSnapshot().GetTenants(), 2)
 }
 
 func setup(t *testing.T, ctx context.Context, cl clock.Clock, services ...model.Service) storage.Storage {

@@ -579,8 +579,16 @@ func (w *Writer) handleOperationRequest(ctx context.Context, req *internal_v1.Op
 
 func (w *Writer) handleNewRestoreRequest(ctx context.Context, req *internal_v1.RestoreRequest) (iox.AsyncCloser, *internal_v1.OperationResponse, error) {
 	nuke := req.GetNuke()
+	snapshot := req.GetSnapshot()
 
-	res := w.writer.Restore(nuke)
+	var res core.Restore
+	if nuke {
+		res = core.NewRestore(core.NewSnapshot())
+	} else if snapshot != nil {
+		res = core.NewRestore(core.WrapSnapshot(snapshot))
+	} else {
+		res = w.writer.Restore()
+	}
 	done := w.restoreAsync(ctx, res)
 
 	return done, &internal_v1.OperationResponse{

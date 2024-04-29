@@ -66,10 +66,8 @@ func NewWriter(cl clock.Clock, snapshot core.Snapshot) *Writer {
 	return ret
 }
 
-func (w *Writer) Restore(nuke bool) core.Restore {
-	if nuke {
-		w.db.Restore(core.NewSnapshot())
-	}
+// Restore returns a Restore struct populated with the current writer snapshot
+func (w *Writer) Restore() core.Restore {
 	return core.NewRestore(w.db.Snapshot())
 }
 

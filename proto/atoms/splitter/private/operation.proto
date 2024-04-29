@@ -17,8 +17,17 @@ message RaftInfoResponse {
   map<string, string> raft_state = 1;
 }
 
+message SnapshotRequest {
+
+}
+
+message SnapshotResponse {
+  atoms.splitter.private.Snapshot snapshot = 1;
+}
+
 message RestoreRequest {
-  bool nuke = 1;
+  bool nuke = 1; // Set the raft log to an empty snapshot
+  atoms.splitter.private.Snapshot snapshot = 2;
 }
 
 message RestoreResponse {
@@ -78,7 +87,10 @@ service OperationService {
   // RaftInfo sends an info request to a raft server.
   rpc RaftInfo (RaftInfoRequest) returns (RaftInfoResponse);
 
-  // Restore flushes the current leader snapshot to the storage.
+  // Snapshot sends a Snapshot request to the Leader
+  rpc Snapshot (SnapshotRequest) returns (SnapshotResponse);
+
+  // Restore flushes the current Leader Snapshot or a target Snapshot to the storage.
   rpc Restore (RestoreRequest) returns (RestoreResponse);
 
   // CoordinatorInfo sends an info request to a Coordinator.

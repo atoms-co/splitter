@@ -169,6 +169,24 @@ func (o *OperationService) RaftInfo(ctx context.Context, request *internal_v1.Ra
 	}, nil
 }
 
+func (o *OperationService) Snapshot(ctx context.Context, request *internal_v1.SnapshotRequest) (*internal_v1.SnapshotResponse, error) {
+	req := leader.NewHandleOperationRequest(&internal_v1.OperationRequest{
+		Req: &internal_v1.OperationRequest_Snapshot{},
+	})
+
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
+		return model.InvokeExZero(ctx, o.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+			return o.proxy.Handle(ctx, req)
+		})
+	})
+
+	if err != nil {
+		log.Errorf(ctx, "Snapshot %v failed: %v", req, err)
+		return nil, model.WrapError(err)
+	}
+	return resp.GetOperation().GetSnapshot(), nil
+}
+
 func (o *OperationService) Restore(ctx context.Context, request *internal_v1.RestoreRequest) (*internal_v1.RestoreResponse, error) {
 	req := leader.NewHandleOperationRequest(&internal_v1.OperationRequest{
 		Req: &internal_v1.OperationRequest_Restore{

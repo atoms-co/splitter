@@ -97,12 +97,14 @@ message PlacementResponse {
 message OperationRequest {
   oneof req {
     atoms.splitter.private.RestoreRequest restore = 1;
+    atoms.splitter.private.Snapshot snapshot = 2;
   }
 }
 
 message OperationResponse {
   oneof resp {
     atoms.splitter.private.RestoreResponse restore = 1;
+    atoms.splitter.private.SnapshotResponse snapshot = 2;
   }
 }
 
