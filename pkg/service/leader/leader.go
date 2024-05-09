@@ -892,7 +892,7 @@ func (l *Leader) handleOperationRequest(ctx context.Context, req *internal_v1.Op
 	})
 }
 
-func (l *Leader) handleSnapshotRequest(ctx context.Context, snapshot *internal_v1.Snapshot) (*internal_v1.OperationResponse, error) {
+func (l *Leader) handleSnapshotRequest(ctx context.Context, snapshot *internal_v1.SnapshotRequest) (*internal_v1.OperationResponse, error) {
 	return &internal_v1.OperationResponse{
 		Resp: &internal_v1.OperationResponse_Snapshot{
 			Snapshot: &internal_v1.SnapshotResponse{

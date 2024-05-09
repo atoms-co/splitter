@@ -37,7 +37,9 @@ type Client interface {
 	ConsumerDrain(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
 
 	RaftInfo(ctx context.Context) (map[string]string, error)
+	Snapshot(ctx context.Context) (Snapshot, error)
 	Restore(ctx context.Context, nuke bool) (Snapshot, error)
+	RestoreFromSnapshot(ctx context.Context, snapshot Snapshot) (Snapshot, error)
 }
 
 type client struct {
@@ -169,9 +171,25 @@ func (c *client) RaftInfo(ctx context.Context) (map[string]string, error) {
 	return resp.GetRaftState(), err
 }
 
+func (c *client) Snapshot(ctx context.Context) (Snapshot, error) {
+	req := &internal_v1.SnapshotRequest{}
+
+	resp, err := c.operation.Snapshot(ctx, req)
+	return WrapSnapshot(resp.GetSnapshot()), err
+}
+
 func (c *client) Restore(ctx context.Context, nuke bool) (Snapshot, error) {
 	req := &internal_v1.RestoreRequest{
 		Nuke: nuke,
+	}
+
+	resp, err := c.operation.Restore(ctx, req)
+	return WrapSnapshot(resp.GetSnapshot()), err
+}
+
+func (c *client) RestoreFromSnapshot(ctx context.Context, snapshot Snapshot) (Snapshot, error) {
+	req := &internal_v1.RestoreRequest{
+		Snapshot: UnwrapSnapshot(snapshot),
 	}
 
 	resp, err := c.operation.Restore(ctx, req)

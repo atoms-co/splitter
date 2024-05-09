@@ -171,7 +171,9 @@ func (o *OperationService) RaftInfo(ctx context.Context, request *internal_v1.Ra
 
 func (o *OperationService) Snapshot(ctx context.Context, request *internal_v1.SnapshotRequest) (*internal_v1.SnapshotResponse, error) {
 	req := leader.NewHandleOperationRequest(&internal_v1.OperationRequest{
-		Req: &internal_v1.OperationRequest_Snapshot{},
+		Req: &internal_v1.OperationRequest_Snapshot{
+			Snapshot: &internal_v1.SnapshotRequest{},
+		},
 	})
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {

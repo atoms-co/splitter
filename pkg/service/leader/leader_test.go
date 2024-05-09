@@ -178,7 +178,7 @@ func TestLeader_Operations(t *testing.T) {
 	<-l.Initialized().Closed()
 
 	resp, err := l.Handle(ctx, leader.NewHandleOperationRequest(&internal_v1.OperationRequest{
-		Req: &internal_v1.OperationRequest_Snapshot{Snapshot: &internal_v1.Snapshot{}},
+		Req: &internal_v1.OperationRequest_Snapshot{Snapshot: &internal_v1.SnapshotRequest{}},
 	}))
 	require.NoError(t, err)
 	require.NotNil(t, resp.GetOperation())
