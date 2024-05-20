@@ -402,11 +402,11 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 		notify, _ := msg.Notify()
 		update, target := notify.Update(), notify.Target()
 
-		log.Debugf(ctx, "Received Grant update %v, for target %v", update, target)
+		log.Debugf(ctx, "Received grant update %v, for target %v", update, target)
 
 		g, ok := p.grants[target.ID()]
 		if !ok {
-			log.Warnf(ctx, "Updating stale grant: %v. Ignoring", g)
+			log.Warnf(ctx, "Updating stale grant: %v. Ignoring", target)
 			break
 		}
 
