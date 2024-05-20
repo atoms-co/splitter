@@ -51,7 +51,7 @@ message ClientMessage {
     Instance consumer = 1;
     QualifiedServiceName service = 2;
     repeated QualifiedDomainName domains = 3; // TODO(jhhurwitz): 04/02/24 Consider removing, we do not support specific domain registration
-    repeated Grant active = 4; // Active grants with non-expired leases.
+    repeated Grant active = 4; // Grants with active leases. This only includes grants in non-revoked state.
 
     message Options {
       message Canary {
