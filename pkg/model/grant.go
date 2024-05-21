@@ -154,6 +154,20 @@ func (o *ownership) setExpiration(expiration time.Time) {
 	o.expiration = expiration
 }
 
+func (o *ownership) Loader() Loader {
+	return o.loader
+}
+
+func (o *ownership) Unloader() Unloader {
+	return o.unloader
+}
+
+func (o *ownership) Expiration() time.Time {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	return o.expiration
+}
+
 type loader struct {
 	unloaded iox.AsyncCloser
 	load     iox.AsyncCloser
@@ -182,10 +196,6 @@ func (l *loader) loaded() iox.RAsyncCloser {
 	return l.load
 }
 
-func (o *ownership) Loader() Loader {
-	return o.loader
-}
-
 type unloader struct {
 	loaded iox.AsyncCloser
 	unload iox.AsyncCloser
@@ -212,14 +222,4 @@ func (u *unloader) load() {
 
 func (u *unloader) unloaded() iox.RAsyncCloser {
 	return u.unload
-}
-
-func (o *ownership) Unloader() Unloader {
-	return o.unloader
-}
-
-func (o *ownership) Expiration() time.Time {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	return o.expiration
 }

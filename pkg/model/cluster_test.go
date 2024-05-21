@@ -194,17 +194,17 @@ func TestCluster(t *testing.T) {
 			model.NewAssignment(prefab.Instance2, g21, g22),
 		)
 
-		expected := slicex.New(g1.Shard(), g2.Shard())
-		sort.Slice(expected, func(i, j int) bool {
-			return expected[i].From.Less(expected[j].From)
+		actual := model.DomainShards(cluster, prefab.QDN("t/s/d"))
+		sort.Slice(actual, func(i, j int) bool {
+			return actual[i].From.Less(actual[j].From)
 		})
-		assertx.Equal(t, model.DomainShards(cluster, prefab.QDN("t/s/d")), expected)
+		assertx.Equal(t, actual, slicex.New(g1.Shard(), g2.Shard()))
 
-		expected = slicex.New(g21.Shard(), g22.Shard())
-		sort.Slice(expected, func(i, j int) bool {
-			return expected[i].From.Less(expected[j].From)
+		actual = model.DomainShards(cluster, prefab.QDN("t/s/d2"))
+		sort.Slice(actual, func(i, j int) bool {
+			return actual[i].From.Less(actual[j].From)
 		})
-		assertx.Equal(t, model.DomainShards(cluster, prefab.QDN("t/s/d2")), expected)
+		assertx.Equal(t, actual, slicex.New(g21.Shard(), g22.Shard()))
 
 		require.Empty(t, model.DomainShards(cluster, prefab.QDN("t/s/d3")))
 	})
