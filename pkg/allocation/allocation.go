@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+const (
+	// NoCapacityLimit indicates no bound to the amount of work that can be assigned to a worker
+	// In particular it means that a lone active worker receives all the work regardless of penalty
+	NoCapacityLimit = 0
+)
+
 // unassigned holds unassigned work or grant in any state. For revoked grants, the activation time is
 // the promotion time for the corresponding Allocated grant. If both legs of a transition ends up
 // unassigned, they combine to Active w/ the expiration time of the revoke.
@@ -81,7 +87,7 @@ func Update[T comparable, W any, K comparable, V any](a *Allocation[T, W, K, V],
 	var bad []Grant[T, K]
 
 	for id, old := range a.workers {
-		w := newWorker[T, W, K, V](old.info.Instance, old.info.State, old.info.Lease)
+		w := newWorker[T, W, K, V](old.info.Instance, old.info.State, old.info.Limit, old.info.Lease)
 		ret.workers[id] = w
 
 		for _, l := range old.live {
@@ -163,7 +169,7 @@ func (a *Allocation[T, W, K, V]) Worker(id K) (WorkerInfo[K, V], bool) {
 // expiration  to the claimed state to allow an allocation restart.
 //
 // Returns assigned grants. Returns false if worker is already attached.
-func (a *Allocation[T, W, K, V]) Attach(inst Worker[K, V], lease time.Time, grants ...Grant[T, K]) (Assignments[T, K], bool) {
+func (a *Allocation[T, W, K, V]) Attach(inst Worker[K, V], limit Load, lease time.Time, grants ...Grant[T, K]) (Assignments[T, K], bool) {
 	if w, ok := a.workers[inst.ID]; ok {
 		if w.info.State != Detached {
 			return Assignments[T, K]{}, false
@@ -178,7 +184,7 @@ func (a *Allocation[T, W, K, V]) Attach(inst Worker[K, V], lease time.Time, gran
 
 	// Case 2: Fresh attach. Revive claimed grants, if unassigned.
 
-	w := newWorker[T, W, K, V](inst, Attached, lease)
+	w := newWorker[T, W, K, V](inst, Attached, limit, lease)
 	a.workers[inst.ID] = w
 
 	for _, g := range grants {
@@ -221,6 +227,9 @@ func (a *Allocation[T, W, K, V]) tryAssign(w *worker[T, W, K, V], g Grant[T, K])
 	case Active, Allocated:
 		if _, ok := a.live[g.Unit]; ok {
 			return false // skip: already present elsewhere
+		}
+		if !w.HasCapacity(work.Load) {
+			return false // skip: at capacity
 		}
 
 		if load, ok := a.place.TryPlace(w.info.Instance, work); ok {
@@ -619,6 +628,10 @@ func (a *Allocation[T, W, K, V]) tryAllocate(work Work[T, W], state GrantState, 
 		if _, ok := w.Grant(work.Unit); ok {
 			continue // skip: holds other half of transitional grant
 		}
+		if !w.HasCapacity(work.Load) {
+			continue // skip: at capacity
+		}
+
 		load, ok := a.place.TryPlace(w.info.Instance, work)
 		if !ok {
 			continue // skip: invalid placement
@@ -765,6 +778,9 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 		for _, w := range workers {
 			if w == next.w {
 				continue // skip: self-move
+			}
+			if !w.HasCapacity(work.Load) {
+				continue // skip: at capacity
 			}
 
 			intrin := w.load.Load + work.Load

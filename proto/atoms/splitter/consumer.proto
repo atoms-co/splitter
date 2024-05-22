@@ -54,10 +54,8 @@ message ClientMessage {
     repeated Grant active = 4; // Grants with active leases. This only includes grants in non-revoked state.
 
     message Options {
-      message Canary {
-        repeated DomainKeyName names = 1;
-      }
-      Canary canary = 1;
+      repeated DomainKeyName names = 1;
+      uint64 capacity_limit = 2;
     }
     Options options = 5;
   }

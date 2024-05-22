@@ -37,6 +37,7 @@ const (
 type WorkerInfo[K comparable, V any] struct {
 	Instance Worker[K, V]
 	State    WorkerState
+	Limit    Load // Capacity limit for intrinsic Load
 	Lease    time.Time
 }
 
@@ -70,11 +71,12 @@ type worker[T comparable, W any, K comparable, V any] struct {
 	colo  map[T]Load   // colocation penalty if non-zero
 }
 
-func newWorker[T comparable, W any, K comparable, V any](inst Worker[K, V], state WorkerState, lease time.Time) *worker[T, W, K, V] {
+func newWorker[T comparable, W any, K comparable, V any](inst Worker[K, V], state WorkerState, limit Load, lease time.Time) *worker[T, W, K, V] {
 	return &worker[T, W, K, V]{
 		info: WorkerInfo[K, V]{
 			Instance: inst,
 			State:    state,
+			Limit:    limit,
 			Lease:    lease,
 		},
 		live:    map[T]live[T, W]{},
@@ -113,6 +115,10 @@ func (w *worker[T, W, K, V]) LiveWithout(list ...T) map[T]Work[T, W] {
 		delete(ret, t)
 	}
 	return ret
+}
+
+func (w *worker[T, W, K, V]) HasCapacity(add Load) bool {
+	return w.info.Limit == 0 || (w.load.Load+add) <= w.info.Limit
 }
 
 func (w *worker[T, W, K, V]) Grant(t T) (Grant[T, K], bool) {

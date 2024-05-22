@@ -256,12 +256,15 @@ type Client interface {
 
 type ConsumerOption func(pb *public_v1.ClientMessage_Register_Options)
 
-func WithCanaryDomainKeyNames(names ...DomainKeyName) ConsumerOption {
+func WithDomainKeyNames(names ...DomainKeyName) ConsumerOption {
 	return func(pb *public_v1.ClientMessage_Register_Options) {
-		if pb.Canary == nil {
-			pb.Canary = &public_v1.ClientMessage_Register_Options_Canary{}
-		}
-		pb.Canary.Names = slicex.Map(names, DomainKeyName.ToProto)
+		pb.Names = slicex.Map(names, DomainKeyName.ToProto)
+	}
+}
+
+func WithCapacityLimit(limit int) ConsumerOption {
+	return func(pb *public_v1.ClientMessage_Register_Options) {
+		pb.CapacityLimit = uint64(limit)
 	}
 }
 

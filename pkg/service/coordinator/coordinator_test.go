@@ -202,7 +202,53 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 	assertx.Closed(t, out)
 }
 
-func TestCoordinator_CanaryConsumer(t *testing.T) {
+func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+
+	domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+		model.NewDomainConfig(
+			model.WithDomainShardingPolicy(model.NewShardingPolicy(4)),
+			model.WithDomainRegions("centralus"),
+		),
+	))
+	require.NoError(t, err)
+
+	coord := setup(ctx, cl, t, []model.Domain{domain})
+
+	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+	in := make(chan model.ConsumerMessage, 1)
+	in <- model.NewRegister(w, serviceName, nil, nil, model.WithCapacityLimit(1))
+
+	out, err := coord.Connect(ctx, session.NewID(), in)
+	require.NoError(t, err, "consumer failed to join leader")
+
+	snapshot := readFn(t, out, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 0)
+
+	assign := readFn(t, out, isAssign)
+	assert.Len(t, assign.Grants(), 1)
+
+	change := readFn(t, out, isClusterChange)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
+	in <- model.NewDeregister()
+
+	revoke := readFn(t, out, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
+	assert.Equal(t, revoke.Grants()[0].State(), model.RevokedGrantState)
+
+	change = readFn(t, out, isClusterChange)
+	assert.Len(t, change.Update().Grants(), 1)
+	assert.Equal(t, change.Update().Grants()[0].State(), model.RevokedGrantState)
+
+	in <- model.NewReleased(revoke.Grants()[0])
+
+	coord.Close()
+	assertx.Closed(t, out)
+}
+
+func TestCoordinator_NamedKeyConsumer(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 
@@ -229,7 +275,7 @@ func TestCoordinator_CanaryConsumer(t *testing.T) {
 
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 	in := make(chan model.ConsumerMessage, 1)
-	in <- model.NewRegister(w, serviceName, nil, nil, model.WithCanaryDomainKeyNames(model.DomainKeyName{
+	in <- model.NewRegister(w, serviceName, nil, nil, model.WithDomainKeyNames(model.DomainKeyName{
 		Domain: domainName.Domain,
 		Name:   "test",
 	}))

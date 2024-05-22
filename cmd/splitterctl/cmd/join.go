@@ -19,6 +19,7 @@ func joinCmd() *cobra.Command {
 	}
 	region := cmd.Flags().String("region", "global", "Consumer region (optional)")
 	keyNames := cmd.Flags().StringSlice("key-names", []string{}, "Canary domain key names (optional). e.g. porc/ruff")
+	capacity := cmd.Flags().Int("capacity-limit", 0, "Maximum number of shards that can be assigned")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
@@ -36,7 +37,10 @@ func joinCmd() *cobra.Command {
 				}
 				d = append(d, parsed)
 			}
-			opts = append(opts, splitter.WithCanaryDomainKeyNames(d...))
+			opts = append(opts, splitter.WithDomainKeyNames(d...))
+		}
+		if *capacity > 0 {
+			opts = append(opts, splitter.WithCapacityLimit(*capacity))
 		}
 
 		return withConsumerClient(func(ctx context.Context, client model.ConsumerClient) error {

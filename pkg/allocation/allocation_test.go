@@ -66,7 +66,7 @@ func TestAllocation(t *testing.T) {
 		assert.Len(t, grants, 0) // no workers/no work
 		require.NoError(t, alloc.Check())
 
-		assignments, ok := alloc.Attach(allocation.Worker[string, location.Location]{ID: "foo", Data: us}, cl.Now().Add(time.Minute))
+		assignments, ok := alloc.Attach(allocation.Worker[string, location.Location]{ID: "foo", Data: us}, allocation.NoCapacityLimit, cl.Now().Add(time.Minute))
 		assert.True(t, ok)
 		assert.Len(t, assignments.Active, 0)
 		assert.Len(t, assignments.Allocated, 0)
@@ -105,7 +105,7 @@ func TestAllocation(t *testing.T) {
 			Expiration: cl.Now().Add(-time.Second),
 		}
 
-		initial, ok := alloc.Attach(foo, lease, old, bad)
+		initial, ok := alloc.Attach(foo, allocation.NoCapacityLimit, lease, old, bad)
 		assert.True(t, ok)
 		require.Len(t, initial.Active, 1)
 		assertx.Equal(t, initial.Active[0].ID, old.ID) // keep old ID and information ..
@@ -115,7 +115,7 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, initial.Active[0].Expiration, lease) // .. but updated expiration
 		require.NoError(t, alloc.Check())
 
-		_, ok = alloc.Attach(foo, lease)
+		_, ok = alloc.Attach(foo, allocation.NoCapacityLimit, lease)
 		assert.False(t, ok) // can't attach if already attached
 		require.NoError(t, alloc.Check())
 
@@ -156,7 +156,7 @@ func TestAllocation(t *testing.T) {
 		lease2min := cl.Now().Add(2 * time.Minute)
 		cl.Add(10 * time.Second)
 
-		regrants, ok := alloc.Attach(foo, lease2min, m["a"], bad)
+		regrants, ok := alloc.Attach(foo, allocation.NoCapacityLimit, lease2min, m["a"], bad)
 		assert.True(t, ok)
 		require.Len(t, regrants.Active, 3)
 		require.Len(t, regrants.Revoked, 0)
@@ -172,7 +172,7 @@ func TestAllocation(t *testing.T) {
 		// (1) Attach 1 worker, suspend it and allocate. No grants are created
 
 		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
-		_, ok := alloc.Attach(us1, cl.Now().Add(time.Minute))
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, cl.Now().Add(time.Minute))
 		assert.True(t, ok)
 		require.NoError(t, alloc.Check())
 
@@ -184,6 +184,40 @@ func TestAllocation(t *testing.T) {
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 0)
 		require.NoError(t, alloc.Check())
+	})
+
+	t.Run("allocate/capacity", func(t *testing.T) {
+		// Single allocation with workers with various capacity limits
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+		assert.Len(t, alloc.Work(), 3)
+
+		lease := cl.Now().Add(time.Minute)
+
+		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
+		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
+		w3 := allocation.Worker[string, location.Location]{ID: "w3", Data: us}
+		w4 := allocation.Worker[string, location.Location]{ID: "w4", Data: us}
+
+		_, ok := alloc.Attach(w1, 10, lease)
+		assert.True(t, ok)
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 1)
+
+		_, ok = alloc.Attach(w2, 10, lease)
+		assert.True(t, ok)
+		grants = alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 1)
+
+		_, ok = alloc.Attach(w3, 10, lease)
+		assert.True(t, ok)
+		grants = alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 0)
+
+		_, ok = alloc.Attach(w4, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		grants = alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 1)
 	})
 
 	t.Run("allocate/constraints", func(t *testing.T) {
@@ -201,7 +235,7 @@ func TestAllocation(t *testing.T) {
 		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
 		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
 
-		_, ok := alloc.Attach(us1, lease)
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
 		grants := alloc.Allocate(cl.Now())
@@ -213,7 +247,7 @@ func TestAllocation(t *testing.T) {
 
 		// (2) Attach eu worker to allocate eu work.
 
-		_, ok = alloc.Attach(eu1, lease)
+		_, ok = alloc.Attach(eu1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
 		grants = alloc.Allocate(cl.Now())
@@ -239,11 +273,11 @@ func TestAllocation(t *testing.T) {
 		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
 		jp1 := allocation.Worker[string, location.Location]{ID: "jp1", Data: jp}
 
-		_, ok := alloc.Attach(us1, cl.Now())
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, cl.Now())
 		assert.True(t, ok)
-		_, ok = alloc.Attach(eu1, lease)
+		_, ok = alloc.Attach(eu1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
-		_, ok = alloc.Attach(jp1, lease)
+		_, ok = alloc.Attach(jp1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
 		grants := alloc.Allocate(cl.Now())
@@ -289,7 +323,7 @@ func TestAllocation(t *testing.T) {
 		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
 		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
 
-		_, ok := alloc.Attach(us1, lease)
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 3)
@@ -311,7 +345,7 @@ func TestAllocation(t *testing.T) {
 
 		// (2) Attach another worker and it can
 
-		_, ok = alloc.Attach(us2, lease)
+		_, ok = alloc.Attach(us2, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
 		grants = alloc.Allocate(cl.Now())
@@ -345,9 +379,9 @@ func TestAllocation(t *testing.T) {
 		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
 		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
 
-		_, ok := alloc.Attach(us1, lease)
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
-		_, ok = alloc.Attach(us2, lease)
+		_, ok = alloc.Attach(us2, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
 		grants := alloc.Allocate(cl.Now())
@@ -418,9 +452,9 @@ func TestAllocation(t *testing.T) {
 		us := allocation.Worker[string, location.Location]{ID: "us", Data: us}
 		eu := allocation.Worker[string, location.Location]{ID: "eu", Data: eu}
 
-		_, ok := alloc.Attach(us, lease)
+		_, ok := alloc.Attach(us, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
-		_, ok = alloc.Attach(eu, lease)
+		_, ok = alloc.Attach(eu, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
 		grants := alloc.Allocate(cl.Now())
@@ -465,7 +499,7 @@ func TestAllocation(t *testing.T) {
 
 		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
 
-		_, ok := alloc.Attach(us1, lease)
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 3)
@@ -474,7 +508,7 @@ func TestAllocation(t *testing.T) {
 
 		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
 
-		_, ok = alloc.Attach(eu1, lease)
+		_, ok = alloc.Attach(eu1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 		move, diff, ok := alloc.LoadBalance(cl.Now())
 		assert.True(t, ok)
@@ -504,7 +538,7 @@ func TestAllocation(t *testing.T) {
 
 		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
 
-		_, ok := alloc.Attach(us1, lease)
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 3)
@@ -513,7 +547,7 @@ func TestAllocation(t *testing.T) {
 
 		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
 
-		_, ok = alloc.Attach(us2, lease)
+		_, ok = alloc.Attach(us2, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 		move, diff, ok := alloc.LoadBalance(cl.Now())
 		assert.True(t, ok)

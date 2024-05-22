@@ -13,13 +13,18 @@ import (
 	"time"
 )
 
+const (
+	ShardLoad     allocation.Load = 10
+	UnitShardLoad allocation.Load = 50
+)
+
 type (
-	Allocation = allocation.Allocation[model.Shard, location.Location, model.ConsumerID, Consumer]
-	Placement  = allocation.Placement[model.Shard, location.Location, model.ConsumerID, Consumer]
-	Colocation = allocation.Colocation[model.Shard, location.Location, model.ConsumerID, Consumer]
+	Allocation = allocation.Allocation[model.Shard, location.Location, model.ConsumerID, *Consumer]
+	Placement  = allocation.Placement[model.Shard, location.Location, model.ConsumerID, *Consumer]
+	Colocation = allocation.Colocation[model.Shard, location.Location, model.ConsumerID, *Consumer]
 	Grant      = allocation.Grant[model.Shard, model.ConsumerID]
-	Worker     = allocation.Worker[model.ConsumerID, Consumer]
-	WorkerInfo = allocation.WorkerInfo[model.ConsumerID, Consumer]
+	Worker     = allocation.Worker[model.ConsumerID, *Consumer]
+	WorkerInfo = allocation.WorkerInfo[model.ConsumerID, *Consumer]
 	Work       = allocation.Work[model.Shard, location.Location]
 	Assignment = allocation.Assignments[model.Shard, model.ConsumerID]
 )
@@ -30,44 +35,44 @@ func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.S
 	return allocation.New(id, findPlacements(tenant, info), findColocations(info), findWork(info, placements), activation)
 }
 
-func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, canaryShards []model.Shard, placements []core.InternalPlacementInfo, activation time.Time) (*Allocation, []Grant) {
-	return allocation.Update(a, findPlacements(tenant, info, canaryShards...), findColocations(info), findWork(info, placements), activation)
+func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, shards []model.Shard, placements []core.InternalPlacementInfo, activation time.Time) (*Allocation, []Grant) {
+	return allocation.Update(a, findPlacements(tenant, info, shards...), findColocations(info), findWork(info, placements), activation)
 }
 
-// Canary handles canary placement
-type Canary struct {
-	canaryShards map[model.Shard]bool
+// NamedShards handles named shard placement
+type NamedShards struct {
+	shards map[model.Shard]bool
 }
 
-func NewCanary(canaryShards ...model.Shard) *Canary {
-	return &Canary{canaryShards: slicex.NewSet(canaryShards...)}
+func NewNamedShards(shards ...model.Shard) *NamedShards {
+	return &NamedShards{shards: slicex.NewSet(shards...)}
 }
 
-func (c *Canary) ID() allocation.Rule {
-	return "canary"
+func (r *NamedShards) ID() allocation.Rule {
+	return "named-shards"
 }
 
-func (c *Canary) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
-	canaryShard := c.canaryShards[work.Unit]
+func (r *NamedShards) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
+	namedShard := r.shards[work.Unit]
 
-	if !worker.Data.IsCanary() {
-		if !canaryShard {
-			return 0, true // do not penalize normal shards for non-canary workers
+	if len(worker.Data.Keys()) == 0 {
+		if !namedShard {
+			return 0, true // do not penalize normal shards for workers without named keys
 		}
-		return 20, true // penalty on canary shards for non-canary workers
+		return 20, true // penalty on named shards for workers without named keys
 	}
 
-	if !canaryShard {
-		return 0, false // do not schedule non-canary shards on a canary pod
+	if !namedShard {
+		return 0, false // do not schedule normal shards on a workers with named keys
 	}
 
-	for _, key := range worker.Data.CanaryKeys() {
+	for _, key := range worker.Data.Keys() {
 		if work.Unit.Contains(key) {
-			return 0, true // no penalty if shard contains a requested canary key
+			return 0, true // no penalty if shard contains a requested named key
 		}
 	}
 
-	return 0, false // do not schedule non-matching canary shards on a canary pod
+	return 0, false // do not schedule non-matching named shards on a worker with named keys
 }
 
 type domainRegion struct {
@@ -97,12 +102,12 @@ func NewDomainState(tenant model.TenantInfo, info model.ServiceInfoEx) *DomainSt
 	return &DomainState{Domains: mapx.New(info.Domains(), model.Domain.ShortName)}
 }
 
-func (d *DomainState) ID() allocation.Rule {
+func (r *DomainState) ID() allocation.Rule {
 	return "domain-state"
 }
 
-func (d *DomainState) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
-	if domain, ok := d.Domains[work.Unit.Domain.Domain]; ok && domain.State() != model.DomainActive {
+func (r *DomainState) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
+	if domain, ok := r.Domains[work.Unit.Domain.Domain]; ok && domain.State() != model.DomainActive {
 		return 0, false // no placement allowed on non-active domains
 	}
 	return 0, true
@@ -130,12 +135,12 @@ func NewBannedWorkerRegion(tenant model.TenantInfo, info model.ServiceInfoEx) *B
 	return &BannedWorkerRegion{Banned: banned}
 }
 
-func (d *BannedWorkerRegion) ID() allocation.Rule {
+func (r *BannedWorkerRegion) ID() allocation.Rule {
 	return "banned-worker-region"
 }
 
-func (d *BannedWorkerRegion) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
-	if d.Banned[domainRegion{domain: work.Unit.Domain, region: worker.Data.Instance().Location().Region}] {
+func (r *BannedWorkerRegion) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
+	if r.Banned[domainRegion{domain: work.Unit.Domain, region: worker.Data.Instance().Location().Region}] {
 		return 0, false // no placement allowed for banned worker regions
 	}
 	return 0, true
@@ -184,26 +189,26 @@ func NewAntiAffinity(info model.ServiceInfoEx) *AntiAffinity {
 	return &AntiAffinity{Domains: domains, Targets: targets}
 }
 
-func (c *AntiAffinity) ID() allocation.Rule {
+func (r *AntiAffinity) ID() allocation.Rule {
 	return "anti-affinity"
 }
 
 // Colocate calculates anti-affinity load associated with individual work when allocating all the work together on the worker.
 // This evaluation only penalizes the allocation iff there is a range overlap between shards that violates the anti-affinity rule.
-func (c *AntiAffinity) Colocate(worker Worker, work map[model.Shard]Work) map[model.Shard]allocation.Load {
-	if len(c.Targets) == 0 {
+func (r *AntiAffinity) Colocate(worker Worker, work map[model.Shard]Work) map[model.Shard]allocation.Load {
+	if len(r.Targets) == 0 {
 		return nil
 	}
 	ret := map[model.Shard]allocation.Load{}
 	shards := map[model.DomainName][]model.Shard{}
 	for shard := range work {
-		if _, ok := c.Targets[shard.Domain.Domain]; ok {
+		if _, ok := r.Targets[shard.Domain.Domain]; ok {
 			shards[shard.Domain.Domain] = append(shards[shard.Domain.Domain], shard)
 		}
 	}
 	for shard := range work {
 		load := 0
-		for _, target := range c.Domains[shard.Domain.Domain] { // (anti-affinity) domain * shard <= work
+		for _, target := range r.Domains[shard.Domain.Domain] { // (anti-affinity) domain * shard <= work
 			for _, s := range shards[target] {
 				if s.IntersectsRange(shard) {
 					load += 20
@@ -217,10 +222,10 @@ func (c *AntiAffinity) Colocate(worker Worker, work map[model.Shard]Work) map[mo
 	return ret
 }
 
-func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx, canaryShards ...model.Shard) []Placement {
+func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx, shards ...model.Shard) []Placement {
 	ret := slicex.New[Placement](NewRegionAffinity(info), NewDomainState(tenant, info), NewBannedWorkerRegion(tenant, info))
-	if len(canaryShards) > 0 {
-		ret = append(ret, NewCanary(canaryShards...))
+	if len(shards) > 0 {
+		ret = append(ret, NewNamedShards(shards...))
 	}
 	return ret
 }
@@ -247,7 +252,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 					Type:   model.Unit,
 				},
 				Data: location.Location{Region: region},
-				Load: 50, // use higher load for unit domains
+				Load: UnitShardLoad, // use higher load for unit domains
 			}
 			ret = append(ret, w)
 
@@ -278,7 +283,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							To:     model.Key(shard.To()),
 						},
 						Data: location.Location{Region: region},
-						Load: 10,
+						Load: ShardLoad,
 					}
 					ret = append(ret, w)
 				}
@@ -295,7 +300,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							To:     model.Key(shard.To()),
 						},
 						Data: location.Location{Region: region},
-						Load: 10,
+						Load: ShardLoad,
 					}
 					ret = append(ret, w)
 				}
@@ -315,7 +320,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							To:     model.Key(shard.To()),
 						},
 						Data: location.Location{Region: r},
-						Load: 10,
+						Load: ShardLoad,
 					}
 					ret = append(ret, w)
 				}
@@ -346,7 +351,7 @@ func toGrant(g Grant) model.Grant {
 	return model.NewGrant(g.ID, g.Unit, toGrantState(g.State, g.Mod), g.Expiration, g.Assigned)
 }
 
-func fromGrant(consumer Consumer) func(g model.Grant) (Grant, error) {
+func fromGrant(consumer *Consumer) func(g model.Grant) (Grant, error) {
 	return func(g model.Grant) (Grant, error) {
 		state, mod, ok := fromGrantState(g.State())
 		if !ok {

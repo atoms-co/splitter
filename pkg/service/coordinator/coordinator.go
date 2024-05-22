@@ -139,21 +139,21 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, in <-chan mod
 	return syncx.Txn1(ctx, c.txn, func() (<-chan model.ConsumerMessage, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
 
-		var canaryKeys []model.QualifiedDomainKey
+		var keys []model.QualifiedDomainKey
 		var err error
 
 		opts := register.Options()
-		if len(opts.CanaryDomainKeyNames()) > 0 {
-			canaryKeys, err = c.findNamedKeys(opts.CanaryDomainKeyNames())
+		if len(opts.DomainKeyNames()) > 0 {
+			keys, err = c.findNamedKeys(opts.DomainKeyNames())
 			if err != nil {
 				return nil, model.WrapError(fmt.Errorf("invalid canary named keys, %v: %w", err, model.ErrInvalid))
 			}
 		}
 
-		s, out := c.connect(wctx, sid, register, canaryKeys, in)
+		s, out := c.connect(wctx, sid, register, opts.CapacityLimit(), keys, in)
 
-		// Refresh allocation rules on canary connect
-		if s.consumer.IsCanary() {
+		// Refresh allocation rules on consumer connect if using named keys
+		if len(s.consumer.Keys()) > 0 {
 			c.refresh(ctx, 0)
 		}
 		c.allocate(ctx, c.cl.Now(), false) // Allocate to assign work post connection
@@ -226,10 +226,10 @@ func (c *coordinator) Initialized() iox.RAsyncCloser {
 	return c.initialized
 }
 
-func (c *coordinator) connect(ctx context.Context, sid session.ID, register model.RegisterMessage, canaryKeys []model.QualifiedDomainKey, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
+func (c *coordinator) connect(ctx context.Context, sid session.ID, register model.RegisterMessage, limit int, keys []model.QualifiedDomainKey, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
 	now := c.cl.Now()
 
-	consumer := NewConsumer(register.Consumer(), now, canaryKeys...)
+	consumer := NewConsumer(register.Consumer(), now, WithKeys(keys...))
 
 	// Parse returning grants, active grants will be retained by the consumer
 	var active []Grant
@@ -259,7 +259,8 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	lease := now.Add(leaseDuration)
 	s.TrySend(ctx, model.NewExtend(lease)) // grants will be covered under this lease
 
-	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.ID(), consumer), lease, active...); ok {
+	capacity := limit * int(ShardLoad) // Set capacity shard limit * shard load (0 for no capacity)
+	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.ID(), consumer), allocation.Load(capacity), lease, active...); ok {
 		if len(assigned.Active) > 0 {
 			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Active, toGrant)...))
 		}
@@ -306,8 +307,8 @@ func (c *coordinator) disconnect(ctx context.Context, reason string, consumers .
 		log.Infof(ctx, "Disconnecting consumer (reason: %v): %v", reason, s)
 		recordAction(ctx, "disconnect", "ok")
 
-		if s.consumer.IsCanary() {
-			// Refresh allocation rules on canary disconnect
+		if len(s.consumer.Keys()) > 0 {
+			// Refresh allocation rules on disconnect if using named keys
 			c.refresh(ctx, 0)
 		}
 
@@ -461,30 +462,30 @@ steady:
 func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	now := c.cl.Now()
 
-	// Check if canary is attached
-	var canaryAttached bool
-	var canaryKeys []model.QualifiedDomainKey
+	// Check if using named keys
+	var isKeys bool
+	var keys []model.QualifiedDomainKey
 	for _, worker := range c.alloc.Workers() {
-		if len(worker.Instance.Data.CanaryKeys()) > 0 {
-			canaryAttached = true
-			canaryKeys = append(canaryKeys, worker.Instance.Data.CanaryKeys()...)
+		if len(worker.Instance.Data.Keys()) > 0 {
+			isKeys = true
+			keys = append(keys, worker.Instance.Data.Keys()...)
 		}
 	}
 
-	// Compute canary shards (if attached canary)
-	var canaryShards []model.Shard
-	if canaryAttached {
+	// Compute named shards
+	var namedShards []model.Shard
+	if isKeys {
 		for _, work := range c.alloc.Work() {
-			for _, key := range canaryKeys {
+			for _, key := range keys {
 				if work.Unit.Contains(key) {
-					canaryShards = append(canaryShards, work.Unit)
+					namedShards = append(namedShards, work.Unit)
 				}
 				break
 			}
 		}
 	}
 
-	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, canaryShards, c.cache.Placements(c.name.Tenant), now.Add(delay))
+	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, namedShards, c.cache.Placements(c.name.Tenant), now.Add(delay))
 	c.alloc = upd
 
 	for _, g := range rejected {

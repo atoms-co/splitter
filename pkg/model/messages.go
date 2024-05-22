@@ -423,13 +423,17 @@ func UnwrapOptions(options Options) *public_v1.ClientMessage_Register_Options {
 	return options.pb
 }
 
-func (o Options) CanaryDomainKeyNames() []DomainKeyName {
-	return slicex.Map(o.pb.GetCanary().GetNames(), func(name *public_v1.DomainKeyName) DomainKeyName {
+func (o Options) DomainKeyNames() []DomainKeyName {
+	return slicex.Map(o.pb.GetNames(), func(name *public_v1.DomainKeyName) DomainKeyName {
 		return DomainKeyName{
 			Domain: DomainName(name.Domain),
 			Name:   name.Name,
 		}
 	})
+}
+
+func (o Options) CapacityLimit() int {
+	return int(o.pb.GetCapacityLimit())
 }
 
 func (m RegisterMessage) Options() Options {

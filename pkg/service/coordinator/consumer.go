@@ -16,45 +16,53 @@ var (
 )
 
 type Consumer struct {
-	instance   model.Instance
-	joined     time.Time
-	canaryKeys []model.QualifiedDomainKey
+	instance model.Instance
+	joined   time.Time
+	keys     []model.QualifiedDomainKey
 }
 
-func NewConsumer(instance model.Instance, joined time.Time, keys ...model.QualifiedDomainKey) Consumer {
-	return Consumer{instance: instance, joined: joined, canaryKeys: keys}
+type NewConsumerOption func(*Consumer)
+
+func WithKeys(keys ...model.QualifiedDomainKey) NewConsumerOption {
+	return func(c *Consumer) {
+		c.keys = keys
+	}
 }
 
-func (c Consumer) ID() model.InstanceID {
+func NewConsumer(instance model.Instance, joined time.Time, opts ...NewConsumerOption) *Consumer {
+	ret := &Consumer{instance: instance, joined: joined}
+	for _, opt := range opts {
+		opt(ret)
+	}
+	return ret
+}
+
+func (c *Consumer) ID() model.InstanceID {
 	return c.instance.ID()
 }
 
-func (c Consumer) Instance() model.Instance {
+func (c *Consumer) Instance() model.Instance {
 	return c.instance
 }
 
-func (c Consumer) Region() model.Region {
+func (c *Consumer) Region() model.Region {
 	return c.instance.Location().Region
 }
 
-func (c Consumer) IsCanary() bool {
-	return len(c.canaryKeys) > 0
+func (c *Consumer) Keys() []model.QualifiedDomainKey {
+	return slices.Clone(c.keys)
 }
 
-func (c Consumer) CanaryKeys() []model.QualifiedDomainKey {
-	return slices.Clone(c.canaryKeys)
-}
-
-func (c Consumer) Joined() time.Time {
+func (c *Consumer) Joined() time.Time {
 	return c.joined
 }
 
-func (c Consumer) String() string {
+func (c *Consumer) String() string {
 	return fmt.Sprintf("%v[joined=%v]", c.instance, c.joined)
 }
 
 type consumerSession struct {
-	consumer   Consumer
+	consumer   *Consumer
 	draining   bool
 	connection sessionx.Connection[model.ConsumerMessage]
 }

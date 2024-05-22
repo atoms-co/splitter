@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-func TestCanary(t *testing.T) {
+func TestNamedShards(t *testing.T) {
 	cl := mockclock.NewUnsynchronized()
 
 	t1, err := model.NewTenant("tenant1", time.Time{})
@@ -59,7 +59,7 @@ func TestCanary(t *testing.T) {
 		}),
 	}
 
-	canaryShards := []model.Shard{
+	namedShards := []model.Shard{
 		{
 			Domain: d1.Name(),
 			Type:   model.Regional,
@@ -76,27 +76,27 @@ func TestCanary(t *testing.T) {
 		},
 	}
 
-	ctrl := coordinator.NewCanary(canaryShards...)
+	ctrl := coordinator.NewNamedShards(namedShards...)
 
-	w1 := allocation.NewWorker[location.InstanceID, coordinator.Consumer](
+	w1 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
 		"worker1",
 		coordinator.NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""),
 			cl.Now(),
-			canaryKeys[0],
+			coordinator.WithKeys(canaryKeys[0]),
 		),
 	)
 
-	w2 := allocation.NewWorker[location.InstanceID, coordinator.Consumer](
+	w2 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
 		"worker2",
 		coordinator.NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("northcentralus", "unknown")), ""),
 			cl.Now(),
-			canaryKeys[1],
+			coordinator.WithKeys(canaryKeys[1]),
 		),
 	)
 
-	w3 := allocation.NewWorker[location.InstanceID, coordinator.Consumer](
+	w3 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
 		"worker3",
 		coordinator.NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""),
@@ -104,7 +104,7 @@ func TestCanary(t *testing.T) {
 		),
 	)
 
-	load, ok := ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: canaryShards[0]})
+	load, ok := ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: namedShards[0]})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(0), load)
 
@@ -117,7 +117,7 @@ func TestCanary(t *testing.T) {
 	}})
 	assert.False(t, ok)
 
-	load, ok = ctrl.TryPlace(w2, allocation.Work[model.Shard, location.Location]{Unit: canaryShards[1]})
+	load, ok = ctrl.TryPlace(w2, allocation.Work[model.Shard, location.Location]{Unit: namedShards[1]})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(0), load)
 
@@ -130,11 +130,11 @@ func TestCanary(t *testing.T) {
 	}})
 	assert.False(t, ok)
 
-	load, ok = ctrl.TryPlace(w3, allocation.Work[model.Shard, location.Location]{Unit: canaryShards[0]})
+	load, ok = ctrl.TryPlace(w3, allocation.Work[model.Shard, location.Location]{Unit: namedShards[0]})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(20), load)
 
-	load, ok = ctrl.TryPlace(w3, allocation.Work[model.Shard, location.Location]{Unit: canaryShards[1]})
+	load, ok = ctrl.TryPlace(w3, allocation.Work[model.Shard, location.Location]{Unit: namedShards[1]})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(20), load)
 }
@@ -165,7 +165,7 @@ func TestDomainState(t *testing.T) {
 
 	ctrl := coordinator.NewDomainState(tInfo, s1Info)
 
-	w1 := allocation.NewWorker[location.InstanceID, coordinator.Consumer](
+	w1 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
 		"worker1",
 		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
 	)
@@ -214,22 +214,22 @@ func TestBannedWorkerRegion(t *testing.T) {
 
 	ctrl := coordinator.NewBannedWorkerRegion(tInfo, s1Info)
 
-	w1 := allocation.NewWorker[location.InstanceID, coordinator.Consumer](
+	w1 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
 		"worker1",
 		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
 	)
 
-	w2 := allocation.NewWorker[location.InstanceID, coordinator.Consumer](
+	w2 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
 		"worker2",
 		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("northcentralus", "unknown")), ""), cl.Now()),
 	)
 
-	w3 := allocation.NewWorker[location.InstanceID, coordinator.Consumer](
+	w3 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
 		"worker3",
 		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("eastus2", "unknown")), ""), cl.Now()),
 	)
 
-	w4 := allocation.NewWorker[location.InstanceID, coordinator.Consumer](
+	w4 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
 		"worker4",
 		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("us-central1", "unknown")), ""), cl.Now()),
 	)
@@ -289,7 +289,7 @@ func TestRegionAffinity(t *testing.T) {
 
 	affinity := coordinator.NewRegionAffinity(s1Info)
 
-	w1 := allocation.NewWorker[location.InstanceID, coordinator.Consumer](
+	w1 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
 		"worker1",
 		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
 	)
@@ -370,7 +370,7 @@ func TestColocation(t *testing.T) {
 		assert.NoError(t, err)
 
 		info := model.NewServiceInfoEx(model.NewServiceInfo(service, 1, cl.Now()), []model.Domain{dom1, dom2})
-		worker := allocation.NewWorker[model.ConsumerID, coordinator.Consumer]("worker-id", coordinator.NewConsumer(prefab.Instance1, cl.Now()))
+		worker := allocation.NewWorker[model.ConsumerID, *coordinator.Consumer]("worker-id", coordinator.NewConsumer(prefab.Instance1, cl.Now()))
 		affinity := coordinator.NewAntiAffinity(info)
 		load := affinity.Colocate(worker, map[model.Shard]coordinator.Work{
 			tt.shard1: {Unit: tt.shard1},

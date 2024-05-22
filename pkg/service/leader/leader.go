@@ -452,7 +452,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, reg
 	w.TrySend(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
 	w.TrySend(ctx, NewClusterSnapshot(l.cluster.ID(), l.cluster.Assignments()))
 
-	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Instance().ID(), w.instance), lease, active...); ok {
+	if assigned, ok := l.alloc.Attach(allocation.NewWorker(w.instance.Instance().ID(), w.instance), allocation.NoCapacityLimit, lease, active...); ok {
 		for _, grant := range assigned.Active {
 			tenant := grant.Unit.Tenant
 			state, _ := l.cache.State(tenant)
