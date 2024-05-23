@@ -275,7 +275,7 @@ func TestCoordinator_NamedKeyConsumer(t *testing.T) {
 
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 	in := make(chan model.ConsumerMessage, 1)
-	in <- model.NewRegister(w, serviceName, nil, nil, model.WithDomainKeyNames(model.DomainKeyName{
+	in <- model.NewRegister(w, serviceName, nil, nil, model.WithKeyNames(model.DomainKeyName{
 		Domain: domainName.Domain,
 		Name:   "test",
 	}))

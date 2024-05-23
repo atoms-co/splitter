@@ -256,7 +256,7 @@ type Client interface {
 
 type ConsumerOption func(pb *public_v1.ClientMessage_Register_Options)
 
-func WithDomainKeyNames(names ...DomainKeyName) ConsumerOption {
+func WithKeyNames(names ...DomainKeyName) ConsumerOption {
 	return func(pb *public_v1.ClientMessage_Register_Options) {
 		pb.Names = slicex.Map(names, DomainKeyName.ToProto)
 	}

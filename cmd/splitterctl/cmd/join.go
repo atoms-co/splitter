@@ -37,7 +37,7 @@ func joinCmd() *cobra.Command {
 				}
 				d = append(d, parsed)
 			}
-			opts = append(opts, splitter.WithDomainKeyNames(d...))
+			opts = append(opts, splitter.WithKeyNames(d...))
 		}
 		if *capacity > 0 {
 			opts = append(opts, splitter.WithCapacityLimit(*capacity))
