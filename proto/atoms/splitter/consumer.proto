@@ -77,7 +77,7 @@ message ClientMessage {
     repeated Grant grants = 1;
   }
 
-  // Promote promotes shards from Allocated to Assigned.
+  // Promote promotes shards from Allocated to Active.
   message Promote {
     repeated Grant grants = 1;
   }
