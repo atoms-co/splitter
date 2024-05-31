@@ -1,6 +1,8 @@
 package session
 
 import (
+	"fmt"
+
 	"go.atoms.co/lib/chanx"
 )
 
@@ -22,4 +24,23 @@ func Receive[T any](s *Server, main <-chan T, liveness <-chan Message, inject fu
 		chanx.Join(chanx.Breaker(main, s, serverBufChanSize), chanx.Map(liveness, inject)),
 		inject(NewClosedMessage()),
 	)
+}
+
+// ReadEstablish reads the establish session message from the input stream. This function can be used
+// to initialize a session on the server side.
+func ReadEstablish[T any](in <-chan T, extract func(T) (Message, bool)) (Establish, error) {
+	// Read first message
+	first, ok := chanx.TryRead(in, establishTimeout)
+	if !ok {
+		return Establish{}, fmt.Errorf("no first session message")
+	}
+	sessionMsg, ok := extract(first)
+	if !ok {
+		return Establish{}, fmt.Errorf("expected session message, got %v", first)
+	}
+	if !sessionMsg.IsEstablish() {
+		return Establish{}, fmt.Errorf("expected establish session message, got %v", first)
+	}
+	establish, _ := sessionMsg.Establish()
+	return establish, nil
 }

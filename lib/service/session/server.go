@@ -35,29 +35,35 @@ type Server struct {
 	iox.AsyncCloser
 	cl clock.Clock
 
-	sid         ID
-	self        location.Instance
-	client      location.Instance
-	establish   chan Establish
-	established bool
+	sid    ID
+	self   location.Instance
+	client location.Instance
 
 	in  chan Message // never closed
 	out chan<- Message
 }
 
-func NewServer(ctx context.Context, cl clock.Clock, self location.Instance) (*Server, <-chan Message) {
+// NewServer creates and initializes a new server-side session. The session uses the given Establish
+// for initialization and returns a corresponding Established message which must be sent to the client.
+// Returns the Server, a channel with outgoing messages and the Established message to be sent to the client.
+func NewServer(ctx context.Context, cl clock.Clock, self location.Instance, establish Establish) (*Server, <-chan Message, Message) {
 	out := make(chan Message, serverBufChanSize)
 	s := &Server{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
+		sid:         establish.ID,
 		self:        self,
-		establish:   make(chan Establish, 1),
+		client:      establish.Client,
 		in:          make(chan Message, serverBufChanSize),
 		out:         out,
 	}
-	go s.process(ctx)
 
-	return s, out
+	expiration := s.cl.Now().Add(keepAliveTimeout)
+	established := NewEstablishedMessage(expiration, s.self)
+
+	go s.process(ctx, expiration)
+
+	return s, out, established
 }
 
 // Observe observes session messages to the Server
@@ -76,44 +82,20 @@ func (s *Server) Observe(ctx context.Context, msg Message) {
 	}
 }
 
-// Establish returns a channel for a user to wait for the singleton Establish message from the Client
-func (s *Server) Establish() chan Establish {
-	return s.establish
-}
-
-func (s *Server) process(ctx context.Context) {
+func (s *Server) process(ctx context.Context, ttl time.Time) {
 	defer s.Close()
 	defer close(s.out)
-	defer close(s.establish)
 
-	expiration := clockx.NewTimer(s.cl, establishTimeout)
+	expiration := clockx.NewTimer(s.cl, s.cl.Until(ttl))
 	defer expiration.Stop()
 
 	for {
 		select {
 		case msg := <-s.in:
-			// First message must be an Establish
-			if !s.established {
-				if !msg.IsEstablish() {
-					log.Errorf(ctx, "Initial session message must be Establish, got %v", msg)
-					return
-				}
-			}
-
 			switch {
 			case msg.IsEstablish():
-				establish, _ := msg.Establish()
-
-				s.established = true
-				s.client = establish.Client
-				s.sid = establish.ID
-				s.establish <- establish
-
-				log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, s.self)
-
-				expirationTime := s.cl.Now().Add(keepAliveTimeout)
-				s.send(ctx, NewEstablishedMessage(expirationTime, s.self))
-				expiration.Reset(s.cl.Until(expirationTime))
+				log.Errorf(ctx, "Received an establish message after establishing a session: %v. Terminating.", msg)
+				return
 
 			case msg.IsHeartbeat():
 				now, _ := msg.Heartbeat()
@@ -130,11 +112,7 @@ func (s *Server) process(ctx context.Context) {
 			}
 
 		case <-expiration.C:
-			if s.established {
-				log.Infof(ctx, "Session expired. sid: %v, (client: %v -> self: %v)", s.sid, s.client, s.self)
-			} else {
-				log.Infof(ctx, "Session expired before establish message, self %v.", s.self)
-			}
+			log.Infof(ctx, "Session expired. sid: %v, (client: %v -> self: %v)", s.sid, s.client, s.self)
 			return
 
 		case <-s.Closed():

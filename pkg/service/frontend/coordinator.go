@@ -8,12 +8,12 @@ import (
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
 	"fmt"
-	"time"
 )
 
 // CoordinatorService is a grpc frontend for the internal coordinator api.
@@ -31,11 +31,29 @@ func NewCoordinatorService(cl clock.Clock, worker *worker.Worker) *CoordinatorSe
 }
 
 func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_ConnectServer) error {
-	sess, out := session.NewServer(server.Context(), c.cl, c.worker.Self().Instance())
-	defer sess.Close()
-	wctx, _ := contextx.WithQuitCancel(server.Context(), sess.Closed()) // cancel context if session server closes
+	quit := iox.NewAsyncCloser()
+	defer quit.Close()
+
+	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if session server closes
 
 	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
+		// Read session initialization message
+		establish, err := session.ReadEstablish(in, func(m *internal_v1.ConnectMessage) (session.Message, bool) {
+			if m.GetSession() != nil {
+				return session.WrapMessage(m.GetSession()), true
+			}
+			return session.Message{}, false
+		})
+		if err != nil {
+			log.Errorf(ctx, "Unabled to establish a session: %v", err)
+			return nil, model.WrapError(fmt.Errorf("%v: %w", err, model.ErrInvalid))
+		}
+
+		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, c.worker.Self().Instance())
+
+		sess, out, established := session.NewServer(ctx, c.cl, c.worker.Self().Instance(), establish)
+		iox.WhenClosed(sess, quit)
+
 		ch := chanx.MapIf(in, func(pb *internal_v1.ConnectMessage) (model.ConsumerMessage, bool) {
 			if pb.GetSession() != nil {
 				sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session client
@@ -44,15 +62,14 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 			return model.WrapConsumerMessage(pb.GetConsumer()), true
 		})
 
-		// (1) Read session initialization message
-
-		establish, ok := chanx.TryRead(sess.Establish(), 20*time.Second)
-		if !ok {
-			log.Errorf(ctx, "No session establish message received")
-			return nil, model.WrapError(fmt.Errorf("no session establish message: %w", model.ErrInvalid))
+		// Send established message to the consumer
+		err = server.Send(coordinator.UnwrapConnectMessage(coordinator.NewConnectSessionMessage(established)))
+		if err != nil {
+			log.Warnf(ctx, "Send failed: %v", err)
+			return nil, model.WrapError(fmt.Errorf("send failed: %w", model.ErrInvalid))
 		}
 
-		// (2) Let worker handle connect
+		// Let worker handle connect
 		resp, err := c.worker.Connect(ctx, establish.ID, ch)
 		if err != nil {
 			if !model.IsOwnershipError(err) {

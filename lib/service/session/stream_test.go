@@ -2,15 +2,18 @@ package session_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
+	"go.atoms.co/lib/testing/requirex"
 )
 
 func TestConnect(t *testing.T) {
@@ -78,20 +81,19 @@ func TestReceive(t *testing.T) {
 	cl := mockclock.NewUnsynchronized()
 	cl.Set(time.Now())
 
-	loc := location.NewInstance(location.New("us-west2", "unknown"))
-
 	t.Run("main", func(t *testing.T) {
 		main := make(chan message[int], 1)
 
-		s, liveness := session.NewServer(ctx, cl, loc)
-		s.Observe(ctx, session.NewEstablishMessage("sid", loc))
+		msg := session.NewEstablishMessage("sid", client)
+		establish, _ := msg.Establish()
+		s, liveness, msg := session.NewServer(ctx, cl, instance, establish)
+		defer s.Close()
+
+		// Established -> payload -> Closed
+
+		assert.True(t, msg.IsEstablished())
 
 		out := session.Receive(s, main, liveness, inject[int])
-
-		// (1) Established -> payload -> Closed
-
-		e := assertx.Element(t, out)
-		assert.True(t, e.msg.IsEstablished())
 
 		main <- message[int]{payload: 1}
 
@@ -109,15 +111,16 @@ func TestReceive(t *testing.T) {
 	t.Run("manual", func(t *testing.T) {
 		main := make(chan message[int], 2)
 
-		s, liveness := session.NewServer(ctx, cl, loc)
-		s.Observe(ctx, session.NewEstablishMessage("sid", loc))
+		msg := session.NewEstablishMessage("sid", client)
+		establish, _ := msg.Establish()
+		s, liveness, msg := session.NewServer(ctx, cl, instance, establish)
+		defer s.Close()
 
 		out := session.Receive(s, main, liveness, inject[int])
 
-		// (1) Establish -> payload -> Closed
+		// Established -> payload -> Closed
 
-		e := assertx.Element(t, out)
-		assert.True(t, e.msg.IsEstablished())
+		assert.True(t, msg.IsEstablished())
 
 		main <- message[int]{payload: 1}
 
@@ -136,6 +139,47 @@ func TestReceive(t *testing.T) {
 		main <- message[int]{payload: 2}
 
 		assertx.NoElement(t, out)
+	})
+}
+
+func TestReadEstablish(t *testing.T) {
+	t.Run("timeout waiting", func(t *testing.T) {
+		in := make(chan session.Message)
+		close(in)
+		_, err := session.ReadEstablish(in, func(msg session.Message) (session.Message, bool) {
+			return msg, true
+		})
+		requirex.Equal(t, err, fmt.Errorf("no first session message"))
+	})
+
+	t.Run("not session message", func(t *testing.T) {
+		in := make(chan session.Message, 1)
+		in <- session.Message{}
+		_, err := session.ReadEstablish(in, func(msg session.Message) (session.Message, bool) {
+			return msg, false
+		})
+		requirex.Equal(t, err, fmt.Errorf("expected session message, got %v", session.Message{}))
+	})
+
+	t.Run("not establish session message", func(t *testing.T) {
+		in := make(chan session.Message, 1)
+		hb := session.NewHeartbeatMessage(time.Now())
+		in <- hb
+		_, err := session.ReadEstablish(in, func(msg session.Message) (session.Message, bool) {
+			return msg, true
+		})
+		requirex.Equal(t, err, fmt.Errorf("expected establish session message, got %v", hb))
+	})
+
+	t.Run("established session", func(t *testing.T) {
+		in := make(chan session.Message, 1)
+		in <- session.NewEstablishMessage("sid", client)
+		established, err := session.ReadEstablish(in, func(msg session.Message) (session.Message, bool) {
+			return msg, true
+		})
+		require.NoError(t, err)
+		requirex.Equal(t, established.Client, client)
+		requirex.Equal(t, established.ID, "sid")
 	})
 }
 

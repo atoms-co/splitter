@@ -6,98 +6,94 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/mockclock"
+	"go.atoms.co/lib/testing/requirex"
 )
 
-// TODO(jhhurwitz): 04/11/2023 Test with Synchronized mock to avoid sleeps
+var (
+	client   = location.NewInstance(location.New("us-west1", "pod2"))
+	instance = location.NewInstance(location.New("us-west2", "pod1"))
+)
 
 func TestServer_Established(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 
-	instance := location.NewInstance(location.New("us-west2", "pod1"))
-	server, out := session.NewServer(ctx, cl, instance)
-	defer server.Close()
+	t.Run("established session", func(t *testing.T) {
+		msg := session.NewEstablishMessage("sid", client)
+		establish, _ := msg.Establish()
+		server, out, msg := session.NewServer(ctx, cl, instance, establish)
+		defer server.Close()
 
-	// No startup messages
-	dontRead(t, out)
+		requirex.ChanEmpty(t, out)
 
-	// First message should be an Established message after receiving an Establish
-	server.Observe(ctx, session.NewEstablishMessage(session.NewID(), location.NewInstance(location.New("us-west2", "pod2"))))
-	msg := read(t, out)
-	established, ok := msg.Established()
-	assert.True(t, ok)
-	assert.Equal(t, cl.Now().Add(10*time.Second).UTC(), established.Ttl)
-	assert.Equal(t, instance.ID(), established.Server.ID())
+		established, _ := msg.Established()
+		requirex.Equal(t, established.Server, instance)
+		requirex.Equal(t, established.Ttl, cl.Now().Add(10*time.Second).UTC())
+	})
 }
 
 func TestServer_Heartbeat(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 
-	server, out := session.NewServer(ctx, cl, location.NewInstance(location.New("us-west2", "pod1")))
+	msg := session.NewEstablishMessage("sid", client)
+	establish, _ := msg.Establish()
+	server, out, _ := session.NewServer(ctx, cl, instance, establish)
 	defer server.Close()
 
-	server.Observe(ctx, session.NewEstablishMessage(session.NewID(), location.NewInstance(location.New("us-west2", "pod2"))))
-	read(t, out) // Established
-
 	server.Observe(ctx, session.NewHeartbeatMessage(cl.Now()))
-	msg := read(t, out)
+
+	msg = requirex.Element(t, out)
 	ttl, ok := msg.HeartbeatAck()
-	assert.True(t, ok)
-	assert.Equal(t, cl.Now().Add(10*time.Second).UTC(), ttl)
+	require.True(t, ok)
+	requirex.Equal(t, cl.Now().Add(10*time.Second).UTC(), ttl)
 }
 
 func TestServer_ExpirationPending(t *testing.T) {
 	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
+	cl := mockclock.New(t, 1)
 
-	server, _ := session.NewServer(ctx, cl, location.NewInstance(location.New("us-west2", "pod1")))
+	msg := session.NewEstablishMessage("sid", client)
+	establish, _ := msg.Establish()
+	server, _, _ := session.NewServer(ctx, cl, instance, establish)
 	defer server.Close()
 
-	time.Sleep(100 * time.Millisecond)
-	cl.Add(4 * time.Second)
-	time.Sleep(100 * time.Millisecond)
+	cl.Add(6 * time.Second)
 	assert.False(t, server.IsClosed())
 
-	cl.Add(4 * time.Second)
-	time.Sleep(100 * time.Millisecond)
+	cl.Add(6 * time.Second)
 	assert.True(t, server.IsClosed())
 }
 
-func TestServer_ExpirationEstablished(t *testing.T) {
+func TestServer_CloseOnSecondEstablish(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 
-	server, out := session.NewServer(ctx, cl, location.NewInstance(location.New("us-west2", "pod1")))
+	in := make(chan session.Message, 1)
+	in <- session.NewEstablishMessage("sid", client)
+	msg := session.NewEstablishMessage("sid", client)
+	establish, _ := msg.Establish()
+	server, _, _ := session.NewServer(ctx, cl, instance, establish)
 	defer server.Close()
 
-	server.Observe(ctx, session.NewEstablishMessage(session.NewID(), location.NewInstance(location.New("us-west2", "unknown"))))
-	read(t, out) // Establish
-
-	server.Observe(ctx, session.NewHeartbeatMessage(cl.Now()))
-	read(t, out) // HeartbeatAck
-
-	cl.Add(8 * time.Second)
-	time.Sleep(100 * time.Millisecond)
-	assert.False(t, server.IsClosed())
-
-	cl.Add(8 * time.Second) // 16s > 10s keepalive
-	time.Sleep(100 * time.Millisecond)
-	assert.True(t, server.IsClosed())
+	server.Observe(ctx, session.NewEstablishMessage("sid", client))
+	requirex.Closed(t, server.Closed())
 }
 
-func dontRead(t *testing.T, ch <-chan session.Message) {
-	t.Helper()
-	for {
-		select {
-		case msg := <-ch:
-			t.Fatalf("unexpected message: %v", msg)
-		case <-time.After(1 * time.Second):
-			return
-		}
-	}
+func TestServer_CloseOnClose(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+
+	msg := session.NewEstablishMessage("sid", client)
+	establish, _ := msg.Establish()
+	server, _, _ := session.NewServer(ctx, cl, instance, establish)
+	defer server.Close()
+
+	server.Observe(ctx, session.NewClosedMessage())
+	requirex.Closed(t, server.Closed())
 }

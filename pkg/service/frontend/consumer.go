@@ -41,12 +41,29 @@ func NewConsumerService(cl clock.Clock, worker *worker.Worker, resolver core.Ser
 }
 
 func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) error {
-	// Create initialize server side of a session to maintain connection to the consumer
-	consumerSession, sessionOut := session.NewServer(server.Context(), s.cl, s.self)
-	defer consumerSession.Close()
-	wctx, _ := contextx.WithQuitCancel(server.Context(), consumerSession.Closed()) // cancel context if consumer session closes
+	quit := iox.NewAsyncCloser()
+	defer quit.Close()
+
+	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if consumer session closes
 
 	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
+		// Read session initialization message
+		establish, err := session.ReadEstablish(in, func(m *public_v1.JoinMessage) (session.Message, bool) {
+			if m.GetSession() != nil {
+				return session.WrapMessage(m.GetSession()), true
+			}
+			return session.Message{}, false
+		})
+		if err != nil {
+			log.Errorf(ctx, "Unabled to establish a session: %v", err)
+			return nil, model.WrapError(fmt.Errorf("%v: %w", err, model.ErrInvalid))
+		}
+
+		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, s.self)
+
+		consumerSession, sessionOut, established := session.NewServer(ctx, s.cl, s.self, establish)
+		iox.WhenClosed(consumerSession, quit)
+
 		consumerIn := chanx.MapIf(in, func(pb *public_v1.JoinMessage) (model.ConsumerMessage, bool) {
 			if pb.GetSession() != nil {
 				consumerSession.Observe(ctx, session.WrapMessage(pb.GetSession()))
@@ -56,11 +73,11 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 			return model.WrapConsumerMessage(pb.GetConsumer()), true
 		})
 
-		// Read session initialization message
-		establish, ok := chanx.TryRead(consumerSession.Establish(), 20*time.Second)
-		if !ok {
-			log.Errorf(ctx, "No session establish message received")
-			return nil, model.WrapError(fmt.Errorf("no session establish message: %w", model.ErrInvalid))
+		// Send established message to the consumer
+		err = server.Send(model.UnwrapJoinMessage(model.NewJoinSessionMessage(established)))
+		if err != nil {
+			log.Warnf(ctx, "Send failed: %v", err)
+			return nil, model.WrapError(fmt.Errorf("send failed: %w", model.ErrInvalid))
 		}
 
 		msg, ok := chanx.TryRead(consumerIn, 20*time.Second)
