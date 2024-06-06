@@ -186,8 +186,8 @@ func IsUnloadedGrant(state GrantState) bool {
 	return state == UnloadedGrantState
 }
 
-func IsActiveOrRevokedGrant(state GrantState) bool {
-	return state == ActiveGrantState || state == RevokedGrantState
+func IsAllocatedOrLoaded(state GrantState) bool {
+	return state == AllocatedGrantState || state == LoadedGrantState
 }
 
 // GrantID is a coordinator-determined grant id.

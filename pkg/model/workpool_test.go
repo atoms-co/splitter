@@ -5,6 +5,7 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
+	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
@@ -155,6 +156,7 @@ func TestWorkpool(t *testing.T) {
 		// Shut down coordinator connection to force reconnect
 		oldCoordinatorCon := coordinatorCon
 		coordinatorCon = newFakeCon[model.ConsumerMessage]()
+		defer coordinatorCon.Close()
 		oldCoordinatorCon.Close()
 
 		time.Sleep(50 * time.Millisecond)
@@ -213,6 +215,7 @@ func TestWorkpool(t *testing.T) {
 		// Shut down coordinator connection to force reconnect
 		oldCoordinatorCon := coordinatorCon
 		coordinatorCon = newFakeCon[model.ConsumerMessage]()
+		defer coordinatorCon.Close()
 		oldCoordinatorCon.Close()
 
 		time.Sleep(50 * time.Millisecond)
@@ -227,6 +230,144 @@ func TestWorkpool(t *testing.T) {
 		assert.True(t, ok)
 		assert.Len(t, register.Active(), 1)
 		assert.Equal(t, register.Active()[0].State(), model.ActiveGrantState)
+
+		coordinatorCon.Out <- model.NewRevoke(grant)
+	})
+
+	t.Run("reconnect with promotion", func(t *testing.T) {
+		coordinatorCon := newFakeCon[model.ConsumerMessage]()
+		defer coordinatorCon.Close()
+
+		shards := make(chan model.Shard)
+		active := make(chan struct{}, 10)
+
+		consumer := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		w, _ := model.NewWorkPool(cl, consumer, service1, []model.QualifiedDomainName{domain1},
+			func(ctx context.Context, self location.Instance, handler grpcx.Handler[model.ConsumerMessage, model.ConsumerMessage]) error {
+				return coordinatorCon.connect(ctx, handler)
+			},
+			func(ctx context.Context, id model.GrantID, shard model.Shard, ownership model.Ownership) {
+				shards <- shard
+				select {
+				case <-ownership.Active().Closed():
+					active <- struct{}{}
+				case <-ctx.Done():
+					return
+				}
+
+				select {
+				case <-ctx.Done():
+					return
+				}
+			},
+		)
+		defer w.Drain(time.Second)
+		<-coordinatorCon.Connected.Closed()
+
+		assertx.Element(t, coordinatorCon.In)                            // register
+		coordinatorCon.Out <- model.NewExtend(cl.Now().Add(time.Minute)) // initial extend
+
+		// grant allocated
+		shard := model.Shard{Domain: domain1, Type: model.Unit}
+		grant := model.NewGrant("grant1", shard, model.AllocatedGrantState, cl.Now().Add(time.Minute), cl.Now())
+		coordinatorCon.Out <- model.NewAssign(grant)
+		assertx.Element(t, shards)
+		requirex.ChanEmpty(t, active)
+
+		// Shut down coordinator connection to force reconnect
+		oldCoordinatorCon := coordinatorCon
+		coordinatorCon = newFakeCon[model.ConsumerMessage]()
+		defer coordinatorCon.Close()
+		oldCoordinatorCon.Close()
+
+		time.Sleep(50 * time.Millisecond)
+		cl.Add(2 * time.Second)
+
+		<-coordinatorCon.Connected.Closed()
+
+		msg := assertx.Element(t, coordinatorCon.In)
+		cMsg, ok := msg.ClientMessage()
+		assert.True(t, ok)
+		register, ok := cMsg.Register()
+		assert.True(t, ok)
+		assert.Len(t, register.Active(), 1)
+		assert.Equal(t, register.Active()[0].State(), model.AllocatedGrantState)
+
+		// Send the same grant, but active
+		grant = model.NewGrant("grant1", shard, model.ActiveGrantState, cl.Now().Add(time.Minute), cl.Now())
+		coordinatorCon.Out <- model.NewAssign(grant)
+		requirex.ChanEmpty(t, shards)
+		// Grant is promoted to active
+		assertx.Element(t, active)
+
+		coordinatorCon.Out <- model.NewRevoke(grant)
+	})
+
+	t.Run("reconnect with revoking", func(t *testing.T) {
+		coordinatorCon := newFakeCon[model.ConsumerMessage]()
+		defer coordinatorCon.Close()
+
+		shards := make(chan model.Shard)
+		revoked := make(chan struct{}, 10)
+
+		consumer := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		w, _ := model.NewWorkPool(cl, consumer, service1, []model.QualifiedDomainName{domain1},
+			func(ctx context.Context, self location.Instance, handler grpcx.Handler[model.ConsumerMessage, model.ConsumerMessage]) error {
+				return coordinatorCon.connect(ctx, handler)
+			},
+			func(ctx context.Context, id model.GrantID, shard model.Shard, ownership model.Ownership) {
+				shards <- shard
+				select {
+				case <-ownership.Revoked().Closed():
+					revoked <- struct{}{}
+				case <-ctx.Done():
+					return
+				}
+
+				select {
+				case <-ctx.Done():
+					return
+				}
+			},
+		)
+		defer w.Drain(time.Second)
+		<-coordinatorCon.Connected.Closed()
+
+		assertx.Element(t, coordinatorCon.In)                            // register
+		coordinatorCon.Out <- model.NewExtend(cl.Now().Add(time.Minute)) // initial extend
+
+		// grant allocated
+		shard := model.Shard{Domain: domain1, Type: model.Unit}
+		grant := model.NewGrant("grant1", shard, model.AllocatedGrantState, cl.Now().Add(time.Minute), cl.Now())
+		coordinatorCon.Out <- model.NewAssign(grant)
+		assertx.Element(t, shards)
+		requirex.ChanEmpty(t, revoked)
+
+		// Shut down coordinator connection to force reconnect
+		oldCoordinatorCon := coordinatorCon
+		coordinatorCon = newFakeCon[model.ConsumerMessage]()
+		defer coordinatorCon.Close()
+		oldCoordinatorCon.Close()
+
+		time.Sleep(50 * time.Millisecond)
+		cl.Add(2 * time.Second)
+
+		<-coordinatorCon.Connected.Closed()
+
+		msg := assertx.Element(t, coordinatorCon.In)
+		cMsg, ok := msg.ClientMessage()
+		assert.True(t, ok)
+		register, ok := cMsg.Register()
+		assert.True(t, ok)
+		assert.Len(t, register.Active(), 1)
+		assert.Equal(t, register.Active()[0].State(), model.AllocatedGrantState)
+
+		// Send the same grant, but active
+		grant = model.NewGrant("grant1", shard, model.RevokedGrantState, cl.Now().Add(time.Minute), cl.Now())
+		coordinatorCon.Out <- model.NewAssign(grant)
+		requirex.ChanEmpty(t, shards)
+		// Grant is promoted to active
+		assertx.Element(t, revoked)
 
 		coordinatorCon.Out <- model.NewRevoke(grant)
 	})

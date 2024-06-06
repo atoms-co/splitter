@@ -263,22 +263,23 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 	case msg.IsAssign():
 		assign, _ := msg.Assign()
 		grants := assign.Grants()
+		leases := map[time.Time]*clockx.Timer{}
 
 		for _, g := range grants {
 			p.shards[g.Shard()] = g.ID()
 			if old, ok := p.grants[g.ID()]; ok {
 				if old.LeaseState == LeaseStale {
-					old.LeaseState = LeaseActive
-					old.Lease = p.lease
-
-					log.Debugf(ctx, "Re-activating stale grant %v", old)
-					continue
+					if p.updateStaleGrant(ctx, leases, old, g) {
+						log.Debugf(ctx, "Re-activating stale grant %v", old)
+						continue
+					}
+					log.Errorf(ctx, "Internal: unexpected assignment of grant in invalid state. "+
+						"Re-creating. Old grant: %v. New grant: %v", old, g)
 				} else {
 					log.Errorf(ctx, "Internal: unexpected re-grant of non-stale grant %v. Re-creating", old)
-
-					old.Handler.Close()
-					delete(p.grants, g.ID())
 				}
+				old.Handler.Close()
+				delete(p.grants, g.ID())
 			}
 
 			h := newHandler(ctx, p.cl, g, p.lease.Ttl(), newLoader(), newUnloader(), p.handler)
@@ -362,9 +363,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				candidate.Handler.Close()
 				continue
 			}
-			candidate.Grant = g // Overwrite allocated grant with active grant
-			log.Debugf(ctx, "Promoted grant to active: %v", g)
-			candidate.Handler.own.activate() // Signal consumer that grant is activated
+			p.activateGrant(ctx, candidate, g)
 		}
 
 	case msg.IsRevoke():
@@ -378,24 +377,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				log.Warnf(ctx, "Revoking stale grant: %v. Ignoring", g)
 				continue
 			}
-
-			// (1) Create lease that expires at the current TTL. The workpool lease no longer includes this grant.
-			// We share the leases to not get a flood of identical expiration checks.
-
-			ttl := grant.Lease.Ttl()
-			if _, ok := leases[ttl]; !ok {
-				leases[ttl] = clockx.AfterFunc(p.cl, p.cl.Until(ttl), p.emitExpirationCheck)
-			}
-			grant.Grant = g // Overwrite activated grant with revoked grant
-			grant.LeaseState = LeaseRevoked
-			grant.Lease = leases[ttl]
-			grant.Handler.own.revoke() // Signal consumer that grant is revoked
-
-			// (2) Revoke async. If the Revoke unexpectedly arrives before Assign, the lease still expires.
-
-			log.Infof(ctx, "Revoking grant %v, ttl=%v", g, ttl)
-
-			grant.Handler.Drain(p.cl.Until(ttl))
+			p.revokeGrant(ctx, leases, grant, g)
 		}
 
 	case msg.IsNotify():
@@ -432,6 +414,67 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 
 	default:
 		log.Errorf(ctx, "Unexpected coordinator message: %v", msg)
+	}
+}
+
+func (p *WorkPool) activateGrant(ctx context.Context, grant *grant, active Grant) {
+	grant.Grant = active         // Overwrite allocated grant with active grant
+	grant.Handler.own.activate() // Signal consumer that grant is activated
+
+	log.Debugf(ctx, "Promoted grant to active: %v", active)
+}
+
+func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*clockx.Timer, grant *grant, revoked Grant) {
+	// (1) Create lease that expires at the passed grant expiration. The workpool lease no longer includes this grant.
+	// We share the leases to not get a flood of identical expiration checks.
+
+	ttl := revoked.Lease()
+	if _, ok := leases[ttl]; !ok {
+		leases[ttl] = clockx.AfterFunc(p.cl, p.cl.Until(ttl), p.emitExpirationCheck)
+	}
+	grant.Lease = leases[ttl]
+	grant.LeaseState = LeaseRevoked
+	grant.Grant = revoked      // Overwrite activated grant with revoked grant
+	grant.Handler.own.revoke() // Signal consumer that grant is revoked
+
+	// (2) Revoke async. If the Revoke unexpectedly arrives before Assign, the lease still expires.
+
+	log.Infof(ctx, "Revoking grant %v, ttl=%v", revoked, ttl)
+
+	grant.Handler.Drain(p.cl.Until(ttl))
+}
+
+func (p *WorkPool) updateStaleGrant(ctx context.Context, leases map[time.Time]*clockx.Timer, old *grant, newGrant Grant) bool {
+	if old.Grant.State() == newGrant.State() {
+		old.LeaseState = LeaseActive
+		old.Lease = p.lease
+		return true
+	}
+
+	switch newGrant.State() {
+	case AllocatedGrantState:
+		return false // old can't be in any other states
+	case LoadedGrantState:
+		return false // new grant can't be loaded without old being loaded
+	case ActiveGrantState:
+		// only allocated grant can be activated
+		if !IsAllocatedOrLoaded(old.Grant.State()) {
+			return false
+		}
+		p.activateGrant(ctx, old, newGrant)
+		old.LeaseState = LeaseActive
+		return true
+	case RevokedGrantState:
+		if IsUnloadedGrant(old.Grant.State()) { // only allocated or active can be revoked
+			return false
+		}
+		p.revokeGrant(ctx, leases, old, newGrant)
+		return true
+	case UnloadedGrantState:
+		p.revokeGrant(ctx, leases, old, newGrant)
+		return true
+	default:
+		return false
 	}
 }
 
