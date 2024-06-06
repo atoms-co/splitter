@@ -222,6 +222,9 @@ func WithUpdateDomainConfig(config DomainConfig) UpdateDomainOption {
 }
 
 // Handler processes grants. Must be concurrency-safe.
+// The implementation should use ownership to detect changes in grant state and act accordingly.
+// The context is cancelled when the grant is terminated and its processing should stop immediately. For graceful
+// shutdown, the handler must act on grant revoke (which is followed by context cancellation shortly after).
 type Handler func(ctx context.Context, id GrantID, shard Shard, ownership Ownership)
 
 // Client is a client for interacting with Splitter.

@@ -48,8 +48,6 @@ type handler struct {
 
 	cl  clock.Clock
 	own *ownership
-
-	drain iox.AsyncCloser
 }
 
 func newHandler(ctx context.Context, cl clock.Clock, grant Grant, expiration time.Time, loader *loader, unloader *unloader, handlerFn Handler) *handler {
@@ -57,7 +55,6 @@ func newHandler(ctx context.Context, cl clock.Clock, grant Grant, expiration tim
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
 		own:         newOwnership(cl, grant.State(), expiration, loader, unloader),
-		drain:       iox.NewAsyncCloser(),
 	}
 
 	hctx, cancel := context.WithCancel(ctx)
@@ -82,7 +79,6 @@ func (h *handler) Ownership() Ownership {
 }
 
 func (h *handler) Drain(timeout time.Duration) {
-	h.drain.Close()
 	h.cl.AfterFunc(timeout, h.Close)
 }
 
