@@ -282,25 +282,24 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				delete(p.grants, g.ID())
 			}
 
-			h := newHandler(ctx, p.cl, g, p.lease.Ttl(), newLoader(), newUnloader(), p.handler)
-			p.grants[g.ID()] = &grant{
+			gr := &grant{
 				Grant:      g,
 				LeaseState: LeaseActive,
 				Lease:      p.lease,
-				Handler:    h,
 			}
+			h := newHandler(ctx, p.cl, g, gr.Expiration, newLoader(), newUnloader(), p.handler)
+			gr.Handler = h
+			p.grants[g.ID()] = gr
 
 			// Wait on client Load
 			go func() {
 				select {
 				case <-h.own.loader.loaded().Closed():
 					syncx.Txn0(ctx, p.txn, func() {
-						if grant, ok := p.grants[g.ID()]; ok {
-							if grant.Grant.State() == AllocatedGrantState {
-								grant.Grant = grant.ToState(LoadedGrantState)
-								log.Debugf(ctx, "Informing the coordinator of Grant Load %v", grant.Grant)
-								p.mustSend(ctx, NewUpdate(grant.Grant))
-							}
+						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == AllocatedGrantState {
+							grant.Grant = grant.ToState(LoadedGrantState)
+							log.Debugf(ctx, "Informing the coordinator of Grant Load %v", grant.Grant)
+							p.mustSend(ctx, NewUpdate(grant.Grant))
 						}
 					})
 					return
@@ -314,12 +313,10 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				select {
 				case <-h.own.unloader.unloaded().Closed(): // client closed ownership.Unloader.Unload()
 					syncx.Txn0(ctx, p.txn, func() {
-						if grant, ok := p.grants[g.ID()]; ok {
-							if grant.Grant.State() == RevokedGrantState {
-								grant.Grant = grant.ToState(UnloadedGrantState)
-								log.Debugf(ctx, "Informing the coordinator of Grant Unload %v", grant.Grant)
-								p.mustSend(ctx, NewUpdate(grant.Grant))
-							}
+						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == RevokedGrantState {
+							grant.Grant = grant.ToState(UnloadedGrantState)
+							log.Debugf(ctx, "Informing the coordinator of Grant Unload %v", grant.Grant)
+							p.mustSend(ctx, NewUpdate(grant.Grant))
 						}
 					})
 					return
@@ -406,12 +403,6 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			p.lease = clockx.AfterFunc(p.cl, p.cl.Until(extend.Lease()), p.emitExpirationCheck)
 		}
 		p.lease.Reset(p.cl.Until(extend.Lease()))
-
-		// Update informational consumer lease
-		for _, grant := range p.grants {
-			grant.Handler.own.setExpiration(extend.Lease())
-		}
-
 	default:
 		log.Errorf(ctx, "Unexpected coordinator message: %v", msg)
 	}
@@ -508,7 +499,7 @@ func (p *WorkPool) checkExpiration(ctx context.Context) {
 
 	now := p.cl.Now()
 	for gid, g := range p.grants {
-		if g.Lease.Ttl().Before(now) {
+		if g.Expiration().Before(now) {
 			p.removeGrant(ctx, gid)
 		}
 	}
@@ -521,7 +512,7 @@ func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
 	}
 	grant.Handler.Close()
 
-	if grant.LeaseState != LeaseStale && p.cl.Now().Before(grant.Lease.Ttl()) {
+	if grant.LeaseState != LeaseStale && p.cl.Now().Before(grant.Expiration()) {
 		p.mustSend(ctx, NewReleased(grant.Grant))
 	}
 	delete(p.grants, gid)

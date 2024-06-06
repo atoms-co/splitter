@@ -6,7 +6,6 @@ import (
 	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
 	"fmt"
-	"sync"
 	"time"
 )
 
@@ -31,6 +30,10 @@ type grant struct {
 	Handler    *handler
 }
 
+func (g *grant) Expiration() time.Time {
+	return g.Lease.Ttl()
+}
+
 func (g *grant) ToState(state GrantState) Grant {
 	return NewGrant(g.Grant.ID(), g.Grant.Shard(), state, g.Lease.Ttl(), g.Grant.Assigned())
 }
@@ -50,7 +53,7 @@ type handler struct {
 	own *ownership
 }
 
-func newHandler(ctx context.Context, cl clock.Clock, grant Grant, expiration time.Time, loader *loader, unloader *unloader, handlerFn Handler) *handler {
+func newHandler(ctx context.Context, cl clock.Clock, grant Grant, expiration func() time.Time, loader *loader, unloader *unloader, handlerFn Handler) *handler {
 	h := &handler{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
@@ -83,18 +86,16 @@ func (h *handler) Drain(timeout time.Duration) {
 }
 
 type ownership struct {
-	cl       clock.Clock
-	active   iox.AsyncCloser
-	revoked  iox.AsyncCloser
-	expired  iox.AsyncCloser
-	loader   *loader
-	unloader *unloader
-
-	mu         sync.RWMutex
-	expiration time.Time
+	cl         clock.Clock
+	active     iox.AsyncCloser
+	revoked    iox.AsyncCloser
+	expired    iox.AsyncCloser
+	loader     *loader
+	unloader   *unloader
+	expiration func() time.Time
 }
 
-func newOwnership(cl clock.Clock, state GrantState, expiration time.Time, loader *loader, unloader *unloader) *ownership {
+func newOwnership(cl clock.Clock, state GrantState, expiration func() time.Time, loader *loader, unloader *unloader) *ownership {
 	ret := &ownership{
 		cl:         cl,
 		active:     iox.NewAsyncCloser(),
@@ -113,7 +114,7 @@ func newOwnership(cl clock.Clock, state GrantState, expiration time.Time, loader
 		ret.revoked.Close()
 	}
 	// If past expiration preload expiration signal
-	if cl.Now().After(expiration) {
+	if cl.Now().After(expiration()) {
 		ret.expired.Close()
 	}
 
@@ -144,12 +145,6 @@ func (o *ownership) expire() {
 	o.expired.Close()
 }
 
-func (o *ownership) setExpiration(expiration time.Time) {
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	o.expiration = expiration
-}
-
 func (o *ownership) Loader() Loader {
 	return o.loader
 }
@@ -159,9 +154,7 @@ func (o *ownership) Unloader() Unloader {
 }
 
 func (o *ownership) Expiration() time.Time {
-	o.mu.RLock()
-	defer o.mu.RUnlock()
-	return o.expiration
+	return o.expiration()
 }
 
 type loader struct {
