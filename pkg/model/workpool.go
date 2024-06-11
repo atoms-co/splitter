@@ -326,11 +326,14 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			}()
 
 			go func() {
-				<-h.Closed()
-
-				syncx.Txn0(ctx, p.txn, func() {
-					p.removeGrant(ctx, g.ID())
-				})
+				select {
+				case <-h.Closed():
+					syncx.Txn0(ctx, p.txn, func() {
+						p.removeGrant(ctx, g.ID())
+					})
+				case <-p.Closed():
+					h.Close()
+				}
 			}()
 
 			log.Debugf(ctx, "Created handler for grant %v", g)
