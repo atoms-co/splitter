@@ -1,8 +1,9 @@
 package session
 
 import (
-	"go.atoms.co/lib/metrics"
 	"fmt"
+
+	"go.atoms.co/lib/metrics"
 )
 
 const (

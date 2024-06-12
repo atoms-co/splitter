@@ -1,8 +1,9 @@
 package location
 
 import (
-	"go.atoms.co/splitter/lib/service/location/pb"
 	"fmt"
+
+	"go.atoms.co/splitter/lib/service/location/pb"
 )
 
 // Region represents a persistence-layer region for affinity.

@@ -1,10 +1,11 @@
 package session
 
 import (
-	"go.atoms.co/lib/iox"
 	"fmt"
 	"sync"
 	"time"
+
+	"go.atoms.co/lib/iox"
 )
 
 // Lease represent a lease, i.e., time-limited ownership of some associated entity.
