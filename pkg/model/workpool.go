@@ -531,11 +531,11 @@ func (p *WorkPool) emitMetrics(ctx context.Context) {
 
 	grants := map[QualifiedDomainName]map[LeaseState]int{}
 	for _, grant := range p.grants {
-		service := grant.Grant.Shard().Domain
-		if grants[service] == nil {
-			grants[service] = map[LeaseState]int{}
+		domain := grant.Grant.Shard().Domain
+		if grants[domain] == nil {
+			grants[domain] = map[LeaseState]int{}
 		}
-		grants[service][grant.LeaseState] += 1
+		grants[domain][grant.LeaseState] += 1
 	}
 
 	for domain, counts := range grants {
