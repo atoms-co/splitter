@@ -271,6 +271,9 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				if old.LeaseState == LeaseStale {
 					if p.updateStaleGrant(ctx, leases, old, g) {
 						log.Debugf(ctx, "Re-activating stale grant %v", old)
+						old.LeaseState = LeaseActive
+						old.Lease = p.lease
+						log.Debugf(ctx, "Re-activated stale grant: %v", old)
 						continue
 					}
 					log.Errorf(ctx, "Internal: unexpected assignment of grant in invalid state. "+
@@ -440,14 +443,17 @@ func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*clockx
 
 func (p *WorkPool) updateStaleGrant(ctx context.Context, leases map[time.Time]*clockx.Timer, old *grant, newGrant Grant) bool {
 	if old.Grant.State() == newGrant.State() {
-		old.LeaseState = LeaseActive
-		old.Lease = p.lease
 		return true
 	}
 
 	switch newGrant.State() {
 	case AllocatedGrantState:
-		return false // old can't be in any other states
+		// Grant advanced locally, but server grant is still allocated. The update will eventually
+		// reach the server.
+		if old.Grant.State() == LoadedGrantState {
+			return true
+		}
+		return false
 	case LoadedGrantState:
 		return false // new grant can't be loaded without old being loaded
 	case ActiveGrantState:
@@ -456,17 +462,10 @@ func (p *WorkPool) updateStaleGrant(ctx context.Context, leases map[time.Time]*c
 			return false
 		}
 		p.activateGrant(ctx, old, newGrant)
-		old.LeaseState = LeaseActive
 		return true
-	case RevokedGrantState:
-		if IsUnloadedGrant(old.Grant.State()) { // only allocated or active can be revoked
-			return false
-		}
-		p.revokeGrant(ctx, leases, old, newGrant)
-		return true
-	case UnloadedGrantState:
-		p.revokeGrant(ctx, leases, old, newGrant)
-		return true
+	case RevokedGrantState, UnloadedGrantState:
+		// Grants are revoked explicitly using revoke message, not assign.
+		return false
 	default:
 		return false
 	}

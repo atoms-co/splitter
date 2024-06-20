@@ -6,6 +6,7 @@ import (
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/lib/testing/requirex"
+	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
@@ -293,6 +294,8 @@ func TestWorkpool(t *testing.T) {
 		assert.Len(t, register.Active(), 1)
 		assert.Equal(t, register.Active()[0].State(), model.AllocatedGrantState)
 
+		coordinatorCon.Out <- model.NewExtend(cl.Now().Add(time.Minute))
+
 		// Send the same grant, but active
 		grant = model.NewGrant("grant1", shard, model.ActiveGrantState, cl.Now().Add(time.Minute), cl.Now())
 		coordinatorCon.Out <- model.NewAssign(grant)
@@ -303,12 +306,14 @@ func TestWorkpool(t *testing.T) {
 		coordinatorCon.Out <- model.NewRevoke(grant)
 	})
 
-	t.Run("reconnect with revoking", func(t *testing.T) {
+	t.Run("reconnect with loading", func(t *testing.T) {
 		coordinatorCon := newFakeCon[model.ConsumerMessage]()
 		defer coordinatorCon.Close()
 
 		shards := make(chan model.Shard)
 		revoked := make(chan struct{}, 10)
+		load := iox.NewAsyncCloser()
+		quit := iox.NewAsyncCloser()
 
 		consumer := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		w, _ := model.NewWorkPool(cl, consumer, service1, []model.QualifiedDomainName{domain1},
@@ -317,16 +322,13 @@ func TestWorkpool(t *testing.T) {
 			},
 			func(ctx context.Context, id model.GrantID, shard model.Shard, ownership model.Ownership) {
 				shards <- shard
+				<-load.Closed()
+				ownership.Loader().Load().Close()
 				select {
-				case <-ownership.Revoked().Closed():
-					revoked <- struct{}{}
+				case <-ownership.Expired().Closed():
+					quit.Close()
 				case <-ctx.Done():
-					return
-				}
-
-				select {
-				case <-ctx.Done():
-					return
+					quit.Close()
 				}
 			},
 		)
@@ -362,12 +364,16 @@ func TestWorkpool(t *testing.T) {
 		assert.Len(t, register.Active(), 1)
 		assert.Equal(t, register.Active()[0].State(), model.AllocatedGrantState)
 
+		load.Close()
+
+		coordinatorCon.Out <- model.NewExtend(cl.Now().Add(time.Minute))
+
 		// Send the same grant, but active
-		grant = model.NewGrant("grant1", shard, model.RevokedGrantState, cl.Now().Add(time.Minute), cl.Now())
+		grant = model.NewGrant("grant1", shard, model.AllocatedGrantState, cl.Now().Add(time.Minute), cl.Now())
 		coordinatorCon.Out <- model.NewAssign(grant)
 		requirex.ChanEmpty(t, shards)
-		// Grant is promoted to active
-		assertx.Element(t, revoked)
+		// Grant is not closed
+		chanx.TryDrain(quit.Closed(), 100*time.Millisecond)
 
 		coordinatorCon.Out <- model.NewRevoke(grant)
 	})
