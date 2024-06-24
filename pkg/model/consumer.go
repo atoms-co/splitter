@@ -147,9 +147,9 @@ func (s Shard) String() string {
 	case Unit:
 		return fmt.Sprintf("%v", s.Domain)
 	case Global:
-		return fmt.Sprintf("%v[%v-%v)", s.Domain, s.From, s.To)
+		return fmt.Sprintf("%v[%v;%v)", s.Domain, s.From, s.To)
 	case Regional:
-		return fmt.Sprintf("%v@%v[%v-%v)", s.Domain, s.Region, s.From, s.To)
+		return fmt.Sprintf("%v@%v[%v;%v)", s.Domain, s.Region, s.From, s.To)
 	default:
 		return "invalid-shard"
 	}
