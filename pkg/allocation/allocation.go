@@ -743,10 +743,11 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 				continue // skip: cannot revoke Allocated grant
 			}
 
+			// TODO(jhhurwitz): 06/26/24 Tweak Load algorithm. Should not use integer division + should evaluate ratios
 			load := AdjustedLoad{
-				Load:  (overload[w.info.Instance.ID] * l.work.Load) / w.load.Load,
-				Place: w.place[t],
-				Colo:  w.colo[t],
+				Load:  (overload[w.info.Instance.ID] * l.work.Load) / w.load.Load, // overload of worker, purposely diminished by average load. (place + colo should dominate)
+				Place: w.place[t],                                                 // placement penalty of Unit on worker
+				Colo:  w.colo[t],                                                  // colocation penalty of Unit on worker
 			}
 
 			if load.Total() > 0 {
@@ -791,9 +792,9 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 			colo, _ := a.colo.Colocate(w.info.Instance, w.LiveWith(work))
 
 			diff := AdjustedLoad{
-				Load:  (max(intrin-cutoff, 0)*work.Load)/intrin - next.load.Load,
-				Place: place - next.load.Place,
-				Colo:  colo - w.load.Colo - bonus,
+				Load:  (max(intrin-cutoff, 0)*work.Load)/intrin - next.load.Load, // negative if intrinsic load on candidate worker < load on current worker
+				Place: place - next.load.Place,                                   // negative if Unit placement penalty on candidate worker < Unit placement penalty on current worker
+				Colo:  colo - w.load.Colo - bonus,                                // negative if Unit colocation penalty on candidate worker < Unit colocation penalty on current worker
 			}
 
 			if diff.Total() >= 0 {
@@ -835,6 +836,14 @@ func (a *Allocation[T, W, K, V]) Load() (Load, AdjustedLoad) {
 		ret.Colo += w.load.Colo
 	}
 	return a.load, ret
+}
+
+// LoadByWorker returns the total intrinsic load and current assignments/penalties for a given worker.
+func (a *Allocation[T, W, K, V]) LoadByWorker(id K) (AdjustedLoad, bool) {
+	if w, ok := a.workers[id]; ok {
+		return w.load, true
+	}
+	return AdjustedLoad{}, false
 }
 
 // Size returns the number of work units.

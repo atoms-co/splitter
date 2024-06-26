@@ -40,11 +40,21 @@ var (
 	numAssignments = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey)...),
 	)
-
 	numShards = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
 	)
-
+	numAssignmentsByLocation = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments_by_location", "Assignment by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+	)
+	numLoadByLocation = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_load_by_location", "Load by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+	)
+	numPlacementByLocation = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_placement_by_location", "Placement by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+	)
+	numColocationByLocation = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_colocation_by_location", "Colocation by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+	)
 	numActions = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Leader actions", core.TenantKey, core.ServiceKey, core.ActionKey, core.ResultKey)
 )
 
@@ -260,6 +270,10 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	s.TrySend(ctx, model.NewExtend(lease)) // grants will be covered under this lease
 
 	capacity := limit * int(ShardLoad) // Set capacity shard limit * shard load (0 for no capacity)
+	if capacity > 0 {
+		log.Debugf(ctx, "Consumer %v connected with non-zero capacity limit: %v", consumer, capacity)
+	}
+
 	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.ID(), consumer), allocation.Load(capacity), lease, active...); ok {
 		if len(assigned.Active) > 0 {
 			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Active, toGrant)...))
@@ -944,9 +958,46 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 		numShards.Set(ctx, float64(shards), core.QualifiedDomainTags(domain.Name())...)
 	}
 
+	// Assigned grants and Load by domain and location
 	assigned := map[model.QualifiedDomainName]map[model.GrantState]int{}
 	for _, worker := range c.alloc.Workers() {
 		assign := c.alloc.Assigned(worker.ID())
+
+		numAssignmentsByLocation.Set(
+			ctx,
+			float64(len(assign.Active)+len(assign.Revoked)),
+			slicex.CopyAppend(
+				core.QualifiedServiceTags(c.name),
+				core.InstanceIDTag(worker.ID()),
+				core.LocationTag(worker.Instance.Data.Instance().Location()))...,
+		)
+
+		adj, _ := c.alloc.LoadByWorker(worker.ID())
+		numLoadByLocation.Set(
+			ctx,
+			float64(adj.Load),
+			slicex.CopyAppend(
+				core.QualifiedServiceTags(c.name),
+				core.InstanceIDTag(worker.ID()),
+				core.LocationTag(worker.Instance.Data.Instance().Location()))...,
+		)
+		numPlacementByLocation.Set(
+			ctx,
+			float64(adj.Place),
+			slicex.CopyAppend(
+				core.QualifiedServiceTags(c.name),
+				core.InstanceIDTag(worker.ID()),
+				core.LocationTag(worker.Instance.Data.Instance().Location()))...,
+		)
+		numColocationByLocation.Set(
+			ctx,
+			float64(adj.Colo),
+			slicex.CopyAppend(
+				core.QualifiedServiceTags(c.name),
+				core.InstanceIDTag(worker.ID()),
+				core.LocationTag(worker.Instance.Data.Instance().Location()))...,
+		)
+
 		for _, active := range assign.Active {
 			if assigned[active.Unit.Domain] == nil {
 				assigned[active.Unit.Domain] = map[model.GrantState]int{}
@@ -985,6 +1036,10 @@ func (c *coordinator) resetMetrics(ctx context.Context) {
 	numConsumers.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numShards.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numAssignments.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	numAssignmentsByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	numLoadByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	numPlacementByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	numColocationByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 }
 
 // Txn is a helper that constructs a syncx.TxnFn with the project specific error codes and injection channels

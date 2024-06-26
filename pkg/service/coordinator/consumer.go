@@ -58,7 +58,7 @@ func (c *Consumer) Joined() time.Time {
 }
 
 func (c *Consumer) String() string {
-	return fmt.Sprintf("%v[joined=%v]", c.instance, c.joined)
+	return fmt.Sprintf("%v[joined=%v, keys=%v]", c.instance, c.joined, c.keys)
 }
 
 type consumerSession struct {

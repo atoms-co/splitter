@@ -220,6 +220,124 @@ func TestAllocation(t *testing.T) {
 		assert.Len(t, grants, 1)
 	})
 
+	t.Run("allocate/capacity-loadbalance-above-slack", func(t *testing.T) {
+		// Single allocation with 1 worker with capacity
+
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+			{Unit: "3", Load: 10, Data: us},
+			{Unit: "4", Load: 10, Data: us},
+			{Unit: "5", Load: 10, Data: eu},
+			{Unit: "6", Load: 10, Data: eu},
+			{Unit: "7", Load: 10, Data: eu},
+			{Unit: "8", Load: 10, Data: eu},
+			{Unit: "9", Load: 10, Data: eu},
+			{Unit: "10", Load: 10, Data: eu},
+			{Unit: "11", Load: 10, Data: eu},
+			{Unit: "12", Load: 10, Data: eu},
+			{Unit: "13", Load: 10, Data: eu},
+			{Unit: "14", Load: 10, Data: eu},
+			{Unit: "15", Load: 10, Data: eu},
+			{Unit: "16", Load: 10, Data: eu},
+			{Unit: "leader", Load: 20, Data: jp},
+		}
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+
+		lease := cl.Now().Add(time.Minute)
+
+		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
+		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
+		w3 := allocation.Worker[string, location.Location]{ID: "w3", Data: us}
+		w4 := allocation.Worker[string, location.Location]{ID: "w4", Data: us}
+		w5 := allocation.Worker[string, location.Location]{ID: "w5", Data: us}
+
+		_, ok := alloc.Attach(w1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w3, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w4, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w5, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		alloc.Allocate(cl.Now())
+
+		c := allocation.Worker[string, location.Location]{ID: "c", Data: us}
+		b := allocation.Worker[string, location.Location]{ID: "b", Data: us}
+
+		_, ok = alloc.Attach(c, 10, lease)
+		assert.True(t, ok)
+
+		_, ok = alloc.Attach(b, 10, lease)
+		assert.True(t, ok)
+
+		_, _, ok = alloc.LoadBalance(cl.Now())
+		assert.False(t, ok) // TODO(jhhurwitz): 06/25/24 Ideally we should load balance here since the workers are above slack.
+	})
+
+	t.Run("allocate/capacity-loadbalance-below-slack", func(t *testing.T) {
+		// Single allocation with 1 worker with capacity
+
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+			{Unit: "3", Load: 10, Data: us},
+			{Unit: "4", Load: 10, Data: us},
+			{Unit: "5", Load: 10, Data: eu},
+			{Unit: "6", Load: 10, Data: eu},
+			{Unit: "7", Load: 10, Data: eu},
+			{Unit: "8", Load: 10, Data: eu},
+			{Unit: "9", Load: 10, Data: eu},
+			{Unit: "10", Load: 10, Data: eu},
+			{Unit: "11", Load: 10, Data: eu},
+			{Unit: "12", Load: 10, Data: eu},
+			{Unit: "13", Load: 10, Data: eu},
+			{Unit: "14", Load: 10, Data: eu},
+			{Unit: "15", Load: 10, Data: eu},
+			{Unit: "16", Load: 10, Data: eu},
+			{Unit: "leader", Load: 50, Data: jp},
+		}
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+
+		lease := cl.Now().Add(time.Minute)
+
+		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
+		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
+		w3 := allocation.Worker[string, location.Location]{ID: "w3", Data: us}
+		w4 := allocation.Worker[string, location.Location]{ID: "w4", Data: us}
+		w5 := allocation.Worker[string, location.Location]{ID: "w5", Data: us}
+
+		_, ok := alloc.Attach(w1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w3, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w4, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w5, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		alloc.Allocate(cl.Now())
+
+		c := allocation.Worker[string, location.Location]{ID: "c", Data: us}
+		b := allocation.Worker[string, location.Location]{ID: "b", Data: us}
+
+		_, ok = alloc.Attach(c, 10, lease)
+		assert.True(t, ok)
+
+		_, ok = alloc.Attach(b, 10, lease)
+		assert.True(t, ok)
+
+		_, _, ok = alloc.LoadBalance(cl.Now())
+		assert.False(t, ok) // TODO(jhhurwitz): 06/25/24 Ideally we should load balance here since some of the workers have 0 load.
+	})
+
 	t.Run("allocate/constraints", func(t *testing.T) {
 		// Single allocation with region affinity constraint in various worker situations
 

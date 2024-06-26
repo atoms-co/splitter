@@ -1,6 +1,7 @@
 package core
 
 import (
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/splitter/pkg/model"
 	"fmt"
@@ -19,6 +20,8 @@ const (
 	GrantStateKey   metrics.Key = "grant_state"
 	LeaseStateKey   metrics.Key = "lease_state"
 	MessageTypeKey  metrics.Key = "message_type"
+	InstanceIDKey   metrics.Key = "instance_id"
+	LocationKey     metrics.Key = "location"
 )
 
 var (
@@ -92,4 +95,12 @@ func LeaseStateTag(v string) metrics.Tag {
 
 func MessageTypeTag(v any) metrics.Tag {
 	return metrics.Tag{Key: MessageTypeKey, Value: fmt.Sprintf("%v", v)}
+}
+
+func InstanceIDTag(v location.InstanceID) metrics.Tag {
+	return metrics.Tag{Key: InstanceIDKey, Value: fmt.Sprintf("%v", v)}
+}
+
+func LocationTag(v location.Location) metrics.Tag {
+	return metrics.Tag{Key: LocationKey, Value: fmt.Sprintf("%v", v)}
 }
