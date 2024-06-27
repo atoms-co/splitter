@@ -13,7 +13,8 @@ var (
 
 // Resolver resolves ownership of a key of type K to a proxy object of type T. Each proxy is typically instantiated
 // with a grpc service client, such as Proxy[v1.FooServiceClient] for remote invocation only. Returns ErrNoResolution
-// if resolution fails (possibly due to local ownership) and ErrInvalid if the key is not valid.
+// if resolution fails (possibly due to local ownership), ErrInvalid if the key is not valid, or ErrNotFound when
+// information about owner cannot be found (e.g. when key is not owned).
 type Resolver[T, K any] interface {
 	Resolve(ctx context.Context, key K) (T, error)
 }
@@ -46,11 +47,11 @@ func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn f
 //
 // For example, using Resolver[v1.FooServiceClient, K], the extended call looks like the following:
 //
-//  parsed := parse(req)
-//  ... determine key ...
-//	resp, err := splitter.InvokeEx(ctx, proxy, key, v1.FooServiceClient.Info, req, func() (*v1.InfoResponse, error) {
-//      return local.Info(parsed, ...)
-//  })
+//	 parsed := parse(req)
+//	 ... determine key ...
+//		resp, err := splitter.InvokeEx(ctx, proxy, key, v1.FooServiceClient.Info, req, func() (*v1.InfoResponse, error) {
+//	     return local.Info(parsed, ...)
+//	 })
 func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A, local func() (B, error)) (B, error) {
 	t, err := p.Resolve(ctx, key)
 	if err != nil {
@@ -94,7 +95,8 @@ func NewResolver[T any](pool ConnectionPool, fn RemoteFn[T], states ...GrantStat
 	}
 }
 
-// Resolve returns a shared grpc connection to the owning instance, if remote. Returns ErrNoResolution if local.
+// Resolve returns a shared grpc connection to the owning instance, if remote. Returns ErrNoResolution if local
+// or ErrNotFound if owner cannot be determined.
 func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, error) {
 	var zero T
 
