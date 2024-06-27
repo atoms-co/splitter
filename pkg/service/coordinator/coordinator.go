@@ -55,7 +55,7 @@ var (
 	numColocationByLocation = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_colocation_by_location", "Colocation by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
-	numActions = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Leader actions", core.TenantKey, core.ServiceKey, core.ActionKey, core.ResultKey)
+	numActions = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Coordinator actions", core.TenantKey, core.ServiceKey, core.ActionKey, core.ResultKey)
 )
 
 // Coordinator handles consumer connection and work allocation.
@@ -319,7 +319,7 @@ func (c *coordinator) findNamedKeys(named []model.DomainKeyName) ([]model.Qualif
 func (c *coordinator) disconnect(ctx context.Context, reason string, consumers ...*consumerSession) {
 	for _, s := range consumers {
 		log.Infof(ctx, "Disconnecting consumer (reason: %v): %v", reason, s)
-		recordAction(ctx, "disconnect", "ok")
+		c.recordAction(ctx, "disconnect", "ok")
 
 		if len(s.consumer.Keys()) > 0 {
 			// Refresh allocation rules on disconnect if using named keys
@@ -369,7 +369,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, now))
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
-	recordAction(ctx, "init", "ok")
+	c.recordAction(ctx, "init", "ok")
 	c.initialized.Close()
 
 	c.process(ctx, updates)
@@ -534,7 +534,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 			}
 
 			log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
-			recordAction(ctx, "move", "ok")
+			c.recordAction(ctx, "move", "ok")
 		}
 	}
 
@@ -563,10 +563,10 @@ func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant
 
 			c.alloc.Release(grant, now) // undo assignment. Safe because it was not sent
 			c.disconnect(ctx, "stuck", s)
-			recordAction(ctx, "assign", "failed")
+			c.recordAction(ctx, "assign", "failed")
 			continue
 		}
-		recordAction(ctx, "assign", "ok")
+		c.recordAction(ctx, "assign", "ok")
 
 		log.Infof(ctx, "Assigned new grant to consumer %v: %v.", s, grant)
 	}
@@ -590,10 +590,10 @@ func (c *coordinator) promote(ctx context.Context, grants ...Grant) {
 		if !s.TrySend(ctx, model.NewPromote(toGrant(grant))) {
 			log.Errorf(ctx, "Failed to send promotion for grant %v to consumer: %v. Disconnecting", grant, s)
 			c.disconnect(ctx, "stuck", s)
-			recordAction(ctx, "promote", "failed")
+			c.recordAction(ctx, "promote", "failed")
 			continue
 		}
-		recordAction(ctx, "promote", "ok")
+		c.recordAction(ctx, "promote", "ok")
 
 		log.Infof(ctx, "Promoted new grant for consumer %v: %v.", s, grant)
 	}
@@ -725,9 +725,9 @@ func (c *coordinator) handleUpdate(ctx context.Context, s *consumerSession, upda
 	if !t.TrySend(ctx, model.NewNotify(update.Grant(), toGrant(transition))) {
 		log.Errorf(ctx, "Failed to send notify for grant %v for target %v on session %v. Disconnecting", g, transition, t)
 		c.disconnect(ctx, "stuck", s)
-		recordAction(ctx, "notify", "failed")
+		c.recordAction(ctx, "notify", "failed")
 	}
-	recordAction(ctx, "notify", "ok")
+	c.recordAction(ctx, "notify", "ok")
 
 }
 
@@ -1062,6 +1062,6 @@ func (c *coordinator) txn(ctx context.Context, fn func() error) error {
 	}
 }
 
-func recordAction(ctx context.Context, action, result string) {
-	numActions.Increment(ctx, 1, core.ActionTag(action), core.ResultTag(result))
+func (c *coordinator) recordAction(ctx context.Context, action, result string) {
+	numActions.Increment(ctx, 1, slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.ActionTag(action), core.ResultTag(result))...)
 }
