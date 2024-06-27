@@ -44,16 +44,16 @@ var (
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
 	)
 	numAssignmentsByLocation = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments_by_location", "Assignment by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments_by_location", "Assignment by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
 	numLoadByLocation = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_load_by_location", "Load by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_load_by_location", "Load by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
 	numPlacementByLocation = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_placement_by_location", "Placement by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_placement_by_location", "Placement by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
 	numColocationByLocation = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_colocation_by_location", "Colocation by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_colocation_by_location", "Colocation by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
 	numActions = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Leader actions", core.TenantKey, core.ServiceKey, core.ActionKey, core.ResultKey)
 )
