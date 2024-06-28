@@ -493,8 +493,8 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 			for _, key := range keys {
 				if work.Unit.Contains(key) {
 					namedShards = append(namedShards, work.Unit)
+					break
 				}
-				break
 			}
 		}
 	}

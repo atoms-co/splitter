@@ -248,7 +248,7 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 	assertx.Closed(t, out)
 }
 
-func TestCoordinator_NamedKeyConsumer(t *testing.T) {
+func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.NewUnsynchronized()
 
@@ -260,12 +260,19 @@ func TestCoordinator_NamedKeyConsumer(t *testing.T) {
 				Key:    model.MustParseKey("b188ea31-f889-4ce5-9fc9-77fda8ab5c83"),
 			},
 		},
+		{
+			Name: "test2",
+			Key: model.DomainKey{
+				Region: "northcentralus",
+				Key:    model.MustParseKey("00000000-0000-0000-0000-000000000001"),
+			},
+		},
 	}
 
 	domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
 		model.NewDomainConfig(
 			model.WithDomainShardingPolicy(model.NewShardingPolicy(4)),
-			model.WithDomainRegions("centralus"),
+			model.WithDomainRegions("centralus", "northcentralus"),
 			model.WithDomainNamedKeys(names...),
 		),
 	))
@@ -273,6 +280,7 @@ func TestCoordinator_NamedKeyConsumer(t *testing.T) {
 
 	coord := setup(ctx, cl, t, []model.Domain{domain})
 
+	// Worker 1 joins for key "test"
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 	in := make(chan model.ConsumerMessage, 1)
 	in <- model.NewRegister(w, serviceName, nil, nil, model.WithKeyNames(model.DomainKeyName{
@@ -292,6 +300,27 @@ func TestCoordinator_NamedKeyConsumer(t *testing.T) {
 	change := readFn(t, out, isClusterChange)
 	assert.Len(t, change.Assign().Assignments(), 1)
 
+	// Worker 2 joins for key "test2"
+	w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
+	in2 := make(chan model.ConsumerMessage, 1)
+	in2 <- model.NewRegister(w2, serviceName, nil, nil, model.WithKeyNames(model.DomainKeyName{
+		Domain: domainName.Domain,
+		Name:   "test2",
+	}))
+
+	out2, err := coord.Connect(ctx, session.NewID(), in2)
+	require.NoError(t, err, "consumer failed to join leader")
+
+	snapshot = readFn(t, out2, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 1)
+
+	assign = readFn(t, out2, isAssign)
+	assert.Len(t, assign.Grants(), 1)
+
+	change = readFn(t, out2, isClusterChange)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
+	// Worker 1 deregisters
 	in <- model.NewDeregister()
 
 	revoke := readFn(t, out, isRevoke)
@@ -303,6 +332,19 @@ func TestCoordinator_NamedKeyConsumer(t *testing.T) {
 	assert.Equal(t, change.Update().Grants()[0].State(), model.RevokedGrantState)
 
 	in <- model.NewReleased(revoke.Grants()[0])
+
+	// Worker 2 deregisters
+	in2 <- model.NewDeregister()
+
+	revoke = readFn(t, out2, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
+	assert.Equal(t, revoke.Grants()[0].State(), model.RevokedGrantState)
+
+	change = readFn(t, out2, isClusterChange)
+	assert.Len(t, change.Update().Grants(), 1)
+	assert.Equal(t, change.Update().Grants()[0].State(), model.RevokedGrantState)
+
+	in2 <- model.NewReleased(revoke.Grants()[0])
 
 	coord.Close()
 	assertx.Closed(t, out)

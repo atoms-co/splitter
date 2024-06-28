@@ -35,8 +35,8 @@ func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.S
 	return allocation.New(id, findPlacements(tenant, info), findColocations(info), findWork(info, placements), activation)
 }
 
-func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, shards []model.Shard, placements []core.InternalPlacementInfo, activation time.Time) (*Allocation, []Grant) {
-	return allocation.Update(a, findPlacements(tenant, info, shards...), findColocations(info), findWork(info, placements), activation)
+func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, namedShards []model.Shard, placements []core.InternalPlacementInfo, activation time.Time) (*Allocation, []Grant) {
+	return allocation.Update(a, findPlacements(tenant, info, namedShards...), findColocations(info), findWork(info, placements), activation)
 }
 
 // NamedShards handles named shard placement
@@ -222,10 +222,10 @@ func (r *AntiAffinity) Colocate(worker Worker, work map[model.Shard]Work) map[mo
 	return ret
 }
 
-func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx, shards ...model.Shard) []Placement {
+func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx, namedShards ...model.Shard) []Placement {
 	ret := slicex.New[Placement](NewRegionAffinity(info), NewDomainState(tenant, info), NewBannedWorkerRegion(tenant, info))
-	if len(shards) > 0 {
-		ret = append(ret, NewNamedShards(shards...))
+	if len(namedShards) > 0 {
+		ret = append(ret, NewNamedShards(namedShards...))
 	}
 	return ret
 }
