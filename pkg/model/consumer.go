@@ -190,6 +190,10 @@ func IsAllocatedOrLoaded(state GrantState) bool {
 	return state == AllocatedGrantState || state == LoadedGrantState
 }
 
+func IsRevokedOrUnloaded(state GrantState) bool {
+	return state == RevokedGrantState || state == UnloadedGrantState
+}
+
 // GrantID is a coordinator-determined grant id.
 type GrantID = allocation.GrantID
 

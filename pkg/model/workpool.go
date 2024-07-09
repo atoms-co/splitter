@@ -79,7 +79,7 @@ func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName
 		joinFn:      joinFn,
 		handler:     handlerFn,
 		opts:        opts,
-		cluster:     NewClusterMap(NewClusterID(consumer.Instance(), cl.Now())), // empty self-origin map
+		cluster:     NewClusterMap(NewClusterID(consumer.Instance(), cl.Now()), nil, nil), // empty self-origin map
 		clusters:    make(chan Cluster, 1),
 		grants:      map[GrantID]*grant{},
 		shards:      map[Shard]GrantID{},

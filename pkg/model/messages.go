@@ -164,7 +164,7 @@ func NewNotify(update, target Grant) ConsumerMessage {
 	}})
 }
 
-func NewClusterSnapshot(id ClusterID, assignments ...Assignment) ClusterMessage {
+func NewClusterSnapshot(id ClusterID, assignments []Assignment, shards []Shard) ClusterMessage {
 	return ClusterMessage{pb: &public_v1.ClusterMessage{
 		Id:        string(id.Origin.ID()),
 		Version:   int64(id.Version),
@@ -173,6 +173,7 @@ func NewClusterSnapshot(id ClusterID, assignments ...Assignment) ClusterMessage 
 			Snapshot: &public_v1.ClusterMessage_Snapshot{
 				Assignments: slicex.Map(assignments, UnwrapAssignment),
 				Origin:      location.UnwrapInstance(id.Origin),
+				Shards:      slicex.Map(shards, Shard.ToProto),
 			},
 		},
 	}}
@@ -678,8 +679,8 @@ func (a Assignment) Grants() []GrantInfo {
 	return slicex.Map(a.pb.GetGrants(), WrapGrantInfo)
 }
 
-func (s Assignment) String() string {
-	return proto.MarshalTextString(s.pb)
+func (a Assignment) String() string {
+	return proto.MarshalTextString(a.pb)
 }
 
 type ClusterSnapshot struct {
@@ -701,6 +702,10 @@ func (s ClusterSnapshot) Assignments() []Assignment {
 func (s ClusterSnapshot) Origin() (location.Instance, bool) {
 	pb := s.pb.GetOrigin()
 	return location.WrapInstance(pb), pb != nil
+}
+
+func (s ClusterSnapshot) Shards() ([]Shard, error) {
+	return slicex.TryMap(s.pb.GetShards(), ParseShard)
 }
 
 func (s ClusterSnapshot) String() string {

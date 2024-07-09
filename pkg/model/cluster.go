@@ -81,18 +81,26 @@ type ClusterMap struct {
 	id        ClusterID
 	consumers map[ConsumerID]consumerInfo
 	grants    map[GrantID]grantInfo
+	shards    map[Shard]map[GrantID]bool
 
 	cache *ShardMap[GrantID, grantInfo]
 }
 
-func NewClusterMap(id ClusterID, assignments ...Assignment) *ClusterMap {
+func NewClusterMap(id ClusterID, shards []Shard, assignments []Assignment) *ClusterMap {
 	ret := &ClusterMap{
 		id:        id,
 		consumers: map[ConsumerID]consumerInfo{},
 		grants:    map[GrantID]grantInfo{},
 		cache:     NewShardMap[GrantID, grantInfo](),
+		shards:    make(map[Shard]map[GrantID]bool, len(shards)),
 	}
+
+	for _, shard := range shards {
+		ret.shards[shard] = map[GrantID]bool{}
+	}
+
 	ret.initAssignments(assignments)
+	ret.addShardGrants()
 
 	return ret
 }
@@ -105,13 +113,44 @@ func UpdateClusterMap(c *ClusterMap, msg ClusterMessage) (*ClusterMap, error) {
 	case msg.IsSnapshot():
 		snapshot, _ := msg.Snapshot()
 
-		id := ClusterID{
+		clusterID := ClusterID{
 			Version:   version,
 			Timestamp: timestamp,
 		}
-		id.Origin, _ = snapshot.Origin()
+		clusterID.Origin, _ = snapshot.Origin()
 
-		return NewClusterMap(id, snapshot.Assignments()...), nil
+		shards, err := snapshot.Shards()
+		if err != nil {
+			return nil, err
+		}
+
+		upd := NewClusterMap(clusterID, shards, snapshot.Assignments())
+		if len(upd.shards) == 0 { // TODO (styurin, 7/2/2024): remove when service sends shards in snapshot
+			// Use current assignments to populate shards if snapshot is empty
+			for shard := range c.shards {
+				upd.shards[shard] = map[GrantID]bool{}
+			}
+		}
+
+		old := c.collectOldValidGrants(upd)
+
+		if len(old) > 0 {
+			// Retain old grants that can still be assigned, but unknown to the coordinator
+			for gid := range old {
+				info := c.grants[gid]
+				upd.grants[gid] = info
+				if consumer, ok := upd.consumers[info.consumer.ID()]; ok {
+					consumer.grants = append(consumer.grants, info.grant)
+					upd.consumers[info.consumer.ID()] = consumer
+				} else {
+					upd.consumers[info.consumer.ID()] = consumerInfo{consumer: info.consumer, grants: []GrantInfo{info.grant}}
+				}
+				upd.cache.Write(info.grant.Shard(), info.grant.ID(), info)
+			}
+			upd.addShardGrants()
+		}
+
+		return upd, nil
 
 	case msg.IsChange():
 		change, _ := msg.Change()
@@ -127,6 +166,11 @@ func UpdateClusterMap(c *ClusterMap, msg ClusterMessage) (*ClusterMap, error) {
 			consumers: make(map[ConsumerID]consumerInfo, len(c.consumers)),
 			grants:    make(map[GrantID]grantInfo, len(c.grants)),
 			cache:     NewShardMap[GrantID, grantInfo](),
+			shards:    make(map[Shard]map[GrantID]bool, len(c.shards)),
+		}
+
+		for shard := range c.shards {
+			ret.shards[shard] = map[GrantID]bool{}
 		}
 
 		// (1) Add new assignments
@@ -167,11 +211,69 @@ func UpdateClusterMap(c *ClusterMap, msg ClusterMessage) (*ClusterMap, error) {
 			ret.consumers[cid] = consumerInfo{consumer: info.consumer, grants: grants}
 		}
 
+		ret.addShardGrants()
+
 		return ret, nil
 
 	default:
 		return nil, fmt.Errorf("unexpected message type: %v", msg)
 	}
+}
+
+// collectOldValidGrants collect grants from the current cluster that can still be valid, but not present
+// in the new cluster
+func (c *ClusterMap) collectOldValidGrants(upd *ClusterMap) map[GrantID]bool {
+	old := map[GrantID]bool{}
+	for gid, oldInfo := range c.grants {
+		if _, ok := upd.grants[gid]; ok {
+			// Grant is already present in the new cluster. Skip
+			continue
+		}
+
+		shard := oldInfo.grant.Shard()
+		newGrants, ok := upd.shards[shard]
+		if !ok {
+			// The old shard is unknown, most likely after resharding. Discard the grant.
+			continue
+		}
+
+		if len(newGrants) == 0 {
+			// Shard has no assignments in the new cluster. Keep grant for potential revival.
+			old[gid] = true
+			continue
+		}
+
+		oldShards := c.shards[shard]
+		// When old cluster has two assignments (in allocated and revoked state) and new cluster has one assignment
+		// (in matching state), then keep the missing assignment for potential revival.
+		if len(oldShards) == 2 && len(newGrants) == 1 {
+			newID, _, _ := mapx.GetOnly(newGrants)
+			if oldShards[newID] && grantStatesMatches(c, upd, newID) {
+				// The new grant is assigned to the same shard in the old cluster and states of that grant
+				// are matching in both clusters. Keep the other grant from old grants.
+				old[gid] = true
+			}
+		}
+	}
+	return old
+}
+
+// grantStatesMatches verifies that states of the given grant match in two clusters. Grants in substates of allocated
+// and revoked are considered matching.
+func grantStatesMatches(c1 *ClusterMap, c2 *ClusterMap, gid GrantID) bool {
+	info1 := c1.grants[gid]
+	info2 := c2.grants[gid]
+
+	if info1.grant.State() == info2.grant.State() {
+		return true
+	}
+
+	allocated1 := IsAllocatedOrLoaded(info1.grant.State())
+	revoked1 := IsRevokedOrUnloaded(info1.grant.State())
+	allocated2 := IsAllocatedOrLoaded(info2.grant.State())
+	revoked2 := IsRevokedOrUnloaded(info2.grant.State())
+
+	return (allocated1 && allocated2) || (revoked1 && revoked2)
 }
 
 func (c *ClusterMap) initAssignments(assignments []Assignment) {
@@ -185,6 +287,17 @@ func (c *ClusterMap) initAssignments(assignments []Assignment) {
 			c.grants[g.ID()] = info
 			c.cache.Write(g.Shard(), g.ID(), info)
 		}
+	}
+}
+
+func (c *ClusterMap) addShardGrants() {
+	for _, ginfo := range c.grants {
+		shard := ginfo.grant.Shard()
+		// Check for shard being present. Shard may be missing if cluster map was created with empty shards.
+		if _, ok := c.shards[shard]; !ok {
+			c.shards[shard] = map[GrantID]bool{}
+		}
+		c.shards[shard][ginfo.grant.ID()] = true
 	}
 }
 
@@ -230,6 +343,17 @@ func (c *ClusterMap) Assignments() []Assignment {
 		_, grants, _ := c.Consumer(consumer.ID())
 		return NewAssignment(consumer, grants...)
 	})
+}
+
+func (c *ClusterMap) Shards() []Shard {
+	return mapx.Keys(c.shards)
+}
+
+func (c *ClusterMap) ShardGrants(shard Shard) ([]GrantID, bool) {
+	if shards, ok := c.shards[shard]; ok {
+		return mapx.Keys(shards), true
+	}
+	return nil, false
 }
 
 func (c *ClusterMap) String() string {

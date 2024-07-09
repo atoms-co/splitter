@@ -138,6 +138,7 @@ message ClusterMessage {
   message Snapshot {
     repeated Assignment assignments = 1;
     atoms.splitter.lib.service.location.Instance origin = 2; // coordinator instance (for debugging)
+    repeated Shard shards = 3; // All known shards in the cluster. Some shards may not have assigned grants.
   }
 
   // Assign contains changes in grant ownership. The list of consumer grants is partial and only contains

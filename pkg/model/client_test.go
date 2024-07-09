@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestCluster_WaitForActive(t *testing.T) {
+func TestClient_WaitForActive(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		active := iox.NewAsyncCloser()
 		active.Close()
@@ -58,7 +58,7 @@ func TestCluster_WaitForActive(t *testing.T) {
 	})
 }
 
-func TestCluster_WaitForRevoke(t *testing.T) {
+func TestClient_WaitForRevoke(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		revoked := iox.NewAsyncCloser()
 		revoked.Close()

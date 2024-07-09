@@ -284,7 +284,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	}
 
 	// Send full cluster to the consumer
-	if !s.TrySend(ctx, model.NewClusterMessage(model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments()...))) {
+	if !s.TrySend(ctx, model.NewClusterMessage(model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments(), nil))) {
 		log.Errorf(ctx, "Internal: failed to send initial cluster map to consumer: %v. Closing", s)
 		connection.Disconnect()
 	}
@@ -366,7 +366,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	now := c.cl.Now()
 	c.alloc = newAllocation(c.id.ID(), tenant, info, c.cache.Placements(c.name.Tenant), now.Add(delay))
-	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, now))
+	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, now), nil, nil)
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
 	c.recordAction(ctx, "init", "ok")
