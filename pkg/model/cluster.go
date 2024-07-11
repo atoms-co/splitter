@@ -121,7 +121,7 @@ func UpdateClusterMap(c *ClusterMap, msg ClusterMessage) (*ClusterMap, error) {
 
 		shards, err := snapshot.Shards()
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("unable to parse shards in cluster snapshot: %v", err)
 		}
 
 		upd := NewClusterMap(clusterID, shards, snapshot.Assignments())
@@ -161,15 +161,26 @@ func UpdateClusterMap(c *ClusterMap, msg ClusterMessage) (*ClusterMap, error) {
 			return nil, fmt.Errorf("unexpected incremental update for %v: %v v%v", c.ID(), id, version)
 		}
 
+		var shards []Shard
+		if change.HasShards() {
+			var err error
+			shards, err = change.Shards().Shards()
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse shards in cluster change: %v", err)
+			}
+		} else {
+			shards = c.Shards() // Shards have not changed, use the current ones
+		}
+
 		ret := &ClusterMap{
 			id:        c.ID().Next(timestamp),
 			consumers: make(map[ConsumerID]consumerInfo, len(c.consumers)),
 			grants:    make(map[GrantID]grantInfo, len(c.grants)),
 			cache:     NewShardMap[GrantID, grantInfo](),
-			shards:    make(map[Shard]map[GrantID]bool, len(c.shards)),
+			shards:    make(map[Shard]map[GrantID]bool, len(shards)),
 		}
 
-		for shard := range c.shards {
+		for _, shard := range shards {
 			ret.shards[shard] = map[GrantID]bool{}
 		}
 
@@ -248,7 +259,7 @@ func (c *ClusterMap) collectOldValidGrants(upd *ClusterMap) map[GrantID]bool {
 		// (in matching state), then keep the missing assignment for potential revival.
 		if len(oldShards) == 2 && len(newGrants) == 1 {
 			newID, _, _ := mapx.GetOnly(newGrants)
-			if oldShards[newID] && grantStatesMatches(c, upd, newID) {
+			if oldShards[newID] && grantStatesMatch(c, upd, newID) {
 				// The new grant is assigned to the same shard in the old cluster and states of that grant
 				// are matching in both clusters. Keep the other grant from old grants.
 				old[gid] = true
@@ -258,9 +269,9 @@ func (c *ClusterMap) collectOldValidGrants(upd *ClusterMap) map[GrantID]bool {
 	return old
 }
 
-// grantStatesMatches verifies that states of the given grant match in two clusters. Grants in substates of allocated
+// grantStatesMatch verifies that states of the given grant match in two clusters. Grants in substates of allocated
 // and revoked are considered matching.
-func grantStatesMatches(c1 *ClusterMap, c2 *ClusterMap, gid GrantID) bool {
+func grantStatesMatch(c1 *ClusterMap, c2 *ClusterMap, gid GrantID) bool {
 	info1 := c1.grants[gid]
 	info2 := c2.grants[gid]
 
@@ -282,6 +293,7 @@ func (c *ClusterMap) initAssignments(assignments []Assignment) {
 		consumer := a.Consumer()
 
 		c.consumers[consumer.ID()] = consumerInfo{consumer: consumer, grants: grants}
+		// TODO (styurin, 7/9/2024): check grants to use valid shards when service sends shards in snapshot
 		for _, g := range grants {
 			info := grantInfo{consumer: consumer, grant: g}
 			c.grants[g.ID()] = info

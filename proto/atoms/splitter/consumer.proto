@@ -162,12 +162,21 @@ message ClusterMessage {
     repeated string consumers = 1;
   }
 
+  // Shards indicates that the current set of valid shards has changed and contains the new set of shards.
+  // Grants for invalid shards should be removed.
+  // Note that presence of this message implies that list of shards has changed even if the list is empty.
+  // When list is empty, the service has not domains and no shards.
+  message Shards {
+    repeated Shard shards = 1;
+  }
+
   // Change is a series of modifications of a previously defined cluster.
   message Change {
     Assign assign = 1;
     Update update = 2;
     Unassign unassign = 3;
     Remove remove = 4;
+    Shards shards = 5;
   }
 
   oneof msg {

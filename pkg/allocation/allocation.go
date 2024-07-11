@@ -145,6 +145,10 @@ func (a *Allocation[T, W, K, V]) Work() []Work[T, W] {
 	return mapx.Values(a.work)
 }
 
+func (a *Allocation[T, W, K, V]) Units() []T {
+	return mapx.MapValues(a.work, func(w Work[T, W]) T { return w.Unit })
+}
+
 func (a *Allocation[T, W, K, V]) Unit(t T) (Work[T, W], bool) {
 	ret, ok := a.work[t]
 	return ret, ok

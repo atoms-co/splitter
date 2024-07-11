@@ -179,8 +179,24 @@ func NewClusterSnapshot(id ClusterID, assignments []Assignment, shards []Shard) 
 	}}
 }
 
-func NewClusterChange(id ClusterID, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID) ClusterMessage {
-	return ClusterMessage{pb: &public_v1.ClusterMessage{
+type ClusterChangeOption func(*public_v1.ClusterMessage)
+
+func WithClusterChangeShards(shards ...Shard) ClusterChangeOption {
+	return func(o *public_v1.ClusterMessage) {
+		if o.GetChange() == nil {
+			o.Msg = &public_v1.ClusterMessage_Change_{Change: &public_v1.ClusterMessage_Change{
+				Shards: &public_v1.ClusterMessage_Shards{},
+			}}
+		}
+		if o.GetChange().GetShards() == nil {
+			o.GetChange().Shards = &public_v1.ClusterMessage_Shards{}
+		}
+		o.GetChange().GetShards().Shards = slicex.Map(shards, Shard.ToProto)
+	}
+}
+
+func NewClusterChange(id ClusterID, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID, opts ...ClusterChangeOption) ClusterMessage {
+	pb := public_v1.ClusterMessage{
 		Id:        string(id.Origin.ID()),
 		Version:   int64(id.Version),
 		Timestamp: timestamppb.New(id.Timestamp),
@@ -200,7 +216,11 @@ func NewClusterChange(id ClusterID, assigned []Assignment, updated []GrantInfo, 
 				},
 			},
 		},
-	}}
+	}
+	for _, o := range opts {
+		o(&pb)
+	}
+	return ClusterMessage{pb: &pb}
 }
 
 func (m ConsumerMessage) Type() string {
@@ -740,6 +760,16 @@ func (c ClusterChange) Remove() ClusterRemove {
 	return WrapClusterRemove(c.pb.GetRemove())
 }
 
+func (c ClusterChange) Shards() ClusterShards {
+	return WrapClusterShards(c.pb.GetShards())
+}
+
+// HasShards returns true if the change contains a new list of valid shards. The list can be empty, indicating
+// that the cluster has no shards.
+func (c ClusterChange) HasShards() bool {
+	return c.pb.GetShards() != nil
+}
+
 func (c ClusterChange) String() string {
 	return proto.MarshalTextString(c.pb)
 }
@@ -812,8 +842,8 @@ func WrapClusterRemove(pb *public_v1.ClusterMessage_Remove) ClusterRemove {
 	return ClusterRemove{pb: pb}
 }
 
-func UnwrapClusterRemove(d ClusterRemove) *public_v1.ClusterMessage_Remove {
-	return d.pb
+func UnwrapClusterRemove(r ClusterRemove) *public_v1.ClusterMessage_Remove {
+	return r.pb
 }
 
 func (d ClusterRemove) Consumers() []ConsumerID {
@@ -822,4 +852,20 @@ func (d ClusterRemove) Consumers() []ConsumerID {
 
 func (d ClusterRemove) String() string {
 	return proto.MarshalTextString(d.pb)
+}
+
+type ClusterShards struct {
+	pb *public_v1.ClusterMessage_Shards
+}
+
+func WrapClusterShards(pb *public_v1.ClusterMessage_Shards) ClusterShards {
+	return ClusterShards{pb: pb}
+}
+
+func UnwrapClusterShards(s ClusterShards) *public_v1.ClusterMessage_Shards {
+	return s.pb
+}
+
+func (s ClusterShards) Shards() ([]Shard, error) {
+	return slicex.TryMap(s.pb.GetShards(), ParseShard)
 }

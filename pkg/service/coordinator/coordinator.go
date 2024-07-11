@@ -22,6 +22,7 @@ import (
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 )
@@ -284,7 +285,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	}
 
 	// Send full cluster to the consumer
-	if !s.TrySend(ctx, model.NewClusterMessage(model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments(), nil))) {
+	if !s.TrySend(ctx, model.NewClusterMessage(model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments(), c.alloc.Units()))) {
 		log.Errorf(ctx, "Internal: failed to send initial cluster map to consumer: %v. Closing", s)
 		connection.Disconnect()
 	}
@@ -366,7 +367,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	now := c.cl.Now()
 	c.alloc = newAllocation(c.id.ID(), tenant, info, c.cache.Placements(c.name.Tenant), now.Add(delay))
-	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, now), nil, nil)
+	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, now), c.alloc.Units(), nil)
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
 	c.recordAction(ctx, "init", "ok")
@@ -428,9 +429,19 @@ steady:
 			}
 			c.info = info
 
+			oldShards := c.alloc.Units()
+
 			c.refresh(ctx, c.refreshDelay)
+
+			newShards := c.alloc.Units()
+			var bopts []broadcastOption
+			if !maps.Equal(slicex.NewSet(oldShards...), slicex.NewSet(newShards...)) {
+				// Send list of shards if shards have changed.
+				bopts = append(bopts, withSendingShards(newShards))
+			}
+
 			c.allocate(ctx, c.cl.Now(), false)
-			c.broadcast(ctx)
+			c.broadcast(ctx, bopts...)
 
 		case <-ticker.C:
 			// (1) Send lease updates, (2) disconnect unhealthy consumers, (3) allocate
@@ -728,10 +739,28 @@ func (c *coordinator) handleUpdate(ctx context.Context, s *consumerSession, upda
 		c.recordAction(ctx, "notify", "failed")
 	}
 	c.recordAction(ctx, "notify", "ok")
-
 }
 
-func (c *coordinator) broadcast(ctx context.Context) {
+type broadcastOpts struct {
+	sendShards bool
+	shards     []model.Shard
+}
+
+type broadcastOption func(opts *broadcastOpts)
+
+func withSendingShards(shards []model.Shard) broadcastOption {
+	return func(opt *broadcastOpts) {
+		opt.sendShards = true
+		opt.shards = shards
+	}
+}
+
+func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
+	var opts broadcastOpts
+	for _, opt := range bopts {
+		opt(&opts)
+	}
+
 	// (1) Compute difference, if any
 
 	var assigned []model.Assignment
@@ -787,11 +816,16 @@ func (c *coordinator) broadcast(ctx context.Context) {
 
 	// (2) If anything changed, emit update
 
-	if len(assigned)+len(updated)+len(unassigned)+len(removed) == 0 {
+	if len(assigned)+len(updated)+len(unassigned)+len(removed) == 0 && !opts.sendShards {
 		return
 	}
 
-	change := model.NewClusterChange(c.cluster.ID().Next(c.cl.Now()), assigned, updated, unassigned, removed)
+	var copts []model.ClusterChangeOption
+	if opts.sendShards {
+		copts = append(copts, model.WithClusterChangeShards(opts.shards...))
+	}
+
+	change := model.NewClusterChange(c.cluster.ID().Next(c.cl.Now()), assigned, updated, unassigned, removed, copts...)
 	upd, _ := model.UpdateClusterMap(c.cluster, change)
 
 	c.cluster = upd
