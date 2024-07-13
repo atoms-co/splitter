@@ -525,6 +525,11 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	promoted := c.alloc.Expire(now)
 	grants := c.alloc.Allocate(now)
 
+	// Assign and allocate grants before load balancing
+	// TODO(jhhurwitz): 06/11/2024 We should consider not assigning grants we know will be moved during load-balancing. Rather assign to the final destination only.
+	c.assign(ctx, now, grants...)
+	c.promote(ctx, promoted...)
+
 	if loadbalance {
 		// Revoke and allocate
 
@@ -549,8 +554,8 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 		}
 	}
 
-	c.assign(ctx, now, grants...)
-	c.promote(ctx, promoted...)
+	// broadcast cluster changes
+	c.broadcast(ctx)
 
 	log.Debugf(ctx, "Allocation %v: %v", c.name, c.alloc)
 }
@@ -581,8 +586,6 @@ func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant
 
 		log.Infof(ctx, "Assigned new grant to consumer %v: %v.", s, grant)
 	}
-
-	c.broadcast(ctx)
 }
 
 func (c *coordinator) promote(ctx context.Context, grants ...Grant) {
@@ -644,7 +647,7 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 	s.draining = true
 	c.alloc.Suspend(s.consumer.ID())
 
-	// (2) Revoke all active grants. The leader sends out new assignments only on Active grants,
+	// (2) Revoke all active grants. The coordinator sends out new assignments only on Active grants,
 	// so Allocated grants can just be released. Revoked assignments are already in progress.
 
 	now := c.cl.Now()

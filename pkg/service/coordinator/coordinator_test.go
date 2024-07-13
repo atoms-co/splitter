@@ -34,7 +34,7 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 	domain, err := model.NewDomain(domainName, model.Unit, cl.Now())
 	require.NoError(t, err)
 
-	coord := setup(ctx, cl, t, []model.Domain{domain})
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
 
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 	in := make(chan model.ConsumerMessage, 1)
@@ -80,7 +80,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	coord := setup(ctx, cl, t, []model.Domain{domain})
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
 
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 	in := make(chan model.ConsumerMessage, 1)
@@ -214,7 +214,7 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 	))
 	require.NoError(t, err)
 
-	coord := setup(ctx, cl, t, []model.Domain{domain})
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
 
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 	in := make(chan model.ConsumerMessage, 1)
@@ -278,7 +278,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 	))
 	require.NoError(t, err)
 
-	coord := setup(ctx, cl, t, []model.Domain{domain})
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
 
 	// Worker 1 joins for key "test"
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
@@ -350,7 +350,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 	assertx.Closed(t, out)
 }
 
-func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Domain) coordinator.Coordinator {
+func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Domain, withFastActivation bool) coordinator.Coordinator {
 	t.Helper()
 
 	loc := location.New("centralus", "splitter-0")
@@ -369,7 +369,11 @@ func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Do
 
 	updates := make(chan core.Update)
 
-	c := coordinator.New(ctx, cl, loc, serviceName, state, updates, coordinator.WithFastActivation())
+	var cOpts []coordinator.Option
+	if withFastActivation {
+		cOpts = append(cOpts, coordinator.WithFastActivation())
+	}
+	c := coordinator.New(ctx, cl, loc, serviceName, state, updates, cOpts...)
 	<-c.Initialized().Closed()
 
 	return c
