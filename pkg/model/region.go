@@ -61,7 +61,7 @@ func NewLiveRegionProvider(ctx context.Context, cl clock.Clock, initial Placemen
 	}
 	go ret.process(ctx)
 
-	log.Debugf(ctx, "Created placement watch for %v:v%v, initial=%v", initial.Placement().Name(), initial.Version(), initial.Placement().Current())
+	log.Infof(ctx, "Created placement watch for %v:v%v, initial=%v", initial.Placement().Name(), initial.Version(), initial.Placement().Current())
 	return ret
 }
 
@@ -94,7 +94,7 @@ func (p *liveProvider) process(ctx context.Context) {
 				break // no change
 			}
 
-			log.Debugf(ctx, "Updated placement %v:v%v->v%v, updated=%v", p.value.Placement().Name(), p.value.Version(), upd.Version(), upd.Placement().Current())
+			log.Infof(ctx, "Updated placement %v:v%v->v%v, updated=%v", p.value.Placement().Name(), p.value.Version(), upd.Version(), upd.Placement().Current())
 
 			provider := NewRegionProvider(upd.Placement().Current())
 			p.value = upd
@@ -104,7 +104,7 @@ func (p *liveProvider) process(ctx context.Context) {
 			p.mu.Unlock()
 
 		case <-ctx.Done():
-			log.Debugf(ctx, "Halted placement watch for %v", p.value.Placement().Name())
+			log.Infof(ctx, "Halted placement watch for %v", p.value.Placement().Name())
 			return
 		}
 	}

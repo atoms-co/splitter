@@ -136,7 +136,7 @@ func (p *WorkPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessag
 		return g.ToUpdated(), g.LeaseState == LeaseStale
 	})
 
-	log.Debugf(ctx, "Connected to coordinator, #grants=%v, #active=%v", len(p.grants), len(active))
+	log.Infof(ctx, "Connected to coordinator, #grants=%v, #active=%v", len(p.grants), len(active))
 
 	out := make(chan ConsumerMessage, 2_000)
 	out <- NewRegister(p.self, p.service, p.domains, active, p.opts...)
@@ -197,7 +197,7 @@ steady:
 
 		case <-statsTimer.C:
 			// record metrics
-			log.Debugf(ctx, "WorkPool %v, joined=%v, #shards=%v, #grants=%v", p.self, p.status != nil, len(p.shards), len(p.grants))
+			log.Infof(ctx, "WorkPool %v, joined=%v, #shards=%v, #grants=%v", p.self, p.status != nil, len(p.shards), len(p.grants))
 			p.emitMetrics(ctx)
 
 		case <-p.drain.Closed():
@@ -270,10 +270,10 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			if old, ok := p.grants[g.ID()]; ok {
 				if old.LeaseState == LeaseStale {
 					if p.updateStaleGrant(ctx, leases, old, g) {
-						log.Debugf(ctx, "Re-activating stale grant %v", old)
+						log.Infof(ctx, "Re-activating stale grant %v", old)
 						old.LeaseState = LeaseActive
 						old.Lease = p.lease
-						log.Debugf(ctx, "Re-activated stale grant: %v", old)
+						log.Infof(ctx, "Re-activated stale grant: %v", old)
 						continue
 					}
 					log.Errorf(ctx, "Internal: unexpected assignment of grant in invalid state. "+
@@ -301,7 +301,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 					syncx.Txn0(ctx, p.txn, func() {
 						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == AllocatedGrantState {
 							grant.Grant = grant.ToState(LoadedGrantState)
-							log.Debugf(ctx, "Informing the coordinator of Grant Load %v", grant.Grant)
+							log.Infof(ctx, "Informing the coordinator of Grant Load %v", grant.Grant)
 							p.mustSend(ctx, NewUpdate(grant.Grant))
 						}
 					})
@@ -318,7 +318,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 					syncx.Txn0(ctx, p.txn, func() {
 						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == RevokedGrantState {
 							grant.Grant = grant.ToState(UnloadedGrantState)
-							log.Debugf(ctx, "Informing the coordinator of Grant Unload %v", grant.Grant)
+							log.Infof(ctx, "Informing the coordinator of Grant Unload %v", grant.Grant)
 							p.mustSend(ctx, NewUpdate(grant.Grant))
 						}
 					})
@@ -339,7 +339,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				}
 			}()
 
-			log.Debugf(ctx, "Created handler for grant %v", g)
+			log.Infof(ctx, "Created handler for grant %v", g)
 		}
 
 	case msg.IsPromote():
@@ -387,7 +387,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 		notify, _ := msg.Notify()
 		update, target := notify.Update(), notify.Target()
 
-		log.Debugf(ctx, "Received grant update %v, for target %v", update, target)
+		log.Infof(ctx, "Received grant update %v, for target %v", update, target)
 
 		g, ok := p.grants[target.ID()]
 		if !ok {
@@ -418,7 +418,7 @@ func (p *WorkPool) activateGrant(ctx context.Context, grant *grant, active Grant
 	grant.Grant = active         // Overwrite allocated grant with active grant
 	grant.Handler.own.activate() // Signal consumer that grant is activated
 
-	log.Debugf(ctx, "Promoted grant to active: %v", active)
+	log.Infof(ctx, "Promoted grant to active: %v", active)
 }
 
 func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*clockx.Timer, grant *grant, revoked Grant) {
@@ -522,7 +522,7 @@ func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
 		delete(p.shards, grant.Grant.Shard()) // delete service tracking if not replaced by new grant
 	}
 
-	log.Debugf(ctx, "WorkPool %v removed grant %v", p.self, grant)
+	log.Infof(ctx, "WorkPool %v removed grant %v", p.self, grant)
 }
 
 func (p *WorkPool) emitMetrics(ctx context.Context) {

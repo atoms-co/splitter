@@ -91,7 +91,7 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 	leaderCh := chanx.Map(observeCh, func(o raft.Observation) leader.Directive {
 		obs, _ := o.Data.(raft.LeaderObservation)
 
-		log.Debugf(context.Background(), "New leader observation: %v", obs)
+		log.Infof(context.Background(), "New leader observation: %v", obs)
 
 		switch obs.LeaderID {
 		case "":

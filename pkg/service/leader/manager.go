@@ -203,7 +203,7 @@ func (m *ResolvingManager) follow(ctx context.Context, halt iox.AsyncCloser, id,
 			continue
 		}
 
-		log.Debugf(ctx, "Connected to remote leader %v @%v", id, endpoint)
+		log.Infof(ctx, "Connected to remote leader %v @%v", id, endpoint)
 
 		// (2) Once connected, wire in.
 

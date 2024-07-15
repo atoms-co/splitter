@@ -100,7 +100,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		cc, err := s.resolver.Resolve(ctx, register.Service())
 		// model.ErrNoResolution indicates a local coordinator
 		if err != nil && !errors.Is(err, model.ErrNoResolution) {
-			log.Debugf(ctx, "Unable to forward service %v: %v", register.Service(), err)
+			log.Infof(ctx, "Unable to forward service %v: %v", register.Service(), err)
 			return nil, model.WrapError(err)
 		}
 

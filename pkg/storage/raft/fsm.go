@@ -122,7 +122,7 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 
 	f.db.Restore(core.WrapSnapshot(pb))
 
-	log.Debugf(context.Background(), "Restored raft snapshot")
+	log.Infof(context.Background(), "Restored raft snapshot")
 
 	recordAction("restore", nil)
 	return nil
@@ -145,7 +145,7 @@ func (f *fsmSnapshot) persist(sink raft.SnapshotSink) error {
 		return err
 	}
 
-	log.Debugf(context.Background(), "Persisted raft snapshot on sink %v: %v", sink.ID())
+	log.Infof(context.Background(), "Persisted raft snapshot on sink %v: %v", sink.ID())
 	return nil
 }
 

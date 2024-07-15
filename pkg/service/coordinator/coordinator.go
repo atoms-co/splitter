@@ -191,7 +191,7 @@ func (c *coordinator) Handle(ctx context.Context, req HandleRequest) (*internal_
 
 	resp, err := c.handle(wctx, req)
 	if err != nil {
-		log.Debugf(ctx, "Coordinator %v request %v failed: %v", c.id, req, err)
+		log.Infof(ctx, "Coordinator %v request %v failed: %v", c.id, req, err)
 		return nil, model.WrapError(err)
 	}
 	return resp, nil
@@ -272,7 +272,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 
 	capacity := limit * int(ShardLoad) // Set capacity shard limit * shard load (0 for no capacity)
 	if capacity > 0 {
-		log.Debugf(ctx, "Consumer %v connected with non-zero capacity limit: %v", consumer, capacity)
+		log.Infof(ctx, "Consumer %v connected with non-zero capacity limit: %v", consumer, capacity)
 	}
 
 	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.ID(), consumer), allocation.Load(capacity), lease, active...); ok {
@@ -400,7 +400,7 @@ steady:
 		case msg := <-c.messages:
 			s, ok := c.consumers[msg.Instance.ID()]
 			if !ok || msg.Sid != s.connection.Sid() {
-				log.Debugf(ctx, "Ignoring stale message from consumer session %v: %v", msg.Sid, msg)
+				log.Infof(ctx, "Ignoring stale message from consumer session %v: %v", msg.Sid, msg)
 				break
 			}
 			c.handleConsumerMessage(ctx, s, msg.Msg)
@@ -549,7 +549,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 				c.disconnect(ctx, "stuck", s)
 			}
 
-			log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
+			log.Infof(ctx, "Initiated grant move: %v, load=%v", move, load)
 			c.recordAction(ctx, "move", "ok")
 		}
 	}
@@ -557,7 +557,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	// broadcast cluster changes
 	c.broadcast(ctx)
 
-	log.Debugf(ctx, "Allocation %v: %v", c.name, c.alloc)
+	log.Infof(ctx, "Allocation %v: %v", c.name, c.alloc)
 }
 
 func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant) {
@@ -838,7 +838,7 @@ func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
 		c.mustSend(ctx, s, msg)
 	}
 
-	log.Debugf(ctx, "Sent cluster update %v/%v: %v", c.name, c.alloc, c.cluster.ID())
+	log.Infof(ctx, "Sent cluster update %v/%v: %v", c.name, c.alloc, c.cluster.ID())
 }
 
 func (c *coordinator) handleServiceInfoRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {
@@ -967,7 +967,7 @@ func (c *coordinator) mustSend(ctx context.Context, s *consumerSession, message 
 	if s == nil {
 		return false // already disconnected
 	}
-	if !s.connection.Send(ctx, message) {
+	if !s.TrySend(ctx, message) {
 		c.disconnect(ctx, "stuck", s)
 		return false
 	}

@@ -155,7 +155,7 @@ func (l *Leader) Handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 
 	resp, err := l.handle(wctx, req)
 	if err != nil {
-		log.Debugf(ctx, "Leader %v request %v failed: %v", l.id, req, err)
+		log.Infof(ctx, "Leader %v request %v failed: %v", l.id, req, err)
 		return nil, model.WrapError(err)
 	}
 	return resp, nil
@@ -231,7 +231,7 @@ steady:
 		case m := <-l.messages:
 			w, ok := l.workers[m.Instance.ID()]
 			if !ok || w.connection.Sid() != m.Sid {
-				log.Debugf(ctx, "Ignoring stale message %v: %v", m.Instance, m.Msg)
+				log.Infof(ctx, "Ignoring stale message %v: %v", m.Instance, m.Msg)
 				break
 			}
 			l.handleMessage(ctx, w, m.Msg)
@@ -548,7 +548,7 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 				log.Errorf(ctx, "Failed to send move %v from worker: %v. Disconnecting", move, w)
 				l.disconnect(ctx, "stuck", w)
 			} else {
-				log.Debugf(ctx, "Initiated grant move: %v, load=%v", move, load)
+				log.Infof(ctx, "Initiated grant move: %v, load=%v", move, load)
 			}
 
 			// No need to send Assign for move.To, since the Leader does not broadcast Allocated assignments
@@ -559,7 +559,7 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 
 	l.assign(ctx, now, append(promo, grants...)...)
 
-	log.Debugf(ctx, "Allocation: %v", l.alloc)
+	log.Infof(ctx, "Allocation: %v", l.alloc)
 }
 
 func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
@@ -649,7 +649,7 @@ func (l *Leader) broadcast(ctx context.Context, now time.Time) {
 
 	l.cluster = core.UpdateCluster(l.cluster, assignments, nil, now)
 
-	log.Debugf(ctx, "Broadcasting cluster update %v to %v workers", l.cluster.ID(), len(l.workers))
+	log.Infof(ctx, "Broadcasting cluster update %v to %v workers", l.cluster.ID(), len(l.workers))
 
 	for _, w := range l.workers {
 		if !w.TrySend(ctx, NewClusterUpdate(l.cluster.ID(), assignments)) {

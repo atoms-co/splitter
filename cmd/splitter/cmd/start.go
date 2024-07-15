@@ -62,7 +62,7 @@ func makeStartCommand() *cobra.Command {
 		metricsx.Init(ctx, "splitter")
 		err := tracing.RegisterExporter("")
 		if err != nil {
-			log.Warnf(ctx, "Could not register tracer: %v", err)
+			log.Warnf(ctx, "Failed to register tracer: %v", err)
 		}
 
 		go pprofx.Start(ctx)
@@ -79,7 +79,7 @@ func makeStartCommand() *cobra.Command {
 		baseDir := filepath.Join(*dataPath, *raftID)
 		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
 			if err := os.Mkdir(baseDir, 0700); err != nil {
-				log.Fatalf(ctx, "Failed to make base raft path", err)
+				log.Fatalf(ctx, "Failed to make base raft path: %v", err)
 			}
 		}
 
@@ -87,31 +87,31 @@ func makeStartCommand() *cobra.Command {
 
 		ldb, err := boltdb.NewBoltStore(filepath.Join(baseDir, "logs.dat"))
 		if err != nil {
-			log.Fatalf(ctx, "failed to create boltdb log store", err)
+			log.Fatalf(ctx, "failed to create boltdb log store: %v", err)
 		}
 
 		sdb, err := boltdb.NewBoltStore(filepath.Join(baseDir, "stable.dat"))
 		if err != nil {
-			log.Fatalf(ctx, "failed to create boltdb stable store", err)
+			log.Fatalf(ctx, "failed to create boltdb stable store: %v", err)
 		}
 
 		fss, err := raft.NewFileSnapshotStore(baseDir, 3, os.Stderr)
 		if err != nil {
-			log.Fatalf(ctx, "failed to create file snapshot store", err)
+			log.Fatalf(ctx, "failed to create file snapshot store: %v", err)
 		}
 
 		bindAddr := fmt.Sprintf("0.0.0.0:%v", *raftPort)
 
 		tcpAddr, err := net.ResolveTCPAddr("tcp", *raftServer)
 		if err != nil {
-			log.Fatalf(ctx, "failed to resolve TCP addr", err)
+			log.Fatalf(ctx, "failed to resolve TCP addr: %v", err)
 		}
 
 		hclogger := hclog.New(ctx, "", log.SevDebug)
 
 		trans, err := raft.NewTCPTransportWithLogger(bindAddr, tcpAddr, 3, 10*time.Second, hclogger)
 		if err != nil {
-			log.Fatalf(ctx, "failed to setup raft tcp transport", err)
+			log.Fatalf(ctx, "failed to setup raft tcp transport: %v", err)
 		}
 
 		raftConf := raft.DefaultConfig()
@@ -122,7 +122,7 @@ func makeStartCommand() *cobra.Command {
 
 		r, err := raft.NewRaft(raftConf, fsm, ldb, sdb, fss, trans)
 		if err != nil {
-			log.Fatalf(ctx, "Failed to initialize raft instance", err)
+			log.Fatalf(ctx, "Failed to initialize raft instance: %v", err)
 		}
 
 		// (3) Initialize Server components and Server

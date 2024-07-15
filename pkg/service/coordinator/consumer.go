@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -69,9 +70,11 @@ type consumerSession struct {
 
 func (c *consumerSession) TrySend(ctx context.Context, message model.ConsumerMessage) bool {
 	if c.connection.Send(ctx, message) {
+		log.Debugf(ctx, "Sent message to %v: %v", c.consumer.Instance(), message)
 		numMessages.Increment(ctx, 1, core.MessageTypeTag(message.Type()))
 		return true
 	}
+	log.Debugf(ctx, "Failed to send message to %v: %v", c.consumer.Instance(), message)
 	return false
 }
 

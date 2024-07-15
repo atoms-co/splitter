@@ -174,7 +174,7 @@ func (w *Worker) joinLeader(ctx context.Context, in <-chan leader.Message) (<-ch
 		return g.ToUpdated(), g.State == LeaseStale
 	})
 
-	log.Debugf(ctx, "Connected to leader, #grants=%v, #active=%v", len(w.grants), len(active))
+	log.Infof(ctx, "Connected to leader, #grants=%v, #active=%v", len(w.grants), len(active))
 
 	out := make(chan leader.Message, 2_000)
 	out <- leader.NewRegister(w.self, active...)
@@ -236,7 +236,7 @@ steady:
 
 		case <-statsTimer.C:
 			// record metrics
-			log.Debugf(ctx, "Worker %v, joined=%v, #services=%v, #grants=%v", w.self, w.status != nil, len(w.services), len(w.grants))
+			log.Infof(ctx, "Worker %v, joined=%v, #services=%v, #grants=%v", w.self, w.status != nil, len(w.services), len(w.grants))
 			w.emitMetrics(ctx)
 
 		case <-w.drain.Closed():
@@ -311,7 +311,7 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 				old.State = LeaseActive
 				old.Lease = w.lease
 
-				log.Debugf(ctx, "Re-activating stale grant %v", old)
+				log.Infof(ctx, "Re-activating stale grant %v", old)
 				return
 			} else {
 				log.Errorf(ctx, "Internal: unexpected re-grant of non-stale grant %v. Re-creating", old)
@@ -341,7 +341,7 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 			})
 		}()
 
-		log.Debugf(ctx, "Created coordinator %v for grant %v", c, grant)
+		log.Infof(ctx, "Created coordinator %v for grant %v", c, grant)
 
 	case msg.IsRevoke():
 
@@ -423,7 +423,7 @@ func (w *Worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMes
 
 		w.cluster = core.NewCluster(id, snapshot.Assignments()...)
 
-		log.Debugf(ctx, "Received cluster snapshot %v", w.cluster.ID())
+		log.Infof(ctx, "Received cluster snapshot %v", w.cluster.ID())
 
 	case msg.IsUpdate(), msg.IsRemove():
 		id := msg.ID()
@@ -493,7 +493,7 @@ func (w *Worker) removeGrant(ctx context.Context, gid core.GrantID) {
 		delete(w.services, grant.Grant.Service()) // delete service tracking if not replaced by new grant
 	}
 
-	log.Debugf(ctx, "Worker %v removed grant %v", w.self, grant)
+	log.Infof(ctx, "Worker %v removed grant %v", w.self, grant)
 }
 
 func (w *Worker) emitMetrics(ctx context.Context) {

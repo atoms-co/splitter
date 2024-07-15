@@ -152,7 +152,7 @@ func (p *PeeredConnectionCache[T]) expire(ctx context.Context) {
 			continue // skip
 		}
 
-		log.Debugf(ctx, "Closing connection to inactive peer: %v", con.peer)
+		log.Infof(ctx, "Closing connection to inactive peer: %v", con.peer)
 		_ = con.quit.Close()
 		delete(p.peers, id)
 	}
@@ -166,7 +166,7 @@ func (p *PeeredConnectionCache[T]) dial(ctx context.Context, reason string, inst
 		return nil, zero, fmt.Errorf("failed to dial %v: %v", inst, err)
 	}
 
-	log.Debugf(ctx, "Established %v connection to %v", reason, inst)
+	log.Infof(ctx, "Established %v connection to %v", reason, inst)
 	return quit, cc, nil
 }
 
