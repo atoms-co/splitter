@@ -79,7 +79,7 @@ func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName
 		joinFn:      joinFn,
 		handler:     handlerFn,
 		opts:        opts,
-		cluster:     NewClusterMap(NewClusterID(consumer.Instance(), cl.Now()), nil, nil), // empty self-origin map
+		cluster:     NewClusterMap(NewClusterID(consumer.Instance(), cl.Now()), nil), // empty self-origin map
 		clusters:    make(chan Cluster, 1),
 		grants:      map[GrantID]*grant{},
 		shards:      map[Shard]GrantID{},
@@ -474,7 +474,7 @@ func (p *WorkPool) updateStaleGrant(ctx context.Context, leases map[time.Time]*c
 func (p *WorkPool) handleClusterMessage(ctx context.Context, msg ClusterMessage) {
 	// Cluster update. Merge with current cluster and forward to listeners.
 
-	upd, err := UpdateClusterMap(p.cluster, msg)
+	upd, err := UpdateClusterMap(ctx, p.cluster, msg)
 	if err != nil {
 		log.Errorf(ctx, "Internal: unexpected cluster message %v: %v. Disconnecting", msg, err)
 		p.lostCoordinator(ctx)

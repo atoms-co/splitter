@@ -367,7 +367,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	now := c.cl.Now()
 	c.alloc = newAllocation(c.id.ID(), tenant, info, c.cache.Placements(c.name.Tenant), now.Add(delay))
-	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, now), c.alloc.Units(), nil)
+	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, now), c.alloc.Units())
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
 	c.recordAction(ctx, "init", "ok")
@@ -829,7 +829,7 @@ func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
 	}
 
 	change := model.NewClusterChange(c.cluster.ID().Next(c.cl.Now()), assigned, updated, unassigned, removed, copts...)
-	upd, _ := model.UpdateClusterMap(c.cluster, change)
+	upd, _ := model.UpdateClusterMap(ctx, c.cluster, change)
 
 	c.cluster = upd
 
