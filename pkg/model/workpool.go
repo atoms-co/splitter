@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	numGrants = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/client/workpool_grants", "Workpool grants", slicex.CopyAppend(qualifiedDomainKeys, leaseStateKey)...))
+	numGrants = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/client/workpool_grants", "Workpool grants", slicex.CopyAppend(qualifiedDomainKeys, sourceKey, sourceVersionKey, leaseStateKey)...))
 )
 
 type JoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error
@@ -539,7 +539,7 @@ func (p *WorkPool) emitMetrics(ctx context.Context) {
 
 	for domain, counts := range grants {
 		for state, count := range counts {
-			numGrants.Set(ctx, float64(count), slicex.CopyAppend(qualifiedDomainTags(domain), leaseStateTag(string(state)))...)
+			numGrants.Set(ctx, float64(count), slicex.CopyAppend(qualifiedDomainTags(domain), sourceTag(), sourceVersionTag(ClientVersion), leaseStateTag(state))...)
 		}
 	}
 }

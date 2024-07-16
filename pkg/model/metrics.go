@@ -14,6 +14,9 @@ const (
 	resultKey     metrics.Key = "result"
 	statusKey     metrics.Key = "status"
 	leaseStateKey metrics.Key = "lease_state"
+
+	sourceKey        metrics.Key = "source"
+	sourceVersionKey metrics.Key = "source_version"
 )
 
 var (
@@ -51,6 +54,14 @@ func resultTag(result string) metrics.Tag {
 	return metrics.Tag{Key: resultKey, Value: result}
 }
 
-func leaseStateTag(v string) metrics.Tag {
+func leaseStateTag(v LeaseState) metrics.Tag {
 	return metrics.Tag{Key: leaseStateKey, Value: fmt.Sprintf("%v", v)}
+}
+
+func sourceTag() metrics.Tag {
+	return metrics.Tag{Key: sourceKey, Value: "splitter-go-client"}
+}
+
+func sourceVersionTag(v string) metrics.Tag {
+	return metrics.Tag{Key: sourceVersionKey, Value: v}
 }

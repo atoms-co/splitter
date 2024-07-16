@@ -20,6 +20,9 @@ import (
 var (
 	ErrRevoked = errors.New("grant revoked")
 	ErrExpired = errors.New("grant expired")
+
+	// ClientVersion of the client library.
+	ClientVersion = "1.0.0"
 )
 
 // Ownership holds information about the grant state and expiration, as well as signals for
@@ -286,6 +289,8 @@ type consumerClient struct {
 
 func (c consumerClient) Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, handler Handler, opts ...ConsumerOption) (<-chan Cluster, iox.RAsyncCloser) {
 	quit := iox.NewAsyncCloser()
+
+	log.Infof(ctx, "Starting consumer %v to service %v using client with version %v", consumer, service, ClientVersion)
 
 	joinFn := func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 		sess, establish, out := session.NewClient(ctx, c.cl, self)
