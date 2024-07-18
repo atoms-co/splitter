@@ -1,19 +1,24 @@
 package model_test
 
 import (
+	"go.atoms.co/lib/testing/assertx"
+	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/testing/prefab"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
 	"testing"
+)
+
+var (
+	d1 = prefab.QDN("t/s/d1")
+	d2 = prefab.QDN("t/s/d2")
 )
 
 func TestShardIntersectRange(t *testing.T) {
 	a := uuid.MustParse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 	b := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 	c := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
-
-	d1 := prefab.QDN("t/s/d1")
-	d2 := prefab.QDN("t/s/d2")
 
 	unit1 := model.Shard{Domain: d1, Type: model.Unit}
 	unit2 := model.Shard{Domain: d2, Type: model.Unit}
@@ -52,5 +57,108 @@ func TestShardIntersectRange(t *testing.T) {
 		if intersects != tt.intersects {
 			t.Errorf("Shard1 : %v , Shard2 : %v. Expected %v, got %v.", tt.s1, tt.s2, tt.intersects, intersects)
 		}
+	}
+}
+
+func TestShard_String(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		shard model.Shard
+		want  string
+	}{
+		{
+			name: "empty min",
+			shard: model.Shard{
+				Domain: d1,
+				Type:   model.Global,
+				From:   model.Key(uuidx.Domain.From()),
+				To:     model.Key(uuidx.Domain.From()),
+			},
+			want: "t/s/d1[0000-0000)",
+		},
+		{
+			name: "empty max",
+			shard: model.Shard{
+				Domain: d1,
+				Type:   model.Global,
+				From:   model.Key(uuidx.Domain.To()),
+				To:     model.Key(uuidx.Domain.To()),
+			},
+			want: "t/s/d1[ffff-ffff)",
+		},
+		{
+			name: "full",
+			shard: model.Shard{
+				Domain: d1,
+				Type:   model.Global,
+				From:   model.Key(uuidx.Domain.From()),
+				To:     model.Key(uuidx.Domain.To()),
+			},
+			want: "t/s/d1[0000-ffff)",
+		},
+		{
+			name: "nil",
+			shard: model.Shard{
+				Domain: d1,
+				Type:   model.Global,
+			},
+			want: "t/s/d1[0000-0000)",
+		},
+		{
+			name: "global",
+			shard: model.Shard{
+				Domain: d1,
+				Type:   model.Global,
+				From:   model.Key(uuid.MustParse("12300000-0000-0000-0000-000000000000")),
+				To:     model.Key(uuid.MustParse("45600000-0000-0000-0000-000000000000")),
+			},
+			want: "t/s/d1[1230-4560)",
+		},
+		{
+			name: "region",
+			shard: model.Shard{
+				Domain: d1,
+				Type:   model.Regional,
+				Region: "region1",
+				From:   model.Key(uuid.MustParse("12300000-0000-0000-0000-000000000000")),
+				To:     model.Key(uuid.MustParse("45600000-0000-0000-0000-000000000000")),
+			},
+			want: "t/s/d1@region1[1230-4560)",
+		},
+		{
+			name: "unit",
+			shard: model.Shard{
+				Domain: d1,
+				Type:   model.Unit,
+			},
+			want: "t/s/d1",
+		},
+		{
+			name: "invalid",
+			shard: model.Shard{
+				Domain: d1,
+			},
+			want: "invalid-shard",
+		},
+		{
+			name:  "split by 12",
+			shard: firstShardOf12Split(t),
+			want:  "t/s/d1[0000-1555)",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			assertx.Equal(t, tt.want, tt.shard.String())
+		})
+	}
+}
+
+func firstShardOf12Split(t *testing.T) model.Shard {
+	ranges, err := uuidx.Split(uuidx.Domain, 12)
+	assert.Nil(t, err)
+	return model.Shard{
+		Domain: d1,
+		Type:   model.Global,
+		From:   model.Key(ranges[0].From()),
+		To:     model.Key(ranges[0].To()),
 	}
 }
