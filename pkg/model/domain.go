@@ -392,18 +392,6 @@ func (k Key) Less(o Key) bool {
 	return uuidx.Less(uuid.UUID(k), uuid.UUID(o))
 }
 
-func (k *Key) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var s string
-	err := unmarshal(&s)
-	if err != nil {
-		return err
-	}
-	id, err := uuid.Parse(s)
-	*k = Key(id)
-
-	return nil
-}
-
 func (k Key) String() string {
 	return uuid.UUID(k).String()
 }
