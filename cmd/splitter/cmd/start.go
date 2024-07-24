@@ -109,7 +109,9 @@ func makeStartCommand() *cobra.Command {
 
 		hclogger := hclog.New(ctx, "", log.SevDebug)
 
-		trans, err := raft.NewTCPTransportWithLogger(bindAddr, tcpAddr, 3, 10*time.Second, hclogger)
+		// MsgpackUseNewTimeFormat=true https://github.com/hashicorp/raft/releases/tag/v1.6.0. Needed since we run go-msgpack v1+
+		config := &raft.NetworkTransportConfig{MaxPool: 3, Timeout: 10 * time.Second, Logger: hclogger, MsgpackUseNewTimeFormat: true}
+		trans, err := raft.NewTCPTransportWithConfig(bindAddr, tcpAddr, config)
 		if err != nil {
 			log.Fatalf(ctx, "failed to setup raft tcp transport: %v", err)
 		}
