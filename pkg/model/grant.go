@@ -173,8 +173,8 @@ func (l *loader) Unloaded() iox.RAsyncCloser {
 	return l.unloaded
 }
 
-func (l *loader) Load() iox.WAsyncCloser {
-	return l.load
+func (l *loader) Load() {
+	l.load.Close()
 }
 
 func (l *loader) unload() {
@@ -201,8 +201,8 @@ func (u *unloader) Loaded() iox.RAsyncCloser {
 	return u.loaded
 }
 
-func (u *unloader) Unload() iox.WAsyncCloser {
-	return u.unload
+func (u *unloader) Unload() {
+	u.unload.Close()
 }
 
 func (u *unloader) load() {

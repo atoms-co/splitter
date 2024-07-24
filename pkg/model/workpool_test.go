@@ -323,7 +323,7 @@ func TestWorkpool(t *testing.T) {
 			func(ctx context.Context, id model.GrantID, shard model.Shard, ownership model.Ownership) {
 				shards <- shard
 				<-load.Closed()
-				ownership.Loader().Load().Close()
+				ownership.Loader().Load()
 				select {
 				case <-ownership.Expired().Closed():
 					quit.Close()

@@ -81,7 +81,7 @@ type Loader interface {
 	// Unloaded returns a closer for when the counterpart transitions to Unloaded. It may never happen.
 	Unloaded() iox.RAsyncCloser
 	// Load transitions the grant from Allocated to Loaded. Has no effect if the grant is active.
-	Load() iox.WAsyncCloser
+	Load()
 }
 
 // Unloader is used during the unloading (or draining) phase of a grant to coordinate transfer of
@@ -89,7 +89,7 @@ type Loader interface {
 // counterpart grant (if any) has been loaded, after which handover can complete.
 type Unloader interface {
 	// Unload transitions the grant from Revoked to Unloaded.
-	Unload() iox.WAsyncCloser
+	Unload()
 	// Loaded returns a closer for when the counterpart transitions to Loaded, usually in response to
 	// the Unload signal. It may never happen.
 	Loaded() iox.RAsyncCloser
