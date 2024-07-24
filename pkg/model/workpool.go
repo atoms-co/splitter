@@ -164,10 +164,16 @@ func (p *WorkPool) lostCoordinator(ctx context.Context) {
 	p.out = make(chan ConsumerMessage)
 	p.status = nil
 	p.lease = nil
+	leases := map[time.Time]*clockx.Timer{}
 
 	for _, g := range p.grants {
 		if g.LeaseState != LeaseRevoked {
 			g.LeaseState = LeaseStale
+		}
+		// Revoke all non-revoked grants if the work pool is draining. It will not reconnect to the server
+		// after disconnecting in this case, and it's safe to revoke locally.
+		if p.drain.IsClosed() && !IsRevokedOrUnloaded(g.Grant.State()) {
+			p.revokeGrant(ctx, leases, g, g.Grant.WithState(RevokedGrantState))
 		}
 	}
 }

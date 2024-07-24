@@ -240,6 +240,10 @@ func (g Grant) Assigned() time.Time {
 	return g.pb.GetAssigned().AsTime()
 }
 
+func (g Grant) WithState(state GrantState) Grant {
+	return NewGrant(g.ID(), g.Shard(), state, g.Lease(), g.Assigned())
+}
+
 func (g Grant) String() string {
 	return fmt.Sprintf("%v[shard=%v, state=%v, lease=%v, assigned=%v]", g.ID(), g.Shard(), g.State(), g.Lease(), g.Assigned())
 }

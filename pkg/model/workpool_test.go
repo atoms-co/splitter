@@ -411,6 +411,47 @@ func TestWorkpool(t *testing.T) {
 
 		requirex.Closed(t, done.Closed())
 	})
+
+	t.Run("grant is revoked when workpool is disconnected after drain", func(t *testing.T) {
+		coordinatorCon := newFakeCon[model.ConsumerMessage]()
+		defer coordinatorCon.Close()
+
+		start := iox.NewAsyncCloser()
+		done := iox.NewAsyncCloser()
+
+		consumer := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		w, _ := model.NewWorkPool(cl, consumer, service1, []model.QualifiedDomainName{domain1},
+			func(ctx context.Context, self location.Instance, handler grpcx.Handler[model.ConsumerMessage, model.ConsumerMessage]) error {
+				return coordinatorCon.connect(ctx, handler)
+			},
+			func(ctx context.Context, id model.GrantID, shard model.Shard, ownership model.Ownership) {
+				start.Close()
+				<-ownership.Revoked().Closed()
+				done.Close()
+			},
+		)
+		defer w.Close()
+		<-coordinatorCon.Connected.Closed()
+
+		requirex.Element(t, coordinatorCon.In)                           // register
+		coordinatorCon.Out <- model.NewExtend(cl.Now().Add(time.Minute)) // initial extend
+
+		shard := model.Shard{Domain: domain1, Type: model.Unit}
+		grant := model.NewGrant("grant1", shard, model.ActiveGrantState, cl.Now().Add(time.Minute), cl.Now())
+		coordinatorCon.Out <- model.NewAssign(grant)
+
+		requirex.Closed(t, start.Closed())
+
+		w.Drain(10 * time.Second)
+
+		// Shut down coordinator connection to force reconnect
+		oldCoordinatorCon := coordinatorCon
+		coordinatorCon = newFakeCon[model.ConsumerMessage]()
+		defer coordinatorCon.Close()
+		oldCoordinatorCon.Close()
+
+		requirex.Closed(t, done.Closed())
+	})
 }
 
 type fakeCon[T any] struct {
