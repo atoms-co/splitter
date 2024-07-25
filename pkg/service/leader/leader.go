@@ -424,6 +424,9 @@ func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relin
 	// (2) Assign promoted, if any.
 
 	l.assign(ctx, now, promoted...)
+
+	// (3) Broadcast cluster changes
+	l.broadcast(ctx, now)
 }
 
 func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, register RegisterMessage, in <-chan Message) (*workerSession, <-chan Message) {
@@ -540,6 +543,10 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 	promo := l.alloc.Expire(now)
 	grants := l.alloc.Allocate(now)
 
+	// Assign grants before load balancing
+	// TODO(jhhurwitz): 06/11/2024 We should consider not assigning grants we know will be moved during load-balancing. Rather assign to the final destination only.
+	l.assign(ctx, now, append(promo, grants...)...)
+
 	if loadbalance {
 		if move, load, ok := l.alloc.LoadBalance(now); ok {
 			w := l.workers[move.From.Worker]
@@ -557,7 +564,8 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 		}
 	}
 
-	l.assign(ctx, now, append(promo, grants...)...)
+	// broadcast cluster changes
+	l.broadcast(ctx, now)
 
 	log.Infof(ctx, "Allocation: %v", l.alloc)
 }
@@ -595,10 +603,6 @@ func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
 
 		log.Infof(ctx, "Assigned new grant to worker %v: %v", w, grant)
 	}
-
-	// (2) Broadcast incremental cluster updates based on the actual updates made.
-
-	l.broadcast(ctx, now)
 }
 
 func (l *Leader) update(ctx context.Context, upd core.Update) {
