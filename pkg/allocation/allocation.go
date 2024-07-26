@@ -826,8 +826,9 @@ func (a *Allocation[T, W, K, V]) move(from *worker[T, W, K, V], grant live[T, W]
 
 	revoked := a.revoke(from, now, grant)
 	allocated := NewGrant(a.newGrantID(), Allocated, None, work.Unit, to.info.Instance.ID, now, to.info.Lease)
-	_ = a.tryAssign(to, allocated)
-
+	if a.tryAssign(to, allocated) {
+		delete(a.unassigned, work.Unit)
+	}
 	return Move[T, K]{From: revoked, To: allocated}
 }
 
@@ -921,11 +922,18 @@ func (a *Allocation[T, W, K, V]) Check() error {
 		if _, ok := grants[Allocated][t]; !ok {
 			u, ok := a.unassigned[t]
 			if !ok {
-				return fmt.Errorf("missing counterpart: %v", g)
+				return fmt.Errorf("missing counterpart grant: %v", g)
 			}
 			if u.state != Allocated {
 				return fmt.Errorf("bad unassigned counterpart: %v <> %v", g, u)
 			}
+		}
+	}
+	for t, u := range a.unassigned {
+		ga, allocated := grants[Allocated][t]
+		gr, revoked := grants[Revoked][t]
+		if allocated && revoked {
+			return fmt.Errorf("bad unassigned %v: found %v and %v", u, ga, gr)
 		}
 	}
 

@@ -642,6 +642,17 @@ func TestAllocation(t *testing.T) {
 		_, _, ok = alloc.LoadBalance(cl.Now())
 		assert.False(t, ok) // region-optimal
 		require.NoError(t, alloc.Check())
+
+		// (3) Release and the allocated grant is promoted Active
+
+		promo, ok := alloc.Release(move.From, cl.Now())
+		assert.True(t, ok)
+		assertx.Equal(t, promo.ID, move.To.ID)
+		assertx.Equal(t, promo.Worker, eu1.ID)
+		assertx.Equal(t, promo.Unit, "c")
+		assertx.Equal(t, promo.State, allocation.Active)
+		assertx.Equal(t, promo.Assigned, cl.Now())
+		require.NoError(t, alloc.Check())
 	})
 
 	t.Run("load-balance/skew", func(t *testing.T) {
