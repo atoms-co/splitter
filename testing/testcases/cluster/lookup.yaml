@@ -1,0 +1,77 @@
+# Testing lookup of grants by key and state.
+actions:
+  - action: create
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
+      - shard: range=(d:e),type=G
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+      - consumer: c2
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: allocated
+
+  - action: lookup
+    lookups:
+      # Find grants with default [Active, Revoked, Loaded, Unloaded] search.
+      - key: "1"
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "1"
+        states: active
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "1"
+        states: revoked, active
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "1"
+        states: allocated
+        expected:
+          found: false
+      - key: "1"
+        states: revoked
+        expected:
+          found: false
+
+      - key: "b"
+        expected:
+          grant: AD
+          consumer: c1
+
+      # For transitional shards, either leg can be looked up.
+      - key: "d"
+        expected:
+          grant: DE_Revoked
+          consumer: c1
+      - key: "d"
+        states: allocated, revoked
+        expected:
+          grant: DE_Allocated
+          consumer: c2
+      - key: "d"
+        states: active
+        expected:
+          found: false
+
+      # Unknown domain is not found
+      - key: "b"
+        domain: "t/s/d2"
+        expected:
+          found: false

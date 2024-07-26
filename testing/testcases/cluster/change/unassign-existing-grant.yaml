@@ -1,0 +1,48 @@
+# Unassigned grants should be removed from the cluster.
+actions:
+  - action: create
+    shards: []
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  # Unassign an existing grant
+  - action: change
+    unassigned:
+      - DE_Revoked
+
+  # Grant should be removed
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A]
+      - shard: range=(d:e),type=G
+        grants: []
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants: []
+
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "d"
+        expected:
+          found: false

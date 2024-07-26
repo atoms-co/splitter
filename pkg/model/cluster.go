@@ -55,6 +55,9 @@ type Cluster interface {
 	// Grant returns consumer and grant for the given grant id, if present.
 	Grant(id GrantID) (Consumer, GrantInfo, bool)
 
+	// Shards returns a list of all shards in the cluster
+	Shards() []Shard
+
 	// Lookup returns the consumer and grant, if any, for the given key, with the constraint that the grant
 	// state is the first present in the given list. If none are provided, lookup implicitly uses the default
 	// notion of ownership under possible transitional states: [Active, Revoked, Loaded, Unloaded].
@@ -461,20 +464,7 @@ func (m *GrantMap[T]) Lookup(key QualifiedDomainKey, states ...GrantState) (T, b
 	return zero, false
 }
 
-// DomainShards returns a list of shards for the given domain
+// DomainShards returns a list of shards in the cluster for the given domain
 func DomainShards(cluster Cluster, domain QualifiedDomainName) []Shard {
-	shards := map[Shard]bool{}
-
-	for _, consumer := range cluster.Consumers() {
-		_, grants, ok := cluster.Consumer(consumer.ID())
-		if !ok {
-			continue
-		}
-		for _, g := range grants {
-			if g.Shard().Domain == domain {
-				shards[g.Shard()] = true
-			}
-		}
-	}
-	return mapx.Keys(shards)
+	return slicex.Filter(cluster.Shards(), func(s Shard) bool { return s.Domain == domain })
 }

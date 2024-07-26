@@ -1,0 +1,17 @@
+# Applying empty snapshot should not change an empty cluster
+actions:
+  - action: create
+    shards: []
+
+  - action: snapshot
+
+  - action: compare
+    version: 2
+    shards: []
+    consumers: []
+
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          found: false

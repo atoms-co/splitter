@@ -13,17 +13,17 @@ import (
 )
 
 var (
-	Instance1 = NewInstance("centralus", "node-1", "id1")
-	Instance2 = NewInstance("northcentralus", "node-2", "id2")
-	Instance3 = NewInstance("centralus", "node-3", "id3")
-	Instance4 = NewInstance("centralus", "node-4", "id4")
+	Instance1 = NewInstance("centralus", "node-1", "id1", time.Now())
+	Instance2 = NewInstance("northcentralus", "node-2", "id2", time.Now())
+	Instance3 = NewInstance("centralus", "node-3", "id3", time.Now())
+	Instance4 = NewInstance("centralus", "node-4", "id4", time.Now())
 )
 
-func NewInstance(region location.Region, node location.Node, id model.InstanceID) model.Instance {
+func NewInstance(region location.Region, node location.Node, id model.InstanceID, ts time.Time) model.Instance {
 	instance := location.WrapInstance(&location_v1.Instance{
 		Id:       string(id),
 		Location: location.New(region, node).ToProto(),
-		Created:  timestamppb.New(time.Now()),
+		Created:  timestamppb.New(ts),
 	})
 	return model.NewInstance(instance, fmt.Sprintf("%v:50051", node))
 }
@@ -31,12 +31,14 @@ func NewInstance(region location.Region, node location.Node, id model.InstanceID
 var QDN = model.MustParseQualifiedDomainNameStr
 
 func NewShard(domain string, dtype model.DomainType, region model.Region, from, to string) model.Shard {
+	toKey, _ := PadToUUID(to)
+	fromKey, _ := PadToUUID(from)
 	return model.Shard{
 		Region: region,
 		Domain: QDN(domain),
 		Type:   dtype,
-		To:     model.Key(pad(to)),
-		From:   model.Key(pad(from)),
+		To:     model.Key(toKey),
+		From:   model.Key(fromKey),
 	}
 }
 
@@ -49,13 +51,14 @@ func NewGrantInfo(id string, domain string, dtype model.DomainType, region model
 }
 
 func NewQDK(domain string, region model.Region, id string) model.QualifiedDomainKey {
+	key, _ := PadToUUID(id)
 	return model.QualifiedDomainKey{
 		Domain: QDN(domain),
-		Key:    model.DomainKey{Region: region, Key: model.Key(pad(id))},
+		Key:    model.DomainKey{Region: region, Key: model.Key(key)},
 	}
 }
 
-// pad creates a UUID by appending zeros to the provided prefix
-func pad(v string) uuid.UUID {
-	return uuid.MustParse(fmt.Sprintf("%v%v", v, uuidx.Min.String()[len(v):]))
+// PadToUUID creates a UUID by appending zeros to the provided prefix
+func PadToUUID(v string) (uuid.UUID, error) {
+	return uuid.Parse(fmt.Sprintf("%v%v", v, uuidx.Min.String()[len(v):]))
 }

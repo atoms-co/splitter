@@ -1,0 +1,56 @@
+# Snapshot with assignments on an empty cluster must be applied correctly.
+actions:
+  - action: create
+
+  # Apply snapshot with some assignments and empty consumers
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants: []
+      - consumer: c3
+        grants:
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
+
+  # Verify that the snapshot was applied correctly, including the empty consumer
+  - action: compare
+    version: 2
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A]
+      - shard: range=(a:d),type=G
+        grants: [AD]
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants: []
+      - consumer: c3
+        grants:
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
+
+  # Lookup should use the new assignments
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "a"
+        expected:
+          grant: AD
+          consumer: c3

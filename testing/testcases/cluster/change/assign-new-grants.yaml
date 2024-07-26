@@ -1,0 +1,85 @@
+# New grants are assigned in a change and old grants are kept.
+actions:
+  - action: create
+    shards: []
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  # Assign new grants that do not conflict with existing grants
+  - action: change
+    assignments:
+      - consumer: c2
+        grants:
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
+      - consumer: c3
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: allocated
+
+  # Old and new grant should be present
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A]
+      - shard: range=(a:d),type=G
+        grants: [AD]
+      - shard: range=(d:e),type=G
+        grants: [DE_Allocated, DE_Revoked]
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants:
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+      - consumer: c3
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: allocated
+
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "b"
+        expected:
+          grant: AD
+          consumer: c2
+      - key: "d"
+        expected:
+          grant: DE_Revoked
+          consumer: c2
+      - key: "d"
+        states: revoked
+        expected:
+          grant: DE_Revoked
+          consumer: c2
+      - key: "d"
+        states: allocated
+        expected:
+          grant: DE_Allocated
+          consumer: c3

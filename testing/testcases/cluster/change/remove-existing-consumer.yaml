@@ -1,0 +1,46 @@
+# An existing consumer is removed from the cluster. All its grants should be removed too.
+actions:
+  - action: create
+    shards: []
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  # Remove an existing consumer
+  - action: change
+    removed:
+      - c1
+
+  # Consumer and its grants should be removed
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(0:a),type=G
+        grants: []
+      - shard: range=(d:e),type=G
+        grants: [DE_Revoked]
+    assignments:
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          found: false
+      - key: "d"
+        expected:
+          grant: DE_Revoked
+          consumer: c2

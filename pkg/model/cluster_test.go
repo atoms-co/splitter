@@ -2,231 +2,39 @@ package model_test
 
 import (
 	"context"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/testing/prefab"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
+	"os"
+	"path"
+	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
 
 var (
-	g0A     = prefab.NewGrantInfo("g0A", "t/s/d", model.Global, "", "0", "a", model.ActiveGrantState)
-	gAD     = prefab.NewGrantInfo("gAD", "t/s/d", model.Global, "", "a", "d", model.ActiveGrantState)
-	gDEAlc  = prefab.NewGrantInfo("gDEAlc", "t/s/d", model.Global, "", "d", "e", model.AllocatedGrantState)
-	gDERev  = prefab.NewGrantInfo("gDERev", "t/s/d", model.Global, "", "d", "e", model.RevokedGrantState)
-	shard0A = g0A.Shard()
-	shardAD = gAD.Shard()
-	shardDE = gDEAlc.Shard()
+	g0A           = prefab.NewGrantInfo("g0A", "t/s/d", model.Global, "", "0", "a", model.ActiveGrantState)
+	gAD           = prefab.NewGrantInfo("gAD", "t/s/d", model.Global, "", "a", "d", model.ActiveGrantState)
+	shard0A       = g0A.Shard()
+	shardAD       = gAD.Shard()
+	defaultDomain = "t/s/d"
 
 	id = model.ClusterID{Origin: prefab.Instance1.Instance(), Version: 1}
 )
 
+const (
+	testcasesPath = "../../testing/testcases/cluster"
+)
+
 func TestCluster(t *testing.T) {
-	ctx := context.Background()
-
-	t.Run("empty", func(t *testing.T) {
-		cluster := model.NewClusterMap(id, nil)
-
-		assertx.Equal(t, cluster.ID(), id)
-		assert.Len(t, cluster.Consumers(), 0)
-		assert.Len(t, cluster.Assignments(), 0)
-		assert.Len(t, cluster.Shards(), 0)
-
-		cluster = model.NewClusterMap(id, slicex.New(shard0A, shardAD))
-		assert.Len(t, cluster.Shards(), 2)
-		assertShardGrantsEmpty(t, cluster, shard0A)
-		assertShardGrantsEmpty(t, cluster, shardAD)
-	})
-
-	t.Run("assignments", func(t *testing.T) {
-		fresh := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, g0A, gAD), model.NewAssignment(prefab.Instance2)))
-		clone := newCluster(t, fresh.Assignments())
-
-		for _, cluster := range []*model.ClusterMap{fresh, clone} {
-			// (1) Verify consumers
-
-			assert.Len(t, cluster.Consumers(), 2)
-			assertConsumerGrants(t, cluster, prefab.Instance1, g0A, gAD)
-			assertConsumerGrantsEmpty(t, cluster, prefab.Instance2)
-			assertConsumerNotPresent(t, cluster, prefab.Instance3)
-
-			assertGrantNotFound(t, cluster, gDERev)
-
-			assert.Len(t, cluster.Shards(), 2)
-			assertShardGrants(t, cluster, shard0A, g0A)
-			assertShardGrants(t, cluster, shardAD, gAD)
-		}
-	})
-
-	t.Run("update", func(t *testing.T) {
-		initial := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, g0A), model.NewAssignment(prefab.Instance2, gDERev)))
-
-		assert.Len(t, initial.Shards(), 2)
-		assertShardGrants(t, initial, shard0A, g0A)
-		assertShardGrants(t, initial, gDERev.Shard(), gDERev)
-
-		assert.Len(t, initial.Consumers(), 2)
-		assertConsumerGrants(t, initial, prefab.Instance1, g0A)
-		assertConsumerGrants(t, initial, prefab.Instance2, gDERev)
-
-		now := time.Now()
-
-		t.Run("assign overwrites old grants", func(t *testing.T) {
-			// Assign a new grant with the same shard as an existing grant
-			g0A1 := prefab.NewGrantInfo("g0A1", "t/s/d", model.Global, "", "0", "a", model.ActiveGrantState)
-			assignments := slicex.New(model.NewAssignment(prefab.Instance2, g0A1))
-			cluster, err := model.UpdateClusterMap(ctx, initial, model.NewClusterChange(initial.ID().Next(now), assignments, nil, nil, nil))
-			assert.NoError(t, err)
-
-			// The old grant should be removed from the consumer
-			assert.Len(t, cluster.Consumers(), 2)
-			assertConsumerGrantsEmpty(t, cluster, prefab.Instance1)
-			assertConsumerGrants(t, cluster, prefab.Instance2, g0A1, gDERev)
-
-			assertGrantNotFound(t, cluster, g0A)
-
-			// The old grant should be removed from the shard
-			assert.Len(t, cluster.Shards(), 2)
-			assertShardGrants(t, cluster, shard0A, g0A1)
-			assertShardGrants(t, cluster, shardDE, gDERev)
-
-			for _, g := range []model.GrantInfo{g0A1, gDERev} {
-				_, _, ok := cluster.Grant(g.ID())
-				assert.True(t, ok)
-			}
-
-			// Lookup grants should be updated
-			assertLookup(t, cluster, prefab.Instance2, g0A1, "1")
-			assertLookup(t, cluster, prefab.Instance2, gDERev, "d")
-		})
-
-		t.Run("assign new grants", func(t *testing.T) {
-			assignments := []model.Assignment{
-				model.NewAssignment(prefab.Instance2, gAD),
-				model.NewAssignment(prefab.Instance3, gDEAlc),
-			}
-			cluster, err := model.UpdateClusterMap(ctx, initial, model.NewClusterChange(initial.ID().Next(now), assignments, nil, nil, nil))
-			assert.NoError(t, err)
-
-			assert.Len(t, cluster.Consumers(), 3)
-			assertConsumerGrants(t, cluster, prefab.Instance1, g0A)
-			assertConsumerGrants(t, cluster, prefab.Instance2, gAD, gDERev)
-			assertConsumerGrants(t, cluster, prefab.Instance3, gDEAlc)
-
-			assert.Len(t, cluster.Shards(), 3)
-			assertShardGrants(t, cluster, shard0A, g0A)
-			assertShardGrants(t, cluster, shardAD, gAD)
-			assertShardGrants(t, cluster, gDERev.Shard(), gDERev, gDEAlc)
-
-			for _, g := range []model.GrantInfo{g0A, gAD, gDERev, gDEAlc} {
-				_, _, ok := cluster.Grant(g.ID())
-				assert.True(t, ok)
-			}
-		})
-
-		t.Run("update existing grant", func(t *testing.T) {
-			update := []model.GrantInfo{
-				model.NewGrantInfo(g0A.ID(), shard0A, model.RevokedGrantState),
-			}
-			cluster, err := model.UpdateClusterMap(ctx, initial, model.NewClusterChange(initial.ID().Next(now), nil, update, nil, nil))
-			assert.NoError(t, err)
-			assert.Len(t, cluster.Consumers(), 2)
-
-			assert.Len(t, cluster.Shards(), 2)
-			assertShardGrants(t, cluster, shard0A, g0A)
-			assertShardGrants(t, cluster, gDERev.Shard(), gDERev)
-
-			_, g, ok := cluster.Grant(g0A.ID())
-			assert.True(t, ok)
-			assertx.Equal(t, g.State(), model.RevokedGrantState)
-		})
-
-		t.Run("remove existing grant", func(t *testing.T) {
-			unassign := []model.GrantID{
-				gDERev.ID(),
-			}
-			cluster, err := model.UpdateClusterMap(ctx, initial, model.NewClusterChange(initial.ID().Next(now), nil, nil, unassign, nil))
-			assert.NoError(t, err)
-			assert.Len(t, cluster.Consumers(), 2)
-
-			assert.Len(t, cluster.Shards(), 2)
-			assertShardGrants(t, cluster, shard0A, g0A)
-			assertShardGrantsEmpty(t, cluster, gDERev.Shard())
-
-			_, _, ok := cluster.Grant(gAD.ID())
-			assert.False(t, ok)
-		})
-
-		t.Run("remove consumer", func(t *testing.T) {
-			remove := []model.ConsumerID{
-				prefab.Instance1.ID(),
-			}
-			cluster, err := model.UpdateClusterMap(ctx, initial, model.NewClusterChange(initial.ID().Next(now), nil, nil, nil, remove))
-			assert.NoError(t, err)
-
-			assert.Len(t, cluster.Consumers(), 1)
-			_, _, ok := cluster.Consumer(prefab.Instance1.ID())
-			assert.False(t, ok)
-			_, _, ok = cluster.Consumer(prefab.Instance2.ID())
-			assert.True(t, ok)
-
-			_, _, ok = cluster.Grant(g0A.ID())
-			assert.False(t, ok)
-			_, _, ok = cluster.Grant(gAD.ID())
-			assert.False(t, ok)
-
-			assert.Len(t, cluster.Shards(), 2)
-			assertShardGrantsEmpty(t, cluster, shard0A)
-			assertShardGrants(t, cluster, gDERev.Shard(), gDERev)
-		})
-	})
-
-	t.Run("lookup", func(t *testing.T) {
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, g0A, gAD, gDERev), model.NewAssignment(prefab.Instance2, gDEAlc)))
-
-		// (1) Find grants with default [Active, Revoked, Loaded, Unloaded] search.
-
-		c, g, ok := cluster.Lookup(prefab.NewQDK("t/s/d", "", "1"))
-		assert.True(t, ok)
-		assertx.Equal(t, c, prefab.Instance1)
-		assertx.Equal(t, g, g0A)
-
-		_, _, ok = cluster.Lookup(prefab.NewQDK("t/s/d", "", "1"), model.ActiveGrantState)
-		assert.True(t, ok)
-		_, _, ok = cluster.Lookup(prefab.NewQDK("t/s/d", "", "1"), model.RevokedGrantState, model.ActiveGrantState)
-		assert.True(t, ok)
-		_, _, ok = cluster.Lookup(prefab.NewQDK("t/s/d", "", "1"), model.AllocatedGrantState)
-		assert.False(t, ok)
-		_, _, ok = cluster.Lookup(prefab.NewQDK("t/s/d", "", "1"), model.RevokedGrantState)
-		assert.False(t, ok)
-
-		c, g, ok = cluster.Lookup(prefab.NewQDK("t/s/d", "", "b"))
-		assert.True(t, ok)
-		assertx.Equal(t, c, prefab.Instance1)
-		assertx.Equal(t, g, gAD)
-
-		// (2) For transitional shards, either leg can be looked up.
-
-		c, g, ok = cluster.Lookup(prefab.NewQDK("t/s/d", "", "d"))
-		assert.True(t, ok)
-		assertx.Equal(t, c, prefab.Instance1)
-		assertx.Equal(t, g, gDERev) // revoked
-
-		c, g, ok = cluster.Lookup(prefab.NewQDK("t/s/d", "", "d"), model.AllocatedGrantState, model.RevokedGrantState)
-		assert.True(t, ok)
-		assertx.Equal(t, c, prefab.Instance2)
-		assertx.Equal(t, g, gDEAlc) // allocated
-
-		_, _, ok = cluster.Lookup(prefab.NewQDK("t/s/d", "", "d"), model.ActiveGrantState)
-		assert.False(t, ok)
-	})
-
 	t.Run("domain shards", func(t *testing.T) {
 		g21 := prefab.NewGrantInfo("g21", "t/s/d2", model.Global, "", "0", "a", model.ActiveGrantState)
 		g22 := prefab.NewGrantInfo("g22", "t/s/d2", model.Global, "", "a", "d", model.ActiveGrantState)
@@ -246,333 +54,356 @@ func TestCluster(t *testing.T) {
 
 		require.Empty(t, model.DomainShards(cluster, prefab.QDN("t/s/d3")))
 	})
+}
 
-	t.Run("empty cluster applies empty snapshot", func(t *testing.T) {
-		// Initialize cluster with empty snapshot
-		cluster := newCluster(t, nil)
+// TestClusterWithTestCases runs all test cases in the testcases directory located at testcasesPath
+func TestClusterWithTestCases(t *testing.T) {
+	p, err := os.Getwd()
+	require.NoError(t, err)
 
-		// Cluster is empty
-		assert.Len(t, cluster.Shards(), 0)
-		assert.Len(t, cluster.Consumers(), 0)
-		assertLookupNotFound(t, cluster, "1")
-	})
-
-	t.Run("empty cluster applies snapshot with empty shards and some assignments", func(t *testing.T) {
-		// Initialize the cluster with various assignments and empty shards
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, g0A), model.NewAssignment(prefab.Instance2), model.NewAssignment(prefab.Instance3, gAD))
-		cluster := newCluster(t, assignments)
-
-		// Shards from assignments should be present
-		assert.Len(t, cluster.Shards(), 2)
-		assertShardGrants(t, cluster, shard0A, g0A)
-		assertShardGrants(t, cluster, shardAD, gAD)
-
-		// Consumers from assignments should be present
-		assert.Len(t, cluster.Consumers(), 3)
-		assertConsumerGrants(t, cluster, prefab.Instance1, g0A)
-		assertConsumerGrantsEmpty(t, cluster, prefab.Instance2)
-		assertConsumerGrants(t, cluster, prefab.Instance3, gAD)
-
-		// Lookup grants should include new grants
-		assertLookup(t, cluster, prefab.Instance1, g0A, "1")
-		assertLookup(t, cluster, prefab.Instance3, gAD, "b")
-	})
-
-	t.Run("empty cluster applies snapshot with some shards and empty assignments", func(t *testing.T) {
-		// Initialize the cluster with empty assignments and some shards
-		cluster := newCluster(t, nil, shard0A, shardAD)
-
-		// Given shards are present
-		assert.Len(t, cluster.Shards(), 2)
-		assertShardGrantsEmpty(t, cluster, shard0A)
-		assertShardGrantsEmpty(t, cluster, shardAD)
-
-		// Cluster is empty, no grants nor consumers
-		assert.Len(t, cluster.Consumers(), 0)
-		assertLookupNotFound(t, cluster, "1")
-	})
-
-	t.Run("empty cluster applies snapshot with some shards and some assignments", func(t *testing.T) {
-		// Initialize the cluster with various assignments and some shards
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, g0A), model.NewAssignment(prefab.Instance2), model.NewAssignment(prefab.Instance3, gAD))
-		cluster := newCluster(t, assignments, shardDE)
-
-		// Shards should be merged from given shards and shards in the assignments
-		assert.Len(t, cluster.Shards(), 3)
-		assertShardGrants(t, cluster, shard0A, g0A)
-		assertShardGrants(t, cluster, shardAD, gAD)
-		assertShardGrantsEmpty(t, cluster, shardDE)
-
-		// Consumers from assignments should be present
-		assert.Len(t, cluster.Consumers(), 3)
-		assertConsumerGrants(t, cluster, prefab.Instance1, g0A)
-		assertConsumerGrantsEmpty(t, cluster, prefab.Instance2)
-		assertConsumerGrants(t, cluster, prefab.Instance3, gAD)
-
-		// Lookup grants should include new grants.
-		assertLookup(t, cluster, prefab.Instance1, g0A, "1")
-		assertLookup(t, cluster, prefab.Instance3, gAD, "b")
-		assertLookupNotFound(t, cluster, "d") // Empty registered shard should not contain any grants
-	})
-
-	t.Run("cluster applies another snapshot with empty shards and empty assignments", func(t *testing.T) {
-		// Initialize the cluster with various assignments and empty shards
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, g0A), model.NewAssignment(prefab.Instance2), model.NewAssignment(prefab.Instance3, gAD))
-		cluster := newCluster(t, assignments)
-
-		// Update with empty assignments and empty shards
-		cluster = applySnapshot(t, cluster, nil)
-
-		// Shards should be the same
-		assert.Len(t, cluster.Shards(), 2)
-		assertShardGrants(t, cluster, shard0A, g0A)
-		assertShardGrants(t, cluster, shardAD, gAD)
-
-		// Consumer grants should be the same except for the consumer with no grants
-		assert.Len(t, cluster.Consumers(), 2)
-		assertConsumerGrants(t, cluster, prefab.Instance1, g0A)
-		assertConsumerNotPresent(t, cluster, prefab.Instance2) // consumer with no grants is removed
-		assertConsumerGrants(t, cluster, prefab.Instance3, gAD)
-
-		// Lookup grants should stay the same
-		assertLookup(t, cluster, prefab.Instance1, g0A, "1")
-		assertLookup(t, cluster, prefab.Instance3, gAD, "b")
-	})
-
-	t.Run("cluster applies another snapshot with empty shards and some assignments", func(t *testing.T) {
-		// Initialize the cluster with various assignments and empty shards
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, g0A), model.NewAssignment(prefab.Instance2), model.NewAssignment(prefab.Instance3, gAD))
-		cluster := newCluster(t, assignments)
-
-		// Update multiple times
-		for range 2 {
-			// Update with new assignments and empty shards
-			assignments = slicex.New(model.NewAssignment(prefab.Instance1, gDEAlc), model.NewAssignment(prefab.Instance3), model.NewAssignment(prefab.Instance4, gDERev))
-			cluster = applySnapshot(t, cluster, assignments)
-
-			// Shards should be created from the new assignments. Old shards should be removed
-			assert.Len(t, cluster.Shards(), 1)
-			assertShardGrants(t, cluster, shardDE, gDEAlc, gDERev)
-
-			// Consumer grants should be created from the new assignments. Old consumers without grants are removed
-			assert.Len(t, cluster.Consumers(), 3)
-			assertConsumerGrants(t, cluster, prefab.Instance1, gDEAlc)
-			assertConsumerNotPresent(t, cluster, prefab.Instance2) // consumer with no grants is removed
-			assertConsumerGrantsEmpty(t, cluster, prefab.Instance3)
-			assertConsumerGrants(t, cluster, prefab.Instance4, gDERev)
-
-			// Lookup grants should use the new grants
-			assertLookup(t, cluster, prefab.Instance1, gDEAlc, "d", model.AllocatedGrantState)
-			assertLookup(t, cluster, prefab.Instance4, gDERev, "d")
-			assertLookupNotFound(t, cluster, "1")
-			assertLookupNotFound(t, cluster, "a")
+	root := path.Join(p, testcasesPath)
+	err = filepath.WalkDir(root, func(path string, info os.DirEntry, err error) error {
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".yaml") {
+			content, err := os.ReadFile(path)
+			require.NoError(t, err)
+			t.Run(strings.TrimPrefix(path, root+"/"), func(t *testing.T) {
+				runTestFromTestcase(t, content)
+			})
 		}
+		return nil
 	})
+	require.NoError(t, err)
+}
 
-	t.Run("cluster applies another snapshot with some shards and empty assignments", func(t *testing.T) {
-		// Initialize the cluster with various assignments and empty shards
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, g0A), model.NewAssignment(prefab.Instance2), model.NewAssignment(prefab.Instance3, gAD))
-		cluster := newCluster(t, assignments)
+func runTestFromTestcase(t *testing.T, testcase []byte) {
+	var actions Actions
+	err := yaml.Unmarshal(testcase, &actions)
+	require.NoError(t, err)
 
-		// Update multiple times
-		for range 2 {
-			// Update with empty assignments and some shards
-			cluster = applySnapshot(t, cluster, nil, shard0A, shardDE)
+	var c *model.ClusterMap
+	for _, action := range actions.Actions {
+		c = action.Execute(t, c)
+	}
+}
 
-			// Shards should be created from the new assignments. Old shards should be removed
-			assert.Len(t, cluster.Shards(), 2)
-			assertShardGrants(t, cluster, shard0A, g0A)
-			assertShardGrantsEmpty(t, cluster, shardDE)
-			assertShardNotPresent(t, cluster, shardAD) // Old shard removed
+type Actions struct {
+	Actions []Action `yaml:"actions"`
+}
 
-			// Consumer grants should be created from the old assignments. Old consumers without grants are removed
-			assert.Len(t, cluster.Consumers(), 1)
-			assertConsumerGrants(t, cluster, prefab.Instance1, g0A)
-			assertConsumerNotPresent(t, cluster, prefab.Instance2) // consumer with no grants is removed
-			assertConsumerNotPresent(t, cluster, prefab.Instance3) // consumer is gone after removing its grant
+// Action represents a single action in a test case. A test case involves a single cluster and a series of actions
+// that are executed on the cluster in the order they are defined.
+type Action struct {
+	Action      string             `yaml:"action"`
+	Version     int                `yaml:"version"`
+	Shards      []ShardInfo        `yaml:"shards"`
+	Assignments []Consumer         `yaml:"assignments"`
+	Lookups     []Lookup           `yaml:"lookups"`
+	Updated     []Grant            `yaml:"updated"`
+	Unassigned  []model.GrantID    `yaml:"unassigned"`
+	Removed     []model.ConsumerID `yaml:"removed"`
+}
 
-			// Lookup grants should use the old grants
-			assertLookup(t, cluster, prefab.Instance1, g0A, "0")
-			assertLookupNotFound(t, cluster, "a")
+func (a Action) GetShards(t *testing.T) []model.Shard {
+	return slicex.Map(a.Shards, func(s ShardInfo) model.Shard { return s.ShardDescription.Shard(t) })
+}
+
+func (a Action) Execute(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
+	t.Logf("Executing action %v", a.Action)
+	switch a.Action {
+	case "create":
+		return a.create(t)
+	case "snapshot":
+		return a.snapshot(t, c)
+	case "change":
+		return a.change(t, c)
+	case "compare":
+		a.compare(t, c)
+		return c
+	case "lookup":
+		a.lookup(t, c)
+		return c
+	default:
+		require.Failf(t, "unknown action", "unknown action: %s", a.Action)
+	}
+	return c
+}
+
+func (a Action) create(t *testing.T) *model.ClusterMap {
+	return model.NewClusterMap(id, a.GetShards(t))
+}
+
+func (a Action) snapshot(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
+	assignments := slicex.Map(a.Assignments, func(c Consumer) model.Assignment { return c.Assignment(t) })
+	snapshot := model.NewClusterSnapshot(c.ID().Next(time.Time{}), assignments, a.GetShards(t))
+	c, err := model.UpdateClusterMap(context.Background(), c, snapshot)
+	require.NoError(t, err)
+	return c
+}
+
+func (a Action) change(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
+	assignments := slicex.Map(a.Assignments, func(c Consumer) model.Assignment { return c.Assignment(t) })
+	updated := slicex.Map(a.Updated, func(g Grant) model.GrantInfo { return g.Grant(t) })
+	change := model.NewClusterChange(c.ID().Next(time.Time{}), assignments, updated, a.Unassigned, a.Removed)
+	c, err := model.UpdateClusterMap(context.Background(), c, change)
+	require.NoError(t, err)
+	return c
+}
+
+func (a Action) compare(t *testing.T, c *model.ClusterMap) {
+	requirex.Equal(t, c.ID().Version, a.Version, "cluster ID mismatch")
+	requirex.EqualProtobuf(t, location.UnwrapInstance(c.ID().Origin), location.UnwrapInstance(prefab.Instance1.Instance()), "cluster origin mismatch")
+
+	// Compare shard grants
+	var expectedShards []model.Shard
+	domains := map[model.QualifiedDomainName][]model.Shard{}
+	for _, s := range a.Shards {
+		expectedShard := s.ShardDescription.Shard(t)
+		expectedShards = append(expectedShards, expectedShard)
+		domains[expectedShard.Domain] = append(domains[expectedShard.Domain], expectedShard)
+		actualGrants, ok := c.ShardGrants(expectedShard)
+		require.True(t, ok, "shard not found: %s", expectedShard)
+		actual := slicex.NewSet(actualGrants...)
+		expected := slicex.NewSet(s.Grants...)
+		requirex.Equal(t, actual, expected, "grants mismatch for shard %s", expectedShard)
+	}
+	// Compare shards
+	requirex.Equal(t, slicex.NewSet(expectedShards...), slicex.NewSet(c.Shards()...), "total shards mismatch")
+
+	// Check domain shards
+	for domain, shards := range domains {
+		actualShards := model.DomainShards(c, domain)
+		requirex.Equal(t, slicex.NewSet(shards...), slicex.NewSet(actualShards...), "shards mismatch for domain %v", domain)
+	}
+
+	// Compare consumers and their assignments
+	var expectedConsumers []model.Consumer
+	var expectedAssignments []model.Assignment
+	for _, consumer := range a.Assignments {
+		expectedConsumer := consumer.Consumer()
+		expectedConsumers = append(expectedConsumers, expectedConsumer)
+
+		actualConsumer, actualGrants, ok := c.Consumer(consumer.ID)
+		require.True(t, ok, "consumer not found: %s", actualConsumer.ID())
+		requireConsumersEqual(t, actualConsumer, expectedConsumer, "consumer mismatch: %s", actualConsumer.ID())
+		requirex.Equal(t, len(actualGrants), len(consumer.Grants), "total grants mismatch for consumer: %s", actualConsumer.ID())
+
+		sort.Slice(actualGrants, func(i, j int) bool {
+			return actualGrants[i].ID() < actualGrants[j].ID()
+		})
+		sort.Slice(consumer.Grants, func(i, j int) bool {
+			return consumer.Grants[i].ID < consumer.Grants[j].ID
+		})
+
+		var expectedGrants []model.GrantInfo
+		for i, grant := range consumer.Grants {
+			expectedGrant := grant.Grant(t)
+			expectedGrants = append(expectedGrants, expectedGrant)
+			requireGrantsEqual(t, actualGrants[i], expectedGrant, "grant mismatch: %s", grant.ID)
+
+			grantConsumer, actualGrant, ok := c.Grant(grant.ID)
+			require.True(t, ok, "grant not found: %s", grant.ID)
+			requireGrantsEqual(t, actualGrant, expectedGrant, "grant mismatch: %s", grant.ID)
+			requireConsumersEqual(t, grantConsumer, expectedConsumer, "consumer mismatch: %s", actualConsumer.ID())
 		}
+
+		expectedAssignments = append(expectedAssignments, model.NewAssignment(expectedConsumer, expectedGrants...))
+	}
+
+	// Compare consumers
+	sort.Slice(expectedConsumers, func(i, j int) bool {
+		return expectedConsumers[i].ID() < expectedConsumers[j].ID()
 	})
+	actualConsumers := c.Consumers()
+	sort.Slice(actualConsumers, func(i, j int) bool {
+		return actualConsumers[i].ID() < actualConsumers[j].ID()
+	})
+	requirex.Equal(t, len(actualConsumers), len(expectedConsumers), "total consumers mismatch")
+	for i := range actualConsumers {
+		requireConsumersEqual(t, actualConsumers[i], expectedConsumers[i], "total consumers mismatch")
+	}
 
-	t.Run("cluster applies another snapshot with some shards and some assignments", func(t *testing.T) {
-		// Initialize the cluster with various assignments and empty shards
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, g0A), model.NewAssignment(prefab.Instance2), model.NewAssignment(prefab.Instance3, gAD))
-		cluster := newCluster(t, assignments)
+	// Compare assignments
+	actualAssignments := c.Assignments()
+	sort.Slice(actualAssignments, func(i, j int) bool {
+		return actualAssignments[i].Consumer().ID() < actualAssignments[j].Consumer().ID()
+	})
+	requirex.Equal(t, len(actualAssignments), len(expectedAssignments), "total assignments mismatch")
+	for i, actualAssignment := range actualAssignments {
+		requireConsumersEqual(t, actualAssignment.Consumer(), expectedAssignments[i].Consumer(), "consumer mismatch for assignment: %s", actualAssignment.Consumer().ID())
 
-		// Update multiple times
-		for range 2 {
-			// Update with new assignments and new shards
-			assignments = slicex.New(model.NewAssignment(prefab.Instance1, gDEAlc), model.NewAssignment(prefab.Instance4, gDERev))
-			cluster = applySnapshot(t, cluster, assignments, shard0A)
+		expectedAssignment := expectedAssignments[i]
+		grants := actualAssignment.Grants()
+		sort.Slice(grants, func(i, j int) bool {
+			return grants[i].ID() < grants[j].ID()
+		})
 
-			// Shards should be created from the new shards and combined assignments
-			assert.Len(t, cluster.Shards(), 2)
-			assertShardGrants(t, cluster, shard0A, g0A) // old grant is kept, shard is not assigned in new assignments
-			assertShardGrants(t, cluster, shardDE, gDEAlc, gDERev)
-			assertShardNotPresent(t, cluster, shardAD)
-
-			// Consumer grants should be created from combined assignments. Old consumers without grants are removed
-			assert.Len(t, cluster.Consumers(), 2)
-			assertConsumerGrants(t, cluster, prefab.Instance1, g0A, gDEAlc)
-			assertConsumerNotPresent(t, cluster, prefab.Instance2) // consumer with no grants is removed
-			assertConsumerNotPresent(t, cluster, prefab.Instance3) // consumer is gone after removing its grant
-			assertConsumerGrants(t, cluster, prefab.Instance4, gDERev)
-
-			// Lookup grants should use the combined grants
-			assertLookup(t, cluster, prefab.Instance1, gDEAlc, "d", model.AllocatedGrantState)
-			assertLookup(t, cluster, prefab.Instance4, gDERev, "d")
-			assertLookup(t, cluster, prefab.Instance1, g0A, "1")
-			assertLookupNotFound(t, cluster, "a") // old grant is removed
+		expectedGrants := expectedAssignment.Grants()
+		requirex.Equal(t, len(grants), len(expectedGrants), "total grants mismatch for consumer: %s", actualAssignment.Consumer().ID())
+		for i := range expectedGrants {
+			requireGrantsEqual(t, grants[i], expectedGrants[i], "grants mismatch for consumer: %s", actualAssignment.Consumer().ID())
 		}
-	})
+	}
+}
 
-	for _, state := range slicex.New(model.AllocatedGrantState, model.LoadedGrantState) {
-		t.Run(fmt.Sprintf("cluster with allocated and revoked grants applies another snapshot with %v grant", state.String()), func(t *testing.T) {
-			// Initialize the cluster with allocated and revoked grants
-			assignments := slicex.New(model.NewAssignment(prefab.Instance1, gDEAlc), model.NewAssignment(prefab.Instance3, gDERev))
-			cluster := newCluster(t, assignments, shardDE)
+func (a Action) lookup(t *testing.T, c *model.ClusterMap) {
+	for _, lookup := range a.Lookups {
+		key := lookup.DomainKey(t)
+		t.Logf("Looking up key %v and states %v", key, lookup.LookupStates)
+		consumer, grant, ok := c.Lookup(key, lookup.States(t)...)
 
-			// Update with given state (maybe different from the previous update)
-			gDEAlc := prefab.NewGrantInfo("gDEAlc", "t/s/d", model.Global, "", "d", "e", state)
-			assignments = slicex.New(model.NewAssignment(prefab.Instance2, gDEAlc))
-			cluster = applySnapshot(t, cluster, assignments, shardDE)
+		if lookup.Result.Found == nil || *lookup.Result.Found {
+			require.True(t, ok, "lookup failed: %s", key)
+			require.Equal(t, lookup.Result.Consumer, consumer.ID(), "consumer mismatch")
+			require.Equal(t, lookup.Result.Grant, grant.ID(), "grant mismatch")
+		} else {
+			require.False(t, ok, "unexpected lookup success: %s", key)
+		}
+	}
+}
 
-			// Shards should be created from combined assignments
-			assert.Len(t, cluster.Shards(), 1)
-			assertShardGrants(t, cluster, shardDE, gDEAlc, gDERev) // both grants are kept
+type Consumer struct {
+	ID     model.ConsumerID `yaml:"consumer"`
+	Grants []Grant          `yaml:"grants"`
+}
 
-			// Consumer grants should be created from combined assignments. Old consumers without grants are removed
-			assert.Len(t, cluster.Consumers(), 2)
-			assertConsumerGrants(t, cluster, prefab.Instance2, gDEAlc)
-			assertConsumerGrants(t, cluster, prefab.Instance3, gDERev)
+func (c Consumer) Consumer() model.Consumer {
+	return prefab.NewInstance("centralus", location.Node(fmt.Sprintf("node-%v", c.ID)), c.ID, time.Time{})
+}
 
-			// Lookup grants should use the combined grants
-			if state == model.AllocatedGrantState {
-				assertLookup(t, cluster, prefab.Instance2, gDEAlc, "d", model.AllocatedGrantState)
+func (c Consumer) Assignment(t *testing.T) model.Assignment {
+	grants := slicex.Map(c.Grants, func(g Grant) model.GrantInfo { return g.Grant(t) })
+	return model.NewAssignment(c.Consumer(), grants...)
+}
+
+type ShardInfo struct {
+	ShardDescription ShardDescription `yaml:"shard"`
+	Grants           []model.GrantID  `yaml:"grants"`
+}
+
+type GrantState string
+
+func (s GrantState) State(t *testing.T) model.GrantState {
+	switch s {
+	case "allocated":
+		return model.AllocatedGrantState
+	case "loaded":
+		return model.LoadedGrantState
+	case "active":
+		return model.ActiveGrantState
+	case "revoked":
+		return model.RevokedGrantState
+	case "unloaded":
+		return model.UnloadedGrantState
+	default:
+		require.Failf(t, "unknown grant state", "unknown grant state: %s", s)
+		return model.InvalidGrantState
+	}
+}
+
+type Grant struct {
+	ID               model.GrantID    `yaml:"id"`
+	ShardDescription ShardDescription `yaml:"shard"`
+	State            GrantState       `yaml:"state"`
+}
+
+func (g Grant) Grant(t *testing.T) model.GrantInfo {
+	return model.NewGrantInfo(g.ID, g.ShardDescription.Shard(t), g.State.State(t))
+}
+
+// ShardDescription represents a shard description in the format domain=domain,type=type,range=(from:to),region=region
+type ShardDescription string
+
+func (s ShardDescription) Shard(t *testing.T) model.Shard {
+	t.Helper()
+
+	domain := defaultDomain
+	var shardRange, region string
+	var dt model.DomainType
+	for _, part := range strings.Split(string(s), ",") {
+		props := strings.Split(part, "=")
+		require.Len(t, props, 2, "invalid shard property: %s", part)
+
+		switch strings.TrimSpace(props[0]) {
+		case "domain":
+			domain = strings.TrimSpace(props[1])
+		case "type":
+			switch strings.TrimSpace(props[1]) {
+			case "G":
+				dt = model.Global
+			case "R":
+				dt = model.Regional
+			case "U":
+				dt = model.Unit
+			default:
+				require.Failf(t, "unknown domain type", "unknown domain type: %s", props[1])
 			}
-			assertLookup(t, cluster, prefab.Instance3, gDERev, "d")
-		})
+		case "range":
+			shardRange = strings.TrimSpace(props[1])
+		case "region":
+			region = strings.TrimSpace(props[1])
+		default:
+			require.Failf(t, "unknown shard property", "unknown shard property: %s", props[0])
+		}
 	}
 
-	for _, state := range slicex.New(model.RevokedGrantState, model.UnloadedGrantState) {
-		t.Run(fmt.Sprintf("cluster with allocated and revoked grants applies another snapshot with %v grant", state), func(t *testing.T) {
-			// Initialize the cluster with allocated and revoked grants
-			assignments := slicex.New(model.NewAssignment(prefab.Instance1, gDEAlc), model.NewAssignment(prefab.Instance3, gDERev))
-			cluster := newCluster(t, assignments, shardDE)
+	requirex.Equal(t, shardRange[0], '(', "range must be in format (from:to)")
+	requirex.Equal(t, shardRange[len(shardRange)-1], ')', "range must be in format (from:to)")
 
-			// Update grant with given state (maybe different from the previous update)
-			gDERev := prefab.NewGrantInfo("gDERev", "t/s/d", model.Global, "", "d", "e", state)
-			assignments = slicex.New(model.NewAssignment(prefab.Instance2, gDERev))
-			cluster = applySnapshot(t, cluster, assignments, shardDE)
+	rangeParts := strings.Split(shardRange[1:len(shardRange)-1], ":")
+	require.Len(t, rangeParts, 2, "range must be in format (from:to)")
 
-			// Shards should be created from the combined assignments
-			assert.Len(t, cluster.Shards(), 1)
-			assertShardGrants(t, cluster, shardDE, gDEAlc, gDERev) // both grants are kept
+	qdn, ok := model.ParseQualifiedDomainNameStr(domain)
+	require.True(t, ok, "invalid domain: %s", domain)
 
-			// Consumer grants should be created from combined assignments. Old consumers without grants are removed
-			assert.Len(t, cluster.Consumers(), 2)
-			assertConsumerGrants(t, cluster, prefab.Instance1, gDEAlc)
-			assertConsumerGrants(t, cluster, prefab.Instance2, gDERev)
+	from, err := prefab.PadToUUID(rangeParts[0])
+	require.NoError(t, err, "invalid range: %s", shardRange)
+	to, err := prefab.PadToUUID(rangeParts[1])
+	require.NoError(t, err, "invalid range: %s", shardRange)
 
-			// Lookup grants should use the combined grants
-			assertLookup(t, cluster, prefab.Instance1, gDEAlc, "d", model.AllocatedGrantState)
-			assertLookup(t, cluster, prefab.Instance2, gDERev, "d")
-		})
+	return model.Shard{
+		Region: model.Region(region),
+		Domain: qdn,
+		Type:   dt,
+		To:     model.Key(to),
+		From:   model.Key(from),
 	}
+}
 
-	t.Run("cluster with allocated and revoked grants applies another snapshot with no assignments", func(t *testing.T) {
-		// Initialize the cluster with allocated and revoked grants
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, gDEAlc), model.NewAssignment(prefab.Instance3, gDERev))
-		cluster := newCluster(t, assignments, shardDE)
+type Lookup struct {
+	Key          string       `yaml:"key"`
+	Region       model.Region `yaml:"region"`
+	Domain       string       `yaml:"domain"`
+	LookupStates string       `yaml:"states"`
+	Result       LookupResult `yaml:"expected"`
+}
 
-		// Update with an empty snapshot
-		cluster = applySnapshot(t, cluster, nil, shardDE)
+func (l Lookup) DomainKey(t *testing.T) model.QualifiedDomainKey {
+	if l.Domain == "" {
+		l.Domain = defaultDomain
+	}
+	key, err := prefab.PadToUUID(l.Key)
+	require.NoError(t, err, "invalid key: %s", l.Key)
 
-		// Shards should be created from the old assignments
-		assert.Len(t, cluster.Shards(), 1)
-		assertShardGrants(t, cluster, shardDE, gDEAlc, gDERev) // both grants are kept
+	qdn, ok := model.ParseQualifiedDomainNameStr(l.Domain)
+	require.True(t, ok, "invalid domain: %s", l.Domain)
 
-		// Consumer grants should be created from old assignments.
-		assert.Len(t, cluster.Consumers(), 2)
-		assertConsumerGrants(t, cluster, prefab.Instance1, gDEAlc)
-		assertConsumerGrants(t, cluster, prefab.Instance3, gDERev)
+	return model.QualifiedDomainKey{
+		Domain: qdn,
+		Key:    model.DomainKey{Region: l.Region, Key: model.Key(key)},
+	}
+}
 
-		// Lookup grants should use the old grants
-		assertLookup(t, cluster, prefab.Instance1, gDEAlc, "d", model.AllocatedGrantState)
-		assertLookup(t, cluster, prefab.Instance3, gDERev, "d")
-	})
+func (l Lookup) States(t *testing.T) []model.GrantState {
+	if l.LookupStates == "" {
+		return nil
+	}
+	return slicex.Map(strings.Split(l.LookupStates, ","), func(s string) model.GrantState { return GrantState(strings.TrimSpace(s)).State(t) })
+}
 
-	t.Run("cluster with allocated and revoked grants applies another snapshot with active assignment", func(t *testing.T) {
-		// Initialize the cluster with allocated and revoked grants
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, gDEAlc), model.NewAssignment(prefab.Instance3, gDERev))
-		cluster := newCluster(t, assignments, shardDE)
-
-		// Update with a new active grant for the same shard
-		gDEAct := prefab.NewGrantInfo("gDEAct", "t/s/d", model.Global, "", "d", "e", model.ActiveGrantState)
-		assignments = slicex.New(model.NewAssignment(prefab.Instance2, gDEAct))
-		cluster = applySnapshot(t, cluster, assignments, shardDE)
-
-		// Shards should be created from the old assignments
-		assert.Len(t, cluster.Shards(), 1)
-		assertShardGrants(t, cluster, shardDE, gDEAct) // old grants are removed
-
-		// Consumer grants should be created from the new assignment.
-		assert.Len(t, cluster.Consumers(), 1)
-		assertConsumerGrants(t, cluster, prefab.Instance2, gDEAct)
-
-		// Lookup grants should use the new grant
-		assertLookup(t, cluster, prefab.Instance2, gDEAct, "d")
-	})
-
-	t.Run("cluster with allocated and revoked grants applies another snapshot with new assignments", func(t *testing.T) {
-		// Initialize the cluster with allocated and revoked grants
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, gDEAlc), model.NewAssignment(prefab.Instance3, gDERev))
-		cluster := newCluster(t, assignments, shardDE)
-
-		// Update with new grants assigned to the same shard
-		gDENewAlc := prefab.NewGrantInfo("gDENewAlc", "t/s/d", model.Global, "", "d", "e", model.AllocatedGrantState)
-		gDENewRev := prefab.NewGrantInfo("gDENewRev", "t/s/d", model.Global, "", "d", "e", model.RevokedGrantState)
-		assignments = slicex.New(model.NewAssignment(prefab.Instance1, gDENewRev), model.NewAssignment(prefab.Instance2, gDENewAlc))
-		cluster = applySnapshot(t, cluster, assignments, shardDE)
-
-		// Shards should be created from the new assignments
-		assert.Len(t, cluster.Shards(), 1)
-		assertShardGrants(t, cluster, shardDE, gDENewAlc, gDENewRev) // old grants are removed
-
-		// Consumer grants should be created from the new assignment.
-		assert.Len(t, cluster.Consumers(), 2)
-		assertConsumerGrants(t, cluster, prefab.Instance1, gDENewRev)
-		assertConsumerGrants(t, cluster, prefab.Instance2, gDENewAlc)
-
-		// Lookup grants should use the new grants
-		assertLookup(t, cluster, prefab.Instance2, gDENewAlc, "d", model.AllocatedGrantState)
-		assertLookup(t, cluster, prefab.Instance1, gDENewRev, "d")
-	})
-
-	t.Run("cluster with a single grant applies another snapshot with new grant for the same shard", func(t *testing.T) {
-		// Initialize the cluster with active grant
-		assignments := slicex.New(model.NewAssignment(prefab.Instance1, g0A))
-		cluster := newCluster(t, assignments, shard0A)
-
-		// Update with new grant assigned to the same shard
-		g0ANew := prefab.NewGrantInfo("g0ANew", "t/s/d", model.Global, "", "0", "a", model.ActiveGrantState)
-		assignments = slicex.New(model.NewAssignment(prefab.Instance1, g0ANew))
-		cluster = applySnapshot(t, cluster, assignments, shard0A)
-
-		// Shards should be created from the new assignment
-		assert.Len(t, cluster.Shards(), 1)
-		assertShardGrants(t, cluster, shard0A, g0ANew) // old grant is removed
-
-		// Consumer grants should be created from the new assignment.
-		assert.Len(t, cluster.Consumers(), 1)
-		assertConsumerGrants(t, cluster, prefab.Instance1, g0ANew)
-
-		// Lookup grants should use the new grant
-		assertLookup(t, cluster, prefab.Instance1, g0ANew, "0")
-	})
+type LookupResult struct {
+	Found    *bool            `yaml:"found"`
+	Grant    model.GrantID    `yaml:"grant"`
+	Consumer model.ConsumerID `yaml:"consumer"`
 }
 
 func newCluster(t *testing.T, assignments []model.Assignment, shards ...model.Shard) *model.ClusterMap {
@@ -588,77 +419,10 @@ func applySnapshot(t *testing.T, c *model.ClusterMap, assignments []model.Assign
 	return cluster
 }
 
-func assertLookup(t *testing.T, c *model.ClusterMap, consumer model.Instance, info model.GrantInfo, id string, states ...model.GrantState) {
-	t.Helper()
-	grantOwner, grant, ok := c.Lookup(prefab.NewQDK("t/s/d", "", id), states...)
-	assert.True(t, ok)
-	requirex.EqualProtobuf(t, model.UnwrapInstance(grantOwner), model.UnwrapInstance(consumer))
-	requirex.EqualProtobuf(t, model.UnwrapGrantInfo(grant), model.UnwrapGrantInfo(info))
+func requireConsumersEqual(t *testing.T, c1, c2 model.Consumer, args ...any) {
+	requirex.EqualProtobuf(t, model.UnwrapInstance(c1), model.UnwrapInstance(c2), args...)
 }
 
-func assertLookupNotFound(t *testing.T, c *model.ClusterMap, id string, states ...model.GrantState) {
-	t.Helper()
-	_, _, ok := c.Lookup(prefab.NewQDK("t/s/d", "", id), states...)
-	assert.False(t, ok)
-}
-
-func assertGrantNotFound(t *testing.T, c *model.ClusterMap, info model.GrantInfo) {
-	t.Helper()
-
-	_, _, ok := c.Grant(info.ID())
-	assert.False(t, ok)
-}
-
-func assertConsumerGrants(t *testing.T, c *model.ClusterMap, consumer model.Instance, grants ...model.GrantInfo) {
-	t.Helper()
-	_, g, ok := c.Consumer(consumer.ID())
-	assert.True(t, ok)
-	assertx.Equal(t, sortedGrantIDs(slicex.Map(g, model.GrantInfo.ID)), sortedGrantIDs(slicex.Map(grants, model.GrantInfo.ID)))
-
-	for _, g := range grants {
-		c, info, ok := c.Grant(g.ID())
-		assert.True(t, ok)
-		assertx.EqualProtobuf(t, model.UnwrapInstance(c), model.UnwrapInstance(consumer))
-		assertx.EqualProtobuf(t, model.UnwrapGrantInfo(info), model.UnwrapGrantInfo(g))
-	}
-}
-
-func assertConsumerGrantsEmpty(t *testing.T, c *model.ClusterMap, consumer model.Instance) {
-	t.Helper()
-	_, g, ok := c.Consumer(consumer.ID())
-	assert.True(t, ok)
-	assert.Empty(t, g)
-}
-
-func assertConsumerNotPresent(t *testing.T, c *model.ClusterMap, consumer model.Instance) {
-	t.Helper()
-	_, _, ok := c.Consumer(consumer.ID())
-	assert.False(t, ok)
-}
-
-func assertShardGrantsEmpty(t *testing.T, c *model.ClusterMap, shard model.Shard) {
-	t.Helper()
-	shards, ok := c.ShardGrants(shard)
-	assert.True(t, ok)
-	assert.Empty(t, shards)
-}
-
-func assertShardGrants(t *testing.T, c *model.ClusterMap, shard model.Shard, grants ...model.GrantInfo) {
-	t.Helper()
-	shards, ok := c.ShardGrants(shard)
-	assert.True(t, ok)
-	assertx.Equal(t, sortedGrantIDs(shards), sortedGrantIDs(slicex.Map(grants, model.GrantInfo.ID)))
-}
-
-func assertShardNotPresent(t *testing.T, c *model.ClusterMap, shard model.Shard) {
-	t.Helper()
-	_, ok := c.ShardGrants(shard)
-	assert.False(t, ok)
-}
-
-func sortedGrantIDs(ids []model.GrantID) []model.GrantID {
-	sort.Slice(ids, func(i, j int) bool {
-		return ids[i] < ids[j]
-	})
-	return ids
+func requireGrantsEqual(t *testing.T, g1, g2 model.GrantInfo, args ...any) {
+	requirex.EqualProtobuf(t, model.UnwrapGrantInfo(g1), model.UnwrapGrantInfo(g2), args...)
 }

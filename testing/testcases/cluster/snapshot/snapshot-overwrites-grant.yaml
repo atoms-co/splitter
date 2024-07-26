@@ -1,0 +1,46 @@
+# Snapshot should overwrite the old grant with the new grant for the same shard
+actions:
+  - action: create
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+
+  # Apply snapshot with a new allocated grant for the same shard
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A_Allocated
+            shard: range=(0:a),type=G
+            state: allocated
+
+  # New grant should overwrite the old grant
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A_Allocated]
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A_Allocated
+            shard: range=(0:a),type=G
+            state: allocated
+
+  # Lookup grants should use the new grant
+  - action: lookup
+    lookups:
+      - key: "0"
+        states: allocated
+        expected:
+          grant: 0A_Allocated
+          consumer: c1
+      - key: "0"
+        expected:
+          found: false

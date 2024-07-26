@@ -1,0 +1,54 @@
+# A new grant assigned to an old grant for the same shard replaces the old grant.
+actions:
+  - action: create
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  # Assign a new grant for the same shard as an existing grant
+  - action: change
+    assignments:
+      - consumer: c2
+        grants:
+          - id: 0A_New
+            shard: range=(0:a),type=G
+            state: active
+
+  # The old grant should be removed
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A_New]
+      - shard: range=(d:e),type=G
+        grants: [DE_Revoked]
+    assignments:
+      - consumer: c1
+        grants: []
+      - consumer: c2
+        grants:
+          - id: 0A_New
+            shard: range=(0:a),type=G
+            state: active
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          grant: 0A_New
+          consumer: c2

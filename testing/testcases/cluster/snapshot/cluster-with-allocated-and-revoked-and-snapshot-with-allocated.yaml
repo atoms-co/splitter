@@ -1,0 +1,108 @@
+# Revoked grant should be kept after applying a snapshot with an allocated grant to the same shard
+actions:
+  - action: create
+
+  # Snapshot with allocated and revoked grants for the same shard
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: allocated
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+    shards:
+      - shard: range=(d:e),type=G
+
+  # Apply a new snapshot that only has allocated grant
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: allocated
+    shards:
+      - shard: range=(d:e),type=G
+
+  # Revoked grant should be kept
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(d:e),type=G
+        grants: [DE_Allocated, DE_Revoked]
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: allocated
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  # Lookup grants should include the revoked grant
+  - action: lookup
+    lookups:
+      - key: "d"
+        states: allocated
+        expected:
+          grant: DE_Allocated
+          consumer: c1
+      - key: "d"
+        expected:
+          grant: DE_Revoked
+          consumer: c2
+
+  # Apply a new snapshot that has the old allocated grant updated to loaded
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: loaded
+    shards:
+      - shard: range=(d:e),type=G
+
+  # Revoked grant should be kept and allocated grant should be updated
+  - action: compare
+    version: 4
+    shards:
+      - shard: range=(d:e),type=G
+        grants: [DE_Allocated, DE_Revoked]
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: loaded
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  # Lookup grants should include the revoked and the loaded grants
+  - action: lookup
+    lookups:
+      - key: "d"
+        states: allocated
+        expected:
+          found: false
+      - key: "d"
+        states: loaded
+        expected:
+          grant: DE_Allocated
+          consumer: c1
+      - key: "d"
+        expected:
+          grant: DE_Revoked
+          consumer: c2
+

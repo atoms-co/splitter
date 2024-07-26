@@ -1,0 +1,66 @@
+actions:
+  - action: create
+
+  # Snapshot with allocated and revoked grants for the same shard
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: allocated
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+    shards:
+      - shard: range=(d:e),type=G
+
+  # Apply a new snapshot with new grants for the same shard and same states
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE_Revoked_New
+            shard: range=(d:e),type=G
+            state: revoked
+      - consumer: c2
+        grants:
+          - id: DE_Allocated_New
+            shard: range=(d:e),type=G
+            state: allocated
+    shards:
+      - shard: range=(d:e),type=G
+
+  # Old grants should be removed
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(d:e),type=G
+        grants: [DE_Allocated_New, DE_Revoked_New]
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE_Revoked_New
+            shard: range=(d:e),type=G
+            state: revoked
+      - consumer: c2
+        grants:
+          - id: DE_Allocated_New
+            shard: range=(d:e),type=G
+            state: allocated
+
+  # Lookup grants should include the new grants
+  - action: lookup
+    lookups:
+      - key: "d"
+        states: allocated
+        expected:
+          grant: DE_Allocated_New
+          consumer: c2
+      - key: "d"
+        expected:
+          grant: DE_Revoked_New
+          consumer: c1
+

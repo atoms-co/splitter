@@ -1,0 +1,80 @@
+# Apply a snapshot with only shards to a cluster with existing grants.
+actions:
+  - action: create
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants: []
+      - consumer: c3
+        grants:
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
+
+  # Update with some shards
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+
+  # Shards should be created from the new shards. Old shards should be removed
+  # Consumer grants should be created from the old assignments. Old consumers without grants are removed
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A]
+      - shard: range=(d:e),type=G
+        grants: []
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+
+  # Lookup grants should use the new grants
+  - action: lookup
+    lookups:
+      - key: "0"
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "a"
+        expected:
+          found: false
+
+  # Repeat again
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+
+  - action: compare
+    version: 4
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A]
+      - shard: range=(d:e),type=G
+        grants: []
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+
+  - action: lookup
+    lookups:
+      - key: "0"
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "a"
+        expected:
+          found: false

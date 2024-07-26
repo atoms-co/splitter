@@ -1,0 +1,56 @@
+# Allocated and revoked grants for the same shard should be removed after applying a snapshot with an active grant to the same shard
+actions:
+  - action: create
+
+  # Snapshot with allocated and revoked grants for the same shard
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE_Allocated
+            shard: range=(d:e),type=G
+            state: allocated
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+    shards:
+      - shard: range=(d:e),type=G
+
+  # Apply a new snapshot that has an active grant to the same shard
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE
+            shard: range=(d:e),type=G
+            state: active
+    shards:
+      - shard: range=(d:e),type=G
+
+  # Old grants should be removed and only the new grant should be present
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(d:e),type=G
+        grants: [DE]
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE
+            shard: range=(d:e),type=G
+            state: active
+
+  # Lookup grants should only include the new grant
+  - action: lookup
+    lookups:
+      - key: "d"
+        states: allocated
+        expected:
+          found: false
+      - key: "d"
+        expected:
+          grant: DE
+          consumer: c1
+

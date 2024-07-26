@@ -1,0 +1,22 @@
+# New cluster with shards has no grants nor consumers
+actions:
+  - action: create
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
+
+  - action: compare
+    version: 1
+    shards:
+      - shard: range=(0:a),type=G
+        grants: []
+      - shard: range=(a:d),type=G
+        grants: []
+    consumers: []
+
+
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          found: false

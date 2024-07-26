@@ -1,0 +1,63 @@
+# Existing grant should be updated with a new state
+actions:
+  - action: create
+    shards: []
+  - action: snapshot
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  # Update an existing grant
+  - action: change
+    updated:
+      - id: 0A
+        shard: range=(0:a),type=G
+        state: revoked
+
+  # Grant should be updated
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A]
+      - shard: range=(d:e),type=G
+        grants: [DE_Revoked]
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: revoked
+      - consumer: c2
+        grants:
+          - id: DE_Revoked
+            shard: range=(d:e),type=G
+            state: revoked
+
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "1"
+        states: revoked
+        expected:
+          grant: 0A
+          consumer: c1
+      - key: "1"
+        states: allocated
+        expected:
+          found: false
+      - key: "d"
+        expected:
+          grant: DE_Revoked
+          consumer: c2
