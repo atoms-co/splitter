@@ -38,17 +38,18 @@ func makeStartCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 
-	instance := cmd.PersistentFlags().String("instance", getInstance(), "Instance IP to publish")
 	configPath := cmd.PersistentFlags().String("config_path", "/app_config/splitter.yaml", "Base config file")
 	dataPath := cmd.PersistentFlags().String("data_path", "/data", "Data path")
 	port := cmd.PersistentFlags().Int("port", 50051, "Grpc server port")
-	internalPort := cmd.PersistentFlags().Int("internal_port", 50052, "Grpc server port for pod-to-pod traffic")
 	healthPort := cmd.PersistentFlags().Int("health_port", 8081, "Http port for health check traffic")
 	fastActivation := cmd.PersistentFlags().Bool("fast_activation", false, "Fast Leader/Coordinator activation for testing")
 
-	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "Tcp port for raft traffic")
+	splitterServer := cmd.PersistentFlags().String("splitter_server", "", "Server address used by Splitter")
+	splitterPort := cmd.PersistentFlags().Int("splitter_port", 50052, "Grpc server port for pod-to-pod traffic")
+
 	raftID := cmd.PersistentFlags().String("raft_id", getName(), "Node id used by Raft")
 	raftServer := cmd.PersistentFlags().String("raft_server", "", "Server address used by Raft")
+	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "Tcp port for raft traffic")
 	raftFastBootstrap := cmd.PersistentFlags().Bool("raft_fast_bootstrap", false, "Fast Raft bootstrap for testing")
 	raftJoinPeers := cmd.PersistentFlags().StringSlice("raft_join_peers", []string{}, "Raft peers to join including self")
 
@@ -135,7 +136,7 @@ func makeStartCommand() *cobra.Command {
 		if *raftFastBootstrap {
 			opts = append(opts, cluster.WithFastBootstrap())
 		}
-		c, directives := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *raftJoinPeers, *internalPort, opts...)
+		c, directives := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *raftJoinPeers, *splitterPort, opts...)
 
 		var lopts []leader.Option
 		if *fastActivation {
@@ -146,7 +147,7 @@ func makeStartCommand() *cobra.Command {
 			return ret, ret
 		})
 
-		s := server.New(ctx, cl, loc, fmt.Sprintf("%v:%v", *instance, *internalPort), c, manager, server.WithFastActivation(*fastActivation))
+		s := server.New(ctx, cl, loc, *splitterServer, c, manager, server.WithFastActivation(*fastActivation))
 
 		// (4) Start server and await termination
 
@@ -176,12 +177,12 @@ func makeStartCommand() *cobra.Command {
 			defer wg.Done()
 			defer quit.Close()
 
-			listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", *internalPort))
+			listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", *splitterPort))
 			if err != nil {
-				log.Errorf(ctx, "failed to open port %v: %v", *internalPort, err)
+				log.Errorf(ctx, "failed to open port %v: %v", *splitterPort, err)
 				return
 			}
-			log.Infof(ctx, "Serving internal traffic on port %d", *internalPort)
+			log.Infof(ctx, "Serving internal traffic on port %d", *splitterPort)
 			if err := s.ServeInternal(wctx, listener); err != nil {
 				log.Errorf(ctx, "Server exited: %v", err)
 			}
