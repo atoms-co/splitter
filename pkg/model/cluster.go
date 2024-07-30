@@ -190,12 +190,12 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 
 		// (2) Copy over retained or updated values
 
-		upd := mapx.New(change.Update().Grants(), GrantInfo.ID)
-		rem := mapx.New(change.Unassign().Grants(), idFn[GrantID])
-		del := mapx.New(change.Remove().Consumers(), idFn[ConsumerID])
+		updated := mapx.New(change.Update().Grants(), GrantInfo.ID)
+		unassigned := slicex.NewSet(change.Unassign().Grants()...)
+		removed := slicex.NewSet(change.Remove().Consumers()...)
 
 		for cid, info := range c.consumers {
-			if _, ok := del[cid]; ok {
+			if removed[cid] {
 				continue // skip: consumer removed
 			}
 
@@ -206,12 +206,12 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 			}
 
 			for _, g := range info.grants {
-				if _, ok := rem[g.ID()]; ok {
+				if unassigned[g.ID()] {
 					continue // skip: grant removed
 				}
 
 				keep := grantInfo{consumer: info.consumer, grant: g}
-				if v, ok := upd[g.ID()]; ok {
+				if v, ok := updated[g.ID()]; ok {
 					// Grant updated by the coordinator. Mark as current
 					keep.grant = v
 					keep.version = 0
@@ -372,10 +372,6 @@ func (c *ClusterMap) ShardGrants(shard Shard) ([]GrantID, bool) {
 
 func (c *ClusterMap) String() string {
 	return fmt.Sprintf("%v{%v}", c.id, c.consumers)
-}
-
-func idFn[T any](t T) T {
-	return t
 }
 
 type grantMapElm[T any] struct {
