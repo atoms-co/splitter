@@ -46,6 +46,7 @@ actions:
           - id: DE_Revoked
             shard: range=(d:e),type=G
             state: revoked
+            origin_cluster_version: 2
 
   # Lookup grants should include the revoked grant
   - action: lookup
@@ -88,6 +89,7 @@ actions:
           - id: DE_Revoked
             shard: range=(d:e),type=G
             state: revoked
+            origin_cluster_version: 2
 
   # Lookup grants should include the revoked and the loaded grants
   - action: lookup

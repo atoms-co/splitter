@@ -1,9 +1,11 @@
-# Existing grant should be updated with a new state
+# New grants are assigned in a change and retained grants are kept.
 actions:
   - action: create
+    shards: []
   - action: snapshot
     shards:
       - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
       - shard: range=(d:e),type=G
     assignments:
       - consumer: c1
@@ -11,25 +13,36 @@ actions:
           - id: 0A
             shard: range=(0:a),type=G
             state: active
+
+  # Apply snapshot to mark the grant as retained
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
+      - shard: range=(d:e),type=G
+
+  # Assign new grants that do not conflict with the retained grant
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
       - consumer: c2
         grants:
           - id: DE_Revoked
             shard: range=(d:e),type=G
             state: revoked
 
-  # Update an existing grant
-  - action: change
-    updated:
-      - id: 0A
-        shard: range=(0:a),type=G
-        state: revoked
-
-  # Grant should be updated
+  # Retained and new grant should be present
   - action: compare
-    version: 3
+    version: 4
     shards:
       - shard: range=(0:a),type=G
         grants: [0A]
+      - shard: range=(a:d),type=G
+        grants: [AD]
       - shard: range=(d:e),type=G
         grants: [DE_Revoked]
     assignments:
@@ -37,7 +50,11 @@ actions:
         grants:
           - id: 0A
             shard: range=(0:a),type=G
-            state: revoked
+            state: active
+            origin_cluster_version: 2
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
       - consumer: c2
         grants:
           - id: DE_Revoked
@@ -50,16 +67,20 @@ actions:
         expected:
           grant: 0A
           consumer: c1
-      - key: "1"
-        states: revoked
+      - key: "b"
         expected:
-          grant: 0A
+          grant: AD
           consumer: c1
-      - key: "1"
-        states: allocated
-        expected:
-          found: false
       - key: "d"
         expected:
           grant: DE_Revoked
           consumer: c2
+      - key: "d"
+        states: revoked
+        expected:
+          grant: DE_Revoked
+          consumer: c2
+      - key: "d"
+        states: allocated
+        expected:
+          found: false

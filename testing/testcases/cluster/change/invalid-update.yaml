@@ -1,0 +1,49 @@
+# Inconsistent updated grants in change message are detected.
+actions:
+  - action: create
+    shards:
+      - shard: range=(0:a),type=G
+
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+
+  - action: change
+    updated:
+      - id: 0B
+        shard: range=(0:a),type=G
+        state: revoked
+    expected_error: "invalid cluster change: updated unregistered grant 0B"
+
+  - action: change
+    updated:
+      - id: 0A
+        shard: range=(0:b),type=G
+        state: revoked
+    expected_error: "invalid cluster change: invalid update for grant 0A: shard mismatch: t/s/d[0000-a000) != t/s/d[0000-b000)"
+
+  - action: change
+    updated:
+      - id: 0A
+        shard: range=(0:a),type=G
+        state: loaded
+    expected_error: "invalid cluster change: invalid update for grant 0A: state did not advance: ACTIVE >= ALLOCATED_LOADED"
+
+  # Apply snapshot to mark grant as retained
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+
+  # Updating a retained grant should fail
+  - action: change
+    updated:
+      - id: 0A
+        shard: range=(0:a),type=G
+        state: revoked
+    expected_error: "invalid cluster change: updated unregistered grant 0A"

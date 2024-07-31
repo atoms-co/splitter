@@ -194,6 +194,24 @@ func IsRevokedOrUnloaded(state GrantState) bool {
 	return state == RevokedGrantState || state == UnloadedGrantState
 }
 
+// GrantStateCanAdvanceTo returns true if the grant can advance to the given state.
+func GrantStateCanAdvanceTo(state GrantState, next GrantState) bool {
+	switch state {
+	case AllocatedGrantState:
+		return next != AllocatedGrantState
+	case LoadedGrantState:
+		return !IsAllocatedOrLoaded(next)
+	case ActiveGrantState:
+		return IsRevokedOrUnloaded(next)
+	case RevokedGrantState:
+		return IsUnloadedGrant(next)
+	case UnloadedGrantState:
+		return false
+	default:
+		return false
+	}
+}
+
 // GrantID is a coordinator-determined grant id.
 type GrantID = allocation.GrantID
 

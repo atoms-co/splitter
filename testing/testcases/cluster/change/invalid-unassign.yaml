@@ -1,0 +1,30 @@
+# Inconsistent unassigned grants in change message are detected.
+actions:
+  - action: create
+    shards:
+      - shard: range=(0:a),type=G
+
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+
+  - action: change
+    unassigned: [0B]
+    expected_error: "invalid cluster change: unassigned unregistered grant 0B"
+
+  # Apply snapshot to mark grant as retained
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+
+  # Unassigned the retained grant should fail
+  - action: change
+    unassigned: [0A]
+    expected_error: "invalid cluster change: unassigned unregistered grant 0A"

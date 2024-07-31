@@ -2,6 +2,9 @@
 actions:
   - action: create
   - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
     assignments:
       - consumer: c1
         grants:

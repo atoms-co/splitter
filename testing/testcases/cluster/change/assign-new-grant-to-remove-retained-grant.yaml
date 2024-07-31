@@ -1,4 +1,4 @@
-# Snapshot should overwrite the old grant with the new grant for the same shard
+# A new grant assigned to a shard with a retained grant replaces the retained grant.
 actions:
   - action: create
   - action: snapshot
@@ -11,38 +11,38 @@ actions:
             shard: range=(0:a),type=G
             state: active
 
-  # Apply snapshot with a new allocated grant for the same shard
+  # Apply new snapshot with the same shards to mark grants as retained
   - action: snapshot
     shards:
       - shard: range=(0:a),type=G
-    assignments:
-      - consumer: c1
-        grants:
-          - id: 0A_Allocated
-            shard: range=(0:a),type=G
-            state: allocated
 
-  # New grant should overwrite the old grant
+  # Assign a new grant for the same shard as the retained grant
+  - action: change
+    assignments:
+      - consumer: c2
+        grants:
+          - id: 0A_New
+            shard: range=(0:a),type=G
+            state: active
+
+  # The retained grant should be removed
   - action: compare
-    version: 3
+    version: 4
     shards:
       - shard: range=(0:a),type=G
-        grants: [0A_Allocated]
+        grants: [0A_New]
     assignments:
       - consumer: c1
+        grants: []
+      - consumer: c2
         grants:
-          - id: 0A_Allocated
+          - id: 0A_New
             shard: range=(0:a),type=G
-            state: allocated
+            state: active
 
-  # Lookup grants should use the new grant
   - action: lookup
     lookups:
-      - key: "0"
-        states: allocated
+      - key: "1"
         expected:
-          grant: 0A_Allocated
-          consumer: c1
-      - key: "0"
-        expected:
-          found: false
+          grant: 0A_New
+          consumer: c2

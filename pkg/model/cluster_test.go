@@ -38,7 +38,7 @@ func TestCluster(t *testing.T) {
 	t.Run("domain shards", func(t *testing.T) {
 		g21 := prefab.NewGrantInfo("g21", "t/s/d2", model.Global, "", "0", "a", model.ActiveGrantState)
 		g22 := prefab.NewGrantInfo("g22", "t/s/d2", model.Global, "", "a", "d", model.ActiveGrantState)
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, g0A, gAD), model.NewAssignment(prefab.Instance2, g21, g22)))
+		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, g0A, gAD), model.NewAssignment(prefab.Instance2, g21, g22)), shard0A, shardAD, g21.Shard(), g22.Shard())
 
 		actual := model.DomainShards(cluster, prefab.QDN("t/s/d"))
 		sort.Slice(actual, func(i, j int) bool {
@@ -58,6 +58,8 @@ func TestCluster(t *testing.T) {
 
 // TestClusterWithTestCases runs all test cases in the testcases directory located at testcasesPath
 func TestClusterWithTestCases(t *testing.T) {
+	model.EnforceClusterUpdatesValidation = true
+
 	p, err := os.Getwd()
 	require.NoError(t, err)
 
@@ -101,6 +103,7 @@ type Action struct {
 	Updated     []Grant            `yaml:"updated"`
 	Unassigned  []model.GrantID    `yaml:"unassigned"`
 	Removed     []model.ConsumerID `yaml:"removed"`
+	Error       string             `yaml:"expected_error"`
 }
 
 func (a Action) GetShards(t *testing.T) []model.Shard {
@@ -123,7 +126,7 @@ func (a Action) Execute(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 		a.lookup(t, c)
 		return c
 	default:
-		require.Failf(t, "unknown action", "unknown action: %s", a.Action)
+		require.Failf(t, "unknown action", "unknown action: %v", a.Action)
 	}
 	return c
 }
@@ -135,8 +138,13 @@ func (a Action) create(t *testing.T) *model.ClusterMap {
 func (a Action) snapshot(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 	assignments := slicex.Map(a.Assignments, func(c Consumer) model.Assignment { return c.Assignment(t) })
 	snapshot := model.NewClusterSnapshot(c.ID().Next(time.Time{}), assignments, a.GetShards(t))
-	c, err := model.UpdateClusterMap(context.Background(), c, snapshot)
-	require.NoError(t, err)
+	upd, err := model.UpdateClusterMap(context.Background(), c, snapshot)
+	if a.Error != "" {
+		require.EqualError(t, err, a.Error, "expected error")
+	} else {
+		require.NoError(t, err)
+		c = upd
+	}
 	return c
 }
 
@@ -144,8 +152,13 @@ func (a Action) change(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 	assignments := slicex.Map(a.Assignments, func(c Consumer) model.Assignment { return c.Assignment(t) })
 	updated := slicex.Map(a.Updated, func(g Grant) model.GrantInfo { return g.Grant(t) })
 	change := model.NewClusterChange(c.ID().Next(time.Time{}), assignments, updated, a.Unassigned, a.Removed)
-	c, err := model.UpdateClusterMap(context.Background(), c, change)
-	require.NoError(t, err)
+	upd, err := model.UpdateClusterMap(context.Background(), c, change)
+	if a.Error != "" {
+		require.EqualError(t, err, a.Error, "expected error")
+	} else {
+		require.NoError(t, err)
+		c = upd
+	}
 	return c
 }
 
@@ -161,10 +174,10 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 		expectedShards = append(expectedShards, expectedShard)
 		domains[expectedShard.Domain] = append(domains[expectedShard.Domain], expectedShard)
 		actualGrants, ok := c.ShardGrants(expectedShard)
-		require.True(t, ok, "shard not found: %s", expectedShard)
+		require.True(t, ok, "shard not found: %v", expectedShard)
 		actual := slicex.NewSet(actualGrants...)
 		expected := slicex.NewSet(s.Grants...)
-		requirex.Equal(t, actual, expected, "grants mismatch for shard %s", expectedShard)
+		requirex.Equal(t, actual, expected, "grants mismatch for shard %v", expectedShard)
 	}
 	// Compare shards
 	requirex.Equal(t, slicex.NewSet(expectedShards...), slicex.NewSet(c.Shards()...), "total shards mismatch")
@@ -183,9 +196,9 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 		expectedConsumers = append(expectedConsumers, expectedConsumer)
 
 		actualConsumer, actualGrants, ok := c.Consumer(consumer.ID)
-		require.True(t, ok, "consumer not found: %s", actualConsumer.ID())
-		requireConsumersEqual(t, actualConsumer, expectedConsumer, "consumer mismatch: %s", actualConsumer.ID())
-		requirex.Equal(t, len(actualGrants), len(consumer.Grants), "total grants mismatch for consumer: %s", actualConsumer.ID())
+		require.True(t, ok, "consumer not found: %v", consumer.ID)
+		requireConsumersEqual(t, actualConsumer, expectedConsumer, "consumer mismatch: %v", consumer.ID)
+		requirex.Equal(t, len(actualGrants), len(consumer.Grants), "total grants mismatch for consumer: %v", consumer.ID)
 
 		sort.Slice(actualGrants, func(i, j int) bool {
 			return actualGrants[i].ID() < actualGrants[j].ID()
@@ -198,12 +211,15 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 		for i, grant := range consumer.Grants {
 			expectedGrant := grant.Grant(t)
 			expectedGrants = append(expectedGrants, expectedGrant)
-			requireGrantsEqual(t, actualGrants[i], expectedGrant, "grant mismatch: %s", grant.ID)
+			requireGrantsEqual(t, actualGrants[i], expectedGrant, "grant mismatch: %v", grant.ID)
 
 			grantConsumer, actualGrant, ok := c.Grant(grant.ID)
-			require.True(t, ok, "grant not found: %s", grant.ID)
-			requireGrantsEqual(t, actualGrant, expectedGrant, "grant mismatch: %s", grant.ID)
-			requireConsumersEqual(t, grantConsumer, expectedConsumer, "consumer mismatch: %s", actualConsumer.ID())
+			require.True(t, ok, "grant not found: %v", grant.ID)
+			requireGrantsEqual(t, actualGrant, expectedGrant, "grant mismatch: %v", grant.ID)
+			requireConsumersEqual(t, grantConsumer, expectedConsumer, "consumer mismatch for grant %v: %v", grant.ID, actualConsumer.ID())
+
+			version, _ := model.GrantRetainedVersion(c, grant.ID)
+			require.Equal(t, grant.Version, version, "version mismatch for grant: %v", grant.ID)
 		}
 
 		expectedAssignments = append(expectedAssignments, model.NewAssignment(expectedConsumer, expectedGrants...))
@@ -229,7 +245,7 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 	})
 	requirex.Equal(t, len(actualAssignments), len(expectedAssignments), "total assignments mismatch")
 	for i, actualAssignment := range actualAssignments {
-		requireConsumersEqual(t, actualAssignment.Consumer(), expectedAssignments[i].Consumer(), "consumer mismatch for assignment: %s", actualAssignment.Consumer().ID())
+		requireConsumersEqual(t, actualAssignment.Consumer(), expectedAssignments[i].Consumer(), "consumer mismatch for assignment: %v", actualAssignment.Consumer().ID())
 
 		expectedAssignment := expectedAssignments[i]
 		grants := actualAssignment.Grants()
@@ -238,9 +254,9 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 		})
 
 		expectedGrants := expectedAssignment.Grants()
-		requirex.Equal(t, len(grants), len(expectedGrants), "total grants mismatch for consumer: %s", actualAssignment.Consumer().ID())
+		requirex.Equal(t, len(grants), len(expectedGrants), "total grants mismatch for consumer: %v", actualAssignment.Consumer().ID())
 		for i := range expectedGrants {
-			requireGrantsEqual(t, grants[i], expectedGrants[i], "grants mismatch for consumer: %s", actualAssignment.Consumer().ID())
+			requireGrantsEqual(t, grants[i], expectedGrants[i], "grants mismatch for consumer: %v", actualAssignment.Consumer().ID())
 		}
 	}
 }
@@ -252,11 +268,11 @@ func (a Action) lookup(t *testing.T, c *model.ClusterMap) {
 		consumer, grant, ok := c.Lookup(key, lookup.States(t)...)
 
 		if lookup.Result.Found == nil || *lookup.Result.Found {
-			require.True(t, ok, "lookup failed: %s", key)
+			require.True(t, ok, "lookup failed: %v", key)
 			require.Equal(t, lookup.Result.Consumer, consumer.ID(), "consumer mismatch")
 			require.Equal(t, lookup.Result.Grant, grant.ID(), "grant mismatch")
 		} else {
-			require.False(t, ok, "unexpected lookup success: %s", key)
+			require.False(t, ok, "unexpected lookup success: %v", key)
 		}
 	}
 }
@@ -295,7 +311,7 @@ func (s GrantState) State(t *testing.T) model.GrantState {
 	case "unloaded":
 		return model.UnloadedGrantState
 	default:
-		require.Failf(t, "unknown grant state", "unknown grant state: %s", s)
+		require.Failf(t, "unknown grant state", "unknown grant state: %v", s)
 		return model.InvalidGrantState
 	}
 }
@@ -304,6 +320,7 @@ type Grant struct {
 	ID               model.GrantID    `yaml:"id"`
 	ShardDescription ShardDescription `yaml:"shard"`
 	State            GrantState       `yaml:"state"`
+	Version          int              `yaml:"origin_cluster_version"`
 }
 
 func (g Grant) Grant(t *testing.T) model.GrantInfo {
@@ -321,7 +338,7 @@ func (s ShardDescription) Shard(t *testing.T) model.Shard {
 	var dt model.DomainType
 	for _, part := range strings.Split(string(s), ",") {
 		props := strings.Split(part, "=")
-		require.Len(t, props, 2, "invalid shard property: %s", part)
+		require.Len(t, props, 2, "invalid shard property: %v", part)
 
 		switch strings.TrimSpace(props[0]) {
 		case "domain":
@@ -335,14 +352,14 @@ func (s ShardDescription) Shard(t *testing.T) model.Shard {
 			case "U":
 				dt = model.Unit
 			default:
-				require.Failf(t, "unknown domain type", "unknown domain type: %s", props[1])
+				require.Failf(t, "unknown domain type", "unknown domain type: %v", props[1])
 			}
 		case "range":
 			shardRange = strings.TrimSpace(props[1])
 		case "region":
 			region = strings.TrimSpace(props[1])
 		default:
-			require.Failf(t, "unknown shard property", "unknown shard property: %s", props[0])
+			require.Failf(t, "unknown shard property", "unknown shard property: %v", props[0])
 		}
 	}
 
@@ -353,12 +370,12 @@ func (s ShardDescription) Shard(t *testing.T) model.Shard {
 	require.Len(t, rangeParts, 2, "range must be in format (from:to)")
 
 	qdn, ok := model.ParseQualifiedDomainNameStr(domain)
-	require.True(t, ok, "invalid domain: %s", domain)
+	require.True(t, ok, "invalid domain: %v", domain)
 
 	from, err := prefab.PadToUUID(rangeParts[0])
-	require.NoError(t, err, "invalid range: %s", shardRange)
+	require.NoError(t, err, "invalid range: %v", shardRange)
 	to, err := prefab.PadToUUID(rangeParts[1])
-	require.NoError(t, err, "invalid range: %s", shardRange)
+	require.NoError(t, err, "invalid range: %v", shardRange)
 
 	return model.Shard{
 		Region: model.Region(region),
@@ -382,10 +399,10 @@ func (l Lookup) DomainKey(t *testing.T) model.QualifiedDomainKey {
 		l.Domain = defaultDomain
 	}
 	key, err := prefab.PadToUUID(l.Key)
-	require.NoError(t, err, "invalid key: %s", l.Key)
+	require.NoError(t, err, "invalid key: %v", l.Key)
 
 	qdn, ok := model.ParseQualifiedDomainNameStr(l.Domain)
-	require.True(t, ok, "invalid domain: %s", l.Domain)
+	require.True(t, ok, "invalid domain: %v", l.Domain)
 
 	return model.QualifiedDomainKey{
 		Domain: qdn,
@@ -397,7 +414,9 @@ func (l Lookup) States(t *testing.T) []model.GrantState {
 	if l.LookupStates == "" {
 		return nil
 	}
-	return slicex.Map(strings.Split(l.LookupStates, ","), func(s string) model.GrantState { return GrantState(strings.TrimSpace(s)).State(t) })
+	return slicex.Map(strings.Split(l.LookupStates, ","), func(s string) model.GrantState {
+		return GrantState(strings.TrimSpace(s)).State(t)
+	})
 }
 
 type LookupResult struct {

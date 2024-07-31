@@ -1,4 +1,5 @@
-# Existing grant should be updated with a new state
+# An existing consumer with retained grants is removed from the cluster.
+# All its grants should be removed too.
 actions:
   - action: create
   - action: snapshot
@@ -11,20 +12,21 @@ actions:
           - id: 0A
             shard: range=(0:a),type=G
             state: active
-      - consumer: c2
-        grants:
           - id: DE_Revoked
             shard: range=(d:e),type=G
             state: revoked
 
-  # Update an existing grant
-  - action: change
-    updated:
-      - id: 0A
-        shard: range=(0:a),type=G
-        state: revoked
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
 
-  # Grant should be updated
   - action: compare
     version: 3
     shards:
@@ -37,29 +39,30 @@ actions:
         grants:
           - id: 0A
             shard: range=(0:a),type=G
-            state: revoked
-      - consumer: c2
-        grants:
+            state: active
           - id: DE_Revoked
             shard: range=(d:e),type=G
             state: revoked
+            origin_cluster_version: 2
+
+  # Remove an existing consumer
+  - action: change
+    removed: [c1]
+
+  # Consumer and its grants should be removed
+  - action: compare
+    version: 4
+    shards:
+      - shard: range=(0:a),type=G
+        grants: []
+      - shard: range=(d:e),type=G
+        grants: []
 
   - action: lookup
     lookups:
       - key: "1"
         expected:
-          grant: 0A
-          consumer: c1
-      - key: "1"
-        states: revoked
-        expected:
-          grant: 0A
-          consumer: c1
-      - key: "1"
-        states: allocated
-        expected:
           found: false
       - key: "d"
         expected:
-          grant: DE_Revoked
-          consumer: c2
+          found: false

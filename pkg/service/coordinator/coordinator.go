@@ -829,7 +829,11 @@ func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
 	}
 
 	change := model.NewClusterChange(c.cluster.ID().Next(c.cl.Now()), assigned, updated, unassigned, removed, copts...)
-	upd, _ := model.UpdateClusterMap(ctx, c.cluster, change)
+	upd, err := model.UpdateClusterMap(ctx, c.cluster, change)
+	if err != nil {
+		log.Errorf(ctx, "Internal: failed to update cluster map: %v", err)
+		// TODO (styurin, 7/30/2024): Start drain and exit
+	}
 
 	c.cluster = upd
 

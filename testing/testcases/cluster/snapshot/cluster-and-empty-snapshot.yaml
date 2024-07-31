@@ -4,6 +4,9 @@ actions:
 
   # Apply snapshot with some assignments and empty consumers
   - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
     assignments:
       - consumer: c1
         grants:
@@ -35,13 +38,14 @@ actions:
           - id: 0A
             shard: range=(0:a),type=G
             state: active
+            origin_cluster_version: 2
       - consumer: c3
         grants:
           - id: AD
             shard: range=(a:d),type=G
             state: active
+            origin_cluster_version: 2
 
-  # Lookup should use the old assignments
   - action: lookup
     lookups:
       - key: "1"

@@ -1,4 +1,4 @@
-# Existing grant should be updated with a new state
+# Unassigned retained grant should be removed from the cluster.
 actions:
   - action: create
   - action: snapshot
@@ -17,6 +17,21 @@ actions:
             shard: range=(d:e),type=G
             state: revoked
 
+  # Mark grant as retained
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+
+  # Assign the retained grant to make it current
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+
   # Update an existing grant
   - action: change
     updated:
@@ -26,7 +41,7 @@ actions:
 
   # Grant should be updated
   - action: compare
-    version: 3
+    version: 5
     shards:
       - shard: range=(0:a),type=G
         grants: [0A]
@@ -43,6 +58,7 @@ actions:
           - id: DE_Revoked
             shard: range=(d:e),type=G
             state: revoked
+            origin_cluster_version: 2
 
   - action: lookup
     lookups:

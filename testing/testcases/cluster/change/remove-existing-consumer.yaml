@@ -1,8 +1,10 @@
 # An existing consumer is removed from the cluster. All its grants should be removed too.
 actions:
   - action: create
-    shards: []
   - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
     assignments:
       - consumer: c1
         grants:

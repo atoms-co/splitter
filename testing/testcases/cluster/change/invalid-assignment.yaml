@@ -1,0 +1,141 @@
+# Inconsistent assignments in change message are detected.
+actions:
+  - action: create
+
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
+      - shard: range=(d:e),type=G
+      - shard: range=(1:2),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE
+            shard: range=(d:e),type=G
+            state: allocated
+      - consumer: c2
+        grants:
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
+          - id: 12_Allocated
+            shard: range=(1:2),type=G
+            state: allocated
+          - id: 12_Revoked
+            shard: range=(1:2),type=G
+            state: revoked
+
+  - action: change
+    assignments:
+      - consumer: c1
+      - consumer: c1
+    expected_error: "invalid cluster change: duplicate consumer c1"
+
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE
+            shard: range=(d:e),type=G
+            state: active
+    expected_error: "invalid cluster change: consumer c1 has invalid grant DE in assignments: duplicate grant"
+
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0AB
+            shard: range=(0:b),type=G
+            state: active
+    expected_error: "invalid cluster change: consumer c1 has invalid grant 0AB in assignments: unknown shard t/s/d[0000-b000)"
+
+  # Verify grants in the assignments cannot be assigned to the same shard
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A1
+            shard: range=(0:a),type=G
+            state: allocated
+      - consumer: c2
+        grants:
+          - id: 0A2
+            shard: range=(0:a),type=G
+            state: revoked
+      - consumer: c3
+        grants:
+          - id: 0A3
+            shard: range=(0:a),type=G
+            state: revoked
+    expected_error: "invalid cluster change: consumer c3 has invalid grant 0A3 in assignments: shard t/s/d[0000-a000) has multiple grants assigned: [0A1 0A2 0A3]"
+
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A1
+            shard: range=(0:a),type=G
+            state: allocated
+      - consumer: c2
+        grants:
+          - id: 0A2
+            shard: range=(0:a),type=G
+            state: active
+    expected_error: "invalid cluster change: consumer c2 has invalid grant 0A2 in assignments: grant 0A2 has state ACTIVE, but shard t/s/d[0000-a000) already has grant 0A1 with state ALLOCATED"
+
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A1
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants:
+          - id: 0A2
+            shard: range=(0:a),type=G
+            state: allocated
+    expected_error: "invalid cluster change: consumer c2 has invalid grant 0A2 in assignments: grant 0A2 has state ALLOCATED, but shard t/s/d[0000-a000) already has grant 0A1 with state ACTIVE"
+
+  # Verify that grants from cluster and assignments cannot be assigned to the same shard
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: DE1
+            shard: range=(d:e),type=G
+            state: revoked
+      - consumer: c2
+        grants:
+          - id: DE2
+            shard: range=(d:e),type=G
+            state: revoked
+    expected_error: "invalid cluster change: consumer c2 has invalid grant DE2 in assignments: shard t/s/d[d000-e000) has multiple grants assigned: [DE DE1 DE2]"
+
+  - action: change
+    assignments:
+      - consumer: c2
+        grants:
+          - id: DE2
+            shard: range=(d:e),type=G
+            state: active
+    expected_error: "invalid cluster change: consumer c2 has invalid grant DE2 in assignments: grant DE2 has state ACTIVE, but shard t/s/d[d000-e000) already has grant DE with state ALLOCATED"
+
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: AD2
+            shard: range=(a:d),type=G
+            state: allocated
+    expected_error: "invalid cluster change: consumer c1 has invalid grant AD2 in assignments: grant AD2 has state ALLOCATED, but shard t/s/d[a000-d000) already has grant AD with state ACTIVE"
+
+  - action: change
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 123
+            shard: range=(1:2),type=G
+            state: allocated
+    expected_error: "invalid cluster change: consumer c1 has invalid grant 123 in assignments: shard t/s/d[1000-2000) has multiple grants assigned: [123 12_Allocated 12_Revoked]"

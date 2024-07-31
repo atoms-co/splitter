@@ -1,0 +1,29 @@
+# Inconsistent removed consumers in change message are detected.
+actions:
+  - action: create
+    shards:
+      - shard: range=(0:a),type=G
+
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+
+  - action: change
+    removed: [c2]
+    expected_error: "invalid cluster change: removed unregistered consumer c2"
+
+  # Apply snapshot to mark grant and consumer as retained
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+
+  # Removing a retained consumer should fail
+  - action: change
+    removed: [c1]
+    expected_error: "invalid cluster change: removed unregistered consumer c1"

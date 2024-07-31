@@ -2,9 +2,12 @@ package model_test
 
 import (
 	"go.atoms.co/lib/testing/assertx"
+	"go.atoms.co/lib/testing/requirex"
+	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/testing/prefab"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -149,6 +152,22 @@ func TestShard_String(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			assertx.Equal(t, tt.want, tt.shard.String())
 		})
+	}
+}
+
+func TestGrantStateCanAdvanceTo(t *testing.T) {
+	states := slicex.New(model.AllocatedGrantState, model.LoadedGrantState, model.ActiveGrantState, model.RevokedGrantState, model.UnloadedGrantState)
+
+	for _, from := range states {
+		canAdvance := false
+		for _, to := range states {
+			t.Run(fmt.Sprintf("%v to %v", from, to), func(t *testing.T) {
+				requirex.Equal(t, model.GrantStateCanAdvanceTo(from, to), canAdvance)
+			})
+			if from == to {
+				canAdvance = true
+			}
+		}
 	}
 }
 
