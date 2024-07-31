@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"go.atoms.co/lib/metrics"
 	"errors"
 	"fmt"
 	"google.golang.org/grpc"
@@ -9,6 +10,10 @@ import (
 
 var (
 	ErrNoResolution = errors.New("no resolution")
+)
+
+var (
+	numForwards = metrics.NewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", resultKey)
 )
 
 // Resolver resolves ownership of a key of type K to a proxy object of type T. Each proxy is typically instantiated
@@ -104,12 +109,16 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 		if instance, _, ok := c.Lookup(key, r.states...); ok {
 			con, err := r.pool.Resolve(ctx, instance)
 			if err != nil {
+				numForwards.Increment(ctx, 1, resultTag(err.Error()))
 				return zero, err
 			}
+			numForwards.Increment(ctx, 1, resultTag("ok"))
 			return r.fn(con), nil
 		}
+		numForwards.Increment(ctx, 1, resultTag("owner_not_found"))
 	}
 
+	numForwards.Increment(ctx, 1, resultTag("not_initialized"))
 	return zero, fmt.Errorf("not initialized: %w", ErrNotFound)
 }
 
