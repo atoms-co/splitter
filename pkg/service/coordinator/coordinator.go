@@ -56,7 +56,8 @@ var (
 	numColocationByLocation = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_colocation_by_location", "Colocation by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
-	numActions = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Coordinator actions", core.TenantKey, core.ServiceKey, core.ActionKey, core.ResultKey)
+	numActions       = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Coordinator actions", core.TenantKey, core.ServiceKey, core.ActionKey, core.ResultKey)
+	numActionLatency = metrics.NewHistogram("go.atoms.co/splitter/coordinator_action_latency", "Coordinator action latency", nil, core.TenantKey, core.ServiceKey, core.ActionKey)
 )
 
 // Coordinator handles consumer connection and work allocation.
@@ -344,6 +345,8 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	defer c.drain.Close()
 	defer c.initialized.Close()
 
+	start := c.cl.Now()
+
 	c.cache.Restore(core.NewSnapshot(state))
 
 	tenant, ok := c.cache.Tenant(c.name.Tenant)
@@ -371,6 +374,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
 	c.recordAction(ctx, "init", "ok")
+	c.recordActionLatency(ctx, "init", start)
 	c.initialized.Close()
 
 	c.process(ctx, updates)
@@ -398,6 +402,9 @@ steady:
 	for {
 		select {
 		case msg := <-c.messages:
+
+			now := c.cl.Now()
+
 			s, ok := c.consumers[msg.Instance.ID()]
 			if !ok || msg.Sid != s.connection.Sid() {
 				log.Infof(ctx, "Ignoring stale message from consumer session %v: %v", msg.Sid, msg)
@@ -407,8 +414,12 @@ steady:
 
 			broadcast = true // possible change
 
+			c.recordActionLatency(ctx, "consumer_message", now)
+
 		case upd := <-updates:
 			// (1) Refresh allocation, (2) allocate, (3) broadcast cluster change
+
+			now := c.cl.Now()
 
 			if err := c.cache.Update(upd, false); err != nil {
 				log.Errorf(ctx, "Internal: invalid state update %v", err)
@@ -443,6 +454,8 @@ steady:
 			c.allocate(ctx, c.cl.Now(), false)
 			c.broadcast(ctx, bopts...)
 
+			c.recordActionLatency(ctx, "tenant_update", now)
+
 		case <-ticker.C:
 			// (1) Send lease updates, (2) disconnect unhealthy consumers, (3) allocate
 			// (4) broadcast cluster changes (5) emit metrics
@@ -463,12 +476,19 @@ steady:
 			c.broadcast(ctx)
 			c.emitMetrics(ctx)
 
+			c.recordActionLatency(ctx, "tick", now)
+
 		case <-cluster.C:
 			// (1) Broadcast cluster changes
+
+			now := c.cl.Now()
+
 			if broadcast {
 				c.broadcast(ctx)
 				broadcast = false // wait for possible change
 			}
+
+			c.recordActionLatency(ctx, "tick/cluster", now)
 
 		case fn := <-c.inject:
 			fn()
@@ -519,6 +539,8 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 }
 
 func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance bool) {
+	defer c.recordActionLatency(ctx, "allocate", c.cl.Now()) // uses actual current time (vs _now_ param) for latency recording
+
 	// (1) Expire, Allocate and LoadBalance. If any worker cannot handle the update
 	// they are disconnected. If an assignment fails, the grant is immediately released.
 
@@ -533,7 +555,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	if loadbalance {
 		// Revoke and allocate
 
-		if move, load, ok := c.alloc.LoadBalance(now); ok {
+		if move, load, ok := c.loadBalance(ctx, now); ok {
 			// Revoke from source worker, on failure, lease will run out
 			s := c.consumers[move.From.Worker]
 			if !s.TrySend(ctx, model.NewRevoke(toGrant(move.From))) {
@@ -558,6 +580,11 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	c.broadcast(ctx)
 
 	log.Infof(ctx, "Allocation %v: %v", c.name, c.alloc)
+}
+
+func (c *coordinator) loadBalance(ctx context.Context, now time.Time) (allocation.Move[model.Shard, model.ConsumerID], allocation.AdjustedLoad, bool) {
+	defer c.recordActionLatency(ctx, "loadbalance", c.cl.Now()) // uses actual current time (vs _now_ param) for latency recording
+	return c.alloc.LoadBalance(now)
 }
 
 func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant) {
@@ -759,6 +786,8 @@ func withSendingShards(shards []model.Shard) broadcastOption {
 }
 
 func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
+	defer c.recordActionLatency(ctx, "broadcast", c.cl.Now())
+
 	var opts broadcastOpts
 	for _, opt := range bopts {
 		opt(&opts)
@@ -988,6 +1017,8 @@ func (c *coordinator) String() string {
 }
 
 func (c *coordinator) emitMetrics(ctx context.Context) {
+	defer c.recordActionLatency(ctx, "metrics", c.cl.Now())
+
 	c.resetMetrics(ctx)
 
 	// Consumers with status
@@ -1105,4 +1136,8 @@ func (c *coordinator) txn(ctx context.Context, fn func() error) error {
 
 func (c *coordinator) recordAction(ctx context.Context, action, result string) {
 	numActions.Increment(ctx, 1, slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.ActionTag(action), core.ResultTag(result))...)
+}
+
+func (c *coordinator) recordActionLatency(ctx context.Context, action string, now time.Time) {
+	numActionLatency.Observe(ctx, c.cl.Since(now), slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.ActionTag(action))...)
 }
