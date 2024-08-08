@@ -443,16 +443,15 @@ steady:
 			oldShards := c.alloc.Units()
 
 			c.refresh(ctx, c.refreshDelay)
+			c.allocate(ctx, c.cl.Now(), false)
 
 			newShards := c.alloc.Units()
 			var bopts []broadcastOption
 			if !maps.Equal(slicex.NewSet(oldShards...), slicex.NewSet(newShards...)) {
 				// Send list of shards if shards have changed.
 				bopts = append(bopts, withSendingShards(newShards))
+				c.broadcast(ctx, bopts...)
 			}
-
-			c.allocate(ctx, c.cl.Now(), false)
-			c.broadcast(ctx, bopts...)
 
 			c.recordActionLatency(ctx, "tenant_update", now)
 
@@ -473,7 +472,6 @@ steady:
 			}
 			c.disconnect(ctx, "unhealthy", unhealthy...)
 			c.allocate(ctx, now, true)
-			c.broadcast(ctx)
 			c.emitMetrics(ctx)
 
 			c.recordActionLatency(ctx, "tick", now)
@@ -701,7 +699,6 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 
 	// (4) Allocate unassigned grants
 	c.allocate(ctx, c.cl.Now(), false)
-	c.broadcast(ctx)
 
 	log.Infof(ctx, "Deregistered consumer %v with %v active grants", s, len(assigned.Active))
 }
@@ -979,7 +976,6 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 
 		// Allocate unassigned grants
 		c.allocate(ctx, now, false)
-		c.broadcast(ctx)
 
 		log.Infof(ctx, "drained consumer: %v", s.consumer.Instance())
 
