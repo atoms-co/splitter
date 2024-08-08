@@ -774,8 +774,13 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 		next := movable.Pop()
 		work := next.grant.work
 
-		src, _ := a.colo.Colocate(next.w.info.Instance, next.w.LiveWithout(work.Unit))
-		bonus := next.w.load.Colo - src // co-location penalty bonus at source (may be negative)
+		var bonus Load
+		if !a.colo.IsEmpty() { // skip computing penalty if Colocation rule is empty
+			// TODO(jump.c) 8/7/2024: Improve colocation computation e.g. avoid excessive copying in LiveWithout(), LiveWith()
+			// Required for non-empty rules
+			src, _ := a.colo.Colocate(next.w.info.Instance, next.w.LiveWithout(work.Unit))
+			bonus = next.w.load.Colo - src // co-location penalty bonus at source (may be negative)
+		}
 
 		// (a) Find penalty-improving move, if any.
 
@@ -793,12 +798,14 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 			if !ok {
 				continue // skip: invalid placement
 			}
-			colo, _ := a.colo.Colocate(w.info.Instance, w.LiveWith(work))
 
 			diff := AdjustedLoad{
 				Load:  (max(intrin-cutoff, 0)*work.Load)/intrin - next.load.Load, // negative if intrinsic load on candidate worker < load on current worker
 				Place: place - next.load.Place,                                   // negative if Unit placement penalty on candidate worker < Unit placement penalty on current worker
-				Colo:  colo - w.load.Colo - bonus,                                // negative if Unit colocation penalty on candidate worker < Unit colocation penalty on current worker
+			}
+			if !a.colo.IsEmpty() { // skip computing penalty if Colocation rule is empty
+				colo, _ := a.colo.Colocate(w.info.Instance, w.LiveWith(work))
+				diff.Colo = colo - w.load.Colo - bonus // negative if Unit colocation penalty on candidate worker < Unit colocation penalty on current worker
 			}
 
 			if diff.Total() >= 0 {

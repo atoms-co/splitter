@@ -125,3 +125,7 @@ func (c Colocations[T, W, K, V]) Colocate(worker Worker[K, V], work map[T]Work[T
 	}
 	return sum, ret
 }
+
+func (c Colocations[T, W, K, V]) IsEmpty() bool {
+	return len(c.List) == 0
+}

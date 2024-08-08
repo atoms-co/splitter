@@ -231,7 +231,11 @@ func findPlacements(tenant model.TenantInfo, info model.ServiceInfoEx, namedShar
 }
 
 func findColocations(info model.ServiceInfoEx) []Colocation {
-	return slicex.New[Colocation](NewAntiAffinity(info))
+	a := NewAntiAffinity(info)
+	if len(a.Targets) == 0 {
+		return nil
+	}
+	return slicex.New[Colocation](a)
 }
 
 func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo) []Work {
