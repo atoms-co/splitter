@@ -85,7 +85,33 @@ func (o *OperationService) CoordinatorRestart(ctx context.Context, request *inte
 	return resp.GetOperation().GetRestart(), nil
 }
 
-func (o *OperationService) CoordinatorConsumerSuspend(ctx context.Context, request *internal_v1.CoordinatorConsumerSuspendRequest) (*internal_v1.CoordinatorConsumerSuspendResponse, error) {
+func (o *OperationService) CoordinatorClusterSync(ctx context.Context, request *internal_v1.CoordinatorClusterSyncRequest) (*internal_v1.CoordinatorClusterSyncResponse, error) {
+	name, err := model.ParseQualifiedServiceName(request.GetService())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
+	}
+
+	req := coordinator.NewHandleCoordinatorOperationRequest(name,
+		&internal_v1.CoordinatorOperationRequest{
+			Req: &internal_v1.CoordinatorOperationRequest_Sync{
+				Sync: request,
+			},
+		})
+
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
+		return model.InvokeEx(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+			return o.worker.Handle(ctx, req)
+		})
+	})
+	if err != nil {
+		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
+		return nil, model.WrapError(err)
+	}
+
+	return resp.GetOperation().GetSync(), nil
+}
+
+func (o *OperationService) ConsumerSuspend(ctx context.Context, request *internal_v1.ConsumerSuspendRequest) (*internal_v1.ConsumerSuspendResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
@@ -111,7 +137,7 @@ func (o *OperationService) CoordinatorConsumerSuspend(ctx context.Context, reque
 	return resp.GetOperation().GetSuspend(), nil
 }
 
-func (o *OperationService) CoordinatorConsumerResume(ctx context.Context, request *internal_v1.CoordinatorConsumerResumeRequest) (*internal_v1.CoordinatorConsumerResumeResponse, error) {
+func (o *OperationService) ConsumerResume(ctx context.Context, request *internal_v1.ConsumerResumeRequest) (*internal_v1.ConsumerResumeResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
@@ -137,7 +163,7 @@ func (o *OperationService) CoordinatorConsumerResume(ctx context.Context, reques
 	return resp.GetOperation().GetResume(), nil
 }
 
-func (o *OperationService) CoordinatorConsumerDrain(ctx context.Context, request *internal_v1.CoordinatorConsumerDrainRequest) (*internal_v1.CoordinatorConsumerDrainResponse, error) {
+func (o *OperationService) ConsumerDrain(ctx context.Context, request *internal_v1.ConsumerDrainRequest) (*internal_v1.ConsumerDrainResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)

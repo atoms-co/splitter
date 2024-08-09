@@ -80,6 +80,31 @@ func makeCoordinatorRestartCmd() *cobra.Command {
 	return cmd
 }
 
+func makeCoordinatorClusterSyncCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "sync <tenant>/<service>",
+		Short:        "Sync coordinator cluster to consumers",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+	}
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		name, ok := model.ParseQualifiedServiceNameStr(args[0])
+		if !ok {
+			return fmt.Errorf("invalid qualified service name: %v", args[0])
+		}
+
+		return withInternalClient(func(ctx context.Context, client core.Client) error {
+			if err := client.CoordinatorClusterSync(ctx, name); err != nil {
+				return err
+			}
+			return nil
+		})
+	}
+
+	return cmd
+}
+
 var (
 	consumerCommand = &cobra.Command{
 		Use:          "consumer",

@@ -32,6 +32,7 @@ type Client interface {
 
 	CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error)
 	CoordinatorRestart(ctx context.Context, name model.QualifiedServiceName) error
+	CoordinatorClusterSync(ctx context.Context, name model.QualifiedServiceName) error
 	ConsumerSuspend(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
 	ConsumerResume(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
 	ConsumerDrain(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
@@ -134,33 +135,42 @@ func (c *client) CoordinatorRestart(ctx context.Context, service model.Qualified
 	return err
 }
 
+func (c *client) CoordinatorClusterSync(ctx context.Context, service model.QualifiedServiceName) error {
+	req := &internal_v1.CoordinatorClusterSyncRequest{
+		Service: service.ToProto(),
+	}
+
+	_, err := c.operation.CoordinatorClusterSync(ctx, req)
+	return err
+}
+
 func (c *client) ConsumerSuspend(ctx context.Context, service model.QualifiedServiceName, id model.InstanceID) error {
-	req := &internal_v1.CoordinatorConsumerSuspendRequest{
+	req := &internal_v1.ConsumerSuspendRequest{
 		Service:    service.ToProto(),
 		ConsumerId: string(id),
 	}
 
-	_, err := c.operation.CoordinatorConsumerSuspend(ctx, req)
+	_, err := c.operation.ConsumerSuspend(ctx, req)
 	return err
 }
 
 func (c *client) ConsumerResume(ctx context.Context, service model.QualifiedServiceName, id model.InstanceID) error {
-	req := &internal_v1.CoordinatorConsumerResumeRequest{
+	req := &internal_v1.ConsumerResumeRequest{
 		Service:    service.ToProto(),
 		ConsumerId: string(id),
 	}
 
-	_, err := c.operation.CoordinatorConsumerResume(ctx, req)
+	_, err := c.operation.ConsumerResume(ctx, req)
 	return err
 }
 
 func (c *client) ConsumerDrain(ctx context.Context, service model.QualifiedServiceName, id model.InstanceID) error {
-	req := &internal_v1.CoordinatorConsumerDrainRequest{
+	req := &internal_v1.ConsumerDrainRequest{
 		Service:    service.ToProto(),
 		ConsumerId: string(id),
 	}
 
-	_, err := c.operation.CoordinatorConsumerDrain(ctx, req)
+	_, err := c.operation.ConsumerDrain(ctx, req)
 	return err
 }
 

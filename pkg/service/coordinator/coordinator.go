@@ -220,6 +220,9 @@ func (c *coordinator) handleOperationRequest(ctx context.Context, op *internal_v
 	case op.GetRestart() != nil:
 		return c.handleServiceRestartRequest(ctx)
 
+	case op.GetSync() != nil:
+		return c.handleServiceSyncRequest(ctx)
+
 	case op.GetSuspend() != nil:
 		return c.handleConsumerSuspendRequest(ctx, model.InstanceID(op.GetSuspend().GetConsumerId()))
 
@@ -730,6 +733,7 @@ func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, re
 	// (2) Promote grants, if any
 
 	c.promote(ctx, promoted...)
+	c.broadcast(ctx)
 }
 
 func (c *coordinator) handleUpdate(ctx context.Context, s *consumerSession, update model.UpdateMessage) {
@@ -905,6 +909,24 @@ func (c *coordinator) handleServiceRestartRequest(ctx context.Context) (*interna
 	}, nil
 }
 
+func (c *coordinator) handleServiceSyncRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {
+	log.Infof(ctx, "Received sync request for %v, sending cluster %v to all connected consumers", c.info.Name(), c.cluster.ID())
+	syncx.Txn0(ctx, c.txn, func() {
+		for _, s := range c.consumers {
+			// Send full cluster to the consumer
+			if !s.TrySend(ctx, model.NewClusterMessage(model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments(), c.alloc.Units()))) {
+				log.Errorf(ctx, "Internal: failed to send overwrite cluster map to consumer: %v. Closing", s)
+				s.connection.Disconnect()
+			}
+		}
+	})
+	return &internal_v1.CoordinatorOperationResponse{
+		Resp: &internal_v1.CoordinatorOperationResponse_Sync{
+			Sync: &internal_v1.CoordinatorClusterSyncResponse{},
+		},
+	}, nil
+}
+
 func (c *coordinator) handleConsumerSuspendRequest(ctx context.Context, id model.InstanceID) (*internal_v1.CoordinatorOperationResponse, error) {
 	_, err := syncx.Txn1(ctx, c.txn, func() (model.Consumer, error) {
 		s, ok := c.consumers[id]
@@ -923,7 +945,7 @@ func (c *coordinator) handleConsumerSuspendRequest(ctx context.Context, id model
 	}
 	return &internal_v1.CoordinatorOperationResponse{
 		Resp: &internal_v1.CoordinatorOperationResponse_Suspend{
-			Suspend: &internal_v1.CoordinatorConsumerSuspendResponse{},
+			Suspend: &internal_v1.ConsumerSuspendResponse{},
 		},
 	}, nil
 }
@@ -946,7 +968,7 @@ func (c *coordinator) handleConsumerResumeRequest(ctx context.Context, id model.
 	}
 	return &internal_v1.CoordinatorOperationResponse{
 		Resp: &internal_v1.CoordinatorOperationResponse_Resume{
-			Resume: &internal_v1.CoordinatorConsumerResumeResponse{},
+			Resume: &internal_v1.ConsumerResumeResponse{},
 		},
 	}, nil
 }
@@ -986,7 +1008,7 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 	}
 	return &internal_v1.CoordinatorOperationResponse{
 		Resp: &internal_v1.CoordinatorOperationResponse_Drain{
-			Drain: &internal_v1.CoordinatorConsumerDrainResponse{},
+			Drain: &internal_v1.ConsumerDrainResponse{},
 		},
 	}, nil
 }

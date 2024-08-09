@@ -14,9 +14,10 @@ message CoordinatorOperationRequest {
   oneof req {
     atoms.splitter.private.CoordinatorInfoRequest info = 1;
     atoms.splitter.private.CoordinatorRestartRequest restart = 2;
-    atoms.splitter.private.CoordinatorConsumerSuspendRequest suspend = 3;
-    atoms.splitter.private.CoordinatorConsumerResumeRequest resume = 4;
-    atoms.splitter.private.CoordinatorConsumerDrainRequest drain = 5;
+    atoms.splitter.private.ConsumerSuspendRequest suspend = 3;
+    atoms.splitter.private.ConsumerResumeRequest resume = 4;
+    atoms.splitter.private.ConsumerDrainRequest drain = 5;
+    atoms.splitter.private.CoordinatorClusterSyncRequest sync = 6;
   }
 }
 
@@ -24,9 +25,10 @@ message CoordinatorOperationResponse {
   oneof resp {
     atoms.splitter.private.CoordinatorInfoResponse info = 1;
     atoms.splitter.private.CoordinatorRestartResponse restart = 2;
-    atoms.splitter.private.CoordinatorConsumerSuspendResponse suspend = 3;
-    atoms.splitter.private.CoordinatorConsumerResumeResponse resume = 4;
-    atoms.splitter.private.CoordinatorConsumerDrainResponse drain = 5;
+    atoms.splitter.private.ConsumerSuspendResponse suspend = 3;
+    atoms.splitter.private.ConsumerResumeResponse resume = 4;
+    atoms.splitter.private.ConsumerDrainResponse drain = 5;
+    atoms.splitter.private.CoordinatorClusterSyncResponse sync = 6;
   }
 }
 
