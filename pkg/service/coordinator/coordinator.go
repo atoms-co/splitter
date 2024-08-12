@@ -11,6 +11,7 @@ import (
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/lib/mathx"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
@@ -49,6 +50,9 @@ var (
 	)
 	numLoadByLocation = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_load_by_location", "Load by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
+	)
+	numLoadImbalanceByLocation = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_load_imbalance_by_location", "Regional load imbalance by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
 	)
 	numPlacementByLocation = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_placement_by_location", "Placement by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
@@ -1048,9 +1052,11 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 		numShards.Set(ctx, float64(shards), core.QualifiedDomainTags(domain.Name())...)
 	}
 
-	// Assigned grants and Load by domain and location
-	assigned := map[model.QualifiedDomainName]map[model.GrantState]int{}
-	for _, worker := range c.alloc.Workers() {
+	assigned := map[model.QualifiedDomainName]map[model.GrantState]int{} // Assigned grants and Load by domain and location
+	numRegionWorkers := map[location.Region]int{}                        // Number of workers by region
+	regionLoad := map[location.Region]allocation.Load{}                  // Total load by region
+	workers := c.alloc.Workers()
+	for _, worker := range workers {
 		assign := c.alloc.Assigned(worker.ID())
 
 		numAssignmentsByLocation.Set(
@@ -1088,6 +1094,9 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 				core.LocationTag(worker.Instance.Data.Instance().Location()))...,
 		)
 
+		regionLoad[worker.Instance.Data.Instance().Location().Region] += adj.Load
+		numRegionWorkers[worker.Instance.Data.Instance().Location().Region] += 1
+
 		for _, active := range assign.Active {
 			if assigned[active.Unit.Domain] == nil {
 				assigned[active.Unit.Domain] = map[model.GrantState]int{}
@@ -1120,6 +1129,24 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 			numAssignments.Set(ctx, float64(count), slicex.CopyAppend(core.QualifiedDomainTags(domain), core.GrantStateTag(state))...)
 		}
 	}
+
+	// Compute load imbalance. Zero means the worker has intrinsic load equal to the regional average.
+	// Useful for detecting underloaded/overloaded workers in each region.
+	regionAvg := map[location.Region]allocation.Load{}
+	for r, num := range numRegionWorkers {
+		regionAvg[r] = allocation.Load(mathx.CeilDivInt(int(regionLoad[r]), num)) // num > 0
+	}
+	for _, worker := range workers {
+		adj, _ := c.alloc.LoadByWorker(worker.ID())
+		diff := adj.Load - regionAvg[worker.Instance.Data.Instance().Location().Region]
+		numLoadImbalanceByLocation.Set(
+			ctx,
+			float64(diff),
+			slicex.CopyAppend(
+				core.QualifiedServiceTags(c.name),
+				core.LocationTag(worker.Instance.Data.Instance().Location()))...,
+		)
+	}
 }
 
 func (c *coordinator) resetMetrics(ctx context.Context) {
@@ -1128,6 +1155,7 @@ func (c *coordinator) resetMetrics(ctx context.Context) {
 	numAssignments.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numAssignmentsByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numLoadByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	numLoadImbalanceByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numPlacementByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numColocationByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 }
