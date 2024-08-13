@@ -54,6 +54,23 @@ func TestServer_Heartbeat(t *testing.T) {
 	requirex.Equal(t, cl.Now().Add(10*time.Second).UTC(), ttl)
 }
 
+func TestServer_HeartbeatWithOption(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+
+	msg := session.NewEstablishMessage("sid", client)
+	establish, _ := msg.Establish()
+	server, out, _ := session.NewServer(ctx, cl, instance, establish, session.WithServerKeepAliveTimeout(30*time.Second))
+	defer server.Close()
+
+	server.Observe(ctx, session.NewHeartbeatMessage(cl.Now()))
+
+	msg = requirex.Element(t, out)
+	ttl, ok := msg.HeartbeatAck()
+	require.True(t, ok)
+	requirex.Equal(t, cl.Now().Add(30*time.Second).UTC(), ttl)
+}
+
 func TestServer_ExpirationPending(t *testing.T) {
 	ctx := context.Background()
 	cl := mockclock.New(t, 1)
@@ -67,6 +84,22 @@ func TestServer_ExpirationPending(t *testing.T) {
 	assert.False(t, server.IsClosed())
 
 	cl.Add(6 * time.Second)
+	assert.True(t, server.IsClosed())
+}
+
+func TestServer_ExpirationPendingWithOption(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.New(t, 1)
+
+	msg := session.NewEstablishMessage("sid", client)
+	establish, _ := msg.Establish()
+	server, _, _ := session.NewServer(ctx, cl, instance, establish, session.WithServerKeepAliveTimeout(30*time.Second))
+	defer server.Close()
+
+	cl.Add(16 * time.Second)
+	assert.False(t, server.IsClosed())
+
+	cl.Add(16 * time.Second)
 	assert.True(t, server.IsClosed())
 }
 

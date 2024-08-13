@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	// keepAliveTimeout is the default duration of a session lease
-	keepAliveTimeout = 10 * time.Second
-	// establishTimeout is timeout for a new but not established session.
-	establishTimeout = keepAliveTimeout / 2
+	// defaultKeepAliveTimeout is the default duration of a session lease
+	defaultKeepAliveTimeout = 10 * time.Second
+	// defaultEstablishTimeout is timeout for a new but not established session.
+	defaultEstablishTimeout = defaultKeepAliveTimeout / 2
 	// serverBufChanSize is the buffer size for session messages.
 	serverBufChanSize = 20
 )
@@ -41,24 +41,42 @@ type Server struct {
 
 	in  chan Message // never closed
 	out chan<- Message
+
+	keepAliveTimeout time.Duration
+	establishTimeout time.Duration
+}
+
+type ServerOption func(*Server)
+
+// WithServerKeepAliveTimeout sets the keep-alive timeout for established sessions. The server will close the session
+// if no messages are received within this timeout. The server also uses this value to set the TTL on ack messages.
+func WithServerKeepAliveTimeout(timeout time.Duration) ServerOption {
+	return func(s *Server) {
+		s.keepAliveTimeout = timeout
+	}
 }
 
 // NewServer creates and initializes a new server-side session. The session uses the given Establish
 // for initialization and returns a corresponding Established message which must be sent to the client.
 // Returns the Server, a channel with outgoing messages and the Established message to be sent to the client.
-func NewServer(ctx context.Context, cl clock.Clock, self location.Instance, establish Establish) (*Server, <-chan Message, Message) {
+func NewServer(ctx context.Context, cl clock.Clock, self location.Instance, establish Establish, options ...ServerOption) (*Server, <-chan Message, Message) {
 	out := make(chan Message, serverBufChanSize)
 	s := &Server{
-		AsyncCloser: iox.NewAsyncCloser(),
-		cl:          cl,
-		sid:         establish.ID,
-		self:        self,
-		client:      establish.Client,
-		in:          make(chan Message, serverBufChanSize),
-		out:         out,
+		AsyncCloser:      iox.NewAsyncCloser(),
+		cl:               cl,
+		sid:              establish.ID,
+		self:             self,
+		client:           establish.Client,
+		in:               make(chan Message, serverBufChanSize),
+		out:              out,
+		keepAliveTimeout: defaultKeepAliveTimeout,
 	}
 
-	expiration := s.cl.Now().Add(keepAliveTimeout)
+	for _, opt := range options {
+		opt(s)
+	}
+
+	expiration := s.cl.Now().Add(s.keepAliveTimeout)
 	established := NewEstablishedMessage(expiration, s.self)
 
 	go s.process(ctx, expiration)
@@ -100,7 +118,7 @@ func (s *Server) process(ctx context.Context, ttl time.Time) {
 			case msg.IsHeartbeat():
 				now, _ := msg.Heartbeat()
 				serverHeartbeatLag.Observe(ctx, s.cl.Now().Sub(now))
-				expirationTime := s.cl.Now().Add(keepAliveTimeout)
+				expirationTime := s.cl.Now().Add(s.keepAliveTimeout)
 				s.send(ctx, NewHeartbeakAckMessage(expirationTime))
 				expiration.Reset(s.cl.Until(expirationTime))
 
@@ -124,7 +142,7 @@ func (s *Server) process(ctx context.Context, ttl time.Time) {
 }
 
 func (s *Server) send(ctx context.Context, msg Message) {
-	stuck := s.cl.NewTimer(keepAliveTimeout)
+	stuck := s.cl.NewTimer(s.keepAliveTimeout)
 	defer stuck.Stop()
 
 	select {

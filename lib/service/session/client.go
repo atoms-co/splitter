@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	// heartbeatDuration is a duration of the heartbeat interval.
-	heartbeatDuration = 5 * time.Second
+	// defaultHeartbeatDuration is the default duration of the heartbeat interval.
+	defaultHeartbeatDuration = 5 * time.Second
 	// clientBufChanSize is the buffer size for session messages.
 	clientBufChanSize = 20
 )
@@ -37,18 +37,47 @@ type Client struct {
 
 	in  chan Message // never closed
 	out chan<- Message
+
+	keepAliveTimeout  time.Duration
+	heartbeatDuration time.Duration
 }
 
-func NewClient(ctx context.Context, cl clock.Clock, self location.Instance) (*Client, Message, <-chan Message) {
+type ClientOption func(*Client)
+
+// WithClientKeepAliveTimeout sets the keep-alive timeout sessions. The client will close the session if a heartbeat
+// is stuck for greater than this duration or if the establish message is not acked within this duration.
+func WithClientKeepAliveTimeout(timeout time.Duration) ClientOption {
+	return func(c *Client) {
+		c.keepAliveTimeout = timeout
+	}
+}
+
+// WithClientHeartbeatDuration sets the heartbeat duration for established sessions. The server should receive a
+// heartbeat with its keep alive duration or it will close the session. Typically, the heartbeat duration should be half
+// the server keep alive timeout.
+func WithClientHeartbeatDuration(duration time.Duration) ClientOption {
+	return func(c *Client) {
+		c.heartbeatDuration = duration
+	}
+}
+
+func NewClient(ctx context.Context, cl clock.Clock, self location.Instance, options ...ClientOption) (*Client, Message, <-chan Message) {
 	out := make(chan Message, clientBufChanSize)
 	c := &Client{
-		AsyncCloser: iox.NewAsyncCloser(),
-		cl:          cl,
-		sid:         NewID(),
-		self:        self,
-		in:          make(chan Message, clientBufChanSize),
-		out:         out,
+		AsyncCloser:       iox.NewAsyncCloser(),
+		cl:                cl,
+		sid:               NewID(),
+		self:              self,
+		in:                make(chan Message, clientBufChanSize),
+		out:               out,
+		keepAliveTimeout:  defaultKeepAliveTimeout,
+		heartbeatDuration: defaultHeartbeatDuration,
 	}
+
+	for _, opt := range options {
+		opt(c)
+	}
+
 	go c.process(ctx)
 
 	return c, NewEstablishMessage(c.sid, c.self), out
@@ -73,10 +102,10 @@ func (c *Client) process(ctx context.Context) {
 	defer c.Close()
 	defer close(c.out)
 
-	heartbeat := c.cl.NewTicker(heartbeatDuration)
+	heartbeat := c.cl.NewTicker(c.heartbeatDuration)
 	defer heartbeat.Stop()
 
-	expiration := clockx.NewTimer(c.cl, keepAliveTimeout)
+	expiration := clockx.NewTimer(c.cl, c.keepAliveTimeout)
 	defer expiration.Stop()
 
 	for !c.IsClosed() {
@@ -117,7 +146,7 @@ func (c *Client) process(ctx context.Context) {
 }
 
 func (c *Client) send(ctx context.Context, msg Message) {
-	stuck := c.cl.NewTimer(keepAliveTimeout)
+	stuck := c.cl.NewTimer(c.keepAliveTimeout)
 	defer stuck.Stop()
 
 	select {
