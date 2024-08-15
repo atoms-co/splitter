@@ -1,4 +1,4 @@
-# Non-empty cluster and empty snapshot should keep old grants and remove empty consumers.
+# Non-empty cluster and empty snapshot should remove grants and remove empty consumers.
 actions:
   - action: create
 
@@ -24,35 +24,17 @@ actions:
   # Update with empty assignments and empty shards
   - action: snapshot
 
-  # Consumer without grants should be removed. Old grants must be kept.
+  # All grants and consumer must be removed
   - action: compare
     version: 3
-    shards:
-      - shard: range=(0:a),type=G
-        grants: [0A]
-      - shard: range=(a:d),type=G
-        grants: [AD]
-    assignments:
-      - consumer: c1
-        grants:
-          - id: 0A
-            shard: range=(0:a),type=G
-            state: active
-            origin_cluster_version: 2
-      - consumer: c3
-        grants:
-          - id: AD
-            shard: range=(a:d),type=G
-            state: active
-            origin_cluster_version: 2
+    shards: []
+    assignments: []
 
   - action: lookup
     lookups:
       - key: "1"
         expected:
-          grant: 0A
-          consumer: c1
+          found: false
       - key: "a"
         expected:
-          grant: AD
-          consumer: c3
+          found: false

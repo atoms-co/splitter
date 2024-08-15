@@ -158,13 +158,6 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 		upd := NewClusterMap(clusterID, shards)
 		upd.initAssignments(assignments)
 
-		if len(upd.shards) == 0 { // TODO (styurin, 7/2/2024): remove when service sends shards in snapshot
-			// Use current assignments to populate shards if snapshot is empty
-			for shard := range c.shards {
-				upd.shards[shard] = map[GrantID]bool{}
-			}
-		}
-
 		// Copy old valid assignments
 
 		for _, info := range c.grants {
