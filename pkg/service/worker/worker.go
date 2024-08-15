@@ -138,6 +138,12 @@ func (w *Worker) Handle(ctx context.Context, req coordinator.HandleRequest) (*in
 	return c.Handle(ctx, req)
 }
 
+func (w *Worker) Joined(ctx context.Context) (bool, error) {
+	return syncx.Txn1(ctx, w.txn, func() (bool, error) {
+		return w.status != nil, nil
+	})
+}
+
 func (w *Worker) Drain(timeout time.Duration) {
 	w.drain.Close()
 	w.cl.AfterFunc(timeout, w.Close)

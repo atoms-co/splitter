@@ -44,6 +44,11 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 	quit := iox.NewAsyncCloser()
 	defer quit.Close()
 
+	// check if connected to leader and reject otherwise
+	if joined, err := s.worker.Joined(server.Context()); !joined || err != nil {
+		return model.WrapError(fmt.Errorf("worker not connected to Leader"))
+	}
+
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if consumer session closes
 
 	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
