@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/slicex"
 	"errors"
 	"fmt"
 	"google.golang.org/grpc"
@@ -13,7 +14,7 @@ var (
 )
 
 var (
-	numForwards = metrics.NewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", resultKey)
+	numForwards = metrics.NewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey)...)
 )
 
 // Resolver resolves ownership of a key of type K to a proxy object of type T. Each proxy is typically instantiated
@@ -109,16 +110,16 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 		if instance, _, ok := c.Lookup(key, r.states...); ok {
 			con, err := r.pool.Resolve(ctx, instance)
 			if err != nil {
-				numForwards.Increment(ctx, 1, resultTag(err.Error()))
+				numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag(err.Error()))...)
 				return zero, err
 			}
-			numForwards.Increment(ctx, 1, resultTag("ok"))
+			numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag("ok"))...)
 			return r.fn(con), nil
 		}
-		numForwards.Increment(ctx, 1, resultTag("owner_not_found"))
+		numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag("owner_not_found"))...)
 	}
 
-	numForwards.Increment(ctx, 1, resultTag("not_initialized"))
+	numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag("not_initialized"))...)
 	return zero, fmt.Errorf("not initialized: %w", ErrNotFound)
 }
 
