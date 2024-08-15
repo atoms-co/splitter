@@ -225,11 +225,21 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 			ret.shards[shard] = map[GrantID]bool{}
 		}
 
-		// (1) Add new assignments
+		// Add new assignments
 
 		ret.initAssignments(assignments)
 
-		// (2) Copy over retained or updated values
+		// Copy over updated grants
+
+		for _, g := range change.Update().Grants() {
+			if old, ok := c.grants[g.ID()]; ok {
+				old.grant = g
+				old.version = 0
+				ret.assign(old, 0)
+			}
+		}
+
+		// Copy over retained values
 
 		for cid, info := range c.consumers {
 			if removed[cid] {
@@ -243,20 +253,14 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 			}
 
 			for _, g := range info.grants {
-				if unassigned[g.ID()] {
-					continue // skip: grant removed
+				if _, ok := updated[g.ID()]; ok || unassigned[g.ID()] {
+					continue // skip: grant updated or removed
 				}
 
-				keep := grantInfo{consumer: info.consumer, grant: g, version: c.grants[g.ID()].version}
-				if v, ok := updated[g.ID()]; ok {
-					// Grant updated by the coordinator. Mark as current
-					keep.grant = v
-					keep.version = 0
-				}
-
-				if err := ret.tryAssign(keep, info.version); err != nil {
+				old := c.grants[g.ID()]
+				if err := ret.tryAssign(old, info.version); err != nil {
 					if !errors.Is(err, errDuplicateGrant) {
-						log.Debugf(ctx, "Old grant is no longer valid in a new cluster map. Discarding. Grant: %v. Reason: %v", c.grants[g.ID()].grant, err)
+						log.Debugf(ctx, "Old grant is no longer valid in a new cluster map. Discarding. Grant: %v. Reason: %v", old.grant, err)
 					}
 					continue // skip: invalid grant
 				}
@@ -454,6 +458,7 @@ func (c *ClusterMap) validateChange(shards []Shard, assignments []Assignment, up
 		if _, ok := totalGrants[gid]; !ok {
 			return fmt.Errorf("unassigned unregistered grant %s", gid)
 		}
+		delete(totalGrants, gid)
 	}
 
 	// Only registered consumers should be removed. Remove their grants too.

@@ -1,0 +1,61 @@
+# Activation of a grant for a shard which was partially restored after reconnect.
+actions:
+  - action: create
+
+  # A shard has two grants assigned to it.
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A_Revoked
+            shard: range=(0:a),type=G
+            state: revoked
+      - consumer: c2
+        grants:
+          - id: 0A_Allocated
+            shard: range=(0:a),type=G
+            state: allocated
+
+  # Apply snapshot to mark two grants as retained
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+
+  # Coordinator knows only about 0A_Allocated
+  - action: change
+    assignments:
+      - consumer: c2
+        grants:
+          - id: 0A_Allocated
+            shard: range=(0:a),type=G
+            state: allocated
+
+  # 0A_Allocated is updated to active.
+  - action: change
+    updated:
+      - id: 0A_Allocated
+        shard: range=(0:a),type=G
+        state: active
+
+  #  0A_Revoked should be removed since it's in conflict with 0A_Allocated
+  - action: compare
+    version: 5
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A_Allocated]
+    assignments:
+      - consumer: c1
+      - consumer: c2
+        grants:
+          - id: 0A_Allocated
+            shard: range=(0:a),type=G
+            state: active
+
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          grant: 0A_Allocated
+          consumer: c2

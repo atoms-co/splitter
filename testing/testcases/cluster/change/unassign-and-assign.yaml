@@ -1,0 +1,45 @@
+# Unassigned grants should be removed from the cluster.
+actions:
+  - action: create
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+
+  # Unassign an existing grant and assign another grant to the same shard
+  - action: change
+    unassigned:
+      - 0A
+    assignments:
+      - consumer: c2
+        grants:
+          - id: 0A_New
+            shard: range=(0:a),type=G
+            state: active
+
+  # Grant should be removed
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A_New]
+    assignments:
+      - consumer: c1
+        grants: []
+      - consumer: c2
+        grants:
+          - id: 0A_New
+            shard: range=(0:a),type=G
+            state: active
+
+  - action: lookup
+    lookups:
+      - key: "1"
+        expected:
+          grant: 0A_New
+          consumer: c2
