@@ -8,7 +8,7 @@ actions:
   - action: compare
     version: 2
     shards: []
-    consumers: []
+    assignments: []
 
   - action: lookup
     lookups:

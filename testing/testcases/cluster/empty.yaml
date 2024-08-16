@@ -6,7 +6,7 @@ actions:
   - action: compare
     version: 1
     shards: []
-    consumers: []
+    assignments: []
 
   - action: lookup
     lookups:

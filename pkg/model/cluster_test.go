@@ -1,6 +1,7 @@
 package model_test
 
 import (
+	"bytes"
 	"context"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
@@ -79,7 +80,9 @@ func TestClusterWithTestCases(t *testing.T) {
 
 func runTestFromTestcase(t *testing.T, testcase []byte) {
 	var actions Actions
-	err := yaml.Unmarshal(testcase, &actions)
+	decoder := yaml.NewDecoder(bytes.NewReader(testcase))
+	decoder.KnownFields(true)
+	err := decoder.Decode(&actions)
 	require.NoError(t, err)
 
 	var c *model.ClusterMap

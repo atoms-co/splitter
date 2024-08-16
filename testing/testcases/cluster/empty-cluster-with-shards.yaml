@@ -12,7 +12,7 @@ actions:
         grants: []
       - shard: range=(a:d),type=G
         grants: []
-    consumers: []
+    assignments: []
 
 
   - action: lookup
