@@ -127,11 +127,11 @@ func TestWorker(t *testing.T) {
 		consumer := model.NewInstance(location.NewInstance(location.New("centralus", "node")), "endpoint")
 		in := chanx.NewFixed(model.NewRegister(consumer, service2, nil, nil))
 
-		_, err := w.Connect(ctx, session.NewID(), in)
+		_, err := w.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 		require.NoError(t, err)
 
 		in2 := chanx.NewFixed(model.NewRegister(consumer, service1, nil, nil))
-		_, err = w.Connect(ctx, session.NewID(), in2)
+		_, err = w.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
 		assert.Error(t, err)
 	})
 
@@ -143,6 +143,10 @@ type fakeCoordinator struct {
 	service     model.QualifiedServiceName
 	updates     <-chan core.Update
 	initialized iox.RAsyncCloser
+}
+
+func (f *fakeCoordinator) Self() location.Instance {
+	return location.NewInstance(location.New("centralus", "pod1"))
 }
 
 func (f *fakeCoordinator) Initialized() iox.RAsyncCloser {
@@ -164,7 +168,7 @@ func newFakeCoordinator(service model.QualifiedServiceName, updates <-chan core.
 	}
 }
 
-func (f *fakeCoordinator) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (f *fakeCoordinator) Connect(ctx context.Context, sid session.ID, consumer location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	return nil, nil
 }
 

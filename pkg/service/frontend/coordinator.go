@@ -19,13 +19,13 @@ import (
 // CoordinatorService is a grpc frontend for the internal coordinator api.
 type CoordinatorService struct {
 	cl     clock.Clock
-	worker *worker.Worker
+	worker worker.Worker
 }
 
-func NewCoordinatorService(cl clock.Clock, worker *worker.Worker) *CoordinatorService {
+func NewCoordinatorService(cl clock.Clock, w worker.Worker) *CoordinatorService {
 	c := CoordinatorService{
 		cl:     cl,
-		worker: worker,
+		worker: w,
 	}
 	return &c
 }
@@ -49,9 +49,9 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 			return nil, model.WrapError(fmt.Errorf("%v: %w", err, model.ErrInvalid))
 		}
 
-		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, c.worker.Self().Instance())
+		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, c.worker.Self())
 
-		sess, out, established := session.NewServer(ctx, c.cl, c.worker.Self().Instance(), establish)
+		sess, out, established := session.NewServer(ctx, c.cl, c.worker.Self(), establish)
 		iox.WhenClosed(sess, quit)
 
 		ch := chanx.MapIf(in, func(pb *internal_v1.ConnectMessage) (model.ConsumerMessage, bool) {
@@ -70,7 +70,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 		}
 
 		// Let worker handle connect
-		resp, err := c.worker.Connect(ctx, establish.ID, ch)
+		resp, err := c.worker.Connect(ctx, establish.ID, establish.Client, ch)
 		if err != nil {
 			if !model.IsOwnershipError(err) {
 				log.Warnf(ctx, "Internal: connect from %v rejected: %v", establish, err)

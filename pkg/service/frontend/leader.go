@@ -25,7 +25,7 @@ type LeaderService struct {
 func NewLeaderService(cl clock.Clock, loc location.Location, proxy leader.Proxy) *LeaderService {
 	return &LeaderService{
 		cl:    cl,
-		self:  location.NewNamedInstance("leaderProxy", loc),
+		self:  location.NewNamedInstance("leaderProxy", loc), // TODO(jhhurwitz): 08/15/24 Should the leader.Proxy expose self?
 		proxy: proxy,
 	}
 }

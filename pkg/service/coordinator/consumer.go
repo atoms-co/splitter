@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"context"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/splitter/pkg/core"
@@ -66,6 +67,7 @@ type consumerSession struct {
 	consumer   *Consumer
 	draining   bool
 	connection sessionx.Connection[model.ConsumerMessage]
+	origin     location.Instance
 }
 
 func (c *consumerSession) TrySend(ctx context.Context, message model.ConsumerMessage) bool {

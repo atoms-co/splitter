@@ -7,12 +7,12 @@ import (
 )
 
 type ClusterService struct {
-	cluster *cluster.Cluster
+	cluster cluster.Cluster
 }
 
-func NewClusterService(cluster *cluster.Cluster) *ClusterService {
+func NewClusterService(c cluster.Cluster) *ClusterService {
 	return &ClusterService{
-		cluster: cluster,
+		cluster: c,
 	}
 }
 

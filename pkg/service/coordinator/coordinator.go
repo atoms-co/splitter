@@ -37,7 +37,7 @@ const (
 
 var (
 	numConsumers = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.StatusKey)...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
 	)
 	numAssignments = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey)...),
@@ -69,8 +69,9 @@ type Coordinator interface {
 	iox.AsyncCloser
 
 	Initialized() iox.RAsyncCloser
-	Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
+	Connect(ctx context.Context, sid session.ID, consumer location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
 	Handle(ctx context.Context, request HandleRequest) (*internal_v1.CoordinatorHandleResponse, error)
+	Self() location.Instance
 	Drain(timeout time.Duration)
 }
 
@@ -93,8 +94,8 @@ func WithRefreshDelay(delay time.Duration) Option {
 type coordinator struct {
 	iox.AsyncCloser
 
-	cl clock.Clock
-	id location.Instance
+	cl   clock.Clock
+	self location.Instance
 
 	// options
 	fastActivation bool
@@ -119,7 +120,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, service mod
 	c := &coordinator{
 		AsyncCloser:  iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
 		cl:           cl,
-		id:           location.NewNamedInstance("coordinator", loc),
+		self:         location.NewNamedInstance("coordinator", loc),
 		refreshDelay: leaseDuration,
 		name:         service,
 		cache:        storage.NewCache(),
@@ -138,7 +139,11 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, service mod
 	return c
 }
 
-func (c *coordinator) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (c *coordinator) Initialized() iox.RAsyncCloser {
+	return c.initialized
+}
+
+func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	msg, ok := chanx.TryRead(in, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No registration message received: %v", msg)
@@ -166,7 +171,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, in <-chan mod
 			}
 		}
 
-		s, out := c.connect(wctx, sid, register, opts.CapacityLimit(), keys, in)
+		s, out := c.connect(wctx, sid, origin, register, opts.CapacityLimit(), keys, in)
 
 		// Refresh allocation rules on consumer connect if using named keys
 		if len(s.consumer.Keys()) > 0 {
@@ -196,10 +201,23 @@ func (c *coordinator) Handle(ctx context.Context, req HandleRequest) (*internal_
 
 	resp, err := c.handle(wctx, req)
 	if err != nil {
-		log.Infof(ctx, "Coordinator %v request %v failed: %v", c.id, req, err)
+		log.Infof(ctx, "Coordinator %v request %v failed: %v", c.self, req, err)
 		return nil, model.WrapError(err)
 	}
 	return resp, nil
+}
+
+func (c *coordinator) Self() location.Instance {
+	return c.self
+}
+
+func (c *coordinator) Drain(timeout time.Duration) {
+	c.drain.Close()
+	c.cl.AfterFunc(timeout, c.Close)
+}
+
+func (c *coordinator) String() string {
+	return fmt.Sprintf("%v[alloc=%v, #consumers=%v]", c.name, c.alloc, len(c.consumers))
 }
 
 func (c *coordinator) handle(ctx context.Context, req HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
@@ -241,11 +259,7 @@ func (c *coordinator) handleOperationRequest(ctx context.Context, op *internal_v
 	}
 }
 
-func (c *coordinator) Initialized() iox.RAsyncCloser {
-	return c.initialized
-}
-
-func (c *coordinator) connect(ctx context.Context, sid session.ID, register model.RegisterMessage, limit int, keys []model.QualifiedDomainKey, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
+func (c *coordinator) connect(ctx context.Context, sid session.ID, origin location.Instance, register model.RegisterMessage, limit int, keys []model.QualifiedDomainKey, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
 	now := c.cl.Now()
 
 	consumer := NewConsumer(register.Consumer(), now, WithKeys(keys...))
@@ -272,6 +286,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, register mode
 	s := &consumerSession{
 		consumer:   consumer,
 		connection: connection,
+		origin:     origin,
 	}
 	c.consumers[consumer.ID()] = s
 
@@ -358,14 +373,14 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	tenant, ok := c.cache.Tenant(c.name.Tenant)
 	if !ok {
-		log.Errorf(ctx, "Internal: invalid state for coordinator, tenant not found %v/%v", c.name, c.id)
+		log.Errorf(ctx, "Internal: invalid state for coordinator, tenant not found %v/%v", c.name, c.self)
 		return
 	}
 	c.tenant = tenant
 
 	info, ok := c.cache.Service(c.name)
 	if !ok {
-		log.Errorf(ctx, "Internal: invalid state for coordinator, service not found %v/%v", c.name, c.id)
+		log.Errorf(ctx, "Internal: invalid state for coordinator, service not found %v/%v", c.name, c.self)
 		return
 	}
 	c.info = info
@@ -376,10 +391,10 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	}
 
 	now := c.cl.Now()
-	c.alloc = newAllocation(c.id.ID(), tenant, info, c.cache.Placements(c.name.Tenant), now.Add(delay))
-	c.cluster = model.NewClusterMap(model.NewClusterID(c.id, now), c.alloc.Units())
+	c.alloc = newAllocation(c.self.ID(), tenant, info, c.cache.Placements(c.name.Tenant), now.Add(delay))
+	c.cluster = model.NewClusterMap(model.NewClusterID(c.self, now), c.alloc.Units())
 
-	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.id, c.alloc.Size())
+	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.self, c.alloc.Size())
 	c.recordAction(ctx, "init", "ok")
 	c.recordActionLatency(ctx, "init", start)
 	c.initialized.Close()
@@ -391,7 +406,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 		s.connection.Disconnect()
 	}
 
-	log.Infof(ctx, "Coordinator %v/%v closed", c.name, c.id)
+	log.Infof(ctx, "Coordinator %v/%v closed", c.name, c.self)
 }
 
 func (c *coordinator) process(ctx context.Context, updates <-chan core.Update) {
@@ -506,7 +521,7 @@ steady:
 		}
 	}
 
-	log.Infof(ctx, "Coordinator %v draining, #consumer=%v", c.id, len(c.consumers))
+	log.Infof(ctx, "Coordinator %v draining, #consumer=%v", c.self, len(c.consumers))
 }
 
 func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
@@ -1029,22 +1044,19 @@ func (c *coordinator) mustSend(ctx context.Context, s *consumerSession, message 
 	return true
 }
 
-func (c *coordinator) Drain(timeout time.Duration) {
-	c.drain.Close()
-	c.cl.AfterFunc(timeout, c.Close)
-}
-
-func (c *coordinator) String() string {
-	return fmt.Sprintf("%v[alloc=%v, #consumers=%v]", c.name, c.alloc, len(c.consumers))
-}
-
 func (c *coordinator) emitMetrics(ctx context.Context) {
 	defer c.recordActionLatency(ctx, "metrics", c.cl.Now())
 
 	c.resetMetrics(ctx)
 
 	// Consumers with status
-	numConsumers.Set(ctx, float64(len(c.consumers)), slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.StatusTag("ok"))...)
+	consumersByLocation := map[location.Location]int{}
+	for _, consumer := range c.consumers {
+		consumersByLocation[consumer.origin.Location()] += 1
+	}
+	for loc, n := range consumersByLocation {
+		numConsumers.Set(ctx, float64(n), slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.LocationTag(loc))...)
+	}
 
 	// Static shard counts
 	for _, domain := range c.cache.Domains(c.name) {

@@ -14,6 +14,7 @@ import (
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/pkg/service/consumer"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/frontend"
 	"go.atoms.co/splitter/pkg/service/leader"
@@ -53,13 +54,14 @@ type Server struct {
 	cl  clock.Clock
 	loc location.Location
 
-	cluster  *cluster.Cluster
+	cluster  cluster.Cluster
+	worker   worker.Worker
+	consumer consumer.Consumer
 	manager  leader.Manager
 	resolver core.ServiceResolver
-	worker   *worker.Worker
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint string, cluster *cluster.Cluster, manager leader.Manager, opts ...Option) *Server {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint string, cluster cluster.Cluster, manager leader.Manager, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
@@ -110,13 +112,16 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 	w, clusters := worker.New(cl, loc, endpoint, joinFn, factoryFn)
 	resolver := core.NewServiceResolver(ctx, cl, w.Self().ID(), clusters, grpcx.WithInsecure())
 
+	c := consumer.New(cl, loc, w, resolver)
+
 	return &Server{
 		cl:       cl,
 		loc:      loc,
 		cluster:  cluster,
+		worker:   w,
+		consumer: c,
 		manager:  manager,
 		resolver: resolver,
-		worker:   w,
 	}
 }
 
@@ -125,7 +130,7 @@ func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 	placement := frontend.NewInternalPlacementService(s.manager, s.manager)
 
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
-	public_v1.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.cl, s.worker, s.resolver))
+	public_v1.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.cl, s.consumer, s.worker))
 	public_v1.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.manager, s.manager))
 	public_v1.RegisterPlacementServiceServer(gs, frontend.NewPlacementService(placement))
 	internal_v1.RegisterPlacementManagementServiceServer(gs, placement)

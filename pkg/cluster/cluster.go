@@ -35,16 +35,24 @@ var (
 	numState        = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_state", "RAFT state iota", core.RaftServerIdKey))
 )
 
-type Option func(*Cluster)
+type Option func(*cluster)
 
 func WithFastBootstrap() Option {
-	return func(cluster *Cluster) {
+	return func(cluster *cluster) {
 		cluster.fastBootstrap = true
 	}
 }
 
 // Cluster represents a RAFT cluster where initial bootstrapping is determined by a static set of peers
-type Cluster struct {
+type Cluster interface {
+	iox.RAsyncCloser
+
+	Notify(ctx context.Context, id string, address string) error
+	Info(ctx context.Context) map[string]string
+	Drain(timeout time.Duration)
+}
+
+type cluster struct {
 	iox.AsyncCloser
 
 	cl    clock.Clock
@@ -64,8 +72,8 @@ type Cluster struct {
 	notified     map[raft.ServerID]raft.ServerAddress
 }
 
-func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, peers []string, port int, opts ...Option) (*Cluster, <-chan leader.Directive) {
-	c := &Cluster{
+func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, peers []string, port int, opts ...Option) (Cluster, <-chan leader.Directive) {
+	c := &cluster{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
 		id:          id,
@@ -134,7 +142,7 @@ func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft
 	return c, out1
 }
 
-func (c *Cluster) Notify(ctx context.Context, id string, address string) error {
+func (c *cluster) Notify(ctx context.Context, id string, address string) error {
 	raftID := raft.ServerID(id)
 	raftAddress := raft.ServerAddress(address)
 
@@ -186,16 +194,16 @@ func (c *Cluster) Notify(ctx context.Context, id string, address string) error {
 	return nil
 }
 
-func (c *Cluster) Info(ctx context.Context) map[string]string {
+func (c *cluster) Info(ctx context.Context) map[string]string {
 	return c.raft.Stats()
 }
 
-func (c *Cluster) Drain(timeout time.Duration) {
+func (c *cluster) Drain(timeout time.Duration) {
 	c.drain.Close()
 	c.cl.AfterFunc(timeout, c.Close)
 }
 
-func (c *Cluster) init(ctx context.Context, observeCh chan raft.Observation) {
+func (c *cluster) init(ctx context.Context, observeCh chan raft.Observation) {
 	defer c.Close()
 	defer close(observeCh) // closes c.leaderCh
 
@@ -234,7 +242,7 @@ notifyLoop:
 	c.process(ctx)
 }
 
-func (c *Cluster) notifyPeers(ctx context.Context, notifyCutoff time.Time) {
+func (c *cluster) notifyPeers(ctx context.Context, notifyCutoff time.Time) {
 	if c.cl.Now().Before(notifyCutoff) {
 		return
 	}
@@ -243,7 +251,7 @@ func (c *Cluster) notifyPeers(ctx context.Context, notifyCutoff time.Time) {
 	}
 }
 
-func (c *Cluster) notifyPeer(ctx context.Context, endpoint string) {
+func (c *cluster) notifyPeer(ctx context.Context, endpoint string) {
 	ctx, cancel := context.WithTimeout(ctx, notifyTimeout)
 	defer cancel()
 
@@ -264,12 +272,12 @@ func (c *Cluster) notifyPeer(ctx context.Context, endpoint string) {
 	}
 }
 
-func (c *Cluster) hasLeader() bool {
+func (c *cluster) hasLeader() bool {
 	addr, id := c.raft.LeaderWithID()
 	return addr != "" || id != ""
 }
 
-func (c *Cluster) process(ctx context.Context) {
+func (c *cluster) process(ctx context.Context) {
 	stats := c.cl.NewTicker(statsInterval)
 	defer stats.Stop()
 
@@ -288,7 +296,7 @@ func (c *Cluster) process(ctx context.Context) {
 	}
 }
 
-func (c *Cluster) recordMetrics(ctx context.Context) {
+func (c *cluster) recordMetrics(ctx context.Context) {
 	numAppliedIndex.Set(ctx, float64(c.raft.AppliedIndex()), core.RaftServerIdTag(c.id))
 	numLastIndex.Set(ctx, float64(c.raft.LastIndex()), core.RaftServerIdTag(c.id))
 	if c.raft.State() == raft.Follower {
@@ -299,7 +307,7 @@ func (c *Cluster) recordMetrics(ctx context.Context) {
 	numState.Set(ctx, float64(c.raft.State()), core.RaftServerIdTag(c.id))
 }
 
-func (c *Cluster) shutdownRaft(ctx context.Context) {
+func (c *cluster) shutdownRaft(ctx context.Context) {
 	c.raft.DeregisterObserver(c.observer)
 	err := c.raft.Shutdown().Error()
 	if err != nil {
@@ -309,7 +317,7 @@ func (c *Cluster) shutdownRaft(ctx context.Context) {
 
 // txn runs the given function in the main thread sync. Any signal that triggers a complex action must
 // perform I/O or expensive parts outside txn and potentially use multiple txn calls.
-func (c *Cluster) txn(ctx context.Context, fn func() error) error {
+func (c *cluster) txn(ctx context.Context, fn func() error) error {
 	var wg sync.WaitGroup
 	var err error
 

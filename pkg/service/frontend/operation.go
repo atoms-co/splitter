@@ -16,17 +16,17 @@ import (
 )
 
 type OperationService struct {
-	cluster         *cluster.Cluster
-	worker          *worker.Worker
+	cluster         cluster.Cluster
+	worker          worker.Worker
 	serviceResolver core.ServiceResolver
 	resolver        leader.Resolver
 	proxy           leader.Proxy
 }
 
-func NewOperationService(cluster *cluster.Cluster, worker *worker.Worker, serviceResolver core.ServiceResolver, resolver leader.Resolver, proxy leader.Proxy) *OperationService {
+func NewOperationService(c cluster.Cluster, w worker.Worker, serviceResolver core.ServiceResolver, resolver leader.Resolver, proxy leader.Proxy) *OperationService {
 	return &OperationService{
-		cluster:         cluster,
-		worker:          worker,
+		cluster:         c,
+		worker:          w,
 		serviceResolver: serviceResolver,
 		resolver:        resolver,
 		proxy:           proxy,

@@ -40,7 +40,7 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 	in := make(chan model.ConsumerMessage, 1)
 	in <- model.NewRegister(w, serviceName, nil, nil)
 
-	out, err := coord.Connect(ctx, session.NewID(), in)
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 	require.NoError(t, err, "consumer failed to join leader")
 
 	snapshot := readFn(t, out, isClusterSnapshot)
@@ -90,7 +90,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 	in2 := make(chan model.ConsumerMessage, 1)
 	in2 <- model.NewRegister(w2, serviceName, nil, nil)
 
-	out, err := coord.Connect(ctx, session.NewID(), in)
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 	require.NoError(t, err, "consumer1 failed to join leader")
 
 	snapshot := readFn(t, out, isClusterSnapshot)
@@ -107,7 +107,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 	assert.Len(t, change.Update().Grants(), 0)
 	assert.Len(t, change.Assign().Assignments(), 1)
 
-	out2, err := coord.Connect(ctx, session.NewID(), in2)
+	out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
 	require.NoError(t, err, "consumer2 failed to join leader")
 
 	snapshot = readFn(t, out2, isClusterSnapshot)
@@ -220,7 +220,7 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 	in := make(chan model.ConsumerMessage, 1)
 	in <- model.NewRegister(w, serviceName, nil, nil, model.WithCapacityLimit(1))
 
-	out, err := coord.Connect(ctx, session.NewID(), in)
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 	require.NoError(t, err, "consumer failed to join leader")
 
 	snapshot := readFn(t, out, isClusterSnapshot)
@@ -288,7 +288,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 		Name:   "test",
 	}))
 
-	out, err := coord.Connect(ctx, session.NewID(), in)
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 	require.NoError(t, err, "consumer failed to join leader")
 
 	snapshot := readFn(t, out, isClusterSnapshot)
@@ -308,7 +308,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 		Name:   "test2",
 	}))
 
-	out2, err := coord.Connect(ctx, session.NewID(), in2)
+	out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
 	require.NoError(t, err, "consumer failed to join leader")
 
 	snapshot = readFn(t, out2, isClusterSnapshot)

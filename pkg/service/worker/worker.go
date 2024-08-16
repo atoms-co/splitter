@@ -44,7 +44,17 @@ type joinStatus struct {
 }
 
 // Worker manages coordinators and emits internal cluster updates from the leader.
-type Worker struct {
+type Worker interface {
+	iox.AsyncCloser
+
+	Connect(ctx context.Context, sid session.ID, self location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
+	Handle(ctx context.Context, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error)
+	Self() location.Instance
+	Joined(ctx context.Context) (bool, error)
+	Drain(timeout time.Duration)
+}
+
+type worker struct {
 	iox.AsyncCloser
 
 	cl      clock.Clock
@@ -69,9 +79,9 @@ type Worker struct {
 	drain iox.AsyncCloser
 }
 
-func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, factory CoordinatorFactory) (*Worker, <-chan *core.Cluster) {
+func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, factory CoordinatorFactory) (Worker, <-chan *core.Cluster) {
 	quit := iox.NewAsyncCloser()
-	w := &Worker{
+	w := &worker{
 		AsyncCloser: quit,
 		cl:          cl,
 		self:        model.NewInstance(location.NewNamedInstance("worker", loc), endpoint),
@@ -88,15 +98,12 @@ func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, 
 	}
 	go w.join(context.Background())
 	go w.process(context.Background())
+
 	return w, w.clusters
 }
 
-func (w *Worker) Self() model.Instance {
-	return w.self
-}
-
 // Connect handles connection of a consumer to a local coordinator
-func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (w *worker) Connect(ctx context.Context, sid session.ID, consumer location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	msg, ok := chanx.TryRead(in, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No registration message received: %v", msg)
@@ -114,21 +121,21 @@ func (w *Worker) Connect(ctx context.Context, sid session.ID, in <-chan model.Co
 	c, err := syncx.Txn1(ctx, w.txn, func() (coordinator.Coordinator, error) {
 		gid, ok := w.services[service]
 		if !ok {
-			return nil, fmt.Errorf("service not found %v: %w", service, model.ErrNotOwned)
+			return nil, fmt.Errorf("coordinator not found for service %v: %w", service, model.ErrNotOwned)
 		}
 		return w.grants[gid].Coordinator, nil
 	})
 	if err != nil {
 		return nil, err
 	}
-	return c.Connect(ctx, sid, chanx.Prepend(in, msg))
+	return c.Connect(ctx, sid, consumer, chanx.Prepend(in, msg))
 }
 
-func (w *Worker) Handle(ctx context.Context, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+func (w *worker) Handle(ctx context.Context, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
 	c, err := syncx.Txn1(ctx, w.txn, func() (coordinator.Coordinator, error) {
 		gid, ok := w.services[req.Service()]
 		if !ok {
-			return nil, fmt.Errorf("service %v not found: %w", req.Service(), model.ErrNotOwned)
+			return nil, fmt.Errorf("coordinator not found for service %v: %w", req.Service(), model.ErrNotOwned)
 		}
 		return w.grants[gid].Coordinator, nil
 	})
@@ -138,18 +145,22 @@ func (w *Worker) Handle(ctx context.Context, req coordinator.HandleRequest) (*in
 	return c.Handle(ctx, req)
 }
 
-func (w *Worker) Joined(ctx context.Context) (bool, error) {
+func (w *worker) Joined(ctx context.Context) (bool, error) {
 	return syncx.Txn1(ctx, w.txn, func() (bool, error) {
 		return w.status != nil, nil
 	})
 }
 
-func (w *Worker) Drain(timeout time.Duration) {
+func (w *worker) Self() location.Instance {
+	return w.self.Instance()
+}
+
+func (w *worker) Drain(timeout time.Duration) {
 	w.drain.Close()
 	w.cl.AfterFunc(timeout, w.Close)
 }
 
-func (w *Worker) join(ctx context.Context) {
+func (w *worker) join(ctx context.Context) {
 	wctx, _ := contextx.WithQuitCancel(ctx, w.Closed())
 	for !w.drain.IsClosed() {
 		// Not connected. Establish connection with leader with blocking join call. The worker is either
@@ -173,7 +184,7 @@ func (w *Worker) join(ctx context.Context) {
 	}
 }
 
-func (w *Worker) joinLeader(ctx context.Context, in <-chan leader.Message) (<-chan leader.Message, error) {
+func (w *worker) joinLeader(ctx context.Context, in <-chan leader.Message) (<-chan leader.Message, error) {
 	w.lostLeader(ctx) // sanity check
 
 	active := mapx.MapValuesIf(w.grants, func(g *Grant) (core.Grant, bool) {
@@ -195,7 +206,7 @@ func (w *Worker) joinLeader(ctx context.Context, in <-chan leader.Message) (<-ch
 	return out, nil
 }
 
-func (w *Worker) lostLeader(ctx context.Context) {
+func (w *worker) lostLeader(ctx context.Context) {
 	if w.status == nil {
 		return // ok: already disconnected
 	}
@@ -216,7 +227,7 @@ func (w *Worker) lostLeader(ctx context.Context) {
 	}
 }
 
-func (w *Worker) process(ctx context.Context) {
+func (w *worker) process(ctx context.Context) {
 	defer w.Close()
 	defer w.resetMetrics(ctx)
 
@@ -288,7 +299,7 @@ steady:
 	}
 }
 
-func (w *Worker) handleMessage(ctx context.Context, msg leader.Message) {
+func (w *worker) handleMessage(ctx context.Context, msg leader.Message) {
 	switch {
 	case msg.IsWorkerMessage():
 		worker, _ := msg.WorkerMessage()
@@ -303,7 +314,7 @@ func (w *Worker) handleMessage(ctx context.Context, msg leader.Message) {
 	}
 }
 
-func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessage) {
+func (w *worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessage) {
 	switch {
 	case msg.IsAssign():
 		assign, _ := msg.Assign()
@@ -411,7 +422,7 @@ func (w *Worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 	}
 }
 
-func (w *Worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMessage) {
+func (w *worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMessage) {
 	version := msg.Version()
 	timestamp := msg.Timestamp()
 
@@ -464,7 +475,7 @@ func (w *Worker) handleClusterMessage(ctx context.Context, msg leader.ClusterMes
 	w.clusters <- w.cluster
 }
 
-func (w *Worker) emitExpirationCheck() {
+func (w *worker) emitExpirationCheck() {
 	select {
 	case w.expire <- true:
 	default:
@@ -472,7 +483,7 @@ func (w *Worker) emitExpirationCheck() {
 	}
 }
 
-func (w *Worker) checkExpiration(ctx context.Context) {
+func (w *worker) checkExpiration(ctx context.Context) {
 	// Possible grant expiration
 
 	now := w.cl.Now()
@@ -483,7 +494,7 @@ func (w *Worker) checkExpiration(ctx context.Context) {
 	}
 }
 
-func (w *Worker) removeGrant(ctx context.Context, gid core.GrantID) {
+func (w *worker) removeGrant(ctx context.Context, gid core.GrantID) {
 	grant, ok := w.grants[gid]
 	if !ok {
 		return // ok: no longer present
@@ -502,7 +513,7 @@ func (w *Worker) removeGrant(ctx context.Context, gid core.GrantID) {
 	log.Infof(ctx, "Worker %v removed grant %v", w.self, grant)
 }
 
-func (w *Worker) emitMetrics(ctx context.Context) {
+func (w *worker) emitMetrics(ctx context.Context) {
 	w.resetMetrics(ctx)
 
 	grants := map[model.QualifiedServiceName]map[LeaseState]int{}
@@ -521,11 +532,11 @@ func (w *Worker) emitMetrics(ctx context.Context) {
 	}
 }
 
-func (w *Worker) resetMetrics(ctx context.Context) {
+func (w *worker) resetMetrics(ctx context.Context) {
 	numGrants.Reset(ctx)
 }
 
-func (w *Worker) trySend(ctx context.Context, msg leader.Message) bool {
+func (w *worker) trySend(ctx context.Context, msg leader.Message) bool {
 	select {
 	case w.out <- msg:
 		return true
@@ -534,7 +545,7 @@ func (w *Worker) trySend(ctx context.Context, msg leader.Message) bool {
 	}
 }
 
-func (w *Worker) mustSend(ctx context.Context, msg leader.Message) {
+func (w *worker) mustSend(ctx context.Context, msg leader.Message) {
 	if w.status == nil {
 		return // ok: disconnected
 	}
@@ -552,7 +563,7 @@ func (w *Worker) mustSend(ctx context.Context, msg leader.Message) {
 }
 
 // Txn is a helper that constructs a syncx.TxnFn with the project specific error codes and injection channels
-func (w *Worker) txn(ctx context.Context, fn func() error) error {
+func (w *worker) txn(ctx context.Context, fn func() error) error {
 	var wg sync.WaitGroup
 	var err error
 

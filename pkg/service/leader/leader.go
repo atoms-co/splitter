@@ -48,21 +48,29 @@ var (
 	numActions = metrics.NewCounter("go.atoms.co/splitter/leader_actions", "Leader actions", core.ActionKey, core.ResultKey)
 )
 
-type Option func(*Leader)
+type Option func(*leader)
 
 func WithFastActivation() Option {
-	return func(leader *Leader) {
+	return func(leader *leader) {
 		leader.fastActivation = true
 	}
 }
 
 // Leader centralizes tenant and storage coordination. All updates go through the global leader, which is
 // dynamically selected and may be present at different nodes at different times.
-type Leader struct {
+type Leader interface {
 	iox.AsyncCloser
 
-	cl clock.Clock
-	id location.Instance
+	Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error)
+	Handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error)
+	Initialized() iox.AsyncCloser
+}
+
+type leader struct {
+	iox.AsyncCloser
+
+	cl   clock.Clock
+	self location.Instance
 
 	// options
 	fastActivation bool
@@ -83,13 +91,13 @@ type Leader struct {
 	initialized, drain iox.AsyncCloser
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.Storage, opts ...Option) *Leader {
+func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.Storage, opts ...Option) Leader {
 	writer, upd, del, res := NewWriter(cl, db)
 
-	l := &Leader{
+	l := &leader{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
-		id:          location.NewInstance(loc, location.WithName("leader")),
+		self:        location.NewInstance(loc, location.WithName("leader")),
 		writer:      writer,
 		cache:       storage.NewCache(),
 		workers:     map[model.InstanceID]*workerSession{},
@@ -110,7 +118,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 	return l
 }
 
-func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error) {
+func (l *leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error) {
 	msg, ok := chanx.TryRead(in, registrationTimeout)
 	if !ok {
 		log.Errorf(ctx, "No registration message received")
@@ -149,33 +157,33 @@ func (l *Leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 	})
 }
 
-func (l *Leader) Handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (l *leader) Handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	wctx, cancel := context.WithTimeout(ctx, handleTimeout)
 	defer cancel()
 
 	resp, err := l.handle(wctx, req)
 	if err != nil {
-		log.Infof(ctx, "Leader %v request %v failed: %v", l.id, req, err)
+		log.Infof(ctx, "Leader %v request %v failed: %v", l.self, req, err)
 		return nil, model.WrapError(err)
 	}
 	return resp, nil
 }
 
-func (l *Leader) Initialized() iox.AsyncCloser {
+func (l *leader) Initialized() iox.AsyncCloser {
 	return l.initialized
 }
 
-func (l *Leader) String() string {
-	return l.id.String()
+func (l *leader) String() string {
+	return l.self.String()
 }
 
-func (l *Leader) init(ctx context.Context, now time.Time) {
+func (l *leader) init(ctx context.Context, now time.Time) {
 	defer l.Close()
 	defer l.drain.Close()
 	defer l.initialized.Close()
 	defer l.writer.Close()
 
-	log.Infof(ctx, "Leader initializing: %v", l.id)
+	log.Infof(ctx, "Leader initializing: %v", l.self)
 
 	snapshot, err := l.writer.Init(ctx)
 	if err != nil {
@@ -190,16 +198,16 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 		delay = 0
 	}
 	log.Infof(ctx, "Activating at %v", now.Add(delay))
-	l.alloc = newAllocation(l.id.ID(), snapshot, now.Add(delay))
-	l.cluster = core.NewCluster(model.NewClusterID(l.id, now))
+	l.alloc = newAllocation(l.self.ID(), snapshot, now.Add(delay))
+	l.cluster = core.NewCluster(model.NewClusterID(l.self, now))
 
 	if l.drain.IsClosed() {
-		log.Errorf(ctx, "Unexpected: leader %v lost leadership while loading", l.id)
+		log.Errorf(ctx, "Unexpected: leader %v lost leadership while loading", l.self)
 		recordAction(ctx, "init", "aborted")
 		return
 	}
 
-	log.Infof(ctx, "Leader initialized: %v, #tenants=%v", l.id, len(snapshot.Tenants()))
+	log.Infof(ctx, "Leader initialized: %v, #tenants=%v", l.self, len(snapshot.Tenants()))
 	recordAction(ctx, "init", "ok")
 	l.initialized.Close()
 
@@ -210,13 +218,13 @@ func (l *Leader) init(ctx context.Context, now time.Time) {
 		w.connection.Disconnect()
 	}
 
-	log.Infof(ctx, "Leader exited: %v", l.id)
+	log.Infof(ctx, "Leader exited: %v", l.self)
 }
 
 // TODO(herohde) 9/2/2013: unclear how leader election transitions. Immediately? If we want a quick drain
 // to refresh lease updates etc, we may want need a matching startup delay to guarantee exclusivity.
 
-func (l *Leader) process(ctx context.Context) {
+func (l *leader) process(ctx context.Context) {
 	defer l.resetMetrics(ctx)
 
 	ticker := l.cl.NewTicker(4*time.Second + randx.Duration(time.Second))
@@ -339,10 +347,10 @@ steady:
 		}
 	}
 
-	log.Infof(ctx, "Leader %v draining, #workers=%v", l.id, len(l.workers))
+	log.Infof(ctx, "Leader %v draining, #workers=%v", l.self, len(l.workers))
 }
 
-func (l *Leader) handleMessage(ctx context.Context, w *workerSession, m Message) {
+func (l *leader) handleMessage(ctx context.Context, w *workerSession, m Message) {
 	msg, ok := m.WorkerMessage()
 	if !ok {
 		log.Errorf(ctx, "Internal: unexpected message: %v", m)
@@ -365,7 +373,7 @@ func (l *Leader) handleMessage(ctx context.Context, w *workerSession, m Message)
 	}
 }
 
-func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregister DeregisterMessage) {
+func (l *leader) handleDeregister(ctx context.Context, w *workerSession, deregister DeregisterMessage) {
 	log.Infof(ctx, "Received de-register from worker %v", w)
 
 	// (1) Mark worker as suspended to prevent new work.
@@ -402,7 +410,7 @@ func (l *Leader) handleDeregister(ctx context.Context, w *workerSession, deregis
 	log.Infof(ctx, "Deregistered worker %v with %v active grants", w, len(assigned.Active))
 }
 
-func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relinquished RelinquishedMessage) {
+func (l *leader) handleRelinquished(ctx context.Context, w *workerSession, relinquished RelinquishedMessage) {
 	now := l.cl.Now()
 	log.Infof(ctx, "Received relinquished %v from worker %v", relinquished, w)
 
@@ -429,7 +437,7 @@ func (l *Leader) handleRelinquished(ctx context.Context, w *workerSession, relin
 	l.broadcast(ctx, now)
 }
 
-func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, register RegisterMessage, in <-chan Message) (*workerSession, <-chan Message) {
+func (l *leader) connect(ctx context.Context, now time.Time, sid session.ID, register RegisterMessage, in <-chan Message) (*workerSession, <-chan Message) {
 	worker := register.Worker()
 	var active []Grant
 	for _, g := range register.Active() {
@@ -477,7 +485,7 @@ func (l *Leader) connect(ctx context.Context, now time.Time, sid session.ID, reg
 	return w, out
 }
 
-func (l *Leader) disconnect(ctx context.Context, reason string, workers ...*workerSession) {
+func (l *leader) disconnect(ctx context.Context, reason string, workers ...*workerSession) {
 	for _, w := range workers {
 		log.Infof(ctx, "Disconnecting worker (reason: %v): %v", reason, w)
 		recordAction(ctx, "disconnect", "ok")
@@ -499,7 +507,7 @@ func (l *Leader) disconnect(ctx context.Context, reason string, workers ...*work
 }
 
 // refresh updates the allocation with the services in the latest snapshot.
-func (l *Leader) refresh(ctx context.Context) {
+func (l *leader) refresh(ctx context.Context) {
 	now := l.cl.Now()
 
 	// (1) Update work in allocation and revoke invalid grants. There is no mutations possible for service
@@ -517,7 +525,7 @@ func (l *Leader) refresh(ctx context.Context) {
 	recordAction(ctx, "refresh", "ok")
 }
 
-func (l *Leader) revoke(ctx context.Context, grants ...Grant) {
+func (l *leader) revoke(ctx context.Context, grants ...Grant) {
 	for wid, list := range byWorker(grants...) {
 		w, ok := l.workers[wid]
 		if !ok {
@@ -535,7 +543,7 @@ func (l *Leader) revoke(ctx context.Context, grants ...Grant) {
 	}
 }
 
-func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) {
+func (l *leader) allocate(ctx context.Context, now time.Time, loadbalance bool) {
 	// (1) Expire, Allocate and LoadBalance. If any worker cannot handle the update
 	// they are disconnected. Allocated grants are ignored. If an assignment fails,
 	// the grant is immediately released.
@@ -570,7 +578,7 @@ func (l *Leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 	log.Infof(ctx, "Allocation: %v", l.alloc)
 }
 
-func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
+func (l *leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
 	if len(grants) == 0 {
 		return
 	}
@@ -605,7 +613,7 @@ func (l *Leader) assign(ctx context.Context, now time.Time, grants ...Grant) {
 	}
 }
 
-func (l *Leader) update(ctx context.Context, upd core.Update) {
+func (l *leader) update(ctx context.Context, upd core.Update) {
 	for _, w := range l.workers {
 		assignments := l.alloc.Assigned(w.instance.ID())
 		for _, g := range assignments.Active {
@@ -626,7 +634,7 @@ func (l *Leader) update(ctx context.Context, upd core.Update) {
 
 // broadcast updated the cluster to reflect the current allocation and, if changed, broadcasts
 // an incremental update.
-func (l *Leader) broadcast(ctx context.Context, now time.Time) {
+func (l *leader) broadcast(ctx context.Context, now time.Time) {
 	upd := map[model.InstanceID][]core.Grant{}
 
 	for _, worker := range l.alloc.Workers() {
@@ -664,7 +672,7 @@ func (l *Leader) broadcast(ctx context.Context, now time.Time) {
 	}
 }
 
-func (l *Leader) snapshot() []core.Assignment {
+func (l *leader) snapshot() []core.Assignment {
 	var cluster []core.Assignment
 	for _, worker := range l.alloc.Workers() {
 		assign := l.alloc.Assigned(worker.Instance.ID)
@@ -677,7 +685,7 @@ func (l *Leader) snapshot() []core.Assignment {
 	return cluster
 }
 
-func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (l *leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	if req.IsMutation() {
 		return l.handleWrite(ctx, req)
 	}
@@ -723,7 +731,7 @@ func (l *Leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 	}
 }
 
-func (l *Leader) handleTenantRequest(ctx context.Context, req *internal_v1.TenantRequest) (*internal_v1.TenantResponse, error) {
+func (l *leader) handleTenantRequest(ctx context.Context, req *internal_v1.TenantRequest) (*internal_v1.TenantResponse, error) {
 	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.TenantResponse, error) {
 		switch {
 		case req.GetList() != nil:
@@ -736,7 +744,7 @@ func (l *Leader) handleTenantRequest(ctx context.Context, req *internal_v1.Tenan
 	})
 }
 
-func (l *Leader) handleListTenantsRequest(ctx context.Context, req *public_v1.ListTenantsRequest) (*internal_v1.TenantResponse, error) {
+func (l *leader) handleListTenantsRequest(ctx context.Context, req *public_v1.ListTenantsRequest) (*internal_v1.TenantResponse, error) {
 	return &internal_v1.TenantResponse{
 		Resp: &internal_v1.TenantResponse_List{
 			List: &public_v1.ListTenantsResponse{
@@ -746,7 +754,7 @@ func (l *Leader) handleListTenantsRequest(ctx context.Context, req *public_v1.Li
 	}, nil
 }
 
-func (l *Leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.InfoTenantRequest) (*internal_v1.TenantResponse, error) {
+func (l *leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.InfoTenantRequest) (*internal_v1.TenantResponse, error) {
 	name := model.TenantName(req.GetName())
 
 	info, ok := l.cache.Tenant(name)
@@ -763,7 +771,7 @@ func (l *Leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.Inf
 	}, nil
 }
 
-func (l *Leader) handleServiceRequest(ctx context.Context, req *internal_v1.ServiceRequest) (*internal_v1.ServiceResponse, error) {
+func (l *leader) handleServiceRequest(ctx context.Context, req *internal_v1.ServiceRequest) (*internal_v1.ServiceResponse, error) {
 	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.ServiceResponse, error) {
 		switch {
 		case req.GetList() != nil:
@@ -776,7 +784,7 @@ func (l *Leader) handleServiceRequest(ctx context.Context, req *internal_v1.Serv
 	})
 }
 
-func (l *Leader) handleListServicesRequest(ctx context.Context, req *public_v1.ListServicesRequest) (*internal_v1.ServiceResponse, error) {
+func (l *leader) handleListServicesRequest(ctx context.Context, req *public_v1.ListServicesRequest) (*internal_v1.ServiceResponse, error) {
 	return &internal_v1.ServiceResponse{
 		Resp: &internal_v1.ServiceResponse_List{
 			List: &public_v1.ListServicesResponse{
@@ -786,7 +794,7 @@ func (l *Leader) handleListServicesRequest(ctx context.Context, req *public_v1.L
 	}, nil
 }
 
-func (l *Leader) handleInfoServiceRequest(ctx context.Context, req *public_v1.InfoServiceRequest) (*internal_v1.ServiceResponse, error) {
+func (l *leader) handleInfoServiceRequest(ctx context.Context, req *public_v1.InfoServiceRequest) (*internal_v1.ServiceResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetName())
 	if err != nil {
 		return nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
@@ -806,7 +814,7 @@ func (l *Leader) handleInfoServiceRequest(ctx context.Context, req *public_v1.In
 	}, nil
 }
 
-func (l *Leader) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (*internal_v1.DomainResponse, error) {
+func (l *leader) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (*internal_v1.DomainResponse, error) {
 	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.DomainResponse, error) {
 		switch {
 		case req.GetList() != nil:
@@ -817,7 +825,7 @@ func (l *Leader) handleDomainRequest(ctx context.Context, req *internal_v1.Domai
 	})
 }
 
-func (l *Leader) handleListDomainsRequest(ctx context.Context, req *public_v1.ListDomainsRequest) (*internal_v1.DomainResponse, error) {
+func (l *leader) handleListDomainsRequest(ctx context.Context, req *public_v1.ListDomainsRequest) (*internal_v1.DomainResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetService())
 	if err != nil {
 		return nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
@@ -836,7 +844,7 @@ func (l *Leader) handleListDomainsRequest(ctx context.Context, req *public_v1.Li
 	}, nil
 }
 
-func (l *Leader) handlePlacementRequest(ctx context.Context, req *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
+func (l *leader) handlePlacementRequest(ctx context.Context, req *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
 	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.PlacementResponse, error) {
 		switch {
 		case req.GetList() != nil:
@@ -849,7 +857,7 @@ func (l *Leader) handlePlacementRequest(ctx context.Context, req *internal_v1.Pl
 	})
 }
 
-func (l *Leader) handleListPlacementsRequest(ctx context.Context, req *internal_v1.ListPlacementsRequest) (*internal_v1.PlacementResponse, error) {
+func (l *leader) handleListPlacementsRequest(ctx context.Context, req *internal_v1.ListPlacementsRequest) (*internal_v1.PlacementResponse, error) {
 	name := model.TenantName(req.GetTenant())
 
 	if _, ok := l.cache.Tenant(name); !ok {
@@ -865,7 +873,7 @@ func (l *Leader) handleListPlacementsRequest(ctx context.Context, req *internal_
 	}, nil
 }
 
-func (l *Leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v1.InfoPlacementRequest) (*internal_v1.PlacementResponse, error) {
+func (l *leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v1.InfoPlacementRequest) (*internal_v1.PlacementResponse, error) {
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
 		return nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
@@ -885,7 +893,7 @@ func (l *Leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v
 	}, nil
 }
 
-func (l *Leader) handleOperationRequest(ctx context.Context, req *internal_v1.OperationRequest) (*internal_v1.OperationResponse, error) {
+func (l *leader) handleOperationRequest(ctx context.Context, req *internal_v1.OperationRequest) (*internal_v1.OperationResponse, error) {
 	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.OperationResponse, error) {
 		switch {
 		case req.GetSnapshot() != nil:
@@ -896,7 +904,7 @@ func (l *Leader) handleOperationRequest(ctx context.Context, req *internal_v1.Op
 	})
 }
 
-func (l *Leader) handleSnapshotRequest(ctx context.Context, snapshot *internal_v1.SnapshotRequest) (*internal_v1.OperationResponse, error) {
+func (l *leader) handleSnapshotRequest(ctx context.Context, snapshot *internal_v1.SnapshotRequest) (*internal_v1.OperationResponse, error) {
 	return &internal_v1.OperationResponse{
 		Resp: &internal_v1.OperationResponse_Snapshot{
 			Snapshot: &internal_v1.SnapshotResponse{
@@ -906,7 +914,7 @@ func (l *Leader) handleSnapshotRequest(ctx context.Context, snapshot *internal_v
 	}, nil
 }
 
-func (l *Leader) handleWrite(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (l *leader) handleWrite(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	// (1) Storage operation. Validate and enqueue it sync if mutation.
 
 	done, resp, err := syncx.Txn2(ctx, l.txn, func() (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
@@ -928,7 +936,7 @@ func (l *Leader) handleWrite(ctx context.Context, req HandleRequest) (*internal_
 	}
 }
 
-func (l *Leader) emitMetrics(ctx context.Context) {
+func (l *leader) emitMetrics(ctx context.Context) {
 	l.resetMetrics(ctx)
 
 	numWorkers.Set(ctx, float64(len(l.workers)), core.StatusTag("ok"))
@@ -954,13 +962,13 @@ func (l *Leader) emitMetrics(ctx context.Context) {
 	}
 }
 
-func (l *Leader) resetMetrics(ctx context.Context) {
+func (l *leader) resetMetrics(ctx context.Context) {
 	numWorkers.Reset(ctx)
 	numServices.Reset(ctx)
 	numAssignments.Reset(ctx)
 }
 
-func (l *Leader) txn(ctx context.Context, fn func() error) error {
+func (l *leader) txn(ctx context.Context, fn func() error) error {
 	var wg sync.WaitGroup
 	var err error
 
