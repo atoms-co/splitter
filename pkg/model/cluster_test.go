@@ -183,12 +183,12 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 		requirex.Equal(t, actual, expected, "grants mismatch for shard %v", expectedShard)
 	}
 	// Compare shards
-	requirex.Equal(t, slicex.NewSet(expectedShards...), slicex.NewSet(c.Shards()...), "total shards mismatch")
+	requirex.Equal(t, slicex.NewSet(c.Shards()...), slicex.NewSet(expectedShards...), "total shards mismatch")
 
 	// Check domain shards
 	for domain, shards := range domains {
 		actualShards := model.DomainShards(c, domain)
-		requirex.Equal(t, slicex.NewSet(shards...), slicex.NewSet(actualShards...), "shards mismatch for domain %v", domain)
+		requirex.Equal(t, slicex.NewSet(actualShards...), slicex.NewSet(shards...), "shards mismatch for domain %v", domain)
 	}
 
 	// Compare consumers and their assignments
@@ -219,7 +219,7 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 			grantConsumer, actualGrant, ok := c.Grant(grant.ID)
 			require.True(t, ok, "grant not found: %v", grant.ID)
 			requireGrantsEqual(t, actualGrant, expectedGrant, "grant mismatch: %v", grant.ID)
-			requireConsumersEqual(t, grantConsumer, expectedConsumer, "consumer mismatch for grant %v: %v", grant.ID, actualConsumer.ID())
+			requireConsumersEqual(t, grantConsumer, expectedConsumer, "consumer mismatch for grant %v: %v", grant.ID, consumer.ID)
 
 			version, _ := model.GrantRetainedVersion(c, grant.ID)
 			require.Equal(t, grant.Version, version, "version mismatch for grant: %v", grant.ID)
@@ -238,7 +238,7 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 	})
 	requirex.Equal(t, len(actualConsumers), len(expectedConsumers), "total consumers mismatch")
 	for i := range actualConsumers {
-		requireConsumersEqual(t, actualConsumers[i], expectedConsumers[i], "total consumers mismatch")
+		requireConsumersEqual(t, actualConsumers[i], expectedConsumers[i], "consumer mismatch: %v", actualConsumers[i].ID())
 	}
 
 	// Compare assignments
@@ -248,9 +248,9 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 	})
 	requirex.Equal(t, len(actualAssignments), len(expectedAssignments), "total assignments mismatch")
 	for i, actualAssignment := range actualAssignments {
-		requireConsumersEqual(t, actualAssignment.Consumer(), expectedAssignments[i].Consumer(), "consumer mismatch for assignment: %v", actualAssignment.Consumer().ID())
-
 		expectedAssignment := expectedAssignments[i]
+		requireConsumersEqual(t, actualAssignment.Consumer(), expectedAssignment.Consumer(), "consumer mismatch for assignment: %v", actualAssignment.Consumer().ID())
+
 		grants := actualAssignment.Grants()
 		sort.Slice(grants, func(i, j int) bool {
 			return grants[i].ID() < grants[j].ID()
@@ -271,11 +271,11 @@ func (a Action) lookup(t *testing.T, c *model.ClusterMap) {
 		consumer, grant, ok := c.Lookup(key, lookup.States(t)...)
 
 		if lookup.Result.Found == nil || *lookup.Result.Found {
-			require.True(t, ok, "lookup failed: %v", key)
-			require.Equal(t, lookup.Result.Consumer, consumer.ID(), "consumer mismatch")
-			require.Equal(t, lookup.Result.Grant, grant.ID(), "grant mismatch")
+			require.True(t, ok, "lookup failed for key %v and states %v", key, lookup.LookupStates)
+			require.Equal(t, lookup.Result.Consumer, consumer.ID(), "unexpected consumer for key %v and states %v", key, lookup.LookupStates)
+			require.Equal(t, lookup.Result.Grant, grant.ID(), "unexpected grant for key %v and states %v", key, lookup.LookupStates)
 		} else {
-			require.False(t, ok, "unexpected lookup success: %v", key)
+			require.False(t, ok, "unexpected lookup success for key %v and states %v", key, lookup.LookupStates)
 		}
 	}
 }

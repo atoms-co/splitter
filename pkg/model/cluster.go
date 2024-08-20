@@ -6,7 +6,6 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -155,24 +154,25 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 			}
 		}
 
-		upd := NewClusterMap(clusterID, shards)
-		upd.initAssignments(assignments)
+		ret := NewClusterMap(clusterID, shards)
+		ret.initAssignments(assignments)
 
 		// Copy old valid assignments
 
 		for _, info := range c.grants {
+			if _, ok := ret.grants[info.grant.ID()]; ok {
+				continue // skip: grant already assigned
+			}
 			if info.version == 0 {
 				info.version = c.id.Version
 			}
-			if err := upd.tryAssign(info, c.id.Version); err != nil {
-				if !errors.Is(err, errDuplicateGrant) {
-					log.Debugf(ctx, "Old grant is no longer valid in a new cluster map. Discarding. Grant: %v. Reason: %v", info.grant, err)
-				}
+			if err := ret.tryAssign(info, c.id.Version); err != nil {
+				log.Debugf(ctx, "Old grant is no longer valid in a new cluster map. Discarding. Grant: %v. Reason: %v", info.grant, err)
 				continue // skip: invalid grant
 			}
 		}
 
-		return upd, nil
+		return ret, nil
 
 	case msg.IsChange():
 		change, _ := msg.Change()
@@ -246,15 +246,13 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 			}
 
 			for _, g := range info.grants {
-				if _, ok := updated[g.ID()]; ok || unassigned[g.ID()] {
-					continue // skip: grant updated or removed
+				if _, ok := ret.grants[g.ID()]; ok || unassigned[g.ID()] {
+					continue // skip: grant assigned, updated or removed
 				}
 
 				old := c.grants[g.ID()]
 				if err := ret.tryAssign(old, info.version); err != nil {
-					if !errors.Is(err, errDuplicateGrant) {
-						log.Debugf(ctx, "Old grant is no longer valid in a new cluster map. Discarding. Grant: %v. Reason: %v", old.grant, err)
-					}
+					log.Debugf(ctx, "Old grant is no longer valid in a new cluster map. Discarding. Grant: %v. Reason: %v", old.grant, err)
 					continue // skip: invalid grant
 				}
 			}
@@ -267,33 +265,18 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 	}
 }
 
-var errDuplicateGrant = fmt.Errorf("duplicate grant")
-
 // tryAssign adds a grant to the cluster if it's valid and not conflicting with existing grants.
 func (c *ClusterMap) tryAssign(info grantInfo, consumerVersion int) error {
 	g := info.grant
 
-	if _, ok := c.grants[g.ID()]; ok {
-		return errDuplicateGrant
-	}
 	shardGrants, ok := c.shards[g.Shard()]
 	if !ok {
 		return fmt.Errorf("unknown shard")
 	}
 
 	// Grant should not be present in shard grants (per the first check). Check other grants for the same shard.
-	switch len(shardGrants) {
-	case 0:
-		// No other grants, this grant is valid
-		break
-	case 1:
-		// Another grant is assigned. The current grant is valid only if their states are compatible.
-		otherGrantID, _, _ := mapx.GetOnly(shardGrants)
-		if !grantStatesCompatible(g.State(), c.grants[otherGrantID].grant.State()) {
-			return fmt.Errorf("conflicting state with another grant assigned to the same shard: %v", c.grants[otherGrantID].grant)
-		}
-	default:
-		return fmt.Errorf("too many grants already assigned to the shard: %v", mapx.Keys(shardGrants))
+	if err := grantCanBeAssignedToShard(shardGrants, func(id GrantID) GrantInfo { return c.grants[id].grant }, g); err != nil {
+		return err
 	}
 
 	c.assign(info, consumerVersion)
@@ -437,11 +420,12 @@ func (c *ClusterMap) validateChange(shards []Shard, assignments []Assignment, up
 
 	// Updates should be sent for registered grants only
 	for gid, info := range updated {
-		if _, ok := totalGrants[gid]; !ok {
-			return fmt.Errorf("updated unregistered grant %s", gid)
+		old, ok := totalGrants[gid]
+		if !ok {
+			return fmt.Errorf("updated unregistered grant %v", gid)
 		}
-		if err := validateGrantUpdate(totalGrants[gid], info); err != nil {
-			return fmt.Errorf("invalid update for grant %s: %v", gid, err)
+		if err := validateGrantUpdate(old, info); err != nil {
+			return fmt.Errorf("invalid update for grant %v: %v", gid, err)
 		}
 		totalGrants[gid] = info
 	}
@@ -449,7 +433,7 @@ func (c *ClusterMap) validateChange(shards []Shard, assignments []Assignment, up
 	// Only registered grants should be unassigned
 	for gid := range unassigned {
 		if _, ok := totalGrants[gid]; !ok {
-			return fmt.Errorf("unassigned unregistered grant %s", gid)
+			return fmt.Errorf("unassigned unregistered grant %v", gid)
 		}
 		delete(totalGrants, gid)
 	}
@@ -458,7 +442,7 @@ func (c *ClusterMap) validateChange(shards []Shard, assignments []Assignment, up
 	for cid := range removed {
 		info, ok := c.consumers[cid]
 		if !ok || info.Retained() {
-			return fmt.Errorf("removed unregistered consumer %s", cid)
+			return fmt.Errorf("removed unregistered consumer %v", cid)
 		}
 		for _, g := range info.grants {
 			delete(totalGrants, g.ID())
@@ -496,14 +480,14 @@ func (c *ClusterMap) validateAssignments(shards map[Shard]map[GrantID]bool, gran
 
 		// Consumer can only be listed once
 		if _, ok := consumers[cid]; ok {
-			return fmt.Errorf("duplicate consumer %s", cid)
+			return fmt.Errorf("duplicate consumer %v", cid)
 		}
 		consumers[cid] = true
 
 		// Validate consumer grants
 		for _, grant := range assignment.Grants() {
 			if err := c.validateGrant(shards, grants, grant); err != nil {
-				return fmt.Errorf("consumer %v has invalid grant %s in assignments: %v", cid, grant.ID(), err)
+				return fmt.Errorf("consumer %v has invalid grant %v in assignments: %v", cid, grant.ID(), err)
 			}
 			shards[grant.Shard()][grant.ID()] = true
 			grants[grant.ID()] = grant
@@ -527,19 +511,24 @@ func (c *ClusterMap) validateGrant(shards map[Shard]map[GrantID]bool, grants map
 		return fmt.Errorf("unknown shard %v", shard)
 	}
 
-	// Check other grants assigned to the same shard
+	return grantCanBeAssignedToShard(shardGrants, func(id GrantID) GrantInfo { return grants[id] }, grant)
+}
+
+// grantCanBeAssignedToShard checks whether a grant can be assigned to a shard. A grant can be assigned
+// to a shard if it's not conflicting with other grants assigned to the shard.
+func grantCanBeAssignedToShard(shardGrants map[GrantID]bool, grants func(GrantID) GrantInfo, grant GrantInfo) error {
 	switch len(shardGrants) {
 	case 0:
 	case 1:
 		otherGrantID, _, _ := mapx.GetOnly(shardGrants)
-		otherGrant := grants[otherGrantID]
+		otherGrant := grants(otherGrantID)
 		if !grantStatesCompatible(grant.State(), otherGrant.State()) {
-			return fmt.Errorf("grant %s has state %v, but shard %v already has grant %s with state %v", gid, grant.State(), shard, otherGrantID, otherGrant.State())
+			return fmt.Errorf("grant %v has conflicting state with another grant assigned to the same shard: %v", grant, otherGrant)
 		}
 	default:
-		ids := append(mapx.Keys(shardGrants), gid)
+		ids := append(mapx.Keys(shardGrants), grant.ID())
 		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-		return fmt.Errorf("shard %v has multiple grants assigned: %v", shard, ids)
+		return fmt.Errorf("shard %v has too many assigned grants: %v", grant.Shard(), ids)
 	}
 	return nil
 }

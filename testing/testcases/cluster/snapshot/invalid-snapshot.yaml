@@ -77,7 +77,7 @@ actions:
           - id: 0A3
             shard: range=(0:a),type=G
             state: revoked
-    expected_error: "invalid cluster snapshot: consumer c3 has invalid grant 0A3 in assignments: shard t/s/d[0000-a000) has multiple grants assigned: [0A1 0A2 0A3]"
+    expected_error: "invalid cluster snapshot: consumer c3 has invalid grant 0A3 in assignments: shard t/s/d[0000-a000) has too many assigned grants: [0A1 0A2 0A3]"
 
   - action: snapshot
     shards:
@@ -93,7 +93,7 @@ actions:
           - id: 0A2
             shard: range=(0:a),type=G
             state: active
-    expected_error: "invalid cluster snapshot: consumer c2 has invalid grant 0A2 in assignments: grant 0A2 has state ACTIVE, but shard t/s/d[0000-a000) already has grant 0A1 with state ALLOCATED"
+    expected_error: "invalid cluster snapshot: consumer c2 has invalid grant 0A2 in assignments: grant 0A2[shard=t/s/d[0000-a000), state=ACTIVE] has conflicting state with another grant assigned to the same shard: 0A1[shard=t/s/d[0000-a000), state=ALLOCATED]"
 
   - action: snapshot
     shards:
@@ -109,4 +109,4 @@ actions:
           - id: 0A2
             shard: range=(0:a),type=G
             state: allocated
-    expected_error: "invalid cluster snapshot: consumer c2 has invalid grant 0A2 in assignments: grant 0A2 has state ALLOCATED, but shard t/s/d[0000-a000) already has grant 0A1 with state ACTIVE"
+    expected_error: "invalid cluster snapshot: consumer c2 has invalid grant 0A2 in assignments: grant 0A2[shard=t/s/d[0000-a000), state=ALLOCATED] has conflicting state with another grant assigned to the same shard: 0A1[shard=t/s/d[0000-a000), state=ACTIVE]"
