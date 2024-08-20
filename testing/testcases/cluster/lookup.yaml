@@ -3,11 +3,39 @@ actions:
   - action: create
   - action: snapshot
     shards:
+      - shard: range=(2:3),type=U,domain=t/s/u23
+      - shard: range=(3:4),type=U,domain=t/s/u34
+      - shard: range=(4:5),type=U,domain=t/s/u45
       - shard: range=(0:a),type=G
       - shard: range=(a:d),type=G
       - shard: range=(d:e),type=G
+      - shard: range=(e:f),type=G
+      - shard: range=(2:5),type=R,region=r1,domain=t/s/r25
+      - shard: range=(2:5),type=R,region=r2,domain=t/s/r25
+      - shard: range=(2:5),type=R,region=r3,domain=t/s/r25
+      - shard: range=(3:7),type=R,region=r1,domain=t/s/r37
     assignments:
-      - consumer: c1
+      - consumer: cu1
+        grants:
+          - id: 23_Revoked
+            shard: range=(2:3),type=U,domain=t/s/u23
+            state: revoked
+          - id: "34"
+            shard: range=(3:4),type=U,domain=t/s/u34
+            state: active
+          - id: 45_Loaded
+            shard: range=(4:5),type=U,domain=t/s/u45
+            state: loaded
+      - consumer: cu2
+        grants:
+          - id: 23_Allocated
+            shard: range=(2:3),type=U,domain=t/s/u23
+            state: allocated
+          - id: 45_Unloaded
+            shard: range=(4:5),type=U,domain=t/s/u45
+            state: unloaded
+
+      - consumer: cg1
         grants:
           - id: 0A
             shard: range=(0:a),type=G
@@ -18,29 +46,198 @@ actions:
           - id: DE_Revoked
             shard: range=(d:e),type=G
             state: revoked
-      - consumer: c2
+          - id: EF_Loaded
+            shard: range=(e:f),type=G
+            state: loaded
+      - consumer: cg2
         grants:
           - id: DE_Allocated
             shard: range=(d:e),type=G
             state: allocated
+          - id: EF_Unloaded
+            shard: range=(e:f),type=G
+            state: unloaded
+
+      - consumer: cr1
+        grants:
+          - id: 25r1_Allocated
+            shard: range=(2:5),type=R,region=r1,domain=t/s/r25
+            state: allocated
+          - id: 25r2
+            shard: range=(2:5),type=R,region=r2,domain=t/s/r25
+            state: active
+          - id: 25r3_Loaded
+            shard: range=(2:5),type=R,region=r3,domain=t/s/r25
+            state: loaded
+          - id: 37r1
+            shard: range=(3:7),type=R,region=r1,domain=t/s/r37
+            state: active
+      - consumer: cr2
+        grants:
+          - id: 25r1_Revoked
+            shard: range=(2:5),type=R,region=r1,domain=t/s/r25
+            state: revoked
+          - id: 25r3_Unloaded
+            shard: range=(2:5),type=R,region=r3,domain=t/s/r25
+            state: unloaded
 
   - action: lookup
     lookups:
+
+      # Unit domains
+
+      # Find grants with specific states.
+
+      - key: "d"
+        domain: t/s/u23
+        states: allocated
+        expected:
+          grant: 23_Allocated
+          consumer: cu2
+      - key: "1"
+        domain: t/s/u45
+        states: loaded
+        expected:
+          grant: 45_Loaded
+          consumer: cu1
+      - key: "1"
+        domain: t/s/u34
+        states: active
+        expected:
+          grant: "34"
+          consumer: cu1
+      - key: "1"
+        domain: t/s/u45
+        states: unloaded
+        expected:
+          grant: 45_Unloaded
+          consumer: cu2
+      - key: "d"
+        domain: t/s/u23
+        states: revoked
+        expected:
+          grant: 23_Revoked
+          consumer: cu1
+
+      # Find grants with several states.
+
+      - key: "d"
+        domain: t/s/u23
+        states: allocated, revoked
+        expected:
+          grant: 23_Allocated
+          consumer: cu2
+      - key: "1"
+        domain: t/s/u34
+        states: revoked, active
+        expected:
+          grant: "34"
+          consumer: cu1
+
       # Find grants with default [Active, Revoked, Loaded, Unloaded] search.
       - key: "1"
+        domain: t/s/u34
         expected:
-          grant: 0A
-          consumer: c1
+          grant: "34"
+          consumer: cu1
+      - key: "1"
+        domain: t/s/u45
+        expected:
+          grant: 45_Loaded
+          consumer: cu1
+      - key: "d"
+        domain: t/s/u23
+        expected:
+          grant: 23_Revoked
+          consumer: cu1
+
+      # No grants with specific states.
+      - key: "1"
+        domain: t/s/u34
+        states: allocated
+        expected:
+          found: false
+      - key: "1"
+        domain: t/s/u34
+        states: revoked
+        expected:
+          found: false
+      - key: "d"
+        states: active
+        domain: t/s/u23
+        expected:
+          found: false
+
+      # Region is ignored for unit domains
+      - key: "3"
+        domain: t/s/u23
+        region: r3
+        expected:
+          grant: 23_Revoked
+          consumer: cu1
+
+      # Global domains
+
+      # Find grants with specific states.
+
+      - key: "d"
+        states: allocated
+        expected:
+          grant: DE_Allocated
+          consumer: cg2
+      - key: "e1"
+        states: loaded
+        expected:
+          grant: EF_Loaded
+          consumer: cg1
       - key: "1"
         states: active
         expected:
           grant: 0A
-          consumer: c1
+          consumer: cg1
+      - key: "d"
+        states: revoked
+        expected:
+          grant: DE_Revoked
+          consumer: cg1
+      - key: "e1"
+        states: unloaded
+        expected:
+          grant: EF_Unloaded
+          consumer: cg2
+
+      # Find grants with several states.
+
       - key: "1"
         states: revoked, active
         expected:
           grant: 0A
-          consumer: c1
+          consumer: cg1
+      - key: "d"
+        states: allocated, revoked
+        expected:
+          grant: DE_Allocated
+          consumer: cg2
+
+      # Find grants with default [Active, Revoked, Loaded, Unloaded] search.
+      - key: "1"
+        expected:
+          grant: 0A
+          consumer: cg1
+      - key: "b"
+        expected:
+          grant: AD
+          consumer: cg1
+      - key: "e1"
+        expected:
+          grant: EF_Loaded
+          consumer: cg1
+      - key: "d"
+        expected:
+          grant: DE_Revoked
+          consumer: cg1
+
+      # No grants with specific states.
       - key: "1"
         states: allocated
         expected:
@@ -49,24 +246,131 @@ actions:
         states: revoked
         expected:
           found: false
-
-      - key: "b"
-        expected:
-          grant: AD
-          consumer: c1
-
-      # For transitional shards, either leg can be looked up.
-      - key: "d"
-        expected:
-          grant: DE_Revoked
-          consumer: c1
-      - key: "d"
-        states: allocated, revoked
-        expected:
-          grant: DE_Allocated
-          consumer: c2
       - key: "d"
         states: active
+        expected:
+          found: false
+
+      # Region is ignored for global domains
+      - key: "d"
+        region: r3
+        expected:
+          grant: DE_Revoked
+          consumer: cg1
+
+      # Regional domains
+
+      # Find grants with specific states.
+
+      - key: "3"
+        domain: t/s/r25
+        region: r1
+        states: allocated
+        expected:
+          grant: 25r1_Allocated
+          consumer: cr1
+      - key: "3"
+        domain: t/s/r25
+        region: r3
+        states: loaded
+        expected:
+          grant: 25r3_Loaded
+          consumer: cr1
+      - key: "3"
+        domain: t/s/r25
+        region: r2
+        states: active
+        expected:
+          grant: 25r2
+          consumer: cr1
+      - key: "3"
+        domain: t/s/r25
+        region: r1
+        states: revoked
+        expected:
+          grant: 25r1_Revoked
+          consumer: cr2
+      - key: "3"
+        domain: t/s/r25
+        region: r3
+        states: unloaded
+        expected:
+          grant: 25r3_Unloaded
+          consumer: cr2
+
+      # Find grants with several states.
+      - key: "3"
+        domain: t/s/r25
+        region: r2
+        states: revoked, active
+        expected:
+          grant: 25r2
+          consumer: cr1
+      - key: "3"
+        domain: t/s/r25
+        region: r1
+        states: allocated, revoked
+        expected:
+          grant: 25r1_Allocated
+          consumer: cr1
+
+      # Find grants with default [Active, Revoked, Loaded, Unloaded] search.
+
+      - key: "3"
+        domain: t/s/r25
+        region: r2
+        expected:
+          grant: 25r2
+          consumer: cr1
+      - key: "3"
+        domain: t/s/r37
+        region: r1
+        expected:
+          grant: 37r1
+          consumer: cr1
+      - key: "3"
+        domain: t/s/r25
+        region: r3
+        expected:
+          grant: 25r3_Loaded
+          consumer: cr1
+      - key: "3"
+        domain: t/s/r25
+        region: r1
+        expected:
+          grant: 25r1_Revoked
+          consumer: cr2
+
+      # No grants with specific states.
+
+      - key: "3"
+        domain: t/s/r25
+        region: r2
+        states: revoked
+        expected:
+          found: false
+      - key: "3"
+        domain: t/s/r25
+        region: r2
+        states: allocated
+        expected:
+          found: false
+      - key: "3"
+        domain: t/s/r25
+        region: r1
+        states: active
+        expected:
+          found: false
+
+      # Unknown region is not found
+      - key: "3"
+        domain: t/s/r37
+        region: r2
+        expected:
+          found: false
+      - key: "3"
+        domain: t/s/r37
+        region: r4
         expected:
           found: false
 
