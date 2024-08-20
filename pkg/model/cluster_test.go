@@ -59,8 +59,6 @@ func TestCluster(t *testing.T) {
 
 // TestClusterWithTestCases runs all test cases in the testcases directory located at testcasesPath
 func TestClusterWithTestCases(t *testing.T) {
-	model.EnforceClusterUpdatesValidation = true
-
 	p, err := os.Getwd()
 	require.NoError(t, err)
 

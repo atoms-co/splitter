@@ -12,12 +12,6 @@ import (
 	"time"
 )
 
-var (
-	// EnforceClusterUpdatesValidation controls whether to enforce validation of cluster updates. If set to false,
-	// the validation is performed, but its failure does not prevent the update from being applied.
-	EnforceClusterUpdatesValidation = false
-)
-
 // ClusterID identifies cluster version and origin information.
 type ClusterID struct {
 	Origin    location.Instance
@@ -148,10 +142,7 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 		}
 		assignments := snapshot.Assignments()
 		if err = c.validateSnapshot(shards, assignments); err != nil {
-			log.Errorf(ctx, "Invalid cluster snapshot: %v", err)
-			if EnforceClusterUpdatesValidation {
-				return nil, fmt.Errorf("invalid cluster snapshot: %v", err)
-			}
+			return nil, fmt.Errorf("invalid cluster snapshot: %v", err)
 		}
 
 		ret := NewClusterMap(clusterID, shards)
@@ -200,10 +191,7 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 		removed := slicex.NewSet(change.Remove().Consumers()...)
 
 		if err := c.validateChange(shards, assignments, updated, unassigned, removed); err != nil {
-			log.Errorf(ctx, "Invalid cluster change: %v", err)
-			if EnforceClusterUpdatesValidation {
-				return nil, fmt.Errorf("invalid cluster change: %v", err)
-			}
+			return nil, fmt.Errorf("invalid cluster change: %v", err)
 		}
 
 		ret := &ClusterMap{
