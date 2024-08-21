@@ -111,7 +111,7 @@ func makeStartCommand() *cobra.Command {
 		hclogger := hclog.New(ctx, "", log.SevDebug)
 
 		// MsgpackUseNewTimeFormat=true https://github.com/hashicorp/raft/releases/tag/v1.6.0. Needed since we run go-msgpack v1+
-		config := &raft.NetworkTransportConfig{MaxPool: 3, Timeout: 10 * time.Second, Logger: hclogger, MsgpackUseNewTimeFormat: true}
+		config := &raft.NetworkTransportConfig{MaxPool: 9, Timeout: 10 * time.Second, Logger: hclogger, MsgpackUseNewTimeFormat: true}
 		trans, err := raft.NewTCPTransportWithConfig(bindAddr, tcpAddr, config)
 		if err != nil {
 			log.Fatalf(ctx, "failed to setup raft tcp transport: %v", err)
@@ -136,7 +136,7 @@ func makeStartCommand() *cobra.Command {
 		if *raftFastBootstrap {
 			opts = append(opts, cluster.WithFastBootstrap())
 		}
-		c, directives := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, *raftJoinPeers, *splitterPort, opts...)
+		c, directives := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, ldb, sdb, trans, *raftJoinPeers, *splitterPort, opts...)
 
 		var lopts []leader.Option
 		if *fastActivation {

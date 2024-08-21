@@ -15,6 +15,7 @@ import (
 	"go.atoms.co/splitter/pb/private"
 	"fmt"
 	"github.com/hashicorp/raft"
+	boltdb "github.com/hashicorp/raft-boltdb/v2"
 	"math/rand"
 	"net"
 	"sync"
@@ -55,11 +56,13 @@ type Cluster interface {
 type cluster struct {
 	iox.AsyncCloser
 
-	cl    clock.Clock
-	id    raft.ServerID
-	addr  raft.ServerAddress
-	raft  *raft.Raft
-	peers []string
+	cl       clock.Clock
+	id       raft.ServerID
+	addr     raft.ServerAddress
+	raft     *raft.Raft
+	ldb, sdb *boltdb.BoltStore
+	trans    *raft.NetworkTransport
+	peers    []string
 
 	observer *raft.Observer
 	leaderCh <-chan leader.Directive
@@ -72,13 +75,16 @@ type cluster struct {
 	notified     map[raft.ServerID]raft.ServerAddress
 }
 
-func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, peers []string, port int, opts ...Option) (Cluster, <-chan leader.Directive) {
+func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, ldb, sdb *boltdb.BoltStore, trans *raft.NetworkTransport, peers []string, port int, opts ...Option) (Cluster, <-chan leader.Directive) {
 	c := &cluster{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
 		id:          id,
 		addr:        addr,
 		raft:        r,
+		ldb:         ldb,
+		sdb:         sdb,
+		trans:       trans,
 		peers:       peers,
 		drain:       iox.NewAsyncCloser(),
 		inject:      make(chan func()),
@@ -227,12 +233,16 @@ notifyLoop:
 		case <-c.leaderCh:
 			break notifyLoop // stop notifying after leader is elected
 		case <-c.cl.After(bootstrapTimeout):
-			c.shutdownRaft(ctx)
+			if err := c.shutdownRaft(ctx); err != nil {
+				log.Errorf(ctx, "Failed to shutdown raft: %v", err)
+			}
 			return
 		case fn := <-c.inject:
 			fn()
 		case <-c.drain.Closed():
-			c.shutdownRaft(ctx)
+			if err := c.shutdownRaft(ctx); err != nil {
+				log.Errorf(ctx, "Failed to shutdown raft: %v", err)
+			}
 			return
 		case <-c.Closed():
 			return
@@ -288,10 +298,14 @@ func (c *cluster) process(ctx context.Context) {
 		case fn := <-c.inject:
 			fn()
 		case <-c.drain.Closed():
-			c.shutdownRaft(ctx)
+			if err := c.shutdownRaft(ctx); err != nil {
+				log.Errorf(ctx, "Failed to shutdown raft: %v", err)
+			}
 			return
 		case <-c.Closed():
-			c.shutdownRaft(ctx)
+			if err := c.shutdownRaft(ctx); err != nil {
+				log.Errorf(ctx, "Failed to shutdown raft: %v", err)
+			}
 		}
 	}
 }
@@ -307,12 +321,23 @@ func (c *cluster) recordMetrics(ctx context.Context) {
 	numState.Set(ctx, float64(c.raft.State()), core.RaftServerIdTag(c.id))
 }
 
-func (c *cluster) shutdownRaft(ctx context.Context) {
+func (c *cluster) shutdownRaft(ctx context.Context) error {
 	c.raft.DeregisterObserver(c.observer)
 	err := c.raft.Shutdown().Error()
 	if err != nil {
-		log.Errorf(ctx, "Failed to shutdown raft node cleanly: %v", err)
+		return fmt.Errorf("failed to shutdown raft node cleanly: %w", err)
 	}
+	if err := c.trans.Close(); err != nil {
+		return fmt.Errorf("failed to shutdown raft transport cleanly: %w", err)
+	}
+	// Only shutdown Bolt and SQLite when Raft is done.
+	if err := c.ldb.Close(); err != nil {
+		return fmt.Errorf("failed to shutdown raft log store cleanly: %w", err)
+	}
+	if err := c.sdb.Close(); err != nil {
+		return fmt.Errorf("failed to shutdown raft stable store cleanly: %w", err)
+	}
+	return nil
 }
 
 // txn runs the given function in the main thread sync. Any signal that triggers a complex action must
