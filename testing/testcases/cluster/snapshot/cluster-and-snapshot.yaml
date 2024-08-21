@@ -83,6 +83,7 @@ actions:
 
   # Repeat again
   - action: snapshot
+    version: 6
     shards:
       - shard: range=(0:a),type=G
       - shard: range=(d:e),type=G
@@ -99,7 +100,7 @@ actions:
             state: revoked
 
   - action: compare
-    version: 4
+    version: 6
     shards:
       - shard: range=(0:a),type=G
         grants: [0A]
@@ -146,7 +147,7 @@ actions:
       - shard: range=(d:e),type=G
 
   - action: compare
-    version: 5
+    version: 7
     shards:
       - shard: range=(0:a),type=G
         grants: [0A]
@@ -154,7 +155,7 @@ actions:
         grants: [DE_Allocated, DE_Revoked]
     assignments:
       - consumer: c1
-        origin_cluster_version: 4
+        origin_cluster_version: 6
         grants:
           - id: 0A
             shard: range=(0:a),type=G
@@ -163,12 +164,12 @@ actions:
           - id: DE_Allocated
             shard: range=(d:e),type=G
             state: allocated
-            origin_cluster_version: 4
+            origin_cluster_version: 6
       - consumer: c4
-        origin_cluster_version: 4
+        origin_cluster_version: 6
         grants:
           - id: DE_Revoked
             shard: range=(d:e),type=G
             state: revoked
-            origin_cluster_version: 4
+            origin_cluster_version: 6
 

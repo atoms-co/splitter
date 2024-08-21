@@ -138,7 +138,7 @@ func (a Action) create(t *testing.T) *model.ClusterMap {
 
 func (a Action) snapshot(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 	assignments := slicex.Map(a.Assignments, func(c Consumer) model.Assignment { return c.Assignment(t) })
-	snapshot := model.NewClusterSnapshot(c.ID().Next(time.Time{}), assignments, a.GetShards(t))
+	snapshot := model.NewClusterSnapshot(a.id(c), assignments, a.GetShards(t))
 	upd, err := model.UpdateClusterMap(context.Background(), c, snapshot)
 	if a.Error != "" {
 		require.EqualError(t, err, a.Error, "expected error")
@@ -152,7 +152,7 @@ func (a Action) snapshot(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 func (a Action) change(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 	assignments := slicex.Map(a.Assignments, func(c Consumer) model.Assignment { return c.Assignment(t) })
 	updated := slicex.Map(a.Updated, func(g Grant) model.GrantInfo { return g.Grant(t) })
-	change := model.NewClusterChange(c.ID().Next(time.Time{}), assignments, updated, a.Unassigned, a.Removed)
+	change := model.NewClusterChange(a.id(c), assignments, updated, a.Unassigned, a.Removed)
 	upd, err := model.UpdateClusterMap(context.Background(), c, change)
 	if a.Error != "" {
 		require.EqualError(t, err, a.Error, "expected error")
@@ -161,6 +161,14 @@ func (a Action) change(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 		c = upd
 	}
 	return c
+}
+
+func (a Action) id(c *model.ClusterMap) model.ClusterID {
+	id := c.ID().Next(time.Time{})
+	if a.Version > 0 {
+		id.Version = a.Version
+	}
+	return id
 }
 
 func (a Action) compare(t *testing.T, c *model.ClusterMap) {

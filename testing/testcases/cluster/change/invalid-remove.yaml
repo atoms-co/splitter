@@ -27,3 +27,9 @@ actions:
   - action: change
     removed: [c1]
     expected_error: "invalid cluster change: removed unregistered consumer c1"
+
+  # Wrong version in change
+  - action: change
+    version: 5
+    removed: [c1]
+    expected_error: "unexpected incremental update for cluster{origin=id1, version=3}: id1 v5"

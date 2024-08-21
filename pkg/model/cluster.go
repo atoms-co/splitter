@@ -176,7 +176,7 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 		id := msg.ID()
 
 		if !c.ID().IsNext(id, msg.Version()) {
-			return nil, fmt.Errorf("unexpected incremental update for %v: %v v%v", c.ID(), id, msg.Version())
+			return nil, fmt.Errorf("unexpected incremental update for cluster{origin=%v, version=%v}: %v v%v", c.ID().Origin.ID(), c.ID().Version, id, msg.Version())
 		}
 
 		var shards []Shard
