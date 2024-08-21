@@ -36,6 +36,7 @@ actions:
         grants: []
     assignments:
       - consumer: c1
+        origin_cluster_version: 2
         grants:
           - id: 0A
             shard: range=(0:a),type=G
@@ -68,6 +69,7 @@ actions:
         grants: []
     assignments:
       - consumer: c1
+        origin_cluster_version: 2
         grants:
           - id: 0A
             shard: range=(0:a),type=G

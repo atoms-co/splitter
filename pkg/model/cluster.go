@@ -123,7 +123,6 @@ func NewClusterMap(id ClusterID, shards []Shard) *ClusterMap {
 }
 
 func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*ClusterMap, error) {
-	version := msg.Version()
 	timestamp := msg.Timestamp()
 
 	switch {
@@ -131,7 +130,7 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 		snapshot, _ := msg.Snapshot()
 
 		clusterID := ClusterID{
-			Version:   version,
+			Version:   msg.Version(),
 			Timestamp: timestamp,
 		}
 		clusterID.Origin, _ = snapshot.Origin()
@@ -157,7 +156,13 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 			if info.version == 0 {
 				info.version = c.id.Version
 			}
-			if err := ret.tryAssign(info, c.id.Version); err != nil {
+
+			consumer, _ := c.consumers[info.consumer.ID()]
+			version := consumer.version
+			if version == 0 {
+				version = c.id.Version
+			}
+			if err := ret.tryAssign(info, version); err != nil {
 				log.Debugf(ctx, "Old grant is no longer valid in a new cluster map. Discarding. Grant: %v. Reason: %v", info.grant, err)
 				continue // skip: invalid grant
 			}
@@ -170,8 +175,8 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 
 		id := msg.ID()
 
-		if !c.ID().IsNext(id, version) {
-			return nil, fmt.Errorf("unexpected incremental update for %v: %v v%v", c.ID(), id, version)
+		if !c.ID().IsNext(id, msg.Version()) {
+			return nil, fmt.Errorf("unexpected incremental update for %v: %v v%v", c.ID(), id, msg.Version())
 		}
 
 		var shards []Shard
@@ -534,6 +539,14 @@ func validateGrantUpdate(old GrantInfo, new GrantInfo) error {
 // GrantRetainedVersion returns version of the cluster the grant was retained from. For testing only.
 func GrantRetainedVersion(c *ClusterMap, gid GrantID) (int, bool) {
 	if info, ok := c.grants[gid]; ok {
+		return info.version, true
+	}
+	return 0, false
+}
+
+// ConsumerRetainedVersion returns version of the cluster the consumer was retained from. For testing only.
+func ConsumerRetainedVersion(c *ClusterMap, cid ConsumerID) (int, bool) {
+	if info, ok := c.consumers[cid]; ok {
 		return info.version, true
 	}
 	return 0, false

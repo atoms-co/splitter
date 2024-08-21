@@ -37,6 +37,7 @@ actions:
         grants: [DE_Allocated, DE_Revoked]
     assignments:
       - consumer: c1
+        origin_cluster_version: 2
         grants:
           - id: DE_Allocated
             shard: range=(d:e),type=G
@@ -80,6 +81,7 @@ actions:
         grants: [DE_Allocated, DE_Revoked]
     assignments:
       - consumer: c1
+        origin_cluster_version: 2
         grants:
           - id: DE_Allocated
             shard: range=(d:e),type=G

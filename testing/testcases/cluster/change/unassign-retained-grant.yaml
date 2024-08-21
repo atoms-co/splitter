@@ -48,6 +48,7 @@ actions:
     assignments:
       - consumer: c1
       - consumer: c2
+        origin_cluster_version: 2
         grants:
           - id: DE_Revoked
             shard: range=(d:e),type=G

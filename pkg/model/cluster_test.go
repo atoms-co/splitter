@@ -201,6 +201,9 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 		requireConsumersEqual(t, actualConsumer, expectedConsumer, "consumer mismatch: %v", consumer.ID)
 		requirex.Equal(t, len(actualGrants), len(consumer.Grants), "total grants mismatch for consumer: %v", consumer.ID)
 
+		version, _ := model.ConsumerRetainedVersion(c, consumer.ID)
+		require.Equal(t, version, consumer.Version, "version mismatch for consumer: %v", consumer.ID)
+
 		sort.Slice(actualGrants, func(i, j int) bool {
 			return actualGrants[i].ID() < actualGrants[j].ID()
 		})
@@ -220,7 +223,7 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 			requireConsumersEqual(t, grantConsumer, expectedConsumer, "consumer mismatch for grant %v: %v", grant.ID, consumer.ID)
 
 			version, _ := model.GrantRetainedVersion(c, grant.ID)
-			require.Equal(t, grant.Version, version, "version mismatch for grant: %v", grant.ID)
+			require.Equal(t, version, grant.Version, "version mismatch for grant: %v", grant.ID)
 		}
 
 		expectedAssignments = append(expectedAssignments, model.NewAssignment(expectedConsumer, expectedGrants...))
@@ -279,8 +282,9 @@ func (a Action) lookup(t *testing.T, c *model.ClusterMap) {
 }
 
 type Consumer struct {
-	ID     model.ConsumerID `yaml:"consumer"`
-	Grants []Grant          `yaml:"grants"`
+	ID      model.ConsumerID `yaml:"consumer"`
+	Grants  []Grant          `yaml:"grants"`
+	Version int              `yaml:"origin_cluster_version"`
 }
 
 func (c Consumer) Consumer() model.Consumer {

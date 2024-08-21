@@ -33,6 +33,7 @@ actions:
         grants: [0A_New]
     assignments:
       - consumer: c1
+        origin_cluster_version: 2
         grants: []
       - consumer: c2
         grants:

@@ -154,6 +154,7 @@ actions:
         grants: [DE_Allocated, DE_Revoked]
     assignments:
       - consumer: c1
+        origin_cluster_version: 4
         grants:
           - id: 0A
             shard: range=(0:a),type=G
@@ -164,6 +165,7 @@ actions:
             state: allocated
             origin_cluster_version: 4
       - consumer: c4
+        origin_cluster_version: 4
         grants:
           - id: DE_Revoked
             shard: range=(d:e),type=G

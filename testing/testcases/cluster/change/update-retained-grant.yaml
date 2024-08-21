@@ -54,6 +54,7 @@ actions:
             shard: range=(0:a),type=G
             state: revoked
       - consumer: c2
+        origin_cluster_version: 2
         grants:
           - id: DE_Revoked
             shard: range=(d:e),type=G

@@ -42,6 +42,7 @@ actions:
             shard: range=(d:e),type=G
             state: allocated
       - consumer: c2
+        origin_cluster_version: 2
         grants:
           - id: DE_Revoked
             shard: range=(d:e),type=G
@@ -85,6 +86,7 @@ actions:
             shard: range=(d:e),type=G
             state: loaded
       - consumer: c2
+        origin_cluster_version: 2
         grants:
           - id: DE_Revoked
             shard: range=(d:e),type=G

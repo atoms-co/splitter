@@ -47,6 +47,7 @@ actions:
         grants: [0A_Allocated]
     assignments:
       - consumer: c1
+        origin_cluster_version: 2
       - consumer: c2
         grants:
           - id: 0A_Allocated
