@@ -127,6 +127,7 @@ func makeUpdateServiceCmd() *cobra.Command {
 	region := cmd.Flags().String("region", "", "Region")
 	overrides := cmd.Flags().StringSlice("locality-overrides", []string{}, "locality overrides. e.g. us-west1:centralus")
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
+	loadBalance := cmd.Flags().Bool("load-balance", true, "use load balance")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
@@ -155,6 +156,9 @@ func makeUpdateServiceCmd() *cobra.Command {
 			opOpts = append(opOpts, splitter.WithServiceOperationalBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
 				return splitter.Region(r)
 			})...))
+		}
+		if cmd.Flag("load-balance").Changed {
+			opOpts = append(opOpts, splitter.WithServiceOperationalDisableLoadBalance(!*loadBalance))
 		}
 
 		if len(cfgOpts) == 0 && len(opOpts) == 0 {

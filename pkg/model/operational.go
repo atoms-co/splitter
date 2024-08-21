@@ -71,6 +71,12 @@ func WithServiceOperationalBannedRegions(regions ...Region) ServiceOperationalOp
 	}
 }
 
+func WithServiceOperationalDisableLoadBalance(disable bool) ServiceOperationalOption {
+	return func(t *public_v1.Service_Operational) {
+		t.DisableLoadBalance = disable
+	}
+}
+
 type ServiceOperational struct {
 	pb *public_v1.Service_Operational
 }
@@ -110,6 +116,10 @@ func (t ServiceOperational) BannedRegions() []Region {
 	return slicex.Map(t.pb.GetBannedRegions(), func(r string) Region {
 		return Region(r)
 	})
+}
+
+func (t ServiceOperational) DisableLoadBalance() bool {
+	return t.pb.GetDisableLoadBalance()
 }
 
 func (t ServiceOperational) String() string {

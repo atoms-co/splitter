@@ -572,7 +572,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	c.assign(ctx, now, grants...)
 	c.promote(ctx, promoted...)
 
-	if loadbalance {
+	if loadbalance && !c.info.Service().Operational().DisableLoadBalance() {
 		// Revoke and allocate
 
 		if move, load, ok := c.loadBalance(ctx, now); ok {
