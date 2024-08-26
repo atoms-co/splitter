@@ -156,6 +156,19 @@ func WaitForLoad(ctx context.Context, o Ownership) error {
 	}
 }
 
+// WaitForAction blocks on a user action (e.g., initialization or drain), via a given async closure.
+// Returns an error if the grant expires before then. Cancellable.
+func WaitForAction(ctx context.Context, c iox.RAsyncCloser, o Ownership) error {
+	select {
+	case <-c.Closed():
+		return nil
+	case <-o.Expired().Closed():
+		return ErrExpired
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // UpdateTenantOption represents an option to NewTenant.
 type UpdateTenantOption func(*public_v1.UpdateTenantRequest)
 

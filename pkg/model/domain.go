@@ -388,6 +388,16 @@ func MustParseKey(key string) Key {
 	return ret
 }
 
+// ToKey casts a T-typed uuid to a Key as a convenience function.
+func ToKey[T ~[16]byte](key T) Key {
+	return Key(key)
+}
+
+// FromKey casts a Key to a T-typed uuid as a convenience function.
+func FromKey[T ~[16]byte](key Key) T {
+	return (T)(key)
+}
+
 func (k Key) Less(o Key) bool {
 	return uuidx.Less(uuid.UUID(k), uuid.UUID(o))
 }
@@ -411,6 +421,11 @@ func ParseDomainKey(key *public_v1.DomainKey) (DomainKey, error) {
 		Region: Region(key.Region),
 		Key:    k,
 	}, nil
+}
+
+// ToDomainKey converts a T-typed uuid to a GLOBAL DomainKey as a convenience function.
+func ToDomainKey[T ~[16]byte](key T) DomainKey {
+	return DomainKey{Key: ToKey(key)}
 }
 
 func (k DomainKey) ToProto() *public_v1.DomainKey {

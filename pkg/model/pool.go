@@ -161,7 +161,7 @@ func (p *PeeredConnectionCache[T]) expire(ctx context.Context) {
 func (p *PeeredConnectionCache[T]) dial(ctx context.Context, reason string, inst Instance) (io.Closer, T, error) {
 	quit, cc, err := p.fn(inst.Endpoint())
 	if err != nil {
-		// Highly unexpected. Non-blocking dials are not expected to be used.
+		// Highly unexpected. Non-blocking dials are not expected to fail.
 		var zero T
 		return nil, zero, fmt.Errorf("failed to dial %v: %v", inst, err)
 	}

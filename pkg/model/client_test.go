@@ -93,9 +93,27 @@ func TestClient_WaitForRevoke(t *testing.T) {
 }
 
 type testOwnership struct {
-	active  iox.AsyncCloser
-	revoked iox.AsyncCloser
-	expired iox.AsyncCloser
+	active   iox.AsyncCloser
+	revoked  iox.AsyncCloser
+	expired  iox.AsyncCloser
+	loader   *loader
+	unloader *unloader
+}
+
+func newTestOwnership() *testOwnership {
+	return &testOwnership{
+		active:  iox.NewAsyncCloser(),
+		revoked: iox.NewAsyncCloser(),
+		expired: iox.NewAsyncCloser(),
+		loader: &loader{
+			unloaded: iox.NewAsyncCloser(),
+			load:     iox.NewAsyncCloser(),
+		},
+		unloader: &unloader{
+			loaded: iox.NewAsyncCloser(),
+			unload: iox.NewAsyncCloser(),
+		},
+	}
 }
 
 func (t *testOwnership) Active() iox.RAsyncCloser {
@@ -120,6 +138,9 @@ func (l *loader) Load() {
 }
 
 func (t *testOwnership) Loader() model.Loader {
+	if t.loader != nil {
+		return t.loader
+	}
 	return &loader{
 		unloaded: iox.NewAsyncCloser(),
 		load:     iox.NewAsyncCloser(),
@@ -140,6 +161,9 @@ func (u *unloader) Unload() {
 }
 
 func (t *testOwnership) Unloader() model.Unloader {
+	if t.unloader != nil {
+		return t.unloader
+	}
 	return &unloader{
 		loaded: iox.NewAsyncCloser(),
 		unload: iox.NewAsyncCloser(),

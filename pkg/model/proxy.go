@@ -117,6 +117,7 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 			return r.fn(con), nil
 		}
 		numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag("owner_not_found"))...)
+		return zero, fmt.Errorf("no owner: %w", ErrNotFound)
 	}
 
 	numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag("not_initialized"))...)

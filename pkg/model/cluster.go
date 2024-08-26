@@ -585,6 +585,10 @@ func (m *GrantMap[T]) Domain(name QualifiedDomainName) []T {
 	})
 }
 
+func (m *GrantMap[T]) Allocated(id GrantID, shard Shard, value T) {
+	m.Write(id, shard, AllocatedGrantState, value)
+}
+
 func (m *GrantMap[T]) Loaded(id GrantID, shard Shard, value T) {
 	m.Write(id, shard, LoadedGrantState, value)
 }
