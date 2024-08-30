@@ -108,6 +108,7 @@ type coordinator struct {
 
 	consumers map[model.InstanceID]*consumerSession
 	alloc     *Allocation
+	noLb      map[model.Shard]bool // shards excluded from load balancing
 	cluster   *model.ClusterMap
 	messages  chan *sessionx.Message[model.ConsumerMessage]
 
@@ -340,6 +341,16 @@ func (c *coordinator) findNamedKeys(named []model.DomainKeyName) ([]model.Qualif
 	return ret, nil
 }
 
+func (c *coordinator) findUnitDomains() map[model.Shard]bool {
+	units := slicex.MapIf(c.info.Domains(), func(d model.Domain) (model.Shard, bool) {
+		if d.Type() == model.Unit {
+			return model.Shard{Domain: d.Name(), Type: model.Unit}, true
+		}
+		return model.Shard{}, false
+	})
+	return slicex.NewSet(units...)
+}
+
 func (c *coordinator) disconnect(ctx context.Context, reason string, consumers ...*consumerSession) {
 	for _, s := range consumers {
 		log.Infof(ctx, "Disconnecting consumer (reason: %v): %v", reason, s)
@@ -392,6 +403,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	now := c.cl.Now()
 	c.alloc = newAllocation(c.self.ID(), tenant, info, c.cache.Placements(c.name.Tenant), now.Add(delay))
+	c.noLb = c.findUnitDomains()
 	c.cluster = model.NewClusterMap(model.NewClusterID(c.self, now), c.alloc.Units())
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.self, c.alloc.Size())
@@ -552,6 +564,7 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 
 	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, namedShards, c.cache.Placements(c.name.Tenant), now.Add(delay))
 	c.alloc = upd
+	c.noLb = c.findUnitDomains()
 
 	for _, g := range rejected {
 		c.mustSend(ctx, c.consumers[g.Worker], model.NewRevoke(toGrant(g)))
@@ -604,7 +617,9 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 
 func (c *coordinator) loadBalance(ctx context.Context, now time.Time) (allocation.Move[model.Shard, model.ConsumerID], allocation.AdjustedLoad, bool) {
 	defer c.recordActionLatency(ctx, "loadbalance", c.cl.Now()) // uses actual current time (vs _now_ param) for latency recording
-	return c.alloc.LoadBalance(now)
+
+	// TODO(jump.c) 8/30/2024: Besides unit domains, load balancing should not move shards that have been recently assigned
+	return c.alloc.LoadBalance(now, c.noLb)
 }
 
 func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant) {

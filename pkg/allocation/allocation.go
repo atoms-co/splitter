@@ -718,7 +718,7 @@ func (p penalized[T, W, K, V]) Less(o penalized[T, W, K, V]) bool {
 
 // LoadBalance attempts to make a move that improves total adjusted load, or worker load balance as
 // a secondary concern. Returns the move and load improvement, if successful.
-func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], AdjustedLoad, bool) {
+func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time, ignore map[T]bool) (Move[T, K], AdjustedLoad, bool) {
 
 	// (1) Find attached workers and compute effective load skew. Ignore disconnected and
 	// suspended workers. We allow the average unit load as slack.
@@ -747,6 +747,9 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 		for t, l := range w.live {
 			if l.state != Active {
 				continue // skip: cannot revoke Allocated grant
+			}
+			if ignore[t] {
+				continue // skip: ignored as requested
 			}
 
 			// TODO(jhhurwitz): 06/26/24 Tweak Load algorithm. Should not use integer division + should evaluate ratios
@@ -859,6 +862,9 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 			for t, l := range src.live {
 				if l.state != Active {
 					continue // skip: cannot revoke Allocated grant
+				}
+				if ignore[t] {
+					continue // skip: ignored as requested
 				}
 				if !des.HasCapacity(l.work.Load) {
 					continue // skip: worker does not have enough capacity for this extra load

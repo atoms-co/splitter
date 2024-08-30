@@ -556,7 +556,7 @@ func (l *leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 	l.assign(ctx, now, append(promo, grants...)...)
 
 	if loadbalance {
-		if move, load, ok := l.alloc.LoadBalance(now); ok {
+		if move, load, ok := l.alloc.LoadBalance(now, nil); ok {
 			w := l.workers[move.From.Worker]
 
 			if !w.TrySend(ctx, NewRevoke(toGrant(move.From))) {

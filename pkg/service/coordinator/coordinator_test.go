@@ -20,11 +20,15 @@ const (
 	tenant1  model.TenantName  = "tenant1"
 	service1 model.ServiceName = "service1"
 	domain1  model.DomainName  = "domain1"
+	domain2  model.DomainName  = "domain2"
+	domain3  model.DomainName  = "domain3"
 )
 
 var (
 	serviceName = model.QualifiedServiceName{Tenant: tenant1, Service: service1}
 	domainName  = model.QualifiedDomainName{Service: serviceName, Domain: domain1}
+	domainName2 = model.QualifiedDomainName{Service: serviceName, Domain: domain2}
+	domainName3 = model.QualifiedDomainName{Service: serviceName, Domain: domain3}
 )
 
 func TestCoordinator_SingleConsumer(t *testing.T) {
@@ -200,6 +204,80 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 
 	coord.Close()
 	assertx.Closed(t, out)
+}
+
+func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+
+	domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+		model.NewDomainConfig(
+			model.WithDomainShardingPolicy(
+				model.NewShardingPolicy(1)),
+			model.WithDomainRegions("centralus"))),
+	)
+	require.NoError(t, err)
+
+	unit, err := model.NewDomain(domainName2, model.Unit, cl.Now())
+	require.NoError(t, err)
+	unit2, err := model.NewDomain(domainName3, model.Unit, cl.Now())
+	require.NoError(t, err)
+
+	// (1) Setup 1 regional domain "domain1" and 2 unit "domain1" + "domain2". 1 shard each.
+
+	coord := setup(ctx, cl, t, []model.Domain{domain, unit, unit2}, true)
+
+	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+	in := make(chan model.ConsumerMessage, 1)
+	in <- model.NewRegister(w, serviceName, nil, nil)
+
+	// (2) Connect w1. It should receive all shards
+
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
+	require.NoError(t, err, "consumer1 failed to join leader")
+
+	snapshot := readFn(t, out, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 0)
+
+	for i := 0; i < 3; i++ {
+		assign := readFn(t, out, isAssign)
+		assert.Len(t, assign.Grants(), 1)
+	}
+
+	change := readFn(t, out, isClusterChange)
+	assert.Len(t, change.Remove().Consumers(), 0)
+	assert.Len(t, change.Unassign().Grants(), 0)
+	assert.Len(t, change.Update().Grants(), 0)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
+	// (3) Connect w2. Load-balance should move the regional domain shard. Unit should not move.
+
+	w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint")
+	in2 := make(chan model.ConsumerMessage, 1)
+	in2 <- model.NewRegister(w2, serviceName, nil, nil)
+
+	out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
+	require.NoError(t, err, "consumer2 failed to join leader")
+
+	snapshot = readFn(t, out2, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 1)
+
+	cl.Add(15 * time.Second) // Loadbalancing interval
+	time.Sleep(50 * time.Millisecond)
+
+	// Loadbalance generally prefers moving a heavy shard first. But it should not move Unit domains.
+
+	revoke := readFn(t, out, isRevoke) // grant (domain1) revoked from consumer1
+	assert.Len(t, revoke.Grants(), 1)
+	assert.Equal(t, model.RevokedGrantState, revoke.Grants()[0].State())
+	assert.Equal(t, domainName, revoke.Grants()[0].Shard().Domain)
+	assert.Equal(t, model.Regional, revoke.Grants()[0].Shard().Type)
+
+	allocate := readFn(t, out2, isAssign) // grant (domain1) allocated to consumer2
+	assert.Len(t, allocate.Grants(), 1)
+	assert.Equal(t, model.AllocatedGrantState, allocate.Grants()[0].State())
+	assert.Equal(t, domainName, allocate.Grants()[0].Shard().Domain)
+	assert.Equal(t, model.Regional, revoke.Grants()[0].Shard().Type)
 }
 
 func TestCoordinator_CapacityLimitConsumer(t *testing.T) {

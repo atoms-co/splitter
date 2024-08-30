@@ -516,7 +516,7 @@ func TestAllocation(t *testing.T) {
 		assert.Len(t, grants, 0) // all work has already been assigned to w1
 
 		// LoadBalance should move a grant from w1 to w2.
-		move, _, ok := alloc.LoadBalance(cl.Now())
+		move, _, ok := alloc.LoadBalance(cl.Now(), nil)
 		assert.True(t, ok)
 		assertx.Equal(t, move.From.Worker, w1.ID)
 		assertx.Equal(t, move.From.State, allocation.Revoked)
@@ -524,7 +524,7 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, move.To.State, allocation.Allocated)
 		require.NoError(t, alloc.Check())
 
-		_, _, ok = alloc.LoadBalance(cl.Now())
+		_, _, ok = alloc.LoadBalance(cl.Now(), nil)
 		assert.False(t, ok) // No movement
 	})
 
@@ -592,7 +592,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(b, 10, lease)
 		assert.True(t, ok)
 
-		loads, ok := loadBalanceIterations(t, alloc, 2, cl.Now())
+		loads, ok := loadBalanceIterations(t, alloc, nil, 2, cl.Now())
 		require.True(t, ok)
 		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4", "w5"), []allocation.Load{50, 40, 40, 30, 30})
 		assert.Subset(t, intrinsicLoads(loads, "c", "b"), []allocation.Load{10, 10})
@@ -627,7 +627,7 @@ func TestAllocation(t *testing.T) {
 		assert.True(t, ok)
 
 		// (10, 10), (20)
-		move, diff, ok := alloc.LoadBalance(cl.Now())
+		move, diff, ok := alloc.LoadBalance(cl.Now(), nil)
 		assert.True(t, ok)
 		assertx.Equal(t, move.From.Worker, us1.ID)
 		assertx.Equal(t, move.From.Unit, "a")
@@ -638,7 +638,7 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, diff, allocation.AdjustedLoad{Load: -3})
 		require.NoError(t, alloc.Check())
 
-		_, _, ok = alloc.LoadBalance(cl.Now())
+		_, _, ok = alloc.LoadBalance(cl.Now(), nil)
 		assert.False(t, ok) // No movement
 		require.NoError(t, alloc.Check())
 	})
@@ -676,7 +676,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(w3, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok := loadBalanceIterations(t, alloc, 1, cl.Now())
+		loads, ok := loadBalanceIterations(t, alloc, nil, 1, cl.Now())
 		require.True(t, ok)
 		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3"), []allocation.Load{50, 10, 10})
 
@@ -720,7 +720,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(w3, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok := loadBalanceIterations(t, alloc, 2, cl.Now())
+		loads, ok := loadBalanceIterations(t, alloc, nil, 2, cl.Now())
 		require.True(t, ok)
 		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3"), []allocation.Load{20, 20, 50})
 
@@ -730,7 +730,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(w4, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok = loadBalanceIterations(t, alloc, 1, cl.Now())
+		loads, ok = loadBalanceIterations(t, alloc, nil, 1, cl.Now())
 		require.True(t, ok)
 		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4"), []allocation.Load{10, 10, 20, 50})
 
@@ -743,7 +743,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(w6, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok = loadBalanceIterations(t, alloc, 1, cl.Now())
+		loads, ok = loadBalanceIterations(t, alloc, nil, 1, cl.Now())
 		require.True(t, ok)
 		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4", "w5", "w6"), []allocation.Load{0, 10, 10, 10, 10, 50})
 
@@ -776,7 +776,7 @@ func TestAllocation(t *testing.T) {
 
 		_, ok = alloc.Attach(eu1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
-		move, diff, ok := alloc.LoadBalance(cl.Now())
+		move, diff, ok := alloc.LoadBalance(cl.Now(), nil)
 		assert.True(t, ok)
 		assertx.Equal(t, move.From.Worker, us1.ID)
 		assertx.Equal(t, move.From.Unit, "c")
@@ -792,7 +792,7 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, us1Load, allocation.AdjustedLoad{Load: 30, Place: 0})
 		assertx.Equal(t, eu1Load, allocation.AdjustedLoad{Load: 10, Place: 0})
 
-		_, _, ok = alloc.LoadBalance(cl.Now())
+		_, _, ok = alloc.LoadBalance(cl.Now(), nil)
 		assert.False(t, ok) // No movement
 
 		// (3) Release and the allocated grant is promoted Active
@@ -840,7 +840,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(us1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok := loadBalanceIterations(t, alloc, 8, cl.Now()) // needs 8 iterations to move 8 grants
+		loads, ok := loadBalanceIterations(t, alloc, nil, 8, cl.Now()) // needs 8 iterations to move 8 grants
 		require.True(t, ok)
 		assertx.Equal(t, loads["us1"].Load, 80)
 		assertx.Equal(t, loads["eu1"].Total(), 0) // eu has zero load
@@ -851,7 +851,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(us2, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok = loadBalanceIterations(t, alloc, 4, cl.Now())
+		loads, ok = loadBalanceIterations(t, alloc, nil, 4, cl.Now())
 		require.True(t, ok)
 		assertx.Equal(t, loads["us1"].Load, 40)
 		assertx.Equal(t, loads["us2"].Load, 40)
@@ -920,7 +920,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(eu3, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok := loadBalanceIterations(t, alloc, 4, cl.Now())
+		loads, ok := loadBalanceIterations(t, alloc, nil, 4, cl.Now())
 		require.True(t, ok)
 
 		// us: (50), (10, 10, 10, 10), (10, 10, 10, 10)
@@ -939,7 +939,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(us5, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok = loadBalanceIterations(t, alloc, 4, cl.Now())
+		loads, ok = loadBalanceIterations(t, alloc, nil, 4, cl.Now())
 		require.True(t, ok)
 
 		// us: (50), (10, 10), (10, 10), (10, 10), (10, 10)
@@ -989,29 +989,20 @@ func TestAllocation(t *testing.T) {
 		assert.Len(t, grants, 17)
 
 		us1load, _ := alloc.LoadByWorker(us1.ID)
-		assertx.Equal(t, us1load.Load, 160+50)
+		assertx.Equal(t, us1load.Load, 210)
 
-		// (2) Add eu worker. Load-balance would move the leader off the overloaded us worker to eu,
-		// thinking it's worth paying the placement penalty.
-
-		// TODO(jump.c) 8/28/2024: avoid or make it less likely to move a leader from home region
-		// avg load / worker = 210 / 2 = 105
-		// avg load / work = ceil(210 / 17) = 13
-		// cutoff = 118, load = 50
-		// diff intrinsic load = new - old = 0 - (210-118)*50 / 210 = -21
-		// diff placement = 20 - 0 = 20
-		// total = 20 - 21 = -1. This move is interpreted as a load reduction
+		// (2) Add eu worker. Ensure that load-balance does not move the leader off the overloaded us worker to eu.
 
 		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
 
 		_, ok = alloc.Attach(eu1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok := loadBalanceIterations(t, alloc, 1, cl.Now())
+		loads, ok := loadBalanceIterations(t, alloc, slicex.NewSet("leader"), 0, cl.Now())
 		require.True(t, ok)
 
-		assertx.Equal(t, loads["us1"], allocation.AdjustedLoad{Load: 160, Place: 0})
-		assertx.Equal(t, loads["eu1"], allocation.AdjustedLoad{Load: 50, Place: 20})
+		assertx.Equal(t, loads["us1"].Load, 210)
+		assertx.Equal(t, loads["eu1"].Total(), 0)
 		require.NoError(t, alloc.Check())
 	})
 
@@ -1051,7 +1042,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(us4, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		loads, ok := loadBalanceIterations(t, alloc, 1, cl.Now())
+		loads, ok := loadBalanceIterations(t, alloc, nil, 1, cl.Now())
 		require.True(t, ok)
 		assert.Subset(t, intrinsicLoads(loads, "us1"), []allocation.Load{10}) // lost 1 grant to any of the new workers
 		assert.Subset(t, intrinsicLoads(loads, "us2", "us3", "us4"), []allocation.Load{10, 0, 0})
@@ -1065,11 +1056,11 @@ func newGrantMap[T, K comparable](list ...allocation.Grant[T, K]) map[T]allocati
 	})
 }
 
-func loadBalanceIterations(t *testing.T, alloc *allocation.Allocation[string, location.Location, string, location.Location], numItr int, now time.Time) (map[string]allocation.AdjustedLoad, bool) {
+func loadBalanceIterations(t *testing.T, alloc *allocation.Allocation[string, location.Location, string, location.Location], ignore map[string]bool, numItr int, now time.Time) (map[string]allocation.AdjustedLoad, bool) {
 	for i := 0; i < numItr; i++ {
 		var move allocation.Move[string, string]
 		var ok bool
-		if move, _, ok = alloc.LoadBalance(now); !ok {
+		if move, _, ok = alloc.LoadBalance(now, ignore); !ok {
 			return nil, false // stop before the expected iterations
 		}
 		// release to update grant state to active
@@ -1080,7 +1071,7 @@ func loadBalanceIterations(t *testing.T, alloc *allocation.Allocation[string, lo
 		}
 	}
 
-	if _, _, ok := alloc.LoadBalance(now); ok {
+	if _, _, ok := alloc.LoadBalance(now, ignore); ok {
 		return nil, false // load balance does not stop at (n+1) iterations
 	}
 
