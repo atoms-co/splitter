@@ -121,6 +121,13 @@ func (w *worker[T, W, K, V]) HasCapacity(add Load) bool {
 	return w.info.Limit == 0 || (w.load.Load+add) <= w.info.Limit
 }
 
+func (w *worker[T, W, K, V]) FullCapacity() bool {
+	if w.info.Limit == 0 {
+		return false
+	}
+	return w.load.Load >= w.info.Limit
+}
+
 func (w *worker[T, W, K, V]) Grant(t T) (Grant[T, K], bool) {
 	if l, ok := w.live[t]; ok {
 		return w.ToGrant(l), true

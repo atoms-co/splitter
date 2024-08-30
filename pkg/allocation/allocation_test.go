@@ -9,6 +9,7 @@ import (
 	"go.atoms.co/splitter/pkg/allocation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"slices"
 	"testing"
 	"time"
 )
@@ -218,124 +219,6 @@ func TestAllocation(t *testing.T) {
 		assert.True(t, ok)
 		grants = alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 1)
-	})
-
-	t.Run("allocate/capacity-loadbalance-above-slack", func(t *testing.T) {
-		// Single allocation with 1 worker with capacity
-
-		work := []allocation.Work[string, location.Location]{
-			{Unit: "1", Load: 10, Data: us},
-			{Unit: "2", Load: 10, Data: us},
-			{Unit: "3", Load: 10, Data: us},
-			{Unit: "4", Load: 10, Data: us},
-			{Unit: "5", Load: 10, Data: eu},
-			{Unit: "6", Load: 10, Data: eu},
-			{Unit: "7", Load: 10, Data: eu},
-			{Unit: "8", Load: 10, Data: eu},
-			{Unit: "9", Load: 10, Data: eu},
-			{Unit: "10", Load: 10, Data: eu},
-			{Unit: "11", Load: 10, Data: eu},
-			{Unit: "12", Load: 10, Data: eu},
-			{Unit: "13", Load: 10, Data: eu},
-			{Unit: "14", Load: 10, Data: eu},
-			{Unit: "15", Load: 10, Data: eu},
-			{Unit: "16", Load: 10, Data: eu},
-			{Unit: "leader", Load: 20, Data: jp},
-		}
-
-		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
-
-		lease := cl.Now().Add(time.Minute)
-
-		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
-		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
-		w3 := allocation.Worker[string, location.Location]{ID: "w3", Data: us}
-		w4 := allocation.Worker[string, location.Location]{ID: "w4", Data: us}
-		w5 := allocation.Worker[string, location.Location]{ID: "w5", Data: us}
-
-		_, ok := alloc.Attach(w1, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-		_, ok = alloc.Attach(w2, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-		_, ok = alloc.Attach(w3, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-		_, ok = alloc.Attach(w4, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-		_, ok = alloc.Attach(w5, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-
-		alloc.Allocate(cl.Now())
-
-		c := allocation.Worker[string, location.Location]{ID: "c", Data: us}
-		b := allocation.Worker[string, location.Location]{ID: "b", Data: us}
-
-		_, ok = alloc.Attach(c, 10, lease)
-		assert.True(t, ok)
-
-		_, ok = alloc.Attach(b, 10, lease)
-		assert.True(t, ok)
-
-		_, _, ok = alloc.LoadBalance(cl.Now())
-		assert.False(t, ok) // TODO(jhhurwitz): 06/25/24 Ideally we should load balance here since the workers are above slack.
-	})
-
-	t.Run("allocate/capacity-loadbalance-below-slack", func(t *testing.T) {
-		// Single allocation with 1 worker with capacity
-
-		work := []allocation.Work[string, location.Location]{
-			{Unit: "1", Load: 10, Data: us},
-			{Unit: "2", Load: 10, Data: us},
-			{Unit: "3", Load: 10, Data: us},
-			{Unit: "4", Load: 10, Data: us},
-			{Unit: "5", Load: 10, Data: eu},
-			{Unit: "6", Load: 10, Data: eu},
-			{Unit: "7", Load: 10, Data: eu},
-			{Unit: "8", Load: 10, Data: eu},
-			{Unit: "9", Load: 10, Data: eu},
-			{Unit: "10", Load: 10, Data: eu},
-			{Unit: "11", Load: 10, Data: eu},
-			{Unit: "12", Load: 10, Data: eu},
-			{Unit: "13", Load: 10, Data: eu},
-			{Unit: "14", Load: 10, Data: eu},
-			{Unit: "15", Load: 10, Data: eu},
-			{Unit: "16", Load: 10, Data: eu},
-			{Unit: "leader", Load: 50, Data: jp},
-		}
-
-		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
-
-		lease := cl.Now().Add(time.Minute)
-
-		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
-		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
-		w3 := allocation.Worker[string, location.Location]{ID: "w3", Data: us}
-		w4 := allocation.Worker[string, location.Location]{ID: "w4", Data: us}
-		w5 := allocation.Worker[string, location.Location]{ID: "w5", Data: us}
-
-		_, ok := alloc.Attach(w1, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-		_, ok = alloc.Attach(w2, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-		_, ok = alloc.Attach(w3, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-		_, ok = alloc.Attach(w4, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-		_, ok = alloc.Attach(w5, allocation.NoCapacityLimit, lease)
-		assert.True(t, ok)
-
-		alloc.Allocate(cl.Now())
-
-		c := allocation.Worker[string, location.Location]{ID: "c", Data: us}
-		b := allocation.Worker[string, location.Location]{ID: "b", Data: us}
-
-		_, ok = alloc.Attach(c, 10, lease)
-		assert.True(t, ok)
-
-		_, ok = alloc.Attach(b, 10, lease)
-		assert.True(t, ok)
-
-		_, _, ok = alloc.LoadBalance(cl.Now())
-		assert.False(t, ok) // TODO(jhhurwitz): 06/25/24 Ideally we should load balance here since some of the workers have 0 load.
 	})
 
 	t.Run("allocate/constraints", func(t *testing.T) {
@@ -603,10 +486,272 @@ func TestAllocation(t *testing.T) {
 		assert.Len(t, alloc2.Assigned(eu.ID).Active, 0)
 	})
 
-	t.Run("load-balance/region-affinity", func(t *testing.T) {
-		// Load-balance functionality
+	t.Run("load-balance/base-case-two-workers", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+		}
 
-		region := allocation.NewPreference("region-affinity", 5, hasRegionAffinity)
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+
+		lease := cl.Now().Add(time.Minute)
+
+		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
+		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
+
+		_, ok := alloc.Attach(w1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 2)
+
+		m := newGrantMap(grants...)
+		assertx.Equal(t, m["1"].Worker, w1.ID)
+		assertx.Equal(t, m["2"].Worker, w1.ID)
+
+		_, ok = alloc.Attach(w2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		grants = alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 0) // all work has already been assigned to w1
+
+		// LoadBalance should move a grant from w1 to w2.
+		move, _, ok := alloc.LoadBalance(cl.Now())
+		assert.True(t, ok)
+		assertx.Equal(t, move.From.Worker, w1.ID)
+		assertx.Equal(t, move.From.State, allocation.Revoked)
+		assertx.Equal(t, move.To.Worker, w2.ID)
+		assertx.Equal(t, move.To.State, allocation.Allocated)
+		require.NoError(t, alloc.Check())
+
+		_, _, ok = alloc.LoadBalance(cl.Now())
+		assert.False(t, ok) // No movement
+	})
+
+	t.Run("load-balance/canary-capacity-limit", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+			{Unit: "3", Load: 10, Data: us},
+			{Unit: "4", Load: 10, Data: us},
+			{Unit: "5", Load: 10, Data: us},
+			{Unit: "6", Load: 10, Data: us},
+			{Unit: "7", Load: 10, Data: us},
+			{Unit: "8", Load: 10, Data: us},
+			{Unit: "9", Load: 10, Data: us},
+			{Unit: "10", Load: 10, Data: us},
+			{Unit: "11", Load: 10, Data: us},
+			{Unit: "12", Load: 10, Data: us},
+			{Unit: "13", Load: 10, Data: us},
+			{Unit: "14", Load: 10, Data: us},
+			{Unit: "15", Load: 10, Data: us},
+			{Unit: "16", Load: 10, Data: us},
+			{Unit: "leader", Load: 50, Data: us},
+		}
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+
+		// (1) Start with 5 workers. Allocate to distribute work evenly.
+
+		lease := cl.Now().Add(time.Minute)
+
+		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
+		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
+		w3 := allocation.Worker[string, location.Location]{ID: "w3", Data: us}
+		w4 := allocation.Worker[string, location.Location]{ID: "w4", Data: us}
+		w5 := allocation.Worker[string, location.Location]{ID: "w5", Data: us}
+
+		_, ok := alloc.Attach(w1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w3, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w4, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w5, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 17) // all work has been assigned
+
+		w1Load, _ := alloc.LoadByWorker(w1.ID)
+		w2Load, _ := alloc.LoadByWorker(w2.ID)
+		w3Load, _ := alloc.LoadByWorker(w3.ID)
+		w4Load, _ := alloc.LoadByWorker(w4.ID)
+		w5Load, _ := alloc.LoadByWorker(w5.ID)
+		assert.Subset(t, []allocation.Load{w1Load.Load, w2Load.Load, w3Load.Load, w4Load.Load, w5Load.Load}, []allocation.Load{50, 40, 40, 40, 40})
+
+		// (2) Attach two canary workers. Load balance should assign work.
+
+		c := allocation.Worker[string, location.Location]{ID: "c", Data: us}
+		b := allocation.Worker[string, location.Location]{ID: "b", Data: us}
+
+		_, ok = alloc.Attach(c, 10, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(b, 10, lease)
+		assert.True(t, ok)
+
+		loads, ok := loadBalanceIterations(t, alloc, 2, cl.Now())
+		require.True(t, ok)
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4", "w5"), []allocation.Load{50, 40, 40, 30, 30})
+		assert.Subset(t, intrinsicLoads(loads, "c", "b"), []allocation.Load{10, 10})
+	})
+
+	t.Run("load-balance/skew-two-workers", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "a", Load: 20, Data: us},
+			{Unit: "b", Load: 10, Data: us},
+			{Unit: "c", Load: 10, Data: us},
+		}
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+		assert.Len(t, alloc.Work(), 3)
+
+		// (1) Start with 1 worker allocated with 3 grants.
+
+		lease := cl.Now().Add(time.Minute)
+
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
+
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 3)
+
+		// (2) Add another worker and load-balance. Expect highest load work unit "a" to move
+
+		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
+
+		_, ok = alloc.Attach(us2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		// (10, 10), (20)
+		move, diff, ok := alloc.LoadBalance(cl.Now())
+		assert.True(t, ok)
+		assertx.Equal(t, move.From.Worker, us1.ID)
+		assertx.Equal(t, move.From.Unit, "a")
+		assertx.Equal(t, move.From.State, allocation.Revoked)
+		assertx.Equal(t, move.To.Worker, us2.ID)
+		assertx.Equal(t, move.To.Unit, "a")
+		assertx.Equal(t, move.To.State, allocation.Allocated)
+		assertx.Equal(t, diff, allocation.AdjustedLoad{Load: -3})
+		require.NoError(t, alloc.Check())
+
+		_, _, ok = alloc.LoadBalance(cl.Now())
+		assert.False(t, ok) // No movement
+		require.NoError(t, alloc.Check())
+	})
+
+	t.Run("load-balance/skew-three-workers", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+			{Unit: "3", Load: 50, Data: us},
+		}
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+
+		lease := cl.Now().Add(time.Minute)
+
+		// (1) Start with 2 workers. Allocate should distribute work evenly among the two workers
+
+		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
+		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
+
+		_, ok := alloc.Attach(w1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 3)
+		w1Load, _ := alloc.LoadByWorker(w1.ID)
+		w2Load, _ := alloc.LoadByWorker(w2.ID)
+		assert.Subset(t, []allocation.Load{w1Load.Load, w2Load.Load}, []allocation.Load{50, 20})
+
+		// (2) Add a worker. Load balance should assign work to it and stop.
+
+		w3 := allocation.Worker[string, location.Location]{ID: "w3", Data: us}
+		_, ok = alloc.Attach(w3, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		loads, ok := loadBalanceIterations(t, alloc, 1, cl.Now())
+		require.True(t, ok)
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3"), []allocation.Load{50, 10, 10})
+
+		require.NoError(t, alloc.Check())
+	})
+
+	t.Run("load-balance/skew-six-workers", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+			{Unit: "3", Load: 10, Data: us},
+			{Unit: "4", Load: 10, Data: us},
+			{Unit: "5", Load: 50, Data: us},
+		}
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+
+		lease := cl.Now().Add(time.Minute)
+
+		// (1) Start with 2 workers. Allocate should distribute work evenly.
+
+		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
+		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
+
+		_, ok := alloc.Attach(w1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 5)
+
+		// (10, 10, 10, 10), (50)
+		w1Load, _ := alloc.LoadByWorker(w1.ID)
+		w2Load, _ := alloc.LoadByWorker(w2.ID)
+		assert.Subset(t, []allocation.Load{w1Load.Load, w2Load.Load}, []allocation.Load{40, 50})
+
+		// (2) Add another worker. Load balance should assign work to it and stop.
+
+		w3 := allocation.Worker[string, location.Location]{ID: "w3", Data: us}
+		_, ok = alloc.Attach(w3, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		loads, ok := loadBalanceIterations(t, alloc, 2, cl.Now())
+		require.True(t, ok)
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3"), []allocation.Load{20, 20, 50})
+
+		// (3) Add another worker. Load balance should assign work to it and stop.
+
+		w4 := allocation.Worker[string, location.Location]{ID: "w4", Data: us}
+		_, ok = alloc.Attach(w4, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		loads, ok = loadBalanceIterations(t, alloc, 1, cl.Now())
+		require.True(t, ok)
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4"), []allocation.Load{10, 10, 20, 50})
+
+		// (4) Add 2 workers. Load balance should assign work to one of them and stop.
+
+		w5 := allocation.Worker[string, location.Location]{ID: "w5", Data: us}
+		w6 := allocation.Worker[string, location.Location]{ID: "w6", Data: us}
+		_, ok = alloc.Attach(w5, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(w6, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		loads, ok = loadBalanceIterations(t, alloc, 1, cl.Now())
+		require.True(t, ok)
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4", "w5", "w6"), []allocation.Load{0, 10, 10, 10, 10, 50})
+
+		require.NoError(t, alloc.Check())
+	})
+
+	t.Run("load-balance/region-affinity", func(t *testing.T) {
+		region := allocation.NewPreference("region-affinity", 20, hasRegionAffinity)
 
 		alloc := allocation.New[string, location.Location, string, location.Location]("id", slicex.New(region), nil, work, cl.Now())
 		assert.Len(t, alloc.Work(), 3)
@@ -622,6 +767,9 @@ func TestAllocation(t *testing.T) {
 		grants := alloc.Allocate(cl.Now())
 		assert.Len(t, grants, 3)
 
+		us1Load, _ := alloc.LoadByWorker(us1.ID)
+		assertx.Equal(t, us1Load, allocation.AdjustedLoad{Load: 40, Place: 20})
+
 		// (2) Add eu worker and load-balance. Expect eu work "c" to move to region-local worker.
 
 		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
@@ -636,12 +784,16 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, move.To.Worker, eu1.ID)
 		assertx.Equal(t, move.To.Unit, "c")
 		assertx.Equal(t, move.To.State, allocation.Allocated)
-		assertx.Equal(t, diff, allocation.AdjustedLoad{Load: -1, Place: -5})
+		assertx.Equal(t, diff, allocation.AdjustedLoad{Load: -1, Place: -20})
 		require.NoError(t, alloc.Check())
 
+		us1Load, _ = alloc.LoadByWorker(us1.ID)
+		eu1Load, _ := alloc.LoadByWorker(eu1.ID)
+		assertx.Equal(t, us1Load, allocation.AdjustedLoad{Load: 30, Place: 0})
+		assertx.Equal(t, eu1Load, allocation.AdjustedLoad{Load: 10, Place: 0})
+
 		_, _, ok = alloc.LoadBalance(cl.Now())
-		assert.False(t, ok) // region-optimal
-		require.NoError(t, alloc.Check())
+		assert.False(t, ok) // No movement
 
 		// (3) Release and the allocated grant is promoted Active
 
@@ -655,13 +807,177 @@ func TestAllocation(t *testing.T) {
 		require.NoError(t, alloc.Check())
 	})
 
-	t.Run("load-balance/skew", func(t *testing.T) {
-		// Load-balance functionality for worker skew
+	t.Run("load-balance/region-misplaced-correction", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+			{Unit: "3", Load: 10, Data: us},
+			{Unit: "4", Load: 10, Data: us},
+			{Unit: "5", Load: 10, Data: us},
+			{Unit: "6", Load: 10, Data: us},
+			{Unit: "7", Load: 10, Data: us},
+			{Unit: "8", Load: 10, Data: us},
+		}
+		region := allocation.NewPreference("region-affinity", 20, hasRegionAffinity)
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", slicex.New(region), nil, work, cl.Now())
+		assert.Len(t, alloc.Work(), 8)
 
-		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
-		assert.Len(t, alloc.Work(), 3)
+		lease := cl.Now().Add(time.Minute)
+		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
 
-		// (1) Start with 1 us worker allocated with 3 grants.
+		// (1) Start with 1 eu worker. Allocate all us grants to it. Expect misplacement.
+
+		_, ok := alloc.Attach(eu1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 8)
+		eu1Load, _ := alloc.LoadByWorker(eu1.ID)
+		assertx.Equal(t, eu1Load, allocation.AdjustedLoad{Load: 80, Place: 20 * 8})
+
+		// (2) Attach us worker. Load balance should move all work from eu worker, reducing placement penalty to zero.
+
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
+		_, ok = alloc.Attach(us1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		loads, ok := loadBalanceIterations(t, alloc, 8, cl.Now()) // needs 8 iterations to move 8 grants
+		require.True(t, ok)
+		assertx.Equal(t, loads["us1"].Load, 80)
+		assertx.Equal(t, loads["eu1"].Total(), 0) // eu has zero load
+
+		// (3) Attach another us worker. Load balance should distribute work between us workers.
+
+		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
+		_, ok = alloc.Attach(us2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		loads, ok = loadBalanceIterations(t, alloc, 4, cl.Now())
+		require.True(t, ok)
+		assertx.Equal(t, loads["us1"].Load, 40)
+		assertx.Equal(t, loads["us2"].Load, 40)
+		assertx.Equal(t, loads["eu1"].Total(), 0) // unchanged
+		require.NoError(t, alloc.Check())
+	})
+
+	t.Run("load-balance/skew-regional-balance", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+			{Unit: "3", Load: 10, Data: us},
+			{Unit: "4", Load: 10, Data: us},
+			{Unit: "5", Load: 10, Data: us},
+			{Unit: "6", Load: 10, Data: us},
+			{Unit: "7", Load: 10, Data: us},
+			{Unit: "8", Load: 10, Data: us},
+			{Unit: "9", Load: 10, Data: eu},
+			{Unit: "10", Load: 10, Data: eu},
+			{Unit: "11", Load: 10, Data: eu},
+			{Unit: "12", Load: 10, Data: eu},
+			{Unit: "leader", Load: 50, Data: us},
+		}
+
+		region := allocation.NewPreference("region-affinity", 20, hasRegionAffinity)
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", slicex.New(region), nil, work, cl.Now())
+		assert.Len(t, alloc.Work(), 13)
+
+		// (1) Start with 2 us + 2 eu workers, allocated with 13 grants.
+
+		lease := cl.Now().Add(time.Minute)
+
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
+		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
+		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
+		eu2 := allocation.Worker[string, location.Location]{ID: "eu2", Data: eu}
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(us2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(eu1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(eu2, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 13)
+
+		// us: (50, 10, 10), (10, 10, 10, 10, 10, 10)
+		// eu: (10, 10), (10, 10)
+
+		us1Load, _ := alloc.LoadByWorker(us1.ID)
+		us2Load, _ := alloc.LoadByWorker(us2.ID)
+		assert.Subset(t, []allocation.Load{us1Load.Load, us2Load.Load}, []allocation.Load{70, 60})
+
+		eu1Load, _ := alloc.LoadByWorker(eu1.ID)
+		eu2Load, _ := alloc.LoadByWorker(eu2.ID)
+		assert.Subset(t, []allocation.Load{eu1Load.Load, eu2Load.Load}, []allocation.Load{20, 20})
+
+		// (2) Add 1 us + 1 eu worker. Load balance should distribute work evenly in each region.
+
+		us3 := allocation.Worker[string, location.Location]{ID: "us3", Data: us}
+		eu3 := allocation.Worker[string, location.Location]{ID: "eu3", Data: eu}
+		_, ok = alloc.Attach(us3, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(eu3, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		loads, ok := loadBalanceIterations(t, alloc, 4, cl.Now())
+		require.True(t, ok)
+
+		// us: (50), (10, 10, 10, 10), (10, 10, 10, 10)
+		// eu: (10, 10), (10), (10)
+		assert.Subset(t, intrinsicLoads(loads, "us1", "us2", "us3"), []allocation.Load{50, 40, 40})
+		assert.Subset(t, intrinsicLoads(loads, "eu1", "eu2", "eu3"), []allocation.Load{20, 10, 10})
+		_, adj := alloc.Load()
+		assertx.Equal(t, adj.Place, 0) // No placement penalty
+
+		// (3) Add 2 us workers. Load balance should distribute work among us workers.
+
+		us4 := allocation.Worker[string, location.Location]{ID: "us4", Data: us}
+		us5 := allocation.Worker[string, location.Location]{ID: "us5", Data: us}
+		_, ok = alloc.Attach(us4, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		_, ok = alloc.Attach(us5, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		loads, ok = loadBalanceIterations(t, alloc, 4, cl.Now())
+		require.True(t, ok)
+
+		// us: (50), (10, 10), (10, 10), (10, 10), (10, 10)
+		// eu: (10, 10), (10), (10)
+		assert.Subset(t, intrinsicLoads(loads, "us1", "us2", "us3", "us4", "us5"), []allocation.Load{50, 20, 20, 20, 20})
+		assert.Subset(t, intrinsicLoads(loads, "eu1", "eu2", "eu3"), []allocation.Load{20, 10, 10}) // unchanged
+
+		_, adj = alloc.Load()
+		assertx.Equal(t, adj.Place, 0) // No placement penalty
+		require.NoError(t, alloc.Check())
+	})
+
+	t.Run("load-balance/wrong-region-placement", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+			{Unit: "3", Load: 10, Data: us},
+			{Unit: "4", Load: 10, Data: us},
+			{Unit: "5", Load: 10, Data: us},
+			{Unit: "6", Load: 10, Data: us},
+			{Unit: "7", Load: 10, Data: us},
+			{Unit: "8", Load: 10, Data: us},
+			{Unit: "9", Load: 10, Data: us},
+			{Unit: "10", Load: 10, Data: us},
+			{Unit: "11", Load: 10, Data: us},
+			{Unit: "12", Load: 10, Data: us},
+			{Unit: "13", Load: 10, Data: us},
+			{Unit: "14", Load: 10, Data: us},
+			{Unit: "15", Load: 10, Data: us},
+			{Unit: "16", Load: 10, Data: us},
+			{Unit: "leader", Load: 50, Data: us},
+		}
+
+		region := allocation.NewPreference("region-affinity", 20, hasRegionAffinity)
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", slicex.New(region), nil, work, cl.Now())
+		assert.Len(t, alloc.Work(), 17)
+
+		// (1) Start with 1 us worker allocated with 17 grants.
 
 		lease := cl.Now().Add(time.Minute)
 
@@ -670,32 +986,116 @@ func TestAllocation(t *testing.T) {
 		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
 		grants := alloc.Allocate(cl.Now())
-		assert.Len(t, grants, 3)
+		assert.Len(t, grants, 17)
 
-		// (2) Add us worker and load-balance. Expect highest load work unit "a" to move
+		us1load, _ := alloc.LoadByWorker(us1.ID)
+		assertx.Equal(t, us1load.Load, 160+50)
+
+		// (2) Add eu worker. Load-balance would move the leader off the overloaded us worker to eu,
+		// thinking it's worth paying the placement penalty.
+
+		// TODO(jump.c) 8/28/2024: avoid or make it less likely to move a leader from home region
+		// avg load / worker = 210 / 2 = 105
+		// avg load / work = ceil(210 / 17) = 13
+		// cutoff = 118, load = 50
+		// diff intrinsic load = new - old = 0 - (210-118)*50 / 210 = -21
+		// diff placement = 20 - 0 = 20
+		// total = 20 - 21 = -1. This move is interpreted as a load reduction
+
+		eu1 := allocation.Worker[string, location.Location]{ID: "eu1", Data: eu}
+
+		_, ok = alloc.Attach(eu1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+
+		loads, ok := loadBalanceIterations(t, alloc, 1, cl.Now())
+		require.True(t, ok)
+
+		assertx.Equal(t, loads["us1"], allocation.AdjustedLoad{Load: 160, Place: 0})
+		assertx.Equal(t, loads["eu1"], allocation.AdjustedLoad{Load: 50, Place: 20})
+		require.NoError(t, alloc.Check())
+	})
+
+	t.Run("load-balance/too-many-workers", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "1", Load: 10, Data: us},
+			{Unit: "2", Load: 10, Data: us},
+		}
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+		assert.Len(t, alloc.Work(), 2)
+
+		// (1) Start with 1 us worker allocated with 2 grants.
+
+		lease := cl.Now().Add(time.Minute)
+
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
+
+		_, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
+		grants := alloc.Allocate(cl.Now())
+		assert.Len(t, grants, 2)
+
+		us1load, _ := alloc.LoadByWorker(us1.ID)
+		assertx.Equal(t, us1load.Load, 20)
+
+		// (2) Add 3 workers. Load balance should move one grant and stop.
 
 		us2 := allocation.Worker[string, location.Location]{ID: "us2", Data: us}
+		us3 := allocation.Worker[string, location.Location]{ID: "us3", Data: us}
+		us4 := allocation.Worker[string, location.Location]{ID: "us4", Data: us}
 
 		_, ok = alloc.Attach(us2, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
-		move, diff, ok := alloc.LoadBalance(cl.Now())
+		_, ok = alloc.Attach(us3, allocation.NoCapacityLimit, lease)
 		assert.True(t, ok)
-		assertx.Equal(t, move.From.Worker, us1.ID)
-		assertx.Equal(t, move.From.Unit, "a")
-		assertx.Equal(t, move.From.State, allocation.Revoked)
-		assertx.Equal(t, move.To.Worker, us2.ID)
-		assertx.Equal(t, move.To.Unit, "a")
-		assertx.Equal(t, move.To.State, allocation.Allocated)
-		assertx.Equal(t, diff, allocation.AdjustedLoad{Load: -3})
-		require.NoError(t, alloc.Check())
+		_, ok = alloc.Attach(us4, allocation.NoCapacityLimit, lease)
+		assert.True(t, ok)
 
-		_, _, ok = alloc.LoadBalance(cl.Now())
-		assert.False(t, ok)
+		loads, ok := loadBalanceIterations(t, alloc, 1, cl.Now())
+		require.True(t, ok)
+		assert.Subset(t, intrinsicLoads(loads, "us1"), []allocation.Load{10}) // lost 1 grant to any of the new workers
+		assert.Subset(t, intrinsicLoads(loads, "us2", "us3", "us4"), []allocation.Load{10, 0, 0})
+		require.NoError(t, alloc.Check())
 	})
 }
 
 func newGrantMap[T, K comparable](list ...allocation.Grant[T, K]) map[T]allocation.Grant[T, K] {
 	return mapx.New(list, func(v allocation.Grant[T, K]) T {
 		return v.Unit
+	})
+}
+
+func loadBalanceIterations(t *testing.T, alloc *allocation.Allocation[string, location.Location, string, location.Location], numItr int, now time.Time) (map[string]allocation.AdjustedLoad, bool) {
+	for i := 0; i < numItr; i++ {
+		var move allocation.Move[string, string]
+		var ok bool
+		if move, _, ok = alloc.LoadBalance(now); !ok {
+			return nil, false // stop before the expected iterations
+		}
+		// release to update grant state to active
+		if promo, ok := alloc.Release(move.From, now); ok {
+			require.Equal(t, promo.State, allocation.Active)
+		} else {
+			require.Fail(t, "failed to release %v", move.From)
+		}
+	}
+
+	if _, _, ok := alloc.LoadBalance(now); ok {
+		return nil, false // load balance does not stop at (n+1) iterations
+	}
+
+	ret := map[string]allocation.AdjustedLoad{}
+	for _, w := range alloc.Workers() {
+		ret[w.Instance.ID], _ = alloc.LoadByWorker(w.Instance.ID)
+	}
+	return ret, true
+}
+
+func intrinsicLoads(loads map[string]allocation.AdjustedLoad, keys ...string) []allocation.Load {
+	filtered := mapx.FilterKeys(loads, func(s string) bool {
+		return slices.Contains(keys, s)
+	})
+	return mapx.MapToSlice(filtered, func(k string, v allocation.AdjustedLoad) allocation.Load {
+		return v.Load
 	})
 }

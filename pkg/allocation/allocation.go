@@ -6,6 +6,7 @@ import (
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/mathx"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -170,7 +171,7 @@ func (a *Allocation[T, W, K, V]) Worker(id K) (WorkerInfo[K, V], bool) {
 // Attach connects or re-connects a worker. If the latter, it includes a list of claimed existing grants.
 // Any known existing grants exist are revived to their prior state. Additionally, if the allocation has no
 // prior record of the worker, if the claimed grants are _unassigned_, they are activated regardless of
-// expiration  to the claimed state to allow an allocation restart.
+// expiration to the claimed state to allow an allocation restart.
 //
 // Returns assigned grants. Returns false if worker is already attached.
 func (a *Allocation[T, W, K, V]) Attach(inst Worker[K, V], limit Load, lease time.Time, grants ...Grant[T, K]) (Assignments[T, K], bool) {
@@ -725,12 +726,13 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 	workers := mapx.ValuesIf(a.workers, func(w *worker[T, W, K, V]) bool {
 		return w.info.State == Attached // skip: don't touch non-attached workers, even as a source
 	})
-	if len(workers) == 0 || len(a.work) == 0 {
+	if len(workers) < 2 || len(a.work) == 0 {
 		return Move[T, K]{}, AdjustedLoad{}, false
 	}
 
-	slack := Load(mathx.CeilDivInt(int(a.load), len(a.work)))
-	expected := Load(mathx.CeilDivInt(int(a.load), len(workers)))
+	slack := Load(mathx.CeilDivInt(int(a.load), len(a.work)))     // avg load per work
+	expected := Load(mathx.CeilDivInt(int(a.load), len(workers))) // avg load per worker
+
 	cutoff := expected + slack
 
 	// (2) Find largest penalty reductions, incl. effective load skew penalty. Consider active work
@@ -760,11 +762,7 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 		}
 	}
 
-	if movable.Len() == 0 || len(workers) < 2 {
-		return Move[T, K]{}, AdjustedLoad{}, false
-	}
-
-	// (2) Evaluate a move to the least-loaded worker possible. Note that other work on that worker may
+	// (3) Evaluate a move to the least-loaded worker possible. Note that other work on that worker may
 	// see a penalty increase if they favor affinity with the candidate work, so the actual gain may be
 	// different from what is attributed to the candidate. It may even be a loss for the worker.
 	//
@@ -812,6 +810,7 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 				continue // skip: no penalty reduction
 			}
 
+			// Find best candidate: smallest diff value (largest load/penalty reduction)
 			cur := &candidate[T, W, K, V]{w: w, diff: diff}
 			if best == nil || cur.Less(best) {
 				best = cur
@@ -825,6 +824,82 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time) (Move[T, K], Adjuste
 		}
 	}
 
+	// (4) Find underloaded workers whose intrinsic load is below average load per worker.
+	// Note that it will miss an optimal move between workers with above-average intrinsic load.
+	// But otherwise this simple heuristic works well in general.
+
+	underloaded := newWorkerHeap[T, W, K, V]()
+	for _, w := range workers {
+		if w.FullCapacity() {
+			continue // skip: underloaded worker but cannot take more load
+		}
+		if w.load.Load < expected {
+			underloaded.Push(w)
+		}
+	}
+	if underloaded.Len() == 0 {
+		return Move[T, K]{}, AdjustedLoad{}, false
+	}
+
+	// (5) Find source worker and the work to move. Assign first eligible move that makes the worker load more balanced
+	// and optionally reduce placement and collocation penalty.
+
+	// Sorted workers by total load in descending order so that we consider stealing from most loaded workers first
+	slices.SortFunc(workers, func(a, b *worker[T, W, K, V]) int {
+		return int(b.load.Total() - a.load.Total())
+	})
+
+	for underloaded.Len() > 0 {
+		des := underloaded.Pop()
+		for _, src := range workers {
+			if src == des {
+				continue // skip: self-move
+			}
+
+			for t, l := range src.live {
+				if l.state != Active {
+					continue // skip: cannot revoke Allocated grant
+				}
+				if !des.HasCapacity(l.work.Load) {
+					continue // skip: worker does not have enough capacity for this extra load
+				}
+				if des.load.Load+l.work.Load > cutoff {
+					continue // skip: don't make underloaded worker become overloaded (= avg load per worker + slack)
+				}
+				if src.load.Load-des.load.Load < 2*l.work.Load {
+					continue // skip: avoid flip-flopping; needed src - load >= des + load
+				}
+
+				placement, ok := a.place.TryPlace(des.info.Instance, l.work)
+				if !ok {
+					continue // skip: invalid placement
+				}
+
+				diff := AdjustedLoad{Place: placement - src.place[t]}
+
+				if !a.colo.IsEmpty() {
+					// TODO(jump.c) 8/28/2024: Improve colocation computation e.g. avoid excessive copying in LiveWithout(), LiveWith()
+					// new = destination worker with work + source worker without work
+					newSrc, _ := a.colo.Colocate(src.info.Instance, src.LiveWithout(t))
+					newDes, _ := a.colo.Colocate(des.info.Instance, des.LiveWith(l.work))
+					old := src.load.Colo + des.load.Colo
+					diff.Colo = newSrc + newDes - old
+				}
+
+				if diff.Total() <= 0 {
+					// Allows zero placement and colo penalty reduction as the load distribution seems improved
+					// due to the criteria above
+
+					// Notice that diff.Load is zero. This is because we cannot use the existing "overload of worker"
+					// improvement function as it doesn't find this move possible.
+					//
+					// TODO(jump.c) 8/28/2024: consider update the function, and ideally the AdjustedLoad struct.
+
+					return a.move(src, l, des, now), diff, true
+				}
+			}
+		}
+	}
 	return Move[T, K]{}, AdjustedLoad{}, false
 }
 
