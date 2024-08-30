@@ -64,6 +64,11 @@ type Cluster interface {
 	Lookup(key QualifiedDomainKey, states ...GrantState) (Consumer, GrantInfo, bool)
 }
 
+// ClusterProvider provides a Cluster, if available.
+type ClusterProvider interface {
+	Cluster() (Cluster, bool)
+}
+
 type consumerInfo struct {
 	consumer Consumer
 	grants   []GrantInfo

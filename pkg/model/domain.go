@@ -428,6 +428,11 @@ func ToDomainKey[T ~[16]byte](key T) DomainKey {
 	return DomainKey{Key: ToKey(key)}
 }
 
+// ToZeroDomainKey converts any key to an empty domain key, suitable for Unit domains.
+func ToZeroDomainKey[K any](k K) DomainKey {
+	return ZeroDomainKey
+}
+
 func (k DomainKey) ToProto() *public_v1.DomainKey {
 	return &public_v1.DomainKey{
 		Region: string(k.Region),
@@ -544,5 +549,15 @@ func (k QualifiedDomainKey) ToProto() *public_v1.QualifiedDomainKey {
 }
 
 func (k QualifiedDomainKey) String() string {
+	return fmt.Sprintf("%v:%v", k.Domain, k.Key)
+}
+
+// ServiceDomainKey is a domain name and key in an implicit service context.
+type ServiceDomainKey struct {
+	Domain DomainName
+	Key    DomainKey
+}
+
+func (k ServiceDomainKey) String() string {
 	return fmt.Sprintf("%v:%v", k.Domain, k.Key)
 }
