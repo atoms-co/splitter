@@ -31,7 +31,7 @@ func makeListTenantCmd() *cobra.Command {
 				return err
 			}
 			for _, info := range list {
-				printJson(model.UnwrapTenantInfo(info), true)
+				printJson(model.UnwrapTenantInfo(info), false)
 			}
 			return nil
 		})
@@ -64,9 +64,9 @@ func makeNewTenantCmd() *cobra.Command {
 	return cmd
 }
 
-func makeReadTenantCmd() *cobra.Command {
+func makeInfoTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "read <tenant>",
+		Use:          "info <tenant>",
 		Short:        "Show tenant information",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,

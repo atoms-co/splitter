@@ -351,6 +351,39 @@ func makeUpdateDomainCmd() *cobra.Command {
 
 	return cmd
 }
+
+func makeInfoDomainCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "info <tenant>/<service>/<domain>",
+		Short:        "Show domain information",
+		Args:         cobra.ExactArgs(1),
+		SilenceUsage: true,
+	}
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		if !ok {
+			return fmt.Errorf("invalid qualified domain name: %v", args[0])
+		}
+
+		return withClient(func(ctx context.Context, client model.Client) error {
+			service, err := client.InfoService(ctx, name.Service)
+			if err != nil {
+				return err
+			}
+
+			domain, ok := service.Domain(name.Domain)
+			if !ok {
+				return fmt.Errorf("unknown domain: %v", name)
+			}
+
+			printJson(splitter.UnwrapDomain(domain), true)
+			return nil
+		})
+	}
+	return cmd
+}
+
 func makeDeleteDomainCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "delete <tenant>/<service>/<domain>",

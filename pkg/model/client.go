@@ -269,6 +269,7 @@ type Client interface {
 	// assigned grants and, separately, grants assigned to all consumers.
 	// Non-blocking.
 	// Returns a channel with clusters and a closer to signal the consumer has closed
+	// Deprecated: Use ConsumerClient.Join instead.
 	// TODO(jhhurwitz): 04/02/24 Remove join from Client in favor of ConsumerClient
 	Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.RAsyncCloser)
 }

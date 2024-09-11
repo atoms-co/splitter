@@ -27,14 +27,14 @@ func init() {
 	rootCmd.AddCommand(tenantCmd)
 	tenantCmd.AddCommand(makeListTenantCmd())
 	tenantCmd.AddCommand(makeNewTenantCmd())
-	tenantCmd.AddCommand(makeReadTenantCmd())
+	tenantCmd.AddCommand(makeInfoTenantCmd())
 	tenantCmd.AddCommand(makeUpdateTenantCmd())
 	tenantCmd.AddCommand(makeDeleteTenantCmd())
 
 	rootCmd.AddCommand(serviceCmd)
 	serviceCmd.AddCommand(makeListServiceCmd())
 	serviceCmd.AddCommand(makeNewServiceCmd())
-	serviceCmd.AddCommand(makeReadServiceCmd())
+	serviceCmd.AddCommand(makeInfoServiceCmd())
 	serviceCmd.AddCommand(makeUpdateServiceCmd())
 	serviceCmd.AddCommand(makeDeleteServiceCmd())
 
@@ -45,6 +45,7 @@ func init() {
 	newDomainCmd.AddCommand(makeNewGlobalDomainCmd())
 	newDomainCmd.AddCommand(makeNewRegionalDomainCmd())
 	domainCmd.AddCommand(makeUpdateDomainCmd())
+	domainCmd.AddCommand(makeInfoDomainCmd())
 	domainCmd.AddCommand(makeDeleteDomainCmd())
 
 	rootCmd.AddCommand(placementCmd)

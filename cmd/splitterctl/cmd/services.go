@@ -35,7 +35,7 @@ func makeListServiceCmd() *cobra.Command {
 				return err
 			}
 			for _, info := range list {
-				printJson(model.UnwrapServiceInfoEx(info), true)
+				printJson(model.UnwrapServiceInfoEx(info), false)
 			}
 			return nil
 		})
@@ -89,9 +89,9 @@ func makeNewServiceCmd() *cobra.Command {
 	return cmd
 }
 
-func makeReadServiceCmd() *cobra.Command {
+func makeInfoServiceCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:          "read <tenant>/<service>",
+		Use:          "info <tenant>/<service>",
 		Short:        "Show service information",
 		Args:         cobra.ExactArgs(1),
 		SilenceUsage: true,
