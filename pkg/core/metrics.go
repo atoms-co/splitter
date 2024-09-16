@@ -22,6 +22,7 @@ const (
 	MessageTypeKey  metrics.Key = "message_type"
 	InstanceIDKey   metrics.Key = "instance_id"
 	LocationKey     metrics.Key = "location"
+	ShardKey        metrics.Key = "shard"
 )
 
 var (

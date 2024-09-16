@@ -60,8 +60,9 @@ var (
 	numColocationByLocation = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_colocation_by_location", "Colocation by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
-	numActions       = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Coordinator actions", core.TenantKey, core.ServiceKey, core.ActionKey, core.ResultKey)
-	numActionLatency = metrics.NewHistogram("go.atoms.co/splitter/coordinator_action_latency", "Coordinator action latency", nil, core.TenantKey, core.ServiceKey, core.ActionKey)
+	numActions       = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Coordinator actions", slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey, core.ResultKey)...)
+	numExpired       = metrics.NewCounter("go.atoms.co/splitter/coordinator_expired_grants", "Coordinator expired grants", slicex.CopyAppend(core.QualifiedDomainKeys)...)
+	numActionLatency = metrics.NewHistogram("go.atoms.co/splitter/coordinator_action_latency", "Coordinator action latency", nil, slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey)...)
 )
 
 // Coordinator handles consumer connection and work allocation.
@@ -578,6 +579,13 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	// they are disconnected. If an assignment fails, the grant is immediately released.
 
 	promoted := c.alloc.Expire(now)
+
+	// record expirations. In steady state, they should not happen.
+	for _, promote := range promoted {
+		numExpired.Increment(ctx, 1, core.QualifiedDomainTags(promote.Unit.Domain)...)
+		log.Warnf(ctx, "Reassigning expired grant: %v", promote.Unit)
+	}
+
 	grants := c.alloc.Allocate(now)
 
 	// Assign and allocate grants before load balancing
