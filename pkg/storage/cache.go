@@ -5,7 +5,6 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"fmt"
-	"maps"
 )
 
 type tenantInfo struct {
@@ -194,8 +193,8 @@ func (c *Cache) cloneTenant(update core.Update, strict bool) (*tenantInfo, error
 
 	cp := &tenantInfo{
 		info:       s.info,
-		services:   maps.Clone(s.services),
-		placements: maps.Clone(s.placements),
+		services:   mapx.Clone(s.services),
+		placements: mapx.Clone(s.placements),
 	}
 
 	if info, ok := update.TenantUpdated(); ok {

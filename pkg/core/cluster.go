@@ -6,7 +6,6 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"fmt"
-	"maps"
 	"time"
 )
 
@@ -63,7 +62,7 @@ func NewCluster(id model.ClusterID, assignments ...Assignment) *Cluster {
 func UpdateCluster(c *Cluster, add []Assignment, remove []model.QualifiedServiceName, now time.Time) *Cluster {
 	ret := &Cluster{
 		id:       c.id.Next(now),
-		services: maps.Clone(c.services),
+		services: mapx.Clone(c.services),
 	}
 
 	for _, assignment := range add {
