@@ -22,7 +22,7 @@ const (
 	MessageTypeKey  metrics.Key = "message_type"
 	InstanceIDKey   metrics.Key = "instance_id"
 	LocationKey     metrics.Key = "location"
-	ShardKey        metrics.Key = "shard"
+	ShardRegionKey  metrics.Key = "shard_region"
 )
 
 var (
@@ -104,4 +104,8 @@ func InstanceIDTag(v location.InstanceID) metrics.Tag {
 
 func LocationTag(v location.Location) metrics.Tag {
 	return metrics.Tag{Key: LocationKey, Value: fmt.Sprintf("%v", v)}
+}
+
+func ShardRegionTag(v location.Region) metrics.Tag {
+	return metrics.Tag{Key: ShardRegionKey, Value: fmt.Sprintf("%v", v)}
 }

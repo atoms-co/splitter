@@ -61,7 +61,7 @@ var (
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_colocation_by_location", "Colocation by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
 	numActions       = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Coordinator actions", slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey, core.ResultKey)...)
-	numExpired       = metrics.NewCounter("go.atoms.co/splitter/coordinator_expired_grants", "Coordinator expired grants", slicex.CopyAppend(core.QualifiedDomainKeys)...)
+	numExpired       = metrics.NewCounter("go.atoms.co/splitter/coordinator_expired_grants", "Coordinator expired grants", slicex.CopyAppend(core.QualifiedDomainKeys, core.ShardRegionKey)...)
 	numActionLatency = metrics.NewHistogram("go.atoms.co/splitter/coordinator_action_latency", "Coordinator action latency", nil, slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey)...)
 )
 
@@ -582,7 +582,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 
 	// record expirations. In steady state, they should not happen.
 	for _, promote := range promoted {
-		numExpired.Increment(ctx, 1, core.QualifiedDomainTags(promote.Unit.Domain)...)
+		numExpired.Increment(ctx, 1, slicex.CopyAppend(core.QualifiedDomainTags(promote.Unit.Domain), core.ShardRegionTag(promote.Unit.Region))...)
 		log.Warnf(ctx, "Reassigning expired grant: %v", promote.Unit)
 	}
 
