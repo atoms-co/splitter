@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/lib/encoding/yamlx"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/log/hclog"
 	"go.atoms.co/lib/service/envoyx"
@@ -13,7 +14,6 @@ import (
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/signalx"
-	"go.atoms.co/lib/yamlx"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/server"
 	"go.atoms.co/splitter/pkg/service/leader"
@@ -70,7 +70,7 @@ func makeStartCommand() *cobra.Command {
 
 		loc := locationx.New()
 
-		cfg, err := yamlx.ReadFile[conf](*configPath)
+		cfg, err := yamlx.UnmarshalFromFile[conf](*configPath)
 		if err != nil {
 			log.Exitf(ctx, "Failed to load configuration: %v", err)
 		}
