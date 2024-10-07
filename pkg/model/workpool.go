@@ -269,13 +269,12 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 	case msg.IsAssign():
 		assign, _ := msg.Assign()
 		grants := assign.Grants()
-		leases := map[time.Time]*clockx.Timer{}
 
 		for _, g := range grants {
 			p.shards[g.Shard()] = g.ID()
 			if old, ok := p.grants[g.ID()]; ok {
 				if old.LeaseState == LeaseStale {
-					if p.updateStaleGrant(ctx, leases, old, g) {
+					if p.updateStaleGrant(ctx, old, g) {
 						log.Infof(ctx, "Re-activating stale grant %v", old)
 						old.LeaseState = LeaseActive
 						old.Lease = p.lease
@@ -447,7 +446,7 @@ func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*clockx
 	grant.Handler.Drain(p.cl.Until(ttl))
 }
 
-func (p *WorkPool) updateStaleGrant(ctx context.Context, leases map[time.Time]*clockx.Timer, old *grant, newGrant Grant) bool {
+func (p *WorkPool) updateStaleGrant(ctx context.Context, old *grant, newGrant Grant) bool {
 	if old.Grant.State() == newGrant.State() {
 		return true
 	}
