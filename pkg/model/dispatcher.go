@@ -282,7 +282,10 @@ func (p *Processor[T, K, V]) handle(ctx context.Context, fn RangeFactory[V], gra
 	}
 	p.grants.Revoke(grant, shard, r)
 
-	unloaded := r.Drain(ctx, lease.Expiration().Sub(p.cl.Now()))
+	timeout := lease.Expiration().Sub(p.cl.Now())
+	log.Infof(ctx, "Grant %v:%v revoked, lease=%v.", grant, shard, timeout)
+
+	unloaded := r.Drain(ctx, timeout)
 
 	// (5) Wait for range drain completion. Signal unloaded and wait for counterpart to load. This handshake
 	// avoids an unavailability gap when shards are moved.
@@ -299,7 +302,7 @@ func (p *Processor[T, K, V]) handle(ctx context.Context, fn RangeFactory[V], gra
 	p.grants.Unloaded(grant, shard, r)
 
 	if err := WaitForLoad(wctx, lease); err != nil {
-		log.Warnf(ctx, "Grant %v:%v expired before counterpart load, lease=%v: %v", grant, shard, lease.Expiration().Sub(p.cl.Now()), err)
+		log.Warnf(ctx, "Grant %v:%v expired or closed before counterpart load, lease=%v: %v", grant, shard, timeout, err)
 		return
 	}
 }

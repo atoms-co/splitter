@@ -75,6 +75,8 @@ func InvokeExZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn
 	return InvokeEx(ctx, p, ZeroDomainKey, fn, a, local)
 }
 
+// RemoteFn is a method for creating a new gRPC client from a grpc.ClientConnInterface.
+// Generally use proto generated "NewXXXClient"
 type RemoteFn[T any] func(grpc.ClientConnInterface) T
 
 // NOTE(herohde) 9/4/2023: the unification in Splitter1 of local/remote T created some clunky grpc wrappers
