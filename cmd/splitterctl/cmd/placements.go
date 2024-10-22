@@ -4,7 +4,6 @@ import (
 	"context"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"github.com/spf13/cobra"
 )
@@ -32,7 +31,7 @@ func makeListPlacementCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		tenant := splitter.TenantName(args[0])
+		tenant := model.TenantName(args[0])
 
 		return withInternalClient(func(ctx context.Context, client core.Client) error {
 			list, err := client.ListPlacements(ctx, tenant)
@@ -60,7 +59,7 @@ func makeNewPlacementCmd() *cobra.Command {
 	skip := cmd.Flags().Bool("skip_region_check", false, "Allow use of unsupported regions")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedPlacementNameStr(args[0])
+		name, ok := model.ParseQualifiedPlacementNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid placement name")
 		}
@@ -97,7 +96,7 @@ func makeInfoPlacementCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedPlacementNameStr(args[0])
+		name, ok := model.ParseQualifiedPlacementNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid placement name")
 		}
@@ -131,7 +130,7 @@ func makeUpdatePlacementCmd() *cobra.Command {
 	force := cmd.Flags().Bool("force", false, "Force immediate application")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedPlacementNameStr(args[0])
+		name, ok := model.ParseQualifiedPlacementNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid placement name")
 		}
@@ -195,7 +194,7 @@ func makeDeletePlacementCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedPlacementNameStr(args[0])
+		name, ok := model.ParseQualifiedPlacementNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid placement name")
 		}
@@ -221,7 +220,7 @@ func makePublicInfoPlacementCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedPlacementNameStr(args[0])
+		name, ok := model.ParseQualifiedPlacementNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid placement name")
 		}

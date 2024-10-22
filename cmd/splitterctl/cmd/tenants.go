@@ -4,7 +4,6 @@ import (
 	"context"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
-	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"github.com/spf13/cobra"
 )
@@ -49,14 +48,14 @@ func makeNewTenantCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name := splitter.TenantName(args[0])
+		name := model.TenantName(args[0])
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			tenant, err := client.NewTenant(ctx, name, splitter.NewTenantConfig())
+			tenant, err := client.NewTenant(ctx, name, model.NewTenantConfig())
 			if err != nil {
 				return err
 			}
-			printJson(splitter.UnwrapTenantInfo(tenant), true)
+			printJson(model.UnwrapTenantInfo(tenant), true)
 			return nil
 		})
 	}
@@ -73,7 +72,7 @@ func makeInfoTenantCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name := splitter.TenantName(args[0])
+		name := model.TenantName(args[0])
 
 		return withClient(func(ctx context.Context, client model.Client) error {
 			info, err := client.InfoTenant(ctx, name)
@@ -99,12 +98,12 @@ func makeUpdateTenantCmd() *cobra.Command {
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name := splitter.TenantName(args[0])
+		name := model.TenantName(args[0])
 
-		var opts []splitter.TenantOperationalOption
+		var opts []model.TenantOperationalOption
 		if len(*banned) > 0 {
-			opts = append(opts, splitter.WithTenantOperationalBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
-				return splitter.Region(r)
+			opts = append(opts, model.WithTenantOperationalBannedRegions(slicex.Map(*banned, func(r string) model.Region {
+				return model.Region(r)
 			})...))
 		}
 
@@ -118,12 +117,12 @@ func makeUpdateTenantCmd() *cobra.Command {
 				return err
 			}
 
-			op, err := splitter.UpdateTenantOperational(info.Tenant(), opts...)
+			op, err := model.UpdateTenantOperational(info.Tenant(), opts...)
 			if err != nil {
 				return err
 			}
 
-			updateOpts := []splitter.UpdateTenantOption{splitter.WithUpdateTenantOperational(op)}
+			updateOpts := []model.UpdateTenantOption{model.WithUpdateTenantOperational(op)}
 			info, err = client.UpdateTenant(ctx, info.Name(), info.Version(), updateOpts...)
 			if err != nil {
 				return err
@@ -145,7 +144,7 @@ func makeDeleteTenantCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name := splitter.TenantName(args[0])
+		name := model.TenantName(args[0])
 
 		return withClient(func(ctx context.Context, client model.Client) error {
 			err := client.DeleteTenant(ctx, name)

@@ -5,7 +5,6 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/splitter/pkg/model"
-	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"github.com/spf13/cobra"
 )
@@ -22,25 +21,25 @@ func joinCmd() *cobra.Command {
 	capacity := cmd.Flags().Int("capacity-limit", 0, "Maximum number of shards that can be assigned")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
+		name, ok := model.ParseQualifiedServiceNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified service name: %v", args[0])
 		}
 
-		var opts []splitter.ConsumerOption
+		var opts []model.ConsumerOption
 		if len(*keyNames) > 0 {
-			var d []splitter.DomainKeyName
+			var d []model.DomainKeyName
 			for _, keyName := range *keyNames {
-				parsed, ok := splitter.ParseDomainKeyNameStr(keyName)
+				parsed, ok := model.ParseDomainKeyNameStr(keyName)
 				if !ok {
 					return fmt.Errorf("invalid domain key name: %v", keyName)
 				}
 				d = append(d, parsed)
 			}
-			opts = append(opts, splitter.WithKeyNames(d...))
+			opts = append(opts, model.WithKeyNames(d...))
 		}
 		if *capacity > 0 {
-			opts = append(opts, splitter.WithCapacityLimit(*capacity))
+			opts = append(opts, model.WithCapacityLimit(*capacity))
 		}
 
 		return withConsumerClient(func(ctx context.Context, client model.ConsumerClient) error {
@@ -49,7 +48,7 @@ func joinCmd() *cobra.Command {
 
 			instance := model.NewInstance(location.NewInstance(location.New(location.Region(*region), "local")), "localhost")
 			clusters, quit := client.Join(wctx, instance, name,
-				func(ctx context.Context, id splitter.GrantID, shard splitter.Shard, ownership splitter.Ownership) {
+				func(ctx context.Context, id model.GrantID, shard model.Shard, ownership model.Ownership) {
 					fmt.Println(fmt.Sprintf("Received shard %v with lease %v", shard, ownership.Expiration()))
 
 					select {

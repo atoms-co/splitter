@@ -4,7 +4,6 @@ import (
 	"context"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
-	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -28,7 +27,7 @@ func makeListDomainCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		service, ok := splitter.ParseQualifiedServiceNameStr(args[0])
+		service, ok := model.ParseQualifiedServiceNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified service name: %v", args[0])
 		}
@@ -69,26 +68,26 @@ func makeNewUnitDomainCmd() *cobra.Command {
 	state := cmd.Flags().String("state", "", "Domain state")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		name, ok := model.ParseQualifiedDomainNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
-		var opts []splitter.NewDomainOption
+		var opts []model.NewDomainOption
 		if *state != "" {
-			s, ok := splitter.ParseDomainState(*state)
+			s, ok := model.ParseDomainState(*state)
 			if !ok {
 				return fmt.Errorf("invalid state: %v", *state)
 			}
-			opts = append(opts, splitter.WithNewDomainState(s))
+			opts = append(opts, model.WithNewDomainState(s))
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			domain, err := client.NewDomain(ctx, name, splitter.Unit, splitter.NewDomainConfig(), opts...)
+			domain, err := client.NewDomain(ctx, name, model.Unit, model.NewDomainConfig(), opts...)
 			if err != nil {
 				return err
 			}
-			printJson(splitter.UnwrapDomain(domain), true)
+			printJson(model.UnwrapDomain(domain), true)
 			return nil
 		})
 	}
@@ -111,12 +110,12 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 	state := cmd.Flags().String("state", "", "Domain state")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		name, ok := model.ParseQualifiedDomainNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
-		var keys []splitter.NamedDomainKey
+		var keys []model.NamedDomainKey
 		for _, name := range *named {
 			parts := strings.Split(name, ":")
 			if len(parts) != 3 {
@@ -126,32 +125,32 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
 			}
-			keys = append(keys, splitter.NamedDomainKey{
+			keys = append(keys, model.NamedDomainKey{
 				Name: parts[0],
-				Key: splitter.DomainKey{
-					Region: splitter.Region(parts[1]),
-					Key:    splitter.Key(key),
+				Key: model.DomainKey{
+					Region: model.Region(parts[1]),
+					Key:    model.Key(key),
 				},
 			})
 		}
 
-		var opts []splitter.NewDomainOption
+		var opts []model.NewDomainOption
 		if *state != "" {
-			s, ok := splitter.ParseDomainState(*state)
+			s, ok := model.ParseDomainState(*state)
 			if !ok {
 				return fmt.Errorf("invalid state: %v", *state)
 			}
-			opts = append(opts, splitter.WithNewDomainState(s))
+			opts = append(opts, model.WithNewDomainState(s))
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			domain, err := client.NewDomain(ctx, name, splitter.Global,
-				splitter.NewDomainConfig(
-					splitter.WithDomainPlacement(splitter.PlacementName(*placement)),
-					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
-					splitter.WithDomainNamedKeys(keys...),
-					splitter.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) splitter.DomainName {
-						return splitter.DomainName(t)
+			domain, err := client.NewDomain(ctx, name, model.Global,
+				model.NewDomainConfig(
+					model.WithDomainPlacement(model.PlacementName(*placement)),
+					model.WithDomainShardingPolicy(model.NewShardingPolicy(*shards)),
+					model.WithDomainNamedKeys(keys...),
+					model.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) model.DomainName {
+						return model.DomainName(t)
 					})...),
 				),
 				opts...,
@@ -159,7 +158,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printJson(splitter.UnwrapDomain(domain), true)
+			printJson(model.UnwrapDomain(domain), true)
 			return nil
 		})
 	}
@@ -183,12 +182,12 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 	state := cmd.Flags().String("state", "", "Domain state")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		name, ok := model.ParseQualifiedDomainNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
-		var keys []splitter.NamedDomainKey
+		var keys []model.NamedDomainKey
 		for _, name := range *named {
 			parts := strings.Split(name, ":")
 			if len(parts) != 3 {
@@ -198,35 +197,35 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
 			}
-			keys = append(keys, splitter.NamedDomainKey{
+			keys = append(keys, model.NamedDomainKey{
 				Name: parts[0],
-				Key: splitter.DomainKey{
-					Region: splitter.Region(parts[1]),
-					Key:    splitter.Key(key),
+				Key: model.DomainKey{
+					Region: model.Region(parts[1]),
+					Key:    model.Key(key),
 				},
 			})
 		}
 
-		var opts []splitter.NewDomainOption
+		var opts []model.NewDomainOption
 		if *state != "" {
-			s, ok := splitter.ParseDomainState(*state)
+			s, ok := model.ParseDomainState(*state)
 			if !ok {
 				return fmt.Errorf("invalid state: %v", *state)
 			}
-			opts = append(opts, splitter.WithNewDomainState(s))
+			opts = append(opts, model.WithNewDomainState(s))
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			domain, err := client.NewDomain(ctx, name, splitter.Regional,
-				splitter.NewDomainConfig(
-					splitter.WithDomainPlacement(splitter.PlacementName(*placement)),
-					splitter.WithDomainShardingPolicy(splitter.NewShardingPolicy(*shards)),
-					splitter.WithDomainNamedKeys(keys...),
-					splitter.WithDomainRegions(slicex.Map(*regions, func(t string) splitter.Region {
-						return splitter.Region(t)
+			domain, err := client.NewDomain(ctx, name, model.Regional,
+				model.NewDomainConfig(
+					model.WithDomainPlacement(model.PlacementName(*placement)),
+					model.WithDomainShardingPolicy(model.NewShardingPolicy(*shards)),
+					model.WithDomainNamedKeys(keys...),
+					model.WithDomainRegions(slicex.Map(*regions, func(t string) model.Region {
+						return model.Region(t)
 					})...),
-					splitter.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) splitter.DomainName {
-						return splitter.DomainName(t)
+					model.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) model.DomainName {
+						return model.DomainName(t)
 					})...),
 				),
 				opts...,
@@ -234,7 +233,7 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printJson(splitter.UnwrapDomain(domain), true)
+			printJson(model.UnwrapDomain(domain), true)
 			return nil
 		})
 	}
@@ -256,21 +255,21 @@ func makeUpdateDomainCmd() *cobra.Command {
 	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		name, ok := model.ParseQualifiedDomainNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
-		var opts []splitter.UpdateDomainOption
+		var opts []model.UpdateDomainOption
 		if state != nil && *state != "" {
-			s, ok := splitter.ParseDomainState(*state)
+			s, ok := model.ParseDomainState(*state)
 			if !ok {
 				return fmt.Errorf("invalid state: %v", *state)
 			}
-			opts = append(opts, splitter.WithUpdateDomainState(s))
+			opts = append(opts, model.WithUpdateDomainState(s))
 		}
 
-		var keys []splitter.NamedDomainKey
+		var keys []model.NamedDomainKey
 		for _, name := range *named {
 			parts := strings.Split(name, ":")
 			if len(parts) != 3 {
@@ -280,29 +279,29 @@ func makeUpdateDomainCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
 			}
-			keys = append(keys, splitter.NamedDomainKey{
+			keys = append(keys, model.NamedDomainKey{
 				Name: parts[0],
-				Key: splitter.DomainKey{
-					Region: splitter.Region(parts[1]),
-					Key:    splitter.Key(key),
+				Key: model.DomainKey{
+					Region: model.Region(parts[1]),
+					Key:    model.Key(key),
 				},
 			})
 		}
 
-		var cfgOptions []splitter.DomainConfigOption
+		var cfgOptions []model.DomainConfigOption
 		if len(keys) > 0 {
-			cfgOptions = append(cfgOptions, splitter.WithDomainNamedKeys(keys...))
+			cfgOptions = append(cfgOptions, model.WithDomainNamedKeys(keys...))
 		}
 
-		var sCfgOpts []splitter.ShardingPolicyOption
+		var sCfgOpts []model.ShardingPolicyOption
 		if *shards != -1 {
-			sCfgOpts = append(sCfgOpts, splitter.WithShards(*shards))
+			sCfgOpts = append(sCfgOpts, model.WithShards(*shards))
 		}
 
-		var opOptions []splitter.DomainOperationalOption
+		var opOptions []model.DomainOperationalOption
 		if cmd.Flags().Changed("banned-regions") {
-			opOptions = append(opOptions, splitter.WithDomainOperationalBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
-				return splitter.Region(r)
+			opOptions = append(opOptions, model.WithDomainOperationalBannedRegions(slicex.Map(*banned, func(r string) model.Region {
+				return model.Region(r)
 			})...))
 		}
 
@@ -321,30 +320,30 @@ func makeUpdateDomainCmd() *cobra.Command {
 			}
 
 			if len(opOptions) > 0 {
-				op, err := splitter.UpdateDomainOperational(domain, opOptions...)
+				op, err := model.UpdateDomainOperational(domain, opOptions...)
 				if err != nil {
 					return err
 				}
-				opts = append(opts, splitter.WithUpdateDomainOperational(op))
+				opts = append(opts, model.WithUpdateDomainOperational(op))
 			}
 
 			if len(sCfgOpts) > 0 {
-				cfgOptions = append(cfgOptions, splitter.WithDomainShardingPolicy(splitter.UpdateShardingPolicy(domain.Config().ShardingPolicy(), sCfgOpts...)))
+				cfgOptions = append(cfgOptions, model.WithDomainShardingPolicy(model.UpdateShardingPolicy(domain.Config().ShardingPolicy(), sCfgOpts...)))
 			}
 
 			if len(cfgOptions) > 0 {
-				updCfg, err := splitter.UpdateDomainConfig(domain, cfgOptions...)
+				updCfg, err := model.UpdateDomainConfig(domain, cfgOptions...)
 				if err != nil {
 					return err
 				}
-				opts = append(opts, splitter.WithUpdateDomainConfig(updCfg))
+				opts = append(opts, model.WithUpdateDomainConfig(updCfg))
 			}
 
 			t, err := client.UpdateDomain(ctx, name, service.Info().Version(), opts...)
 			if err != nil {
 				return fmt.Errorf("update domain failed: %v", err)
 			}
-			printJson(splitter.UnwrapDomain(t), true)
+			printJson(model.UnwrapDomain(t), true)
 			return nil
 		})
 	}
@@ -361,7 +360,7 @@ func makeInfoDomainCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		name, ok := model.ParseQualifiedDomainNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
@@ -377,7 +376,7 @@ func makeInfoDomainCmd() *cobra.Command {
 				return fmt.Errorf("unknown domain: %v", name)
 			}
 
-			printJson(splitter.UnwrapDomain(domain), true)
+			printJson(model.UnwrapDomain(domain), true)
 			return nil
 		})
 	}
@@ -393,7 +392,7 @@ func makeDeleteDomainCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedDomainNameStr(args[0])
+		name, ok := model.ParseQualifiedDomainNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}

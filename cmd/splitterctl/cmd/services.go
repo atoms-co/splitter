@@ -5,7 +5,6 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
-	splitter "go.atoms.co/splitter/pkg/model"
 	"fmt"
 	"github.com/spf13/cobra"
 	"strings"
@@ -27,7 +26,7 @@ func makeListServiceCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		tenant := splitter.TenantName(args[0])
+		tenant := model.TenantName(args[0])
 
 		return withClient(func(ctx context.Context, client model.Client) error {
 			list, err := client.ListServices(ctx, tenant)
@@ -55,14 +54,14 @@ func makeNewServiceCmd() *cobra.Command {
 	overrides := cmd.Flags().StringSlice("locality-overrides", []string{}, "locality overrides. e.g. us-west1:centralus")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
+		name, ok := model.ParseQualifiedServiceNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified service name: %v", args[0])
 		}
-		region := splitter.Region(args[1])
+		region := model.Region(args[1])
 
-		var cfgOpts []splitter.ServiceConfigOption
-		cfgOpts = append(cfgOpts, splitter.WithServiceRegion(region))
+		var cfgOpts []model.ServiceConfigOption
+		cfgOpts = append(cfgOpts, model.WithServiceRegion(region))
 
 		if len(*overrides) > 0 {
 			locality := map[location.Region]location.Region{}
@@ -73,15 +72,15 @@ func makeNewServiceCmd() *cobra.Command {
 				}
 				locality[location.Region(parts[0])] = location.Region(parts[1])
 			}
-			cfgOpts = append(cfgOpts, splitter.WithLocalityOverrides(locality))
+			cfgOpts = append(cfgOpts, model.WithLocalityOverrides(locality))
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			service, err := client.NewService(ctx, name, splitter.NewServiceConfig(cfgOpts...))
+			service, err := client.NewService(ctx, name, model.NewServiceConfig(cfgOpts...))
 			if err != nil {
 				return err
 			}
-			printJson(splitter.UnwrapServiceInfo(service), true)
+			printJson(model.UnwrapServiceInfo(service), true)
 			return nil
 		})
 	}
@@ -98,7 +97,7 @@ func makeInfoServiceCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
+		name, ok := model.ParseQualifiedServiceNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified service name: %v", args[0])
 		}
@@ -130,14 +129,14 @@ func makeUpdateServiceCmd() *cobra.Command {
 	disableLB := cmd.Flags().Bool("disable-load-balance", true, "disable load balance")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
+		name, ok := model.ParseQualifiedServiceNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified service name: %v", args[0])
 		}
 
-		var cfgOpts []splitter.ServiceConfigOption
+		var cfgOpts []model.ServiceConfigOption
 		if *region != "" {
-			cfgOpts = append(cfgOpts, splitter.WithServiceRegion(splitter.Region(*region)))
+			cfgOpts = append(cfgOpts, model.WithServiceRegion(model.Region(*region)))
 		}
 		if len(*overrides) > 0 {
 			locality := map[location.Region]location.Region{}
@@ -148,17 +147,17 @@ func makeUpdateServiceCmd() *cobra.Command {
 				}
 				locality[location.Region(parts[0])] = location.Region(parts[1])
 			}
-			cfgOpts = append(cfgOpts, splitter.WithLocalityOverrides(locality))
+			cfgOpts = append(cfgOpts, model.WithLocalityOverrides(locality))
 		}
 
-		var opOpts []splitter.ServiceOperationalOption
+		var opOpts []model.ServiceOperationalOption
 		if len(*banned) > 0 {
-			opOpts = append(opOpts, splitter.WithServiceOperationalBannedRegions(slicex.Map(*banned, func(r string) splitter.Region {
-				return splitter.Region(r)
+			opOpts = append(opOpts, model.WithServiceOperationalBannedRegions(slicex.Map(*banned, func(r string) model.Region {
+				return model.Region(r)
 			})...))
 		}
 		if cmd.Flag("disable-load-balance").Changed {
-			opOpts = append(opOpts, splitter.WithServiceOperationalDisableLoadBalance(*disableLB))
+			opOpts = append(opOpts, model.WithServiceOperationalDisableLoadBalance(*disableLB))
 		}
 
 		if len(cfgOpts) == 0 && len(opOpts) == 0 {
@@ -172,17 +171,17 @@ func makeUpdateServiceCmd() *cobra.Command {
 			}
 
 			// Updated config
-			cfg, err := splitter.UpdateServiceConfig(ex.Info().Service(), cfgOpts...)
+			cfg, err := model.UpdateServiceConfig(ex.Info().Service(), cfgOpts...)
 			if err != nil {
 				return err
 			}
 			// Updated operational metadata
-			op, err := splitter.UpdateServiceOperational(ex.Info().Service(), opOpts...)
+			op, err := model.UpdateServiceOperational(ex.Info().Service(), opOpts...)
 			if err != nil {
 				return err
 			}
 
-			updateOpts := []splitter.UpdateServiceOption{splitter.WithUpdateServiceConfig(cfg), splitter.WithUpdateServiceOperational(op)}
+			updateOpts := []model.UpdateServiceOption{model.WithUpdateServiceConfig(cfg), model.WithUpdateServiceOperational(op)}
 			info, err := client.UpdateService(ctx, ex.Name(), ex.Info().Version(), updateOpts...)
 			if err != nil {
 				return err
@@ -203,7 +202,7 @@ func makeDeleteServiceCmd() *cobra.Command {
 	}
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
-		name, ok := splitter.ParseQualifiedServiceNameStr(args[0])
+		name, ok := model.ParseQualifiedServiceNameStr(args[0])
 		if !ok {
 			return fmt.Errorf("invalid qualified service name: %v", args[0])
 		}
