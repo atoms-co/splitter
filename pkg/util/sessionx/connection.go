@@ -8,7 +8,7 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
 	"fmt"
-	"go.uber.org/atomic"
+	"sync/atomic"
 	"time"
 )
 
@@ -82,7 +82,7 @@ func (c *connection[T]) Instance() model.Instance {
 
 func (c *connection[T]) Disconnect() {
 	c.Close()
-	if c.closed.CAS(false, true) {
+	if c.closed.CompareAndSwap(false, true) {
 		close(c.out)
 	}
 }
