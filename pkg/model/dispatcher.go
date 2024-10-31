@@ -234,8 +234,6 @@ func (p *Processor[T, K, V]) TryHandle(ctx context.Context, grant GrantID, shard
 }
 
 func (p *Processor[T, K, V]) handle(ctx context.Context, fn RangeFactory[V], grant GrantID, shard Shard, lease Ownership) {
-	defer p.grants.Delete(grant, shard)
-
 	// (1) Allocated only. Wait for counterpart to unload, which usually means that it does not update
 	// the underlying state anymore. It is thereafter safe to initialize.
 
@@ -252,6 +250,7 @@ func (p *Processor[T, K, V]) handle(ctx context.Context, fn RangeFactory[V], gra
 	defer r.Close()
 
 	p.grants.Allocated(grant, shard, r)
+	defer p.grants.Delete(grant, shard)
 
 	wctx, _ := contextx.WithQuitCancel(ctx, r.Closed())
 	if err := WaitForAction(wctx, r.Initialized(), lease); err != nil {
