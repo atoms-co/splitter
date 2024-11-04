@@ -264,14 +264,6 @@ type Client interface {
 
 	ListPlacements(ctx context.Context, name TenantName) ([]PlacementInfo, error)
 	InfoPlacement(ctx context.Context, name QualifiedPlacementName) (PlacementInfo, error)
-
-	// Join adds the consumer to the work distribution process. During this process the consumer receives
-	// assigned grants and, separately, grants assigned to all consumers.
-	// Non-blocking.
-	// Returns a channel with clusters and a closer to signal the consumer has closed
-	// Deprecated: Use ConsumerClient.Join instead.
-	// TODO(jhhurwitz): 04/02/24 Remove join from Client in favor of ConsumerClient
-	Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, handler Handler) (<-chan Cluster, iox.RAsyncCloser)
 }
 
 type ConsumerOption func(pb *public_v1.ClientMessage_Register_Options)
