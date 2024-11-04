@@ -2,6 +2,7 @@ package model_test
 
 import (
 	"context"
+	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
@@ -373,7 +374,7 @@ func TestWorkpool(t *testing.T) {
 		coordinatorCon.Out <- model.NewAssign(grant)
 		requirex.ChanEmpty(t, shards)
 		// Grant is not closed
-		chanx.TryDrain(quit.Closed(), 100*time.Millisecond)
+		chanx.TryDrain(quit.Closed(), clock.New(), 100*time.Millisecond)
 
 		coordinatorCon.Out <- model.NewRevoke(grant)
 	})

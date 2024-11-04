@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
@@ -146,7 +147,7 @@ func TestReadEstablish(t *testing.T) {
 	t.Run("timeout waiting", func(t *testing.T) {
 		in := make(chan session.Message)
 		close(in)
-		_, err := session.ReadEstablish(in, func(msg session.Message) (session.Message, bool) {
+		_, err := session.ReadEstablish(clock.New(), in, func(msg session.Message) (session.Message, bool) {
 			return msg, true
 		})
 		requirex.Equal(t, err, fmt.Errorf("no first session message"))
@@ -155,7 +156,7 @@ func TestReadEstablish(t *testing.T) {
 	t.Run("not session message", func(t *testing.T) {
 		in := make(chan session.Message, 1)
 		in <- session.Message{}
-		_, err := session.ReadEstablish(in, func(msg session.Message) (session.Message, bool) {
+		_, err := session.ReadEstablish(clock.New(), in, func(msg session.Message) (session.Message, bool) {
 			return msg, false
 		})
 		requirex.Equal(t, err, fmt.Errorf("expected session message, got %v", session.Message{}))
@@ -165,7 +166,7 @@ func TestReadEstablish(t *testing.T) {
 		in := make(chan session.Message, 1)
 		hb := session.NewHeartbeatMessage(time.Now())
 		in <- hb
-		_, err := session.ReadEstablish(in, func(msg session.Message) (session.Message, bool) {
+		_, err := session.ReadEstablish(clock.New(), in, func(msg session.Message) (session.Message, bool) {
 			return msg, true
 		})
 		requirex.Equal(t, err, fmt.Errorf("expected establish session message, got %v", hb))
@@ -174,7 +175,7 @@ func TestReadEstablish(t *testing.T) {
 	t.Run("established session", func(t *testing.T) {
 		in := make(chan session.Message, 1)
 		in <- session.NewEstablishMessage("sid", client)
-		established, err := session.ReadEstablish(in, func(msg session.Message) (session.Message, bool) {
+		established, err := session.ReadEstablish(clock.New(), in, func(msg session.Message) (session.Message, bool) {
 			return msg, true
 		})
 		require.NoError(t, err)

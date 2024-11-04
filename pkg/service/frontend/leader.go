@@ -38,7 +38,7 @@ func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error 
 
 	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.JoinMessage) (<-chan *internal_v1.JoinMessage, error) {
 		// Read session initialization message
-		establish, err := session.ReadEstablish(in, func(m *internal_v1.JoinMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(l.cl, in, func(m *internal_v1.JoinMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
 				return session.WrapMessage(m.GetSession()), true
 			}

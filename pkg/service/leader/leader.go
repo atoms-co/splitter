@@ -119,7 +119,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 }
 
 func (l *leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error) {
-	msg, ok := chanx.TryRead(in, registrationTimeout)
+	msg, ok := chanx.TryRead(in, l.cl, registrationTimeout)
 	if !ok {
 		log.Errorf(ctx, "No registration message received")
 		return nil, model.WrapError(fmt.Errorf("no registration message: %w", model.ErrInvalid))

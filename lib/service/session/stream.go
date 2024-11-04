@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/chanx"
 )
 
@@ -29,15 +30,15 @@ func Receive[T any](s *Server, main <-chan T, liveness <-chan Message, inject fu
 
 // ReadEstablish reads the establish session message from the input stream. This function can be used
 // to initialize a session on the server side.
-func ReadEstablish[T any](in <-chan T, extract func(T) (Message, bool)) (Establish, error) {
-	return ReadEstablishWithTimeout(in, extract, defaultEstablishTimeout)
+func ReadEstablish[T any](cl clock.Clock, in <-chan T, extract func(T) (Message, bool)) (Establish, error) {
+	return ReadEstablishWithTimeout(cl, in, extract, defaultEstablishTimeout)
 }
 
 // ReadEstablishWithTimeout reads the establish session message from the input stream. This function can be used
 // to initialize a session on the server side.
-func ReadEstablishWithTimeout[T any](in <-chan T, extract func(T) (Message, bool), establishTimeout time.Duration) (Establish, error) {
+func ReadEstablishWithTimeout[T any](cl clock.Clock, in <-chan T, extract func(T) (Message, bool), establishTimeout time.Duration) (Establish, error) {
 	// Read first message
-	first, ok := chanx.TryRead(in, establishTimeout)
+	first, ok := chanx.TryRead(in, cl, establishTimeout)
 	if !ok {
 		return Establish{}, fmt.Errorf("no first session message")
 	}

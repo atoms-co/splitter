@@ -46,7 +46,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 
 	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
 		// Read session initialization message
-		establish, err := session.ReadEstablish(in, func(m *public_v1.JoinMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(s.cl, in, func(m *public_v1.JoinMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
 				return session.WrapMessage(m.GetSession()), true
 			}

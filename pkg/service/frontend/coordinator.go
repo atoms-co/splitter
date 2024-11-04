@@ -38,7 +38,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 
 	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
 		// Read session initialization message
-		establish, err := session.ReadEstablish(in, func(m *internal_v1.ConnectMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(c.cl, in, func(m *internal_v1.ConnectMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
 				return session.WrapMessage(m.GetSession()), true
 			}

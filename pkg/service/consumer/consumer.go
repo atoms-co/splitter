@@ -50,7 +50,7 @@ func New(cl clock.Clock, loc location.Location, w worker.Worker, resolver core.S
 }
 
 func (c *consumer) Join(ctx context.Context, session *session.Server, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	msg, ok := chanx.TryRead(in, 20*time.Second)
+	msg, ok := chanx.TryRead(in, c.cl, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No registration message received")
 		return nil, model.WrapError(fmt.Errorf("no registration message received: %w", model.ErrInvalid))

@@ -104,7 +104,7 @@ func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, 
 
 // Connect handles connection of a consumer to a local coordinator
 func (w *worker) Connect(ctx context.Context, sid session.ID, consumer location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	msg, ok := chanx.TryRead(in, 20*time.Second)
+	msg, ok := chanx.TryRead(in, w.cl, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No registration message received: %v", msg)
 		return nil, fmt.Errorf("no registration message received %v: %w", msg, model.ErrInvalid)
