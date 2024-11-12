@@ -180,7 +180,7 @@ func DialNonBlocking(opts ...grpc.DialOption) DialFn[grpc.ClientConnInterface] {
 
 // ConnectionPool maintains the cluster map and its grpc connections. Thread-safe.
 type ConnectionPool interface {
-	Resolver[grpc.ClientConnInterface, Consumer]
+	SimpleResolver[grpc.ClientConnInterface, Consumer]
 	Cluster() (Cluster, bool)
 }
 

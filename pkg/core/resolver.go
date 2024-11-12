@@ -12,7 +12,7 @@ import (
 
 // ServiceResolver resolves a gRPC connection to an instance with service's coordinator. Uses model.ErrNoResolution
 // to indicate that service is local.
-type ServiceResolver = model.Resolver[internal_v1.CoordinatorServiceClient, model.QualifiedServiceName]
+type ServiceResolver = model.SimpleResolver[internal_v1.CoordinatorServiceClient, model.QualifiedServiceName]
 
 type resolver struct {
 	pool *model.PeeredConnectionCache[grpc.ClientConnInterface]

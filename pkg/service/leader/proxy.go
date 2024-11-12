@@ -8,7 +8,7 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
-type Resolver = model.Resolver[internal_v1.LeaderServiceClient, model.DomainKey]
+type Resolver = model.SimpleResolver[internal_v1.LeaderServiceClient, model.DomainKey]
 
 // Proxy is a local proxy for accessing the leader, if present. Returns ErrNotOwned if not.
 type Proxy interface {

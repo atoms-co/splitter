@@ -2,8 +2,6 @@ package model
 
 import (
 	"context"
-	"go.atoms.co/lib/metrics"
-	"go.atoms.co/slicex"
 	"errors"
 	"fmt"
 	"google.golang.org/grpc"
@@ -13,16 +11,19 @@ var (
 	ErrNoResolution = errors.New("no resolution")
 )
 
-var (
-	numForwards = metrics.NewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey)...)
-)
-
-// Resolver resolves ownership of a key of type K to a proxy object of type T. Each proxy is typically instantiated
+// SimpleResolver resolves ownership of a key of type K to a proxy object of type T. Each proxy is typically instantiated
 // with a grpc service client, such as Proxy[v1.FooServiceClient] for remote invocation only. Returns ErrNoResolution
 // if resolution fails (possibly due to local ownership), ErrInvalid if the key is not valid, or ErrNotFound when
 // information about owner cannot be found (e.g. when key is not owned).
-type Resolver[T, K any] interface {
+type SimpleResolver[T, K any] interface {
 	Resolve(ctx context.Context, key K) (T, error)
+}
+
+// Resolver is a resolver that can map a key to a domain key.
+type Resolver[T, K any] interface {
+	SimpleResolver[T, K]
+
+	DomainKey(key K) QualifiedDomainKey
 }
 
 // Invoke makes a grpc invocation to the owner of the given key. This convenience function mimics
@@ -62,7 +63,13 @@ func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn f
 	t, err := p.Resolve(ctx, key)
 	if err != nil {
 		if errors.Is(err, ErrNoResolution) {
-			return local()
+			rt, err := local()
+			if err != nil {
+				recordHandledRequest(ctx, p.DomainKey(key).Domain, err.Error())
+			} else {
+				recordHandledRequest(ctx, p.DomainKey(key).Domain, "ok")
+			}
+			return rt, err
 		}
 		var b B
 		return b, err
@@ -112,18 +119,22 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 		if instance, _, ok := c.Lookup(key, r.states...); ok {
 			con, err := r.pool.Resolve(ctx, instance)
 			if err != nil {
-				numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag(err.Error()))...)
+				recordForwardedRequest(ctx, key.Domain, err.Error())
 				return zero, err
 			}
-			numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag("ok"))...)
+			recordForwardedRequest(ctx, key.Domain, "ok")
 			return r.fn(con), nil
 		}
-		numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag("owner_not_found"))...)
+		recordForwardedRequest(ctx, key.Domain, "owner_not_found")
 		return zero, fmt.Errorf("no owner: %w", ErrNotFound)
 	}
 
-	numForwards.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(key.Domain), resultTag("not_initialized"))...)
+	recordForwardedRequest(ctx, key.Domain, "not_initialized")
 	return zero, fmt.Errorf("not initialized: %w", ErrNotFound)
+}
+
+func (r *resolver[T]) DomainKey(key QualifiedDomainKey) QualifiedDomainKey {
+	return key
 }
 
 type domainResolver[T, K any] struct {
@@ -138,4 +149,8 @@ func NewDomainResolver[T, K any](pool ConnectionPool, fn RemoteFn[T], kfn func(K
 
 func (d *domainResolver[T, K]) Resolve(ctx context.Context, key K) (T, error) {
 	return d.resolver.Resolve(ctx, d.fn(key))
+}
+
+func (d *domainResolver[T, K]) DomainKey(key K) QualifiedDomainKey {
+	return d.fn(key)
 }

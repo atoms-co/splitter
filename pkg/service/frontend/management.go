@@ -3,6 +3,7 @@ package frontend
 import (
 	"context"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pb/private"
@@ -202,7 +203,7 @@ func (s *ManagementService) invokeTenant(ctx context.Context, request *internal_
 	req := leader.NewHandleTenantRequest(request)
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return model.InvokeExZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+		return core.InvokeExZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
 			return s.proxy.Handle(ctx, req)
 		})
 	})
@@ -218,7 +219,7 @@ func (s *ManagementService) invokeService(ctx context.Context, request *internal
 	req := leader.NewHandleServiceRequest(request)
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return model.InvokeExZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+		return core.InvokeExZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
 			return s.proxy.Handle(ctx, req)
 		})
 	})
@@ -234,7 +235,7 @@ func (s *ManagementService) invokeDomain(ctx context.Context, request *internal_
 	req := leader.NewHandleDomainRequest(request)
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return model.InvokeExZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+		return core.InvokeExZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
 			return s.proxy.Handle(ctx, req)
 		})
 	})

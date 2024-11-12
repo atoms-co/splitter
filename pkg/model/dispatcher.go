@@ -218,7 +218,7 @@ func NewProcessorEx[T, K any, V Range](cl clock.Clock, rfn RemoteFn[T], fn func(
 func (p *Processor[T, K, V]) Init(service QualifiedServiceName, pool ConnectionPool) {
 	p.service = service
 	p.pool = pool
-	p.resolver = NewDomainResolver(pool, p.rfn, p.key)
+	p.resolver = NewDomainResolver(pool, p.rfn, p.DomainKey)
 	p.initialized.Close()
 }
 
@@ -308,7 +308,7 @@ func (p *Processor[T, K, V]) handle(ctx context.Context, fn RangeFactory[V], gra
 
 func (p *Processor[T, K, V]) Lookup(key K, grants ...GrantState) (V, bool) {
 	<-p.initialized.Closed()
-	return p.grants.Lookup(p.key(key), grants...)
+	return p.grants.Lookup(p.DomainKey(key), grants...)
 }
 
 func (p *Processor[T, K, V]) Cluster() (Cluster, bool) {
@@ -321,7 +321,7 @@ func (p *Processor[T, K, V]) Resolve(ctx context.Context, key K) (T, error) {
 	return p.resolver.Resolve(ctx, key)
 }
 
-func (p *Processor[T, K, V]) key(key K) QualifiedDomainKey {
+func (p *Processor[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 	sdk := p.fn(key)
 	return QualifiedDomainKey{Domain: QualifiedDomainName{Service: p.service, Domain: sdk.Domain}, Key: sdk.Key}
 }
@@ -372,6 +372,11 @@ func (p *ProxyStub[T, K, V]) Resolve(ctx context.Context, key K) (T, error) {
 	return p.proxy.Resolve(ctx, key)
 }
 
+func (p *ProxyStub[T, K, V]) DomainKey(key K) QualifiedDomainKey {
+	<-p.initialized.Closed()
+	return p.proxy.DomainKey(key)
+}
+
 // Handle makes a grpc invocation to the owner of the given key, if remote, and calls the given
 // fallback function with the grant-owning value if locally owned. May returns ErrNotOwned if
 // the grant is in transition. Relies on InvokeEx for resolution.
@@ -384,18 +389,22 @@ func (p *ProxyStub[T, K, V]) Resolve(ctx context.Context, key K) (T, error) {
 //	    return v.Info(parsed, ...)
 //	})
 func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key K, fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A, local func(V) (B, error)) (B, error) {
-	var res Resolver[T, K] = p // local variable needed to aid type checker
-
 	// Check if a grant is present locally to guard against a stale cluster map.
 	// We have to be careful to not pick a non-owner based on resolution rules,
 	// so we look up using ACTIVE only. Otherwise, an UNLOADED local range will
 	// be picked over a remote LOADED, which is suboptimal.
 
 	if r, ok := p.Lookup(key, ActiveGrantState); ok {
-		return local(r)
+		rt, err := local(r)
+		if err != nil {
+			recordHandledRequest(ctx, p.DomainKey(key).Domain, err.Error())
+		} else {
+			recordHandledRequest(ctx, p.DomainKey(key).Domain, "ok")
+		}
+		return rt, err
 	}
 
-	return InvokeEx(ctx, res, key, fn, a, func() (B, error) {
+	return InvokeEx(ctx, p, key, fn, a, func() (B, error) {
 		if r, ok := p.Lookup(key); ok {
 			return local(r)
 		}

@@ -1,7 +1,9 @@
 package model
 
 import (
+	"context"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/slicex"
 	"fmt"
 )
 
@@ -64,4 +66,17 @@ func sourceTag() metrics.Tag {
 
 func sourceVersionTag(v string) metrics.Tag {
 	return metrics.Tag{Key: sourceVersionKey, Value: v}
+}
+
+var (
+	numForwarded = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey)...)
+	numHandled   = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey)...)
+)
+
+func recordForwardedRequest(ctx context.Context, domain QualifiedDomainName, result string) {
+	numForwarded.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result))...)
+}
+
+func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, result string) {
+	numHandled.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result))...)
 }
