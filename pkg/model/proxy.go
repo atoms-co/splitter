@@ -65,16 +65,18 @@ func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn f
 		if errors.Is(err, ErrNoResolution) {
 			rt, err := local()
 			if err != nil {
-				recordHandledRequest(ctx, p.DomainKey(key).Domain, err.Error())
+				recordHandledRequestError(ctx, p.DomainKey(key).Domain, "local", err)
 			} else {
-				recordHandledRequest(ctx, p.DomainKey(key).Domain, "ok")
+				recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", "ok")
 			}
 			return rt, err
 		}
 		var b B
 		return b, err
 	}
-	return fn(t, ctx, a)
+	rt, err := fn(t, ctx, a)
+	recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", "ok")
+	return rt, err
 }
 
 // InvokeExZero is an InvokeEx convenience wrapper using ZeroDomainKey. Suitable for Unit domains.

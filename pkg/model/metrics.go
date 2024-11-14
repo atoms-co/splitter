@@ -5,6 +5,7 @@ import (
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/slicex"
 	"fmt"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -14,6 +15,7 @@ const (
 	domainKey     metrics.Key = "domain"
 	operationKey  metrics.Key = "operation"
 	resultKey     metrics.Key = "result"
+	handlerKey    metrics.Key = "handler"
 	statusKey     metrics.Key = "status"
 	leaseStateKey metrics.Key = "lease_state"
 
@@ -56,6 +58,10 @@ func resultTag(result string) metrics.Tag {
 	return metrics.Tag{Key: resultKey, Value: result}
 }
 
+func handlerTag(handler string) metrics.Tag {
+	return metrics.Tag{Key: handlerKey, Value: handler}
+}
+
 func leaseStateTag(v LeaseState) metrics.Tag {
 	return metrics.Tag{Key: leaseStateKey, Value: fmt.Sprintf("%v", v)}
 }
@@ -70,13 +76,23 @@ func sourceVersionTag(v string) metrics.Tag {
 
 var (
 	numForwarded = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey)...)
-	numHandled   = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey)...)
+	numHandled   = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey)...)
 )
 
 func recordForwardedRequest(ctx context.Context, domain QualifiedDomainName, result string) {
 	numForwarded.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result))...)
 }
 
-func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, result string) {
-	numHandled.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result))...)
+func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, handler, result string) {
+	numHandled.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler))...)
+}
+
+func recordHandledRequestError(ctx context.Context, domain QualifiedDomainName, handler string, err error) {
+	var result string
+	if st, ok := status.FromError(err); ok {
+		result = st.Code().String()
+	} else {
+		result = "error"
+	}
+	numHandled.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler))...)
 }

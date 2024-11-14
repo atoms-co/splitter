@@ -397,9 +397,9 @@ func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key 
 	if r, ok := p.Lookup(key, ActiveGrantState); ok {
 		rt, err := local(r)
 		if err != nil {
-			recordHandledRequest(ctx, p.DomainKey(key).Domain, err.Error())
+			recordHandledRequestError(ctx, p.DomainKey(key).Domain, "local", err)
 		} else {
-			recordHandledRequest(ctx, p.DomainKey(key).Domain, "ok")
+			recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", "ok")
 		}
 		return rt, err
 	}
