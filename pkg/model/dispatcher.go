@@ -395,11 +395,13 @@ func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key 
 	// be picked over a remote LOADED, which is suboptimal.
 
 	if r, ok := p.Lookup(key, ActiveGrantState); ok {
+		domain := p.DomainKey(key).Domain
+		recordForwardedRequest(ctx, domain, "local", "ok")
 		rt, err := local(r)
 		if err != nil {
-			recordHandledRequestError(ctx, p.DomainKey(key).Domain, "local", err)
+			recordHandledRequestError(ctx, domain, "local", err)
 		} else {
-			recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", "ok")
+			recordHandledRequest(ctx, domain, "local", "ok")
 		}
 		return rt, err
 	}

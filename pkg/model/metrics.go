@@ -75,12 +75,12 @@ func sourceVersionTag(v string) metrics.Tag {
 }
 
 var (
-	numForwarded = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey)...)
+	numForwarded = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey)...)
 	numHandled   = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey)...)
 )
 
-func recordForwardedRequest(ctx context.Context, domain QualifiedDomainName, result string) {
-	numForwarded.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result))...)
+func recordForwardedRequest(ctx context.Context, domain QualifiedDomainName, handler, result string) {
+	numForwarded.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler))...)
 }
 
 func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, handler, result string) {

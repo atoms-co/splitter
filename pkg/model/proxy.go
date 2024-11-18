@@ -121,17 +121,21 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 		if instance, _, ok := c.Lookup(key, r.states...); ok {
 			con, err := r.pool.Resolve(ctx, instance)
 			if err != nil {
-				recordForwardedRequest(ctx, key.Domain, err.Error())
+				if errors.Is(err, ErrNoResolution) {
+					recordForwardedRequest(ctx, key.Domain, "local", "ok")
+				} else {
+					recordForwardedRequest(ctx, key.Domain, "remote", err.Error())
+				}
 				return zero, err
 			}
-			recordForwardedRequest(ctx, key.Domain, "ok")
+			recordForwardedRequest(ctx, key.Domain, "remote", "ok")
 			return r.fn(con), nil
 		}
-		recordForwardedRequest(ctx, key.Domain, "owner_not_found")
+		recordForwardedRequest(ctx, key.Domain, "unknown", "owner_not_found")
 		return zero, fmt.Errorf("no owner: %w", ErrNotFound)
 	}
 
-	recordForwardedRequest(ctx, key.Domain, "not_initialized")
+	recordForwardedRequest(ctx, key.Domain, "unknown", "not_initialized")
 	return zero, fmt.Errorf("not initialized: %w", ErrNotFound)
 }
 
