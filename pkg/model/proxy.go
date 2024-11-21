@@ -75,7 +75,11 @@ func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn f
 		return b, err
 	}
 	rt, err := fn(t, ctx, a)
-	recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", "ok")
+	if err != nil {
+		recordHandledRequestError(ctx, p.DomainKey(key).Domain, "remote", err)
+	} else {
+		recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", "ok")
+	}
 	return rt, err
 }
 
