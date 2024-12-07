@@ -23,7 +23,7 @@ func NewWorker[K comparable, V any](id K, data V) Worker[K, V] {
 }
 
 func (w Worker[K, V]) String() string {
-	return fmt.Sprintf("%v@%v", w.ID, w.Data)
+	return fmt.Sprintf("Worker[id=%v, data=%v]", w.ID, w.Data)
 }
 
 type WorkerState string
@@ -46,7 +46,7 @@ func (w WorkerInfo[K, V]) ID() K {
 }
 
 func (w WorkerInfo[K, V]) String() string {
-	return fmt.Sprintf("%v[state=%v, lease=%v]", w.Instance, w.State, w.Lease)
+	return fmt.Sprintf("WorkerInfo[instance=%v, state=%v, lease=%v]", w.Instance, w.State, w.Lease)
 }
 
 // live is a grant with worker lease expiration.

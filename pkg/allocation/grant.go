@@ -95,7 +95,7 @@ func (g Grant[T, K]) WithExpiration(expiration time.Time) Grant[T, K] {
 }
 
 func (g Grant[T, K]) String() string {
-	return fmt.Sprintf("%v@%v[state=%v, unit=%v, assigned=%v, expiration=%v]", g.ID, g.Worker, g.State, g.Unit, g.Assigned.Unix(), g.Expiration.Unix())
+	return fmt.Sprintf("Grant[id=%v, worker=%v, state=%v, unit=%v, assigned=%v, expiration=%v]", g.ID, g.Worker, g.State, g.Unit, g.Assigned.Unix(), g.Expiration.Unix())
 }
 
 // Assignments holds assigned grants by status, i.e., steady, incoming and outgoing.
