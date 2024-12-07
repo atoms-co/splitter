@@ -83,16 +83,16 @@ func recordForwardedRequest(ctx context.Context, domain QualifiedDomainName, han
 	numForwarded.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler))...)
 }
 
-func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, handler, result string) {
-	numHandled.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler))...)
-}
-
-func recordHandledRequestError(ctx context.Context, domain QualifiedDomainName, handler string, err error) {
+func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, handler string, err error) {
 	var result string
-	if st, ok := status.FromError(err); ok {
-		result = st.Code().String()
+	if err == nil {
+		result = "ok"
 	} else {
-		result = "error"
+		if st, ok := status.FromError(err); ok {
+			result = st.Code().String()
+		} else {
+			result = "error"
+		}
 	}
 	numHandled.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler))...)
 }

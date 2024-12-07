@@ -64,22 +64,14 @@ func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn f
 	if err != nil {
 		if errors.Is(err, ErrNoResolution) {
 			rt, err := local()
-			if err != nil {
-				recordHandledRequestError(ctx, p.DomainKey(key).Domain, "local", err)
-			} else {
-				recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", "ok")
-			}
+			recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", err)
 			return rt, err
 		}
 		var b B
 		return b, err
 	}
 	rt, err := fn(t, ctx, a)
-	if err != nil {
-		recordHandledRequestError(ctx, p.DomainKey(key).Domain, "remote", err)
-	} else {
-		recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", "ok")
-	}
+	recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", err)
 	return rt, err
 }
 

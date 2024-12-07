@@ -326,14 +326,22 @@ func (p *Processor[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 	return QualifiedDomainKey{Domain: QualifiedDomainName{Service: p.service, Domain: sdk.Domain}, Key: sdk.Key}
 }
 
+// GrantResolver provides access to the local grant-owning V-typed values of a domain.
+// The K-typed keys are mapped to a DomainKey to determine grant ownership.
+type GrantResolver[K, V any] interface {
+	// Lookup returns the value owning the key, if local.
+	Lookup(key K, grants ...GrantState) (V, bool)
+
+	DomainKey(key K) QualifiedDomainKey
+}
+
 // Proxy provides access to the grant-owning V-typed values of a domain, whether local or remote. It also
 // includes the Cluster. The K-typed keys are mapped to a DomainKey to determine grant ownership. Local
 // ownership is directly available for local-only uses, such as peer server implementation.
 type Proxy[T, K, V any] interface {
+	GrantResolver[K, V]
 	Resolver[T, K]
 
-	// Lookup returns the value owning the key, if local.
-	Lookup(key K, grants ...GrantState) (V, bool)
 	// Cluster returns the Cluster if present. It matches local Range lifecycle, modulo timing and failures.
 	Cluster() (Cluster, bool)
 }
@@ -398,11 +406,7 @@ func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key 
 		domain := p.DomainKey(key).Domain
 		recordForwardedRequest(ctx, domain, "local", "ok")
 		rt, err := local(r)
-		if err != nil {
-			recordHandledRequestError(ctx, domain, "local", err)
-		} else {
-			recordHandledRequest(ctx, domain, "local", "ok")
-		}
+		recordHandledRequest(ctx, domain, "local", err)
 		return rt, err
 	}
 
@@ -413,4 +417,18 @@ func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key 
 		var b B
 		return b, ErrNotOwned
 	})
+}
+
+// HandleLocal finds a local handler for a key and invokes a handler with the owner.
+// Returns ErrNotOwned if the key is not owned locally.
+func HandleLocal[K, V, REQ, RESP any](ctx context.Context, r GrantResolver[K, V], key K, req REQ, handler func(V, context.Context, REQ) (RESP, error)) (RESP, error) {
+	domain := r.DomainKey(key).Domain
+	if g, ok := r.Lookup(key); ok {
+		rt, err := handler(g, ctx, req)
+		recordHandledRequest(ctx, domain, "local", err)
+		return rt, err
+	}
+	var resp RESP
+	recordHandledRequest(ctx, domain, "local", ErrNotOwned)
+	return resp, ErrNotOwned
 }
