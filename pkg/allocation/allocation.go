@@ -180,10 +180,11 @@ func (a *Allocation[T, W, K, V]) Attach(inst Worker[K, V], limit Load, lease tim
 			return Assignments[T, K]{}, false
 		}
 
-		// Case 1: Re-attach. Ignore claimed grants and restore prior known state. We don't re-compute
-		// placements or loads as they are assumed to not change.
+		// Case 1: Re-attach. Ignore claimed grants and restore prior known state with an update lease.
+		// We don't re-compute placements or loads as they are assumed to not change.
 
 		w.info.State = Attached
+		w.info.Lease = lease
 		return w.Assignments(), true
 	}
 

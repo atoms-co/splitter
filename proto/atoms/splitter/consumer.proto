@@ -38,6 +38,7 @@ message Grant {
   Shard shard = 2;
   GrantState state = 3;
 
+  // Lease of the grant. Informational for allocated and active grants (they follow consumer lease).
   google.protobuf.Timestamp lease = 4;
   // Assigned is the time when this grant was assigned to the shard with the status
   google.protobuf.Timestamp assigned = 5;
