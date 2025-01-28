@@ -63,6 +63,12 @@ func (t TenantOperational) String() string {
 
 type ServiceOperationalOption func(*public_v1.Service_Operational)
 
+func WithServiceOperationalLocked(locked bool) ServiceOperationalOption {
+	return func(s *public_v1.Service_Operational) {
+		s.Locked = locked
+	}
+}
+
 func WithServiceOperationalBannedRegions(regions ...Region) ServiceOperationalOption {
 	return func(t *public_v1.Service_Operational) {
 		t.BannedRegions = slicex.Map(regions, func(r Region) string {
@@ -127,6 +133,12 @@ func (t ServiceOperational) String() string {
 }
 
 type DomainOperationalOption func(*public_v1.Domain_Operational)
+
+func WithDomainOperationalLocked(locked bool) DomainOperationalOption {
+	return func(d *public_v1.Domain_Operational) {
+		d.Locked = locked
+	}
+}
 
 func WithDomainOperationalBannedRegions(regions ...Region) DomainOperationalOption {
 	return func(t *public_v1.Domain_Operational) {

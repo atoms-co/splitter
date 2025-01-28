@@ -126,6 +126,7 @@ func makeUpdateServiceCmd() *cobra.Command {
 	region := cmd.Flags().String("region", "", "Region")
 	overrides := cmd.Flags().StringSlice("locality-overrides", []string{}, "locality overrides. e.g. us-west1:centralus")
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
+	locked := cmd.Flags().Bool("locked", false, "locked operational state")
 	disableLB := cmd.Flags().Bool("disable-load-balance", true, "disable load balance")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -155,6 +156,9 @@ func makeUpdateServiceCmd() *cobra.Command {
 			opOpts = append(opOpts, model.WithServiceOperationalBannedRegions(slicex.Map(*banned, func(r string) model.Region {
 				return model.Region(r)
 			})...))
+		}
+		if cmd.Flag("locked").Changed {
+			opOpts = append(opOpts, model.WithServiceOperationalLocked(*locked))
 		}
 		if cmd.Flag("disable-load-balance").Changed {
 			opOpts = append(opOpts, model.WithServiceOperationalDisableLoadBalance(*disableLB))

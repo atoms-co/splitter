@@ -94,6 +94,10 @@ message Service {
   message Operational {
     repeated string banned_regions = 1;
     bool disable_load_balance = 2;
+    // Used by external tools to indicate that user-initiated actions on this domain are not allowed
+    // (such as changing the Domain State from ACTIVE to SUSPENDED).
+    // Has precedence over the Domain Operational locked setting.
+    bool locked = 3;
   }
   // Operational controls on Service (manually controlled)
   Operational operational = 4;
@@ -164,6 +168,9 @@ message Domain {
 
   message Operational {
     repeated string banned_regions = 1;
+    // Used by external tools to indicate that user-initiated actions on this domain are not allowed
+    // (such as changing the Domain State from ACTIVE to SUSPENDED)
+    bool locked = 2;
   }
   // Operational controls on Domain (manually controlled)
   Operational operational = 6;

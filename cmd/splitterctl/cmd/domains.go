@@ -251,6 +251,7 @@ func makeUpdateDomainCmd() *cobra.Command {
 
 	state := cmd.Flags().String("state", "", "State")
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
+	locked := cmd.Flags().Bool("locked", false, "Locked operational state")
 	shards := cmd.Flags().Int("shards", -1, "Shard count")
 	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 
@@ -303,6 +304,9 @@ func makeUpdateDomainCmd() *cobra.Command {
 			opOptions = append(opOptions, model.WithDomainOperationalBannedRegions(slicex.Map(*banned, func(r string) model.Region {
 				return model.Region(r)
 			})...))
+		}
+		if cmd.Flag("locked").Changed {
+			opOptions = append(opOptions, model.WithDomainOperationalLocked(*locked))
 		}
 
 		if len(opts) == 0 && len(opOptions) == 0 && len(sCfgOpts) == 0 {
