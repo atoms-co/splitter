@@ -192,3 +192,5 @@ func (t DomainOperational) BannedRegions() []Region {
 func (t DomainOperational) String() string {
 	return proto.MarshalTextString(t.pb)
 }
+
+func (t DomainOperational) Locked() bool { return t.pb.GetLocked() }
