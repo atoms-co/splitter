@@ -9,7 +9,6 @@ import (
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"fmt"
-	"google.golang.org/grpc"
 	"time"
 )
 
@@ -396,7 +395,7 @@ func (p *ProxyStub[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 //	resp, err := splitter.Handle(ctx, proxy, key, v1.FooServiceClient.Info, req, func(v V) (*v1.InfoResponse, error) {
 //	    return v.Info(parsed, ...)
 //	})
-func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key K, fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A, local func(V) (B, error)) (B, error) {
+func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, local func(V) (B, error)) (B, error) {
 	// Check if a grant is present locally to guard against a stale cluster map.
 	// We have to be careful to not pick a non-owner based on resolution rules,
 	// so we look up using ACTIVE only. Otherwise, an UNLOADED local range will

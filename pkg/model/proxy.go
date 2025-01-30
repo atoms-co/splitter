@@ -26,6 +26,9 @@ type Resolver[T, K any] interface {
 	DomainKey(key K) QualifiedDomainKey
 }
 
+// GRPCMethod is a function signature for invoking a method on a gPRC client, e.g. v1.FooServiceClient.Handle
+type GRPCMethod[T, A, B any] func(T, context.Context, A, ...grpc.CallOption) (B, error)
+
 // Invoke makes a grpc invocation to the owner of the given key. This convenience function mimics
 // a normal grpc invocation and allows the generalized version to be a single line of code.
 //
@@ -33,7 +36,7 @@ type Resolver[T, K any] interface {
 //
 //	resp, err := client.Info(ctx, req)
 //	resp, err := splitter.Invoke(ctx, proxy, key, v1.FooServiceClient.Info, req)
-func Invoke[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A) (B, error) {
+func Invoke[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn GRPCMethod[T, A, B], a A) (B, error) {
 	t, err := p.Resolve(ctx, key)
 	if err != nil {
 		var b B
@@ -43,7 +46,7 @@ func Invoke[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn fun
 }
 
 // InvokeZero is an Invoke convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
-func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A) (B, error) {
+func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn GRPCMethod[T, A, B], a A) (B, error) {
 	return Invoke(ctx, p, ZeroDomainKey, fn, a)
 }
 
@@ -59,7 +62,7 @@ func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn f
 //		resp, err := splitter.InvokeEx(ctx, proxy, key, v1.FooServiceClient.Info, req, func() (*v1.InfoResponse, error) {
 //	     return local.Info(parsed, ...)
 //	 })
-func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A, local func() (B, error)) (B, error) {
+func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn GRPCMethod[T, A, B], a A, local func() (B, error)) (B, error) {
 	t, err := p.Resolve(ctx, key)
 	if err != nil {
 		if errors.Is(err, ErrNoResolution) {
@@ -76,7 +79,7 @@ func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn f
 }
 
 // InvokeExZero is an InvokeEx convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
-func InvokeExZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn func(T, context.Context, A, ...grpc.CallOption) (B, error), a A, local func() (B, error)) (B, error) {
+func InvokeExZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn GRPCMethod[T, A, B], a A, local func() (B, error)) (B, error) {
 	return InvokeEx(ctx, p, ZeroDomainKey, fn, a, local)
 }
 
