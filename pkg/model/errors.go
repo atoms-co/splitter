@@ -10,10 +10,6 @@ import (
 	"time"
 )
 
-const (
-	OwnershipTimeout = 30 * time.Second
-)
-
 var (
 	ErrNotFound        = errors.New("not found")
 	ErrAlreadyExists   = errors.New("already exists")
