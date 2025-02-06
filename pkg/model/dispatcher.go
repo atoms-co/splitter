@@ -386,7 +386,7 @@ func (p *ProxyStub[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 
 // Handle makes a grpc invocation to the owner of the given key, if remote, and calls the given
 // fallback function with the grant-owning value if locally owned. May returns ErrNotOwned if
-// the grant is in transition. Relies on InvokeEx for resolution.
+// the grant is in transition. Relies on Invoke for resolution.
 //
 // For example, using Proxy[v1.FooServiceClient, K, V], a call looks like the following:
 //
@@ -409,7 +409,7 @@ func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key 
 		return rt, err
 	}
 
-	return InvokeEx(ctx, p, key, fn, a, func() (B, error) {
+	return Invoke(ctx, p, key, fn, a, func() (B, error) {
 		if r, ok := p.Lookup(key); ok {
 			return local(r)
 		}

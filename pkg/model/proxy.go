@@ -29,28 +29,7 @@ type Resolver[T, K any] interface {
 // GRPCMethod is a function signature for invoking a method on a gPRC client, e.g. v1.FooServiceClient.Handle
 type GRPCMethod[T, A, B any] func(T, context.Context, A, ...grpc.CallOption) (B, error)
 
-// Invoke makes a grpc invocation to the owner of the given key. This convenience function mimics
-// a normal grpc invocation and allows the generalized version to be a single line of code.
-//
-// For example, using Proxy[v1.FooServiceClient], the following becomes equivalent:
-//
-//	resp, err := client.Info(ctx, req)
-//	resp, err := splitter.Invoke(ctx, proxy, key, v1.FooServiceClient.Info, req)
-func Invoke[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn GRPCMethod[T, A, B], a A) (B, error) {
-	t, err := p.Resolve(ctx, key)
-	if err != nil {
-		var b B
-		return b, err
-	}
-	return fn(t, ctx, a)
-}
-
-// InvokeZero is an Invoke convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
-func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn GRPCMethod[T, A, B], a A) (B, error) {
-	return Invoke(ctx, p, ZeroDomainKey, fn, a)
-}
-
-// InvokeEx makes a grpc invocation to the owner of the given key, if remote, and calls the
+// Invoke makes a grpc invocation to the owner of the given key, if remote, and calls the
 // given fallback function if resolution fails (likely due to local owner). The fallback function
 // may use a different signature and by unrelated to grpc. It is called only on no resolution.
 // Any retry -- notably on ErrNotOwned -- should re-resolve the owner.
@@ -59,10 +38,10 @@ func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn G
 //
 //	 parsed := parse(req)
 //	 ... determine key ...
-//		resp, err := splitter.InvokeEx(ctx, proxy, key, v1.FooServiceClient.Info, req, func() (*v1.InfoResponse, error) {
+//		resp, err := splitter.Invoke(ctx, proxy, key, v1.FooServiceClient.Info, req, func() (*v1.InfoResponse, error) {
 //	     return local.Info(parsed, ...)
 //	 })
-func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn GRPCMethod[T, A, B], a A, local func() (B, error)) (B, error) {
+func Invoke[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn GRPCMethod[T, A, B], a A, local func() (B, error)) (B, error) {
 	t, err := p.Resolve(ctx, key)
 	if err != nil {
 		if errors.Is(err, ErrNoResolution) {
@@ -78,9 +57,9 @@ func InvokeEx[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn G
 	return rt, err
 }
 
-// InvokeExZero is an InvokeEx convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
-func InvokeExZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn GRPCMethod[T, A, B], a A, local func() (B, error)) (B, error) {
-	return InvokeEx(ctx, p, ZeroDomainKey, fn, a, local)
+// InvokeZero is an Invoke convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
+func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn GRPCMethod[T, A, B], a A, local func() (B, error)) (B, error) {
+	return Invoke(ctx, p, ZeroDomainKey, fn, a, local)
 }
 
 // RemoteFn is a method for creating a new gRPC client from a grpc.ClientConnInterface.
@@ -89,7 +68,7 @@ type RemoteFn[T any] func(grpc.ClientConnInterface) T
 
 // NOTE(herohde) 9/4/2023: the unification in Splitter1 of local/remote T created some clunky grpc wrappers
 // with re-serialization. To avoid the need for those, we move the local check out of the proxy.
-// The InvokeEx is an attempt at what a unified call may look like. Use func(ctx, a) (B, error) to
+// The Invoke is an attempt at what a unified call may look like. Use func(ctx, a) (B, error) to
 // not force a closure as a variant?
 
 // resolver is a low-level helper for redirecting requests to the shard owner, using a connection pool. Multiple

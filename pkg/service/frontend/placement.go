@@ -130,7 +130,7 @@ func (i *InternalPlacementService) invoke(ctx context.Context, request *internal
 	req := leader.NewHandlePlacementRequest(request)
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return core.InvokeExZero(ctx, i.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+		return core.InvokeZero(ctx, i.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
 			return i.proxy.Handle(ctx, req)
 		})
 	})

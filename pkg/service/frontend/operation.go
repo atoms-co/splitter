@@ -47,7 +47,7 @@ func (o *OperationService) CoordinatorInfo(ctx context.Context, request *interna
 		})
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.InvokeEx(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
 			return o.worker.Handle(ctx, req)
 		})
 	})
@@ -73,7 +73,7 @@ func (o *OperationService) CoordinatorRestart(ctx context.Context, request *inte
 		})
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.InvokeEx(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
 			return o.worker.Handle(ctx, req)
 		})
 	})
@@ -99,7 +99,7 @@ func (o *OperationService) CoordinatorClusterSync(ctx context.Context, request *
 		})
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.InvokeEx(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
 			return o.worker.Handle(ctx, req)
 		})
 	})
@@ -125,7 +125,7 @@ func (o *OperationService) ConsumerSuspend(ctx context.Context, request *interna
 		})
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.InvokeEx(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
 			return o.worker.Handle(ctx, req)
 		})
 	})
@@ -151,7 +151,7 @@ func (o *OperationService) ConsumerResume(ctx context.Context, request *internal
 		})
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.InvokeEx(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
 			return o.worker.Handle(ctx, req)
 		})
 	})
@@ -177,7 +177,7 @@ func (o *OperationService) ConsumerDrain(ctx context.Context, request *internal_
 		})
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.InvokeEx(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
 			return o.worker.Handle(ctx, req)
 		})
 	})
@@ -203,7 +203,7 @@ func (o *OperationService) Snapshot(ctx context.Context, request *internal_v1.Sn
 	})
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return core.InvokeExZero(ctx, o.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+		return core.InvokeZero(ctx, o.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
 			return o.proxy.Handle(ctx, req)
 		})
 	})
@@ -223,7 +223,7 @@ func (o *OperationService) Restore(ctx context.Context, request *internal_v1.Res
 	})
 
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return core.InvokeExZero(ctx, o.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+		return core.InvokeZero(ctx, o.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
 			return o.proxy.Handle(ctx, req)
 		})
 	})
