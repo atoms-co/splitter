@@ -42,6 +42,8 @@ type GRPCMethod[T, A, B any] func(T, context.Context, A, ...grpc.CallOption) (B,
 //		resp, err := splitter.Invoke(ctx, proxy, key, v1.FooServiceClient.Info, req, func() (*v1.InfoResponse, error) {
 //	     return local.Info(parsed, ...)
 //	 })
+//
+// Deprecated: Use Handle instead.
 func Invoke[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn GRPCMethod[T, A, B], a A, local func() (B, error)) (B, error) {
 	t, err := p.Resolve(ctx, key)
 	if err != nil {
@@ -56,11 +58,6 @@ func Invoke[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn GRP
 	rt, err := fn(t, ctx, a)
 	recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", err)
 	return rt, err
-}
-
-// InvokeZero is an Invoke convenience wrapper using ZeroDomainKey. Suitable for Unit domains.
-func InvokeZero[T, A, B any](ctx context.Context, p Resolver[T, DomainKey], fn GRPCMethod[T, A, B], a A, local func() (B, error)) (B, error) {
-	return Invoke(ctx, p, ZeroDomainKey, fn, a, local)
 }
 
 // RemoteFn is a method for creating a new gRPC client from a grpc.ClientConnInterface.
