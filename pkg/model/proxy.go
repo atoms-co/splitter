@@ -13,10 +13,11 @@ var (
 )
 
 // SimpleResolver resolves ownership of a key of type K to a proxy object of type T. Each proxy is typically instantiated
-// with a grpc service client, such as Proxy[v1.FooServiceClient] for remote invocation only. Returns ErrNoResolution
-// if resolution fails (possibly due to local ownership), ErrInvalid if the key is not valid, or ErrNotFound when
-// information about owner cannot be found (e.g. when key is not owned).
+// with a grpc service client, such as Proxy[v1.FooServiceClient] for remote invocation only.
 type SimpleResolver[T, K any] interface {
+	// Resolve resolves ownership of a key of type K to a proxy object of type T. Returns ErrNoResolution if
+	// resolution fails (possibly due to local ownership) or ErrNotFound when information about owner cannot be found
+	// (e.g. when key is not owned).
 	Resolve(ctx context.Context, key K) (T, error)
 }
 
