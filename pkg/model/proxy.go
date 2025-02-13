@@ -2,15 +2,98 @@ package model
 
 import (
 	"context"
+	"go.atoms.co/lib/backoffx"
+	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"errors"
 	"fmt"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"time"
 )
 
 var (
+	// ErrNotOwned is used by Splitter client to indicate that the key is not owned by an instance. This could happen
+	// when cluster information is stale and points a key to a non-owner.
+	// The recommended way to use this error is to wrap it in a gRPC error (using OwnershipErrorToGRPC) and convert
+	// it back to ErrNotOwned (using OwnershipErrorFromGRPC). This allows to use IsOwnershipError and RetryOwnership1
+	// to handle retries on ownership changes.
+	ErrNotOwned = errors.New("not owned")
+
+	// ErrDraining is not returned by Splitter client, but can be used by the client to indicate that the instance is
+	// draining and the forwarding instance should re-try the request.
+	// The recommended way to use this error is to wrap it in a gRPC error (using OwnershipErrorToGRPC) and convert
+	// it back to ErrDraining (using OwnershipErrorFromGRPC). This allows to use IsOwnershipError and RetryOwnership1
+	// to handle retries when instances are drained.
+	ErrDraining = errors.New("draining")
+
+	// ErrNoResolution is returned when no resolution is possible, e.g. due to local ownership. This error
+	// should only be handled by clients that use the resolver.
 	ErrNoResolution = errors.New("no resolution")
 )
+
+// IsOwnershipError returns true if the error is likely due to imminent or ongoing shift in ownership,
+// incl. grpc Unavailable.
+func IsOwnershipError(err error) bool {
+	if st, ok := status.FromError(err); ok && st.Code() == codes.Unavailable {
+		return true
+	}
+	return errors.Is(err, ErrDraining) || errors.Is(err, ErrNotOwned)
+}
+
+// RetryOwnership1 is a retry wrapper for ownership errors only.
+func RetryOwnership1[T any](ctx context.Context, duration time.Duration, fn func(ctx context.Context) (T, error)) (T, error) {
+	wctx, cancel := context.WithTimeout(ctx, duration)
+	defer cancel()
+
+	b := backoffx.NewLimited(duration, backoffx.WithInitialInterval(time.Second), backoffx.WithMaxInterval(5*time.Second))
+
+	return backoffx.Retry1(b, func() (T, error) {
+		t, err := fn(wctx)
+		if contextx.IsCancelled(wctx) {
+			return t, backoffx.ErrPermanent(err) // don't retry: cancelled
+		}
+		oerr, _ := OwnershipErrorFromGRPC(err)
+		if !IsOwnershipError(oerr) {
+			return t, backoffx.ErrPermanent(err) // don't retry: not ownership error
+		}
+		return t, err
+	})
+}
+
+// OwnershipErrorToGRPC wraps a logic ownership error into a grpc error.
+func OwnershipErrorToGRPC(err error) (error, bool) {
+	if err == nil {
+		return nil, true
+	}
+	switch {
+	case errors.Is(err, ErrNotOwned):
+		return status.Error(codes.OutOfRange, err.Error()), true // code used internally for serialization only
+	case errors.Is(err, ErrDraining):
+		return status.Error(codes.Aborted, err.Error()), true // code used internally for serialization only
+	}
+	return err, false
+}
+
+// OwnershipErrorFromGRPC recovers a logic ownership error from a grpc error.
+func OwnershipErrorFromGRPC(err error) (error, bool) {
+	if err == nil {
+		return nil, true
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		return err, false
+	}
+
+	switch st.Code() {
+	case codes.OutOfRange:
+		return ErrNotOwned, true // code used internally for serialization only
+	case codes.Aborted:
+		return ErrDraining, true // code used internally for serialization only
+	}
+	return err, false
+}
 
 // SimpleResolver resolves ownership of a key of type K to a proxy object of type T. Each proxy is typically instantiated
 // with a grpc service client, such as Proxy[v1.FooServiceClient] for remote invocation only.
