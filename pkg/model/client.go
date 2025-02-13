@@ -363,7 +363,7 @@ func (c *client) ListTenants(ctx context.Context) ([]TenantInfo, error) {
 	req := &public_v1.ListTenantsRequest{}
 	resp, err := c.management.ListTenants(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, UnwrapError(err)
 	}
 	return slicex.Map(resp.GetTenants(), WrapTenantInfo), nil
 }
@@ -375,7 +375,7 @@ func (c *client) NewTenant(ctx context.Context, name TenantName, cfg TenantConfi
 	}
 	resp, err := c.management.NewTenant(ctx, req)
 	if err != nil {
-		return TenantInfo{}, err
+		return TenantInfo{}, UnwrapError(err)
 	}
 	return WrapTenantInfo(resp.GetTenant()), nil
 }
@@ -384,7 +384,7 @@ func (c *client) InfoTenant(ctx context.Context, name TenantName) (TenantInfo, e
 	req := &public_v1.InfoTenantRequest{Name: string(name)}
 	resp, err := c.management.InfoTenant(ctx, req)
 	if err != nil {
-		return TenantInfo{}, err
+		return TenantInfo{}, UnwrapError(err)
 	}
 	return WrapTenantInfo(resp.GetTenant()), nil
 }
@@ -400,7 +400,7 @@ func (c *client) UpdateTenant(ctx context.Context, name TenantName, guard Versio
 
 	upd, err := c.management.UpdateTenant(ctx, req)
 	if err != nil {
-		return TenantInfo{}, err
+		return TenantInfo{}, UnwrapError(err)
 	}
 	return WrapTenantInfo(upd.GetTenant()), nil
 }
@@ -408,7 +408,7 @@ func (c *client) UpdateTenant(ctx context.Context, name TenantName, guard Versio
 func (c *client) DeleteTenant(ctx context.Context, name TenantName) error {
 	req := &public_v1.DeleteTenantRequest{Name: string(name)}
 	_, err := c.management.DeleteTenant(ctx, req)
-	return err
+	return UnwrapError(err)
 }
 
 func (c *client) ListServices(ctx context.Context, tenant TenantName) ([]ServiceInfoEx, error) {
@@ -417,7 +417,7 @@ func (c *client) ListServices(ctx context.Context, tenant TenantName) ([]Service
 	}
 	resp, err := c.management.ListServices(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, UnwrapError(err)
 	}
 	return slicex.Map(resp.GetServices(), WrapServiceInfoEx), nil
 }
@@ -429,7 +429,7 @@ func (c *client) NewService(ctx context.Context, name QualifiedServiceName, cfg 
 	}
 	resp, err := c.management.NewService(ctx, req)
 	if err != nil {
-		return ServiceInfo{}, err
+		return ServiceInfo{}, UnwrapError(err)
 	}
 	return WrapServiceInfo(resp.GetService()), nil
 }
@@ -438,7 +438,7 @@ func (c *client) InfoService(ctx context.Context, name QualifiedServiceName) (Se
 	req := &public_v1.InfoServiceRequest{Name: name.ToProto()}
 	resp, err := c.management.InfoService(ctx, req)
 	if err != nil {
-		return ServiceInfoEx{}, err
+		return ServiceInfoEx{}, UnwrapError(err)
 	}
 	return WrapServiceInfoEx(resp.GetService()), nil
 }
@@ -454,7 +454,7 @@ func (c *client) UpdateService(ctx context.Context, name QualifiedServiceName, g
 
 	upd, err := c.management.UpdateService(ctx, req)
 	if err != nil {
-		return ServiceInfo{}, err
+		return ServiceInfo{}, UnwrapError(err)
 	}
 	return WrapServiceInfo(upd.GetService()), nil
 }
@@ -462,7 +462,7 @@ func (c *client) UpdateService(ctx context.Context, name QualifiedServiceName, g
 func (c *client) DeleteService(ctx context.Context, name QualifiedServiceName) error {
 	req := &public_v1.DeleteServiceRequest{Name: name.ToProto()}
 	_, err := c.management.DeleteService(ctx, req)
-	return err
+	return UnwrapError(err)
 }
 
 func (c *client) ListDomains(ctx context.Context, service QualifiedServiceName) ([]Domain, error) {
@@ -471,7 +471,7 @@ func (c *client) ListDomains(ctx context.Context, service QualifiedServiceName) 
 	}
 	resp, err := c.management.ListDomains(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, UnwrapError(err)
 	}
 	return slicex.Map(resp.GetDomains(), WrapDomain), nil
 }
@@ -487,7 +487,7 @@ func (c *client) NewDomain(ctx context.Context, name QualifiedDomainName, domain
 	}
 	resp, err := c.management.NewDomain(ctx, req)
 	if err != nil {
-		return Domain{}, err
+		return Domain{}, UnwrapError(err)
 	}
 	return WrapDomain(resp.GetDomain()), nil
 }
@@ -503,7 +503,7 @@ func (c *client) UpdateDomain(ctx context.Context, name QualifiedDomainName, gua
 
 	upd, err := c.management.UpdateDomain(ctx, req)
 	if err != nil {
-		return Domain{}, err
+		return Domain{}, UnwrapError(err)
 	}
 	return WrapDomain(upd.GetDomain()), nil
 }
@@ -511,7 +511,7 @@ func (c *client) UpdateDomain(ctx context.Context, name QualifiedDomainName, gua
 func (c *client) DeleteDomain(ctx context.Context, name QualifiedDomainName) error {
 	req := &public_v1.DeleteDomainRequest{Name: name.ToProto()}
 	_, err := c.management.DeleteDomain(ctx, req)
-	return err
+	return UnwrapError(err)
 }
 
 func (c *client) ListPlacements(ctx context.Context, name TenantName) ([]PlacementInfo, error) {
@@ -520,7 +520,7 @@ func (c *client) ListPlacements(ctx context.Context, name TenantName) ([]Placeme
 	}
 	resp, err := c.placement.List(ctx, req)
 	if err != nil {
-		return nil, err
+		return nil, UnwrapError(err)
 	}
 	return slicex.Map(resp.GetInfo(), WrapPlacementInfo), nil
 }
@@ -531,7 +531,7 @@ func (c *client) InfoPlacement(ctx context.Context, name QualifiedPlacementName)
 	}
 	resp, err := c.placement.Info(ctx, req)
 	if err != nil {
-		return PlacementInfo{}, err
+		return PlacementInfo{}, UnwrapError(err)
 	}
 	return WrapPlacementInfo(resp.GetInfo()), nil
 }
