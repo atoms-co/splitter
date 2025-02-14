@@ -14,8 +14,10 @@ import (
 )
 
 var (
-	// ErrNotOwned is used by Splitter client to indicate that the key is not owned by an instance. This could happen
-	// when cluster information is stale and points a key to a non-owner.
+	// ErrNotOwned is used by Splitter client to indicate that the key is not owned by an instance. This error is used
+	// (1) when the key is not owned by the local instance (when final destination of forwarding checks for ownership),
+	// and (2) when the ownership of the key cannot be determined (e.g. if cluster information is not available or
+	// key domain is not present in it).
 	// The recommended way to use this error is to wrap it in a gRPC error (using OwnershipErrorToGRPC) and convert
 	// it back to ErrNotOwned (using OwnershipErrorFromGRPC). This allows to use IsOwnershipError and RetryOwnership1
 	// to handle retries on ownership changes.
@@ -192,11 +194,11 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 			return r.fn(con), nil
 		}
 		recordForwardedRequest(ctx, key.Domain, "unknown", "owner_not_found")
-		return zero, fmt.Errorf("no owner: %w", ErrNotFound)
+		return zero, fmt.Errorf("no owner: %w", ErrNotOwned)
 	}
 
 	recordForwardedRequest(ctx, key.Domain, "unknown", "not_initialized")
-	return zero, fmt.Errorf("not initialized: %w", ErrNotFound)
+	return zero, fmt.Errorf("not initialized: %w", ErrNotOwned)
 }
 
 func (r *resolver[T]) DomainKey(key QualifiedDomainKey) QualifiedDomainKey {
