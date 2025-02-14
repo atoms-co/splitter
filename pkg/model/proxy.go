@@ -316,6 +316,13 @@ func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key 
 	})
 }
 
+// HandleWithRetry is a shortcut to call Handle with RetryOwnership1.
+func HandleWithRetry[K, T, A, B any, V Range](ctx context.Context, timeout time.Duration, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, local func(V) (B, error)) (B, error) {
+	return RetryOwnership1(ctx, timeout, func(ctx context.Context) (B, error) {
+		return Handle(ctx, p, key, fn, a, local)
+	})
+}
+
 // HandleLocal finds a local handler for a key and invokes a handler with the owner.
 // Returns ErrNotOwned if the key is not owned locally.
 func HandleLocal[K, V, REQ, RESP any](ctx context.Context, r GrantResolver[K, V], key K, req REQ, handler func(V, context.Context, REQ) (RESP, error)) (RESP, error) {
