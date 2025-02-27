@@ -101,7 +101,7 @@ func OwnershipErrorFromGRPC(err error) (error, bool) {
 // with a grpc service client, such as Proxy[v1.FooServiceClient] for remote invocation only.
 type SimpleResolver[T, K any] interface {
 	// Resolve resolves ownership of a key of type K to a proxy object of type T. Returns ErrNoResolution if
-	// resolution fails (possibly due to local ownership) or ErrNotFound when information about owner cannot be found
+	// resolution fails (possibly due to local ownership) or ErrNotOwned when information about owner cannot be found
 	// (e.g. when key is not owned).
 	Resolve(ctx context.Context, key K) (T, error)
 }
@@ -175,7 +175,7 @@ func NewResolver[T any](pool ConnectionPool, fn RemoteFn[T], states ...GrantStat
 }
 
 // Resolve returns a shared grpc connection to the owning instance, if remote. Returns ErrNoResolution if local
-// or ErrNotFound if owner cannot be determined.
+// or ErrNotOwned if owner cannot be determined.
 func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, error) {
 	var zero T
 
