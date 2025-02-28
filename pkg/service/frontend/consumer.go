@@ -44,7 +44,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if consumer session closes
 
-	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
+	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
 		// Read session initialization message
 		establish, err := session.ReadEstablish(s.cl, in, func(m *public_v1.JoinMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
@@ -54,7 +54,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		})
 		if err != nil {
 			log.Errorf(ctx, "Unabled to establish a session: %v", err)
-			return nil, model.WrapError(fmt.Errorf("%v: %w", err, model.ErrInvalid))
+			return nil, fmt.Errorf("%v: %w", err, model.ErrInvalid)
 		}
 
 		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, s.consumer.Self())
@@ -75,16 +75,17 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		err = server.Send(model.UnwrapJoinMessage(model.NewJoinSessionMessage(established)))
 		if err != nil {
 			log.Warnf(ctx, "Send failed: %v", err)
-			return nil, model.WrapError(fmt.Errorf("send failed: %w", model.ErrInvalid))
+			return nil, fmt.Errorf("send failed: %w", model.ErrInvalid)
 		}
 
 		resp, err := s.consumer.Join(ctx, consumerSession, establish.ID, consumerIn)
 		if err != nil {
-			return nil, model.WrapError(err)
+			return nil, err
 		}
 
 		// Inject session messages into the messages sent to the consumer
 		joined := session.Receive(consumerSession, chanx.Map(resp, model.NewJoinMessage), sessionOut, model.NewJoinSessionMessage)
 		return chanx.Map(joined, model.UnwrapJoinMessage), nil
 	})
+	return model.WrapError(err)
 }

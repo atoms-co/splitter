@@ -12,7 +12,10 @@ type Resolver = model.SimpleResolver[internal_v1.LeaderServiceClient, model.Doma
 
 // Proxy is a local proxy for accessing the leader, if present. Returns ErrNotOwned if not.
 type Proxy interface {
+	// Join handles connection of a worker to the leader
+	// Returns a channel with messages for the worker or a logical error.
 	Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error)
+
 	Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error)
 }
 

@@ -51,7 +51,10 @@ type Worker interface {
 	// Returns a channel with messages for the consumer or a logical error.
 	Connect(ctx context.Context, sid session.ID, self location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
 
+	// Handle is used to invoke a coordinator request.
+	// Returns a response or a logical error.
 	Handle(ctx context.Context, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error)
+
 	Self() location.Instance
 	Joined(ctx context.Context) (bool, error)
 	Drain(timeout time.Duration)

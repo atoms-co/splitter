@@ -36,7 +36,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if session server closes
 
-	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
+	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
 		// Read session initialization message
 		establish, err := session.ReadEstablish(c.cl, in, func(m *internal_v1.ConnectMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
@@ -46,7 +46,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 		})
 		if err != nil {
 			log.Errorf(ctx, "Unabled to establish a session: %v", err)
-			return nil, model.WrapError(fmt.Errorf("%v: %w", err, model.ErrInvalid))
+			return nil, fmt.Errorf("%v: %w", err, model.ErrInvalid)
 		}
 
 		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, c.worker.Self())
@@ -66,7 +66,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 		err = server.Send(coordinator.UnwrapConnectMessage(coordinator.NewConnectSessionMessage(established)))
 		if err != nil {
 			log.Warnf(ctx, "Send failed: %v", err)
-			return nil, model.WrapError(fmt.Errorf("send failed: %w", model.ErrInvalid))
+			return nil, fmt.Errorf("send failed: %w", model.ErrInvalid)
 		}
 
 		// Let worker handle connect
@@ -75,12 +75,13 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 			if !model.IsOwnershipError(err) {
 				log.Warnf(ctx, "Internal: connect from %v rejected: %v", establish, err)
 			}
-			return nil, model.WrapError(err)
+			return nil, err
 		}
 
 		joined := session.Receive(sess, chanx.Map(resp, coordinator.NewConnectConsumerMessage), out, coordinator.NewConnectSessionMessage)
 		return chanx.Map(joined, coordinator.UnwrapConnectMessage), nil
 	})
+	return model.WrapError(err)
 }
 
 func (c *CoordinatorService) Handle(ctx context.Context, request *internal_v1.CoordinatorHandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {

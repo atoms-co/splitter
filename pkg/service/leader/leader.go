@@ -122,13 +122,13 @@ func (l *leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 	msg, ok := chanx.TryRead(in, l.cl, registrationTimeout)
 	if !ok {
 		log.Errorf(ctx, "No registration message received")
-		return nil, model.WrapError(fmt.Errorf("no registration message: %w", model.ErrInvalid))
+		return nil, fmt.Errorf("no registration message: %w", model.ErrInvalid)
 	}
 
 	workerMsg, ok := msg.WorkerMessage()
 	if !ok || !workerMsg.IsRegister() {
 		log.Errorf(ctx, "expected registration message, got %v", workerMsg)
-		return nil, model.WrapError(fmt.Errorf("invalid registration message: %w", model.ErrInvalid))
+		return nil, fmt.Errorf("invalid registration message: %w", model.ErrInvalid)
 	}
 	register, _ := workerMsg.Register()
 
@@ -164,7 +164,7 @@ func (l *leader) Handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 	resp, err := l.handle(wctx, req)
 	if err != nil {
 		log.Infof(ctx, "Leader %v request %v failed: %v", l.self, req, err)
-		return nil, model.WrapError(err)
+		return nil, err
 	}
 	return resp, nil
 }

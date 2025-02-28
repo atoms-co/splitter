@@ -36,7 +36,7 @@ func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error 
 
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if session server closes
 
-	return grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.JoinMessage) (<-chan *internal_v1.JoinMessage, error) {
+	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.JoinMessage) (<-chan *internal_v1.JoinMessage, error) {
 		// Read session initialization message
 		establish, err := session.ReadEstablish(l.cl, in, func(m *internal_v1.JoinMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
@@ -46,7 +46,7 @@ func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error 
 		})
 		if err != nil {
 			log.Errorf(ctx, "Unabled to establish a session: %v", err)
-			return nil, model.WrapError(fmt.Errorf("%v: %w", err, model.ErrInvalid))
+			return nil, fmt.Errorf("%v: %w", err, model.ErrInvalid)
 		}
 
 		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, l.self)
@@ -66,7 +66,7 @@ func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error 
 		err = server.Send(leader.UnwrapJoinMessage(leader.NewJoinSessionMessage(established)))
 		if err != nil {
 			log.Warnf(ctx, "Send failed: %v", err)
-			return nil, model.WrapError(fmt.Errorf("send failed: %w", model.ErrInvalid))
+			return nil, fmt.Errorf("send failed: %w", model.ErrInvalid)
 		}
 
 		// Let leader handle join
@@ -76,14 +76,20 @@ func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error 
 			if !model.IsOwnershipError(err) {
 				log.Warnf(ctx, "Internal: join from %v rejected: %v", establish, err)
 			}
-			return nil, model.WrapError(err)
+			return nil, err
 		}
 
 		joined := session.Receive(sess, chanx.Map(resp, leader.NewJoinMessage), out, leader.NewJoinSessionMessage)
 		return chanx.Map(joined, leader.UnwrapJoinMessage), nil
 	})
+	return model.WrapError(err)
 }
 
 func (l *LeaderService) Handle(ctx context.Context, request *internal_v1.LeaderHandleRequest) (*internal_v1.LeaderHandleResponse, error) {
-	return l.proxy.Handle(ctx, leader.HandleRequest{Proto: request})
+	resp, err := l.proxy.Handle(ctx, leader.HandleRequest{Proto: request})
+	if err != nil {
+		log.Errorf(ctx, "Handle %v failed: %v", request, err)
+		return nil, model.WrapError(err)
+	}
+	return resp, nil
 }
