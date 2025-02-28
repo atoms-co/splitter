@@ -28,7 +28,7 @@ func (s *ManagementService) ListTenants(ctx context.Context, req *public_v1.List
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetList(), nil
 }
@@ -44,7 +44,7 @@ func (s *ManagementService) NewTenant(ctx context.Context, req *public_v1.NewTen
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetNew(), nil
 }
@@ -60,7 +60,7 @@ func (s *ManagementService) InfoTenant(ctx context.Context, req *public_v1.InfoT
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetInfo(), nil
 }
@@ -76,7 +76,7 @@ func (s *ManagementService) UpdateTenant(ctx context.Context, req *public_v1.Upd
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetUpdate(), nil
 }
@@ -92,7 +92,7 @@ func (s *ManagementService) DeleteTenant(ctx context.Context, req *public_v1.Del
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetDelete(), nil
 }
@@ -108,7 +108,7 @@ func (s *ManagementService) ListServices(ctx context.Context, req *public_v1.Lis
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetList(), nil
 }
@@ -124,7 +124,7 @@ func (s *ManagementService) NewService(ctx context.Context, req *public_v1.NewSe
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetNew(), nil
 }
@@ -140,7 +140,7 @@ func (s *ManagementService) InfoService(ctx context.Context, req *public_v1.Info
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetInfo(), nil
 }
@@ -156,7 +156,7 @@ func (s *ManagementService) UpdateService(ctx context.Context, req *public_v1.Up
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetUpdate(), nil
 }
@@ -172,7 +172,7 @@ func (s *ManagementService) DeleteService(ctx context.Context, req *public_v1.De
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetDelete(), nil
 }
@@ -188,7 +188,7 @@ func (s *ManagementService) ListDomains(ctx context.Context, req *public_v1.List
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetList(), nil
 }
@@ -204,7 +204,7 @@ func (s *ManagementService) NewDomain(ctx context.Context, req *public_v1.NewDom
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetNew(), nil
 }
@@ -220,7 +220,7 @@ func (s *ManagementService) UpdateDomain(ctx context.Context, req *public_v1.Upd
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetUpdate(), nil
 }
@@ -236,7 +236,7 @@ func (s *ManagementService) DeleteDomain(ctx context.Context, req *public_v1.Del
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetDelete(), nil
 }

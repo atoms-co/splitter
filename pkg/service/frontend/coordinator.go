@@ -81,10 +81,10 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 		joined := session.Receive(sess, chanx.Map(resp, coordinator.NewConnectConsumerMessage), out, coordinator.NewConnectSessionMessage)
 		return chanx.Map(joined, coordinator.UnwrapConnectMessage), nil
 	})
-	return model.WrapError(err)
+	return model.ToGRPCError(err)
 }
 
 func (c *CoordinatorService) Handle(ctx context.Context, request *internal_v1.CoordinatorHandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
 	resp, err := c.worker.Handle(ctx, coordinator.HandleRequest{Proto: request})
-	return resp, model.WrapError(err)
+	return resp, model.ToGRPCError(err)
 }

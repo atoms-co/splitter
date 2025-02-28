@@ -69,7 +69,7 @@ func (i *InternalPlacementService) List(ctx context.Context, request *internal_v
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetList(), err
 }
@@ -88,7 +88,7 @@ func (i *InternalPlacementService) New(ctx context.Context, request *internal_v1
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetNew(), err
 }
@@ -104,7 +104,7 @@ func (i *InternalPlacementService) Info(ctx context.Context, request *internal_v
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetInfo(), err
 }
@@ -120,7 +120,7 @@ func (i *InternalPlacementService) Update(ctx context.Context, request *internal
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetUpdate(), err
 }
@@ -136,7 +136,7 @@ func (i *InternalPlacementService) Delete(ctx context.Context, request *internal
 		},
 	})
 	if err != nil {
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetDelete(), err
 }

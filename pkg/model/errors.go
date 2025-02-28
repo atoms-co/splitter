@@ -34,8 +34,8 @@ func BackoffError(err error) error {
 	return err
 }
 
-// WrapError wraps a logic error into a grpc error code.
-func WrapError(err error) error {
+// ToGRPCError wraps a logic error into a grpc error code.
+func ToGRPCError(err error) error {
 	if err, ok := OwnershipErrorToGRPC(err); ok {
 		return err
 	}
@@ -60,8 +60,8 @@ func WrapError(err error) error {
 	}
 }
 
-// UnwrapError recovers a logic error from a grpc error code.
-func UnwrapError(err error) error {
+// FromGRPCError recovers a logic error from a grpc error code.
+func FromGRPCError(err error) error {
 	if err, ok := OwnershipErrorFromGRPC(err); ok {
 		return err
 	}

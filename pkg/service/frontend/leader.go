@@ -82,14 +82,14 @@ func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error 
 		joined := session.Receive(sess, chanx.Map(resp, leader.NewJoinMessage), out, leader.NewJoinSessionMessage)
 		return chanx.Map(joined, leader.UnwrapJoinMessage), nil
 	})
-	return model.WrapError(err)
+	return model.ToGRPCError(err)
 }
 
 func (l *LeaderService) Handle(ctx context.Context, request *internal_v1.LeaderHandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	resp, err := l.proxy.Handle(ctx, leader.HandleRequest{Proto: request})
 	if err != nil {
 		log.Errorf(ctx, "Handle %v failed: %v", request, err)
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp, nil
 }

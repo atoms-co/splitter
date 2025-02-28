@@ -90,7 +90,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 
 			resp, err := handler(ctx, ch)
 			if err != nil {
-				return nil, model.WrapError(err)
+				return nil, model.ToGRPCError(err)
 			}
 
 			joined := session.Connect(sess, establish, chanx.Map(resp, leader.NewJoinMessage), out, leader.NewJoinSessionMessage)

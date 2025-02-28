@@ -82,7 +82,7 @@ func (c *consumer) Join(ctx context.Context, session *session.Server, sid sessio
 	if err == nil {
 		out, err = c.forwardRemote(ctx, session, cc, in)
 		if err != nil {
-			return nil, model.UnwrapError(err)
+			return nil, model.FromGRPCError(err)
 		}
 	} else {
 		out, err = c.worker.Connect(ctx, sid, c.self, in)

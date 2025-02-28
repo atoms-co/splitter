@@ -39,7 +39,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 
 	// check if connected to leader and reject otherwise
 	if joined, err := s.worker.Joined(server.Context()); !joined || err != nil {
-		return model.WrapError(fmt.Errorf("worker not connected to Leader"))
+		return model.ToGRPCError(fmt.Errorf("worker not connected to Leader"))
 	}
 
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if consumer session closes
@@ -87,5 +87,5 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		joined := session.Receive(consumerSession, chanx.Map(resp, model.NewJoinMessage), sessionOut, model.NewJoinSessionMessage)
 		return chanx.Map(joined, model.UnwrapJoinMessage), nil
 	})
-	return model.WrapError(err)
+	return model.ToGRPCError(err)
 }

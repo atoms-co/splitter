@@ -53,7 +53,7 @@ func (o *OperationService) CoordinatorInfo(ctx context.Context, request *interna
 	})
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 
 	return resp.GetOperation().GetInfo(), nil
@@ -79,7 +79,7 @@ func (o *OperationService) CoordinatorRestart(ctx context.Context, request *inte
 	})
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 
 	return resp.GetOperation().GetRestart(), nil
@@ -105,7 +105,7 @@ func (o *OperationService) CoordinatorClusterSync(ctx context.Context, request *
 	})
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 
 	return resp.GetOperation().GetSync(), nil
@@ -131,7 +131,7 @@ func (o *OperationService) ConsumerSuspend(ctx context.Context, request *interna
 	})
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 
 	return resp.GetOperation().GetSuspend(), nil
@@ -157,7 +157,7 @@ func (o *OperationService) ConsumerResume(ctx context.Context, request *internal
 	})
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 
 	return resp.GetOperation().GetResume(), nil
@@ -183,7 +183,7 @@ func (o *OperationService) ConsumerDrain(ctx context.Context, request *internal_
 	})
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 
 	return resp.GetOperation().GetDrain(), nil
@@ -210,7 +210,7 @@ func (o *OperationService) Snapshot(ctx context.Context, request *internal_v1.Sn
 
 	if err != nil {
 		log.Errorf(ctx, "Snapshot %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetOperation().GetSnapshot(), nil
 }
@@ -230,7 +230,7 @@ func (o *OperationService) Restore(ctx context.Context, request *internal_v1.Res
 
 	if err != nil {
 		log.Errorf(ctx, "Restore %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, model.ToGRPCError(err)
 	}
 	return resp.GetOperation().GetRestore(), nil
 }
