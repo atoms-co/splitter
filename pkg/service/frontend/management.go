@@ -27,7 +27,10 @@ func (s *ManagementService) ListTenants(ctx context.Context, req *public_v1.List
 			List: req,
 		},
 	})
-	return resp.GetList(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetList(), nil
 }
 
 func (s *ManagementService) NewTenant(ctx context.Context, req *public_v1.NewTenantRequest) (*public_v1.NewTenantResponse, error) {
@@ -40,7 +43,10 @@ func (s *ManagementService) NewTenant(ctx context.Context, req *public_v1.NewTen
 			New: req,
 		},
 	})
-	return resp.GetNew(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetNew(), nil
 }
 
 func (s *ManagementService) InfoTenant(ctx context.Context, req *public_v1.InfoTenantRequest) (*public_v1.InfoTenantResponse, error) {
@@ -53,7 +59,10 @@ func (s *ManagementService) InfoTenant(ctx context.Context, req *public_v1.InfoT
 			Info: req,
 		},
 	})
-	return resp.GetInfo(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetInfo(), nil
 }
 
 func (s *ManagementService) UpdateTenant(ctx context.Context, req *public_v1.UpdateTenantRequest) (*public_v1.UpdateTenantResponse, error) {
@@ -66,7 +75,10 @@ func (s *ManagementService) UpdateTenant(ctx context.Context, req *public_v1.Upd
 			Update: req,
 		},
 	})
-	return resp.GetUpdate(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetUpdate(), nil
 }
 
 func (s *ManagementService) DeleteTenant(ctx context.Context, req *public_v1.DeleteTenantRequest) (*public_v1.DeleteTenantResponse, error) {
@@ -79,7 +91,10 @@ func (s *ManagementService) DeleteTenant(ctx context.Context, req *public_v1.Del
 			Delete: req,
 		},
 	})
-	return resp.GetDelete(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetDelete(), nil
 }
 
 func (s *ManagementService) ListServices(ctx context.Context, req *public_v1.ListServicesRequest) (*public_v1.ListServicesResponse, error) {
@@ -92,7 +107,10 @@ func (s *ManagementService) ListServices(ctx context.Context, req *public_v1.Lis
 			List: req,
 		},
 	})
-	return resp.GetList(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetList(), nil
 }
 
 func (s *ManagementService) NewService(ctx context.Context, req *public_v1.NewServiceRequest) (*public_v1.NewServiceResponse, error) {
@@ -105,7 +123,10 @@ func (s *ManagementService) NewService(ctx context.Context, req *public_v1.NewSe
 			New: req,
 		},
 	})
-	return resp.GetNew(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetNew(), nil
 }
 
 func (s *ManagementService) InfoService(ctx context.Context, req *public_v1.InfoServiceRequest) (*public_v1.InfoServiceResponse, error) {
@@ -118,7 +139,10 @@ func (s *ManagementService) InfoService(ctx context.Context, req *public_v1.Info
 			Info: req,
 		},
 	})
-	return resp.GetInfo(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetInfo(), nil
 }
 
 func (s *ManagementService) UpdateService(ctx context.Context, req *public_v1.UpdateServiceRequest) (*public_v1.UpdateServiceResponse, error) {
@@ -131,7 +155,10 @@ func (s *ManagementService) UpdateService(ctx context.Context, req *public_v1.Up
 			Update: req,
 		},
 	})
-	return resp.GetUpdate(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetUpdate(), nil
 }
 
 func (s *ManagementService) DeleteService(ctx context.Context, req *public_v1.DeleteServiceRequest) (*public_v1.DeleteServiceResponse, error) {
@@ -144,7 +171,10 @@ func (s *ManagementService) DeleteService(ctx context.Context, req *public_v1.De
 			Delete: req,
 		},
 	})
-	return resp.GetDelete(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetDelete(), nil
 }
 
 func (s *ManagementService) ListDomains(ctx context.Context, req *public_v1.ListDomainsRequest) (*public_v1.ListDomainsResponse, error) {
@@ -157,7 +187,10 @@ func (s *ManagementService) ListDomains(ctx context.Context, req *public_v1.List
 			List: req,
 		},
 	})
-	return resp.GetList(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetList(), nil
 }
 
 func (s *ManagementService) NewDomain(ctx context.Context, req *public_v1.NewDomainRequest) (*public_v1.NewDomainResponse, error) {
@@ -170,7 +203,10 @@ func (s *ManagementService) NewDomain(ctx context.Context, req *public_v1.NewDom
 			New: req,
 		},
 	})
-	return resp.GetNew(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetNew(), nil
 }
 
 func (s *ManagementService) UpdateDomain(ctx context.Context, req *public_v1.UpdateDomainRequest) (*public_v1.UpdateDomainResponse, error) {
@@ -183,7 +219,10 @@ func (s *ManagementService) UpdateDomain(ctx context.Context, req *public_v1.Upd
 			Update: req,
 		},
 	})
-	return resp.GetUpdate(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetUpdate(), nil
 }
 
 func (s *ManagementService) DeleteDomain(ctx context.Context, req *public_v1.DeleteDomainRequest) (*public_v1.DeleteDomainResponse, error) {
@@ -196,7 +235,10 @@ func (s *ManagementService) DeleteDomain(ctx context.Context, req *public_v1.Del
 			Delete: req,
 		},
 	})
-	return resp.GetDelete(), model.WrapError(err)
+	if err != nil {
+		return nil, model.WrapError(err)
+	}
+	return resp.GetDelete(), nil
 }
 
 func (s *ManagementService) invokeTenant(ctx context.Context, request *internal_v1.TenantRequest) (*internal_v1.TenantResponse, error) {
@@ -210,7 +252,7 @@ func (s *ManagementService) invokeTenant(ctx context.Context, request *internal_
 
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, err
 	}
 	return resp.GetTenant(), nil
 }
@@ -226,7 +268,7 @@ func (s *ManagementService) invokeService(ctx context.Context, request *internal
 
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, err
 	}
 	return resp.GetService(), nil
 }
@@ -242,7 +284,7 @@ func (s *ManagementService) invokeDomain(ctx context.Context, request *internal_
 
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.WrapError(err)
+		return nil, err
 	}
 	return resp.GetDomain(), nil
 }
