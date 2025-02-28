@@ -24,7 +24,10 @@ import (
 type Consumer interface {
 	iox.AsyncCloser
 
+	// Join handles connection of a consumer to a coordinator
+	// Returns a channel with messages for the consumer or a logical error.
 	Join(ctx context.Context, session *session.Server, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
+
 	Self() location.Instance
 }
 
@@ -53,7 +56,7 @@ func (c *consumer) Join(ctx context.Context, session *session.Server, sid sessio
 	msg, ok := chanx.TryRead(in, c.cl, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No registration message received")
-		return nil, model.WrapError(fmt.Errorf("no registration message received: %w", model.ErrInvalid))
+		return nil, fmt.Errorf("no registration message received: %w", model.ErrInvalid)
 	}
 
 	clientMsg, ok := msg.ClientMessage()
@@ -71,7 +74,7 @@ func (c *consumer) Join(ctx context.Context, session *session.Server, sid sessio
 	// model.ErrNoResolution indicates a local coordinator
 	if err != nil && !errors.Is(err, model.ErrNoResolution) {
 		log.Infof(ctx, "Unable to forward service %v: %v", register.Service(), err)
-		return nil, model.WrapError(err)
+		return nil, err
 	}
 
 	// Setup communication with the service's coordinator
@@ -79,12 +82,12 @@ func (c *consumer) Join(ctx context.Context, session *session.Server, sid sessio
 	if err == nil {
 		out, err = c.forwardRemote(ctx, session, cc, in)
 		if err != nil {
-			return nil, model.WrapError(err)
+			return nil, model.UnwrapError(err)
 		}
 	} else {
 		out, err = c.worker.Connect(ctx, sid, c.self, in)
 		if err != nil {
-			return nil, model.WrapError(err)
+			return nil, err
 		}
 	}
 

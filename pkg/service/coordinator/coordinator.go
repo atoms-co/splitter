@@ -70,7 +70,11 @@ type Coordinator interface {
 	iox.AsyncCloser
 
 	Initialized() iox.RAsyncCloser
+
+	// Connect handles connection of a consumer
+	// Returns a channel with messages for the consumer or a logical error.
 	Connect(ctx context.Context, sid session.ID, consumer location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
+
 	Handle(ctx context.Context, request HandleRequest) (*internal_v1.CoordinatorHandleResponse, error)
 	Self() location.Instance
 	Drain(timeout time.Duration)
@@ -155,7 +159,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin locati
 	clientMsg, ok := msg.ClientMessage()
 	if !ok || !clientMsg.IsRegister() {
 		log.Errorf(ctx, "expected registration message, got %v", clientMsg)
-		return nil, model.WrapError(fmt.Errorf("invalid registration message: %w", model.ErrInvalid))
+		return nil, fmt.Errorf("invalid registration message: %w", model.ErrInvalid)
 	}
 	register, _ := clientMsg.Register()
 
@@ -169,7 +173,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin locati
 		if len(opts.DomainKeyNames()) > 0 {
 			keys, err = c.findNamedKeys(opts.DomainKeyNames())
 			if err != nil {
-				return nil, model.WrapError(fmt.Errorf("invalid canary named keys, %v: %w", err, model.ErrInvalid))
+				return nil, fmt.Errorf("invalid canary named keys, %v: %w", err, model.ErrInvalid)
 			}
 		}
 

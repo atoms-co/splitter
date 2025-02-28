@@ -47,7 +47,10 @@ type joinStatus struct {
 type Worker interface {
 	iox.AsyncCloser
 
+	// Connect handles connection of a consumer to a local coordinator
+	// Returns a channel with messages for the consumer or a logical error.
 	Connect(ctx context.Context, sid session.ID, self location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error)
+
 	Handle(ctx context.Context, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error)
 	Self() location.Instance
 	Joined(ctx context.Context) (bool, error)
@@ -102,7 +105,6 @@ func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, 
 	return w, w.clusters
 }
 
-// Connect handles connection of a consumer to a local coordinator
 func (w *worker) Connect(ctx context.Context, sid session.ID, consumer location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	msg, ok := chanx.TryRead(in, w.cl, 20*time.Second)
 	if !ok {
@@ -113,7 +115,7 @@ func (w *worker) Connect(ctx context.Context, sid session.ID, consumer location.
 	clientMsg, ok := msg.ClientMessage()
 	if !ok || !clientMsg.IsRegister() {
 		log.Errorf(ctx, "expected registration message, got %v", clientMsg)
-		return nil, model.WrapError(fmt.Errorf("invalid registration message: %w", model.ErrInvalid))
+		return nil, fmt.Errorf("invalid registration message: %w", model.ErrInvalid)
 	}
 	register, _ := clientMsg.Register()
 
