@@ -484,6 +484,18 @@ func (a *Allocation[T, W, K, V]) Expire(now time.Time) []Grant[T, K] {
 		}
 	}
 
+	for t, u := range a.unassigned {
+		if now.Before(u.activation) || u.state != Revoked {
+			continue // skip: not ready or not revoked
+		}
+
+		// Unassigned revoked work yields a promotion
+		if g, ok := a.tryPromote(t, now); ok {
+			ret = append(ret, g)
+		}
+		delete(a.unassigned, t)
+	}
+
 	for id, w := range a.workers {
 		if w.info.State != Detached || now.Before(w.info.Lease) {
 			continue // not a detached worker with expired lease
@@ -573,20 +585,9 @@ func (a *Allocation[T, W, K, V]) Allocate(now time.Time) []Grant[T, K] {
 
 	assignable := container.NewHeap[pending[T, W, K, V]](pending[T, W, K, V].Less)
 	for t, u := range a.unassigned {
-		if now.Before(u.activation) {
-			continue // skip: not ready
+		if now.Before(u.activation) || u.state == Revoked {
+			continue // skip: not ready or revoked (which should be promoted in Expire)
 		}
-
-		if u.state == Revoked {
-			// Unassigned revoked work yields a promotion, not a new assignment.
-
-			if g, ok := a.tryPromote(t, now); ok {
-				ret = append(ret, g)
-			}
-			delete(a.unassigned, t)
-			continue
-		}
-
 		assignable.Push(pending[T, W, K, V]{work: a.work[t], state: u.state})
 	}
 

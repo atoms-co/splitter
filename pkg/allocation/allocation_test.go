@@ -4,12 +4,14 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
+	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/allocation"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"slices"
+	"sort"
 	"testing"
 	"time"
 )
@@ -364,6 +366,52 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, promo.Worker, us2.ID)
 		assertx.Equal(t, promo.Unit, grants[0].Unit)
 		assertx.Equal(t, promo.State, allocation.Active)
+		require.NoError(t, alloc.Check())
+	})
+
+	t.Run("attach with revoked", func(t *testing.T) {
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, cl.Now())
+		require.Len(t, alloc.Work(), 3)
+
+		// Attach 1 worker with an allocated grant. Revoked counterpart is unknown.
+
+		lease := cl.Now().Add(time.Minute)
+		us1 := allocation.Worker[string, location.Location]{ID: "us1", Data: us}
+
+		allocated := allocation.Grant[string, string]{
+			ID:         "allocated",
+			State:      allocation.Allocated,
+			Unit:       "a",
+			Worker:     us1.ID,
+			Assigned:   cl.Now().Add(-time.Hour),
+			Expiration: cl.Now().Add(-time.Second), // expiration time is irrelevant
+		}
+
+		attached, ok := alloc.Attach(us1, allocation.NoCapacityLimit, lease, allocated)
+		require.True(t, ok)
+		require.Len(t, attached.Allocated, 1)
+		requirex.Equal(t, attached.Allocated[0].ID, allocated.ID)
+		require.Len(t, attached.Active, 0)
+		require.Len(t, attached.Revoked, 0)
+
+		// Allocate unassigned work. Allocated grant assigned to the connected worker should not be affected
+
+		grants := alloc.Allocate(cl.Now())
+		require.Len(t, grants, 2)
+		require.NoError(t, alloc.Check())
+		sort.Slice(grants, func(i, j int) bool { return grants[i].Unit < grants[j].Unit })
+		requirex.Equal(t, grants[0].Unit, "b")
+		requirex.Equal(t, grants[1].Unit, "c")
+
+		require.NoError(t, alloc.Check())
+
+		// Expire grants. Allocated grant should be promoted to active.
+
+		promoted := alloc.Expire(lease.Add(-time.Second))
+		require.Len(t, promoted, 1)
+		requirex.Equal(t, promoted[0].ID, allocated.ID)
+		requirex.Equal(t, promoted[0].State, allocation.Active)
+
 		require.NoError(t, alloc.Check())
 	})
 
