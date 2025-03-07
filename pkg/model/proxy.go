@@ -283,8 +283,9 @@ func (p *ProxyStub[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 }
 
 // Handle makes a grpc invocation to the owner of the given key, if remote, and calls the given
-// fallback function with the grant-owning value if locally owned. May returns ErrNotOwned if
-// the grant is in transition. Relies on Invoke for resolution.
+// fallback function with the grant-owning value if locally owned. May returns ErrNotOwned
+// converted to a gRPC error if the grant is in transition.
+// The error returned by the local handler must be a wrapped gRPC error.
 //
 // For example, using Proxy[v1.FooServiceClient, K, V], a call looks like the following:
 //
@@ -312,7 +313,8 @@ func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key 
 			return local(r)
 		}
 		var b B
-		return b, ErrNotOwned
+		err, _ := OwnershipErrorToGRPC(ErrNotOwned)
+		return b, err
 	})
 }
 
@@ -324,7 +326,8 @@ func HandleWithRetry[K, T, A, B any, V Range](ctx context.Context, timeout time.
 }
 
 // HandleLocal finds a local handler for a key and invokes a handler with the owner.
-// Returns ErrNotOwned if the key is not owned locally.
+// The error returned by the local handler must be a wrapped gRPC error.
+// Returns ErrNotOwned converted to gRPC error if the key is not owned locally.
 func HandleLocal[K, V, REQ, RESP any](ctx context.Context, r GrantResolver[K, V], key K, req REQ, handler func(V, context.Context, REQ) (RESP, error)) (RESP, error) {
 	domain := r.DomainKey(key).Domain
 	if g, ok := r.Lookup(key); ok {
@@ -333,6 +336,7 @@ func HandleLocal[K, V, REQ, RESP any](ctx context.Context, r GrantResolver[K, V]
 		return rt, err
 	}
 	var resp RESP
-	recordHandledRequest(ctx, domain, "local", ErrNotOwned)
-	return resp, ErrNotOwned
+	err, _ := OwnershipErrorToGRPC(ErrNotOwned)
+	recordHandledRequest(ctx, domain, "local", err)
+	return resp, err
 }
