@@ -282,6 +282,14 @@ func (p *ProxyStub[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 	return p.proxy.DomainKey(key)
 }
 
+// ErrorWrapper converts an error to another error. Usually a wrapper that converts
+// a logical error to a gRPC error or vice versa
+type ErrorWrapper func(err error) error
+
+var NoOpErrorWrapper ErrorWrapper = func(err error) error {
+	return err
+}
+
 // Handle makes a grpc invocation to the owner of the given key, if remote, and calls the given
 // fallback function with the grant-owning value if locally owned. May returns ErrNotOwned
 // converted to a gRPC error if the grant is in transition.
@@ -295,6 +303,12 @@ func (p *ProxyStub[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 //	    return v.Info(parsed, ...)
 //	})
 func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, local func(V) (B, error)) (B, error) {
+	return HandleEx(ctx, p, key, fn, a, NoOpErrorWrapper, local)
+}
+
+// HandleEx is a version of Handle that can wrap error returned by the handler. Should be used for handlers
+// that return logical error to convert logical errors to gRPC errors (expected by Handle).
+func HandleEx[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, w ErrorWrapper, local func(V) (B, error)) (B, error) {
 	// Check if a grant is present locally to guard against a stale cluster map.
 	// We have to be careful to not pick a non-owner based on resolution rules,
 	// so we look up using ACTIVE only. Otherwise, an UNLOADED local range will
@@ -304,13 +318,15 @@ func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key 
 		domain := p.DomainKey(key).Domain
 		recordForwardedRequest(ctx, domain, "local", "ok")
 		rt, err := local(r)
+		err = w(err)
 		recordHandledRequest(ctx, domain, "local", err)
 		return rt, err
 	}
 
 	return Invoke(ctx, p, key, fn, a, func() (B, error) {
 		if r, ok := p.Lookup(key); ok {
-			return local(r)
+			rt, err := local(r)
+			return rt, w(err)
 		}
 		var b B
 		err, _ := OwnershipErrorToGRPC(ErrNotOwned)
@@ -325,13 +341,28 @@ func HandleWithRetry[K, T, A, B any, V Range](ctx context.Context, timeout time.
 	})
 }
 
+// HandleWithRetryEx is a version of HandleWithRetry that can wrap error returned by the handler. Should be used for handlers
+// that return logical error to convert logical errors to gRPC errors (expected by HandleWithRetry).
+func HandleWithRetryEx[K, T, A, B any, V Range](ctx context.Context, timeout time.Duration, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, w ErrorWrapper, local func(V) (B, error)) (B, error) {
+	return RetryOwnership1(ctx, timeout, func(ctx context.Context) (B, error) {
+		return HandleEx(ctx, p, key, fn, a, w, local)
+	})
+}
+
 // HandleLocal finds a local handler for a key and invokes a handler with the owner.
 // The error returned by the local handler must be a wrapped gRPC error.
 // Returns ErrNotOwned converted to gRPC error if the key is not owned locally.
 func HandleLocal[K, V, REQ, RESP any](ctx context.Context, r GrantResolver[K, V], key K, req REQ, handler func(V, context.Context, REQ) (RESP, error)) (RESP, error) {
+	return HandleLocalEx(ctx, r, key, req, NoOpErrorWrapper, handler)
+}
+
+// HandleLocalEx is a version of HandleLocal that can wrap error returned by the handler. Should be used for handlers
+// that return logical error to convert logical errors to gRPC errors (expected by HandleLocal).
+func HandleLocalEx[K, V, REQ, RESP any](ctx context.Context, r GrantResolver[K, V], key K, req REQ, w ErrorWrapper, handler func(V, context.Context, REQ) (RESP, error)) (RESP, error) {
 	domain := r.DomainKey(key).Domain
 	if g, ok := r.Lookup(key); ok {
 		rt, err := handler(g, ctx, req)
+		err = w(err)
 		recordHandledRequest(ctx, domain, "local", err)
 		return rt, err
 	}
