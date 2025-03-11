@@ -14,6 +14,7 @@ import (
 	"go.atoms.co/lib/mathx"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/slicex"
+	"go.atoms.co/lib/stringx"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
@@ -24,6 +25,7 @@ import (
 	"go.atoms.co/splitter/pb"
 	"fmt"
 	"maps"
+	"strings"
 	"sync"
 	"time"
 )
@@ -250,6 +252,15 @@ func (c *coordinator) handleOperationRequest(ctx context.Context, op *internal_v
 
 	case op.GetRestart() != nil:
 		return c.handleServiceRestartRequest(ctx)
+
+	case op.GetRevokeGrants() != nil:
+		grants := map[model.InstanceID][]model.GrantID{}
+
+		for _, cg := range op.GetRevokeGrants().GetGrants() {
+			grants[model.InstanceID(cg.Consumer)] = slicex.Map(cg.Grants, stringx.FromString[model.GrantID])
+		}
+
+		return c.handleRevokeGrantsRequest(ctx, grants)
 
 	case op.GetSync() != nil:
 		return c.handleServiceSyncRequest(ctx)
@@ -956,6 +967,51 @@ func (c *coordinator) handleServiceRestartRequest(ctx context.Context) (*interna
 			Restart: &internal_v1.CoordinatorRestartResponse{},
 		},
 	}, nil
+}
+
+func (c *coordinator) handleRevokeGrantsRequest(ctx context.Context, grants map[model.InstanceID][]model.GrantID) (*internal_v1.CoordinatorOperationResponse, error) {
+	log.Infof(ctx, "Received revoke request for %v. Revoking %v grants", c.info.Name(), len(grants))
+	ret := &internal_v1.CoordinatorOperationResponse{
+		Resp: &internal_v1.CoordinatorOperationResponse_RevokeGrants{
+			RevokeGrants: &internal_v1.CoordinatorRevokeGrantsResponse{},
+		},
+	}
+	if len(grants) == 0 {
+		return ret, nil
+	}
+
+	syncx.Txn0(ctx, c.txn, func() {
+		now := c.cl.Now()
+		for cid, gs := range grants {
+			var toRevoke []Grant
+			gs := slicex.NewSet(gs...)
+			assigned := c.alloc.Assigned(cid)
+			for _, g := range assigned.Allocated {
+				if gs[g.ID] {
+					c.alloc.Release(g, now)
+					log.Infof(ctx, "Released allocated grant by request [worker=%v grant=%v]", cid, g.ID)
+				}
+			}
+			for _, g := range c.alloc.Assigned(cid).Active {
+				if gs[g.ID] {
+					toRevoke = append(toRevoke, g)
+				}
+			}
+
+			if r, ok := c.alloc.Revoke(cid, now, toRevoke...); ok && len(r) > 0 {
+				s := c.consumers[cid]
+				if c.mustSend(ctx, s, model.NewRevoke(slicex.Map(r, toGrant)...)) {
+					ids := slicex.Map(r, func(g Grant) string { return string(g.ID) })
+					log.Infof(ctx, "Revoked active grants by request [worker=%v grants=[%v]]", cid, strings.Join(ids, ", "))
+				} else {
+					log.Errorf(ctx, "Failed to send revoke message to consumer %v", cid)
+				}
+			}
+		}
+
+		c.allocate(ctx, now, false)
+	})
+	return ret, nil
 }
 
 func (c *coordinator) handleServiceSyncRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {

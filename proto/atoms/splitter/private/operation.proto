@@ -61,6 +61,21 @@ message CoordinatorClusterSyncResponse {
 
 }
 
+// Request to revoke specific grants on specific consumers. Will immediately release allocated grants and
+// gracefully revoke and reassign active grants. No-op if grant is already revoked.
+message CoordinatorRevokeGrantsRequest {
+  atoms.splitter.QualifiedServiceName service = 1;
+  message ConsumerGrants {
+    string consumer = 1;
+    repeated string grants = 2;
+  }
+  repeated ConsumerGrants grants = 2;
+}
+
+message CoordinatorRevokeGrantsResponse {
+
+}
+
 message ConsumerSuspendRequest {
   atoms.splitter.QualifiedServiceName service = 1;
   string consumer_id = 2;
@@ -107,6 +122,9 @@ service OperationService {
 
   // CoordinatorRestart sends an restart request to a Coordinator.
   rpc CoordinatorRestart (CoordinatorRestartRequest) returns (CoordinatorRestartResponse);
+
+  // Revoke specific grants
+  rpc CoordinatorRevokeGrants (CoordinatorRevokeGrantsRequest) returns (CoordinatorRevokeGrantsResponse);
 
   // CoordinatorClusterSync sends an cluster synchronization request to a Coordinator.
   // Coordinator will send a snapshot of its current cluster to all connected consumers.

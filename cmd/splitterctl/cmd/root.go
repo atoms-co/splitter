@@ -60,6 +60,7 @@ func init() {
 	operationCmd.AddCommand(coordinatorCommand)
 	coordinatorCommand.AddCommand(makeCoordinatorInfoCmd())
 	coordinatorCommand.AddCommand(makeCoordinatorRestartCmd())
+	coordinatorCommand.AddCommand(makeCoordinatorRevokeCmd())
 	coordinatorCommand.AddCommand(makeCoordinatorClusterSyncCmd())
 	coordinatorCommand.AddCommand(consumerCommand)
 	consumerCommand.AddCommand(makeConsumerSuspendCmd())

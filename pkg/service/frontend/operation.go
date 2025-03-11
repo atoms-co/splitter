@@ -189,6 +189,32 @@ func (o *OperationService) ConsumerDrain(ctx context.Context, request *internal_
 	return resp.GetOperation().GetDrain(), nil
 }
 
+func (o *OperationService) CoordinatorRevokeGrants(ctx context.Context, request *internal_v1.CoordinatorRevokeGrantsRequest) (*internal_v1.CoordinatorRevokeGrantsResponse, error) {
+	name, err := model.ParseQualifiedServiceName(request.GetService())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
+	}
+
+	req := coordinator.NewHandleCoordinatorOperationRequest(name,
+		&internal_v1.CoordinatorOperationRequest{
+			Req: &internal_v1.CoordinatorOperationRequest_RevokeGrants{
+				RevokeGrants: request,
+			},
+		})
+
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
+		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+			return o.worker.Handle(ctx, req)
+		})
+	})
+	if err != nil {
+		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
+		return nil, model.ToGRPCError(err)
+	}
+
+	return resp.GetOperation().GetRevokeGrants(), nil
+}
+
 func (o *OperationService) RaftInfo(ctx context.Context, request *internal_v1.RaftInfoRequest) (*internal_v1.RaftInfoResponse, error) {
 	return &internal_v1.RaftInfoResponse{
 		RaftState: o.cluster.Info(ctx),

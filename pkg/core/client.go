@@ -3,6 +3,7 @@ package core
 import (
 	"context"
 	"go.atoms.co/slicex"
+	"go.atoms.co/lib/stringx"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"google.golang.org/grpc"
@@ -32,6 +33,7 @@ type Client interface {
 
 	CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error)
 	CoordinatorRestart(ctx context.Context, name model.QualifiedServiceName) error
+	CoordinatorRevokeGrants(ctx context.Context, service model.QualifiedServiceName, grants map[model.ConsumerID][]GrantID) error
 	CoordinatorClusterSync(ctx context.Context, name model.QualifiedServiceName) error
 	ConsumerSuspend(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
 	ConsumerResume(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
@@ -132,6 +134,24 @@ func (c *client) CoordinatorRestart(ctx context.Context, service model.Qualified
 	}
 
 	_, err := c.operation.CoordinatorRestart(ctx, req)
+	return err
+}
+
+func (c *client) CoordinatorRevokeGrants(ctx context.Context, service model.QualifiedServiceName, grants map[model.ConsumerID][]model.GrantID) error {
+	var pbs []*internal_v1.CoordinatorRevokeGrantsRequest_ConsumerGrants
+	for cid, gs := range grants {
+		pbs = append(pbs, &internal_v1.CoordinatorRevokeGrantsRequest_ConsumerGrants{
+			Consumer: string(cid),
+			Grants:   slicex.Map(gs, stringx.ToString[model.GrantID]),
+		})
+	}
+
+	req := &internal_v1.CoordinatorRevokeGrantsRequest{
+		Service: service.ToProto(),
+		Grants:  pbs,
+	}
+
+	_, err := c.operation.CoordinatorRevokeGrants(ctx, req)
 	return err
 }
 

@@ -18,6 +18,7 @@ message CoordinatorOperationRequest {
     atoms.splitter.private.ConsumerResumeRequest resume = 4;
     atoms.splitter.private.ConsumerDrainRequest drain = 5;
     atoms.splitter.private.CoordinatorClusterSyncRequest sync = 6;
+    atoms.splitter.private.CoordinatorRevokeGrantsRequest revoke_grants = 7;
   }
 }
 
@@ -29,6 +30,7 @@ message CoordinatorOperationResponse {
     atoms.splitter.private.ConsumerResumeResponse resume = 4;
     atoms.splitter.private.ConsumerDrainResponse drain = 5;
     atoms.splitter.private.CoordinatorClusterSyncResponse sync = 6;
+    atoms.splitter.private.CoordinatorRevokeGrantsResponse revoke_grants = 7;
   }
 }
 

@@ -10,6 +10,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
+	"go.atoms.co/splitter/pb/private"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"testing"
@@ -426,6 +427,82 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 
 	coord.Close()
 	assertx.Closed(t, out)
+}
+
+func TestCoordinator_RevokeGrant(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+
+	domain, err := model.NewDomain(domainName, model.Global, cl.Now(), model.WithDomainConfig(
+		model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))))
+	require.NoError(t, err)
+
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+
+	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+	in := make(chan model.ConsumerMessage, 1)
+	in <- model.NewRegister(w, serviceName, nil, nil)
+
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
+	require.NoError(t, err, "consumer failed to join coordinator")
+
+	snapshot := readFn(t, out, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 0)
+
+	assign := readFn(t, out, isAssign)
+	require.Len(t, assign.Grants(), 1)
+
+	assign2 := readFn(t, out, isAssign)
+	require.Len(t, assign2.Grants(), 1)
+
+	change := readFn(t, out, isClusterChange)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
+	// connect new consumer
+	w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
+	in2 := make(chan model.ConsumerMessage, 1)
+	in2 <- model.NewRegister(w2, serviceName, nil, nil)
+
+	out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter")), in2)
+	require.NoError(t, err, "consumer failed to join coordinator")
+
+	snapshot2 := readFn(t, out2, isClusterSnapshot)
+	assert.Len(t, snapshot2.Assignments(), 1)
+
+	change2 := readFn(t, out, isClusterChange)
+	assert.Len(t, change2.Assign().Assignments(), 1)
+
+	change3 := readFn(t, out2, isClusterChange)
+	assert.Len(t, change3.Assign().Assignments(), 1)
+
+	toRevoke := assign.Grants()[0]
+
+	req := coordinator.NewHandleCoordinatorOperationRequest(serviceName, &internal_v1.CoordinatorOperationRequest{
+		Req: &internal_v1.CoordinatorOperationRequest_RevokeGrants{
+			RevokeGrants: &internal_v1.CoordinatorRevokeGrantsRequest{
+				Service: serviceName.ToProto(),
+				Grants: []*internal_v1.CoordinatorRevokeGrantsRequest_ConsumerGrants{
+					{
+						Consumer: string(w.ID()),
+						Grants:   []string{string(toRevoke.ID())},
+					},
+				},
+			},
+		},
+	})
+
+	// Should revoke specific grant id and re-assign it to second consumer
+	_, err = coord.Handle(ctx, req)
+	require.NoError(t, err)
+
+	revoke := readFn(t, out, isRevoke)
+	assert.Len(t, revoke.Grants(), 1)
+	assert.Equal(t, toRevoke.ID(), revoke.Grants()[0].ID())
+
+	assign3 := readFn(t, out2, isAssign)
+	assert.Len(t, assign3.Grants(), 1)
+	assert.Equal(t, toRevoke.Shard().To, assign3.Grants()[0].Shard().To)
+	assert.Equal(t, toRevoke.Shard().From, assign3.Grants()[0].Shard().From)
 }
 
 func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Domain, withFastActivation bool) coordinator.Coordinator {

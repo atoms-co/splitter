@@ -35,7 +35,7 @@ func NewConnectSessionMessage(m session.Message) ConnectMessage {
 	})
 }
 
-// HandleRequest is an internal coordinator handle request jacket for routing. Not threadsafe.
+// HandleRequest is an internal coordinator handle request jacket for routing. Not thread-safe.
 type HandleRequest struct {
 	Proto *internal_v1.CoordinatorHandleRequest
 }
