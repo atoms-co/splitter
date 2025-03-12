@@ -46,14 +46,9 @@ func (o *OperationService) CoordinatorInfo(ctx context.Context, request *interna
 			},
 		})
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
-			return o.worker.Handle(ctx, req)
-		})
-	})
+	resp, err := o.executeCoordinatorRequest(ctx, name, req)
 	if err != nil {
-		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 
 	return resp.GetOperation().GetInfo(), nil
@@ -72,14 +67,9 @@ func (o *OperationService) CoordinatorRestart(ctx context.Context, request *inte
 			},
 		})
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
-			return o.worker.Handle(ctx, req)
-		})
-	})
+	resp, err := o.executeCoordinatorRequest(ctx, name, req)
 	if err != nil {
-		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 
 	return resp.GetOperation().GetRestart(), nil
@@ -98,14 +88,9 @@ func (o *OperationService) CoordinatorClusterSync(ctx context.Context, request *
 			},
 		})
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
-			return o.worker.Handle(ctx, req)
-		})
-	})
+	resp, err := o.executeCoordinatorRequest(ctx, name, req)
 	if err != nil {
-		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 
 	return resp.GetOperation().GetSync(), nil
@@ -124,14 +109,9 @@ func (o *OperationService) ConsumerSuspend(ctx context.Context, request *interna
 			},
 		})
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
-			return o.worker.Handle(ctx, req)
-		})
-	})
+	resp, err := o.executeCoordinatorRequest(ctx, name, req)
 	if err != nil {
-		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 
 	return resp.GetOperation().GetSuspend(), nil
@@ -150,14 +130,9 @@ func (o *OperationService) ConsumerResume(ctx context.Context, request *internal
 			},
 		})
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
-			return o.worker.Handle(ctx, req)
-		})
-	})
+	resp, err := o.executeCoordinatorRequest(ctx, name, req)
 	if err != nil {
-		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 
 	return resp.GetOperation().GetResume(), nil
@@ -176,14 +151,9 @@ func (o *OperationService) ConsumerDrain(ctx context.Context, request *internal_
 			},
 		})
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
-			return o.worker.Handle(ctx, req)
-		})
-	})
+	resp, err := o.executeCoordinatorRequest(ctx, name, req)
 	if err != nil {
-		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 
 	return resp.GetOperation().GetDrain(), nil
@@ -202,6 +172,15 @@ func (o *OperationService) CoordinatorRevokeGrants(ctx context.Context, request 
 			},
 		})
 
+	resp, err := o.executeCoordinatorRequest(ctx, name, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.GetOperation().GetRevokeGrants(), nil
+}
+
+func (o *OperationService) executeCoordinatorRequest(ctx context.Context, name model.QualifiedServiceName, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
 		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
 			return o.worker.Handle(ctx, req)
@@ -211,8 +190,7 @@ func (o *OperationService) CoordinatorRevokeGrants(ctx context.Context, request 
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
 		return nil, model.ToGRPCError(err)
 	}
-
-	return resp.GetOperation().GetRevokeGrants(), nil
+	return resp, err
 }
 
 func (o *OperationService) RaftInfo(ctx context.Context, request *internal_v1.RaftInfoRequest) (*internal_v1.RaftInfoResponse, error) {
@@ -228,15 +206,9 @@ func (o *OperationService) Snapshot(ctx context.Context, request *internal_v1.Sn
 		},
 	})
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return core.InvokeZero(ctx, o.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
-			return o.proxy.Handle(ctx, req)
-		})
-	})
-
+	resp, err := o.executeLeaderRequest(ctx, req)
 	if err != nil {
-		log.Errorf(ctx, "Snapshot %v failed: %v", req, err)
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetOperation().GetSnapshot(), nil
 }
@@ -248,6 +220,14 @@ func (o *OperationService) Restore(ctx context.Context, request *internal_v1.Res
 		},
 	})
 
+	resp, err := o.executeLeaderRequest(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return resp.GetOperation().GetRestore(), nil
+}
+
+func (o *OperationService) executeLeaderRequest(ctx context.Context, req leader.HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
 	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
 		return core.InvokeZero(ctx, o.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
 			return o.proxy.Handle(ctx, req)
@@ -255,8 +235,8 @@ func (o *OperationService) Restore(ctx context.Context, request *internal_v1.Res
 	})
 
 	if err != nil {
-		log.Errorf(ctx, "Restore %v failed: %v", req, err)
+		log.Errorf(ctx, "Leader request %v failed: %v", req, err)
 		return nil, model.ToGRPCError(err)
 	}
-	return resp.GetOperation().GetRestore(), nil
+	return resp, err
 }
