@@ -3,6 +3,13 @@ package server
 
 import (
 	"context"
+	"net"
+	"sync"
+	"time"
+
+	"go.uber.org/multierr"
+	"google.golang.org/grpc"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
@@ -21,11 +28,6 @@ import (
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
-	"go.uber.org/multierr"
-	"google.golang.org/grpc"
-	"net"
-	"sync"
-	"time"
 )
 
 type options struct {

@@ -2,10 +2,12 @@ package model
 
 import (
 	"context"
+	"fmt"
+
+	"google.golang.org/grpc/status"
+
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/slicex"
-	"fmt"
-	"google.golang.org/grpc/status"
 )
 
 const (

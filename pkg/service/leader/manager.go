@@ -2,6 +2,10 @@ package leader
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -10,9 +14,6 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
-	"sync"
-	"time"
 )
 
 type DirectiveType string

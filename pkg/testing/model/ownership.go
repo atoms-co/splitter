@@ -1,9 +1,10 @@
 package model
 
 import (
+	"time"
+
 	"go.atoms.co/lib/iox"
 	splitter "go.atoms.co/splitter/pkg/model"
-	"time"
 )
 
 type Ownership struct {

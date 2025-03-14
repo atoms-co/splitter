@@ -2,15 +2,17 @@ package model
 
 import (
 	"context"
-	"atoms.co/lib-go/pkg/clock"
-	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/net/grpcx"
 	"fmt"
-	"google.golang.org/grpc"
 	"io"
 	"slices"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc"
+
+	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/net/grpcx"
 )
 
 // DialFn returns a separately-closable T connection. Must be non-blocking.

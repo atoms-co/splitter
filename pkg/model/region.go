@@ -2,13 +2,14 @@ package model
 
 import (
 	"context"
+	"sync"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/backoffx"
 	"go.atoms.co/lib/randx"
-	"sync"
-	"time"
 )
 
 // Region is a cloud region.

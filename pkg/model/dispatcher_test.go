@@ -2,14 +2,16 @@ package model_test
 
 import (
 	"context"
+	"testing"
+	"time"
+
+	"google.golang.org/grpc"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
-	"google.golang.org/grpc"
-	"testing"
-	"time"
 )
 
 func TestDispatcher(t *testing.T) {

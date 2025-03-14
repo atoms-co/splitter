@@ -2,11 +2,13 @@ package model_test
 
 import (
 	"context"
-	"go.atoms.co/lib/iox"
-	"go.atoms.co/splitter/pkg/model"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+
+	"go.atoms.co/lib/iox"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 func TestClient_WaitForActive(t *testing.T) {

@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"os"
 
-	"go.atoms.co/lib/service/logx"
 	"github.com/spf13/cobra"
+
+	"go.atoms.co/lib/service/logx"
 )
 
 var (

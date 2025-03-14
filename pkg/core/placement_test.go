@@ -1,10 +1,12 @@
 package core_test
 
 import (
-	"go.atoms.co/splitter/pkg/core"
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
+
+	"go.atoms.co/splitter/pkg/core"
 )
 
 func TestParseBlockDistributionStr(t *testing.T) {

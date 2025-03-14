@@ -2,6 +2,17 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"net"
+	"os"
+	"path/filepath"
+	"sync"
+	"time"
+
+	"github.com/hashicorp/raft"
+	boltdb "github.com/hashicorp/raft-boltdb/v2"
+	"github.com/spf13/cobra"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/encoding/yamlx"
 	"go.atoms.co/lib/log"
@@ -18,15 +29,6 @@ import (
 	"go.atoms.co/splitter/pkg/server"
 	"go.atoms.co/splitter/pkg/service/leader"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
-	"fmt"
-	"github.com/hashicorp/raft"
-	boltdb "github.com/hashicorp/raft-boltdb/v2"
-	"github.com/spf13/cobra"
-	"net"
-	"os"
-	"path/filepath"
-	"sync"
-	"time"
 )
 
 type conf struct{}

@@ -2,12 +2,14 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"strings"
+
+	"github.com/spf13/cobra"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
-	"fmt"
-	"github.com/spf13/cobra"
-	"strings"
 )
 
 var (

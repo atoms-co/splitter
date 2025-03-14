@@ -2,12 +2,14 @@ package core
 
 import (
 	"context"
+	"fmt"
+	"sync"
+
+	"google.golang.org/grpc"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
-	"google.golang.org/grpc"
-	"sync"
 )
 
 // ServiceResolver resolves a gRPC connection to an instance with service's coordinator. Uses model.ErrNoResolution

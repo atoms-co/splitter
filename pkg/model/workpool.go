@@ -2,6 +2,9 @@ package model
 
 import (
 	"context"
+	"sync"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
@@ -15,8 +18,6 @@ import (
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
-	"sync"
-	"time"
 )
 
 const (

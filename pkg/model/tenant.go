@@ -1,11 +1,13 @@
 package model
 
 import (
-	"go.atoms.co/splitter/pb"
 	"fmt"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"time"
+
+	"go.atoms.co/splitter/pb"
 )
 
 type TenantName string

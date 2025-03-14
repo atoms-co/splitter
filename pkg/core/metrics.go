@@ -1,11 +1,13 @@
 package core
 
 import (
+	"fmt"
+
+	"github.com/hashicorp/raft"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/splitter/pkg/model"
-	"fmt"
-	"github.com/hashicorp/raft"
 )
 
 const (

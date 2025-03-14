@@ -2,15 +2,16 @@ package coordinator
 
 import (
 	"context"
+	"fmt"
+	"slices"
+	"time"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/sessionx"
-	"fmt"
-	"slices"
-	"time"
 )
 
 var (

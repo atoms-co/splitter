@@ -1,9 +1,10 @@
 package model
 
 import (
+	"fmt"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/pb"
-	"fmt"
 )
 
 type InstanceID = location.InstanceID

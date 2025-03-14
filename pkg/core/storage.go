@@ -1,11 +1,12 @@
 package core
 
 import (
+	"github.com/golang/protobuf/proto"
+
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
-	"github.com/golang/protobuf/proto"
 )
 
 // Snapshot holds the complete state of all tenants.

@@ -1,13 +1,14 @@
 package allocation
 
 import (
+	"fmt"
+	"slices"
+	"time"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/container"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/mathx"
-	"fmt"
-	"slices"
-	"time"
 )
 
 const (

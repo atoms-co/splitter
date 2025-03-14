@@ -1,6 +1,11 @@
 package leader
 
 import (
+	"time"
+
+	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/slicex"
@@ -8,9 +13,6 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
-	"github.com/golang/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"time"
 )
 
 type JoinMessage struct {

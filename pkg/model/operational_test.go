@@ -1,10 +1,12 @@
 package model_test
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/splitter/pkg/model"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestServiceOperational(t *testing.T) {

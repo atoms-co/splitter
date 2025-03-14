@@ -2,6 +2,15 @@ package cluster
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
+	"net"
+	"sync"
+	"time"
+
+	"github.com/hashicorp/raft"
+	boltdb "github.com/hashicorp/raft-boltdb/v2"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
@@ -13,13 +22,6 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
-	"github.com/hashicorp/raft"
-	boltdb "github.com/hashicorp/raft-boltdb/v2"
-	"math/rand"
-	"net"
-	"sync"
-	"time"
 )
 
 const (

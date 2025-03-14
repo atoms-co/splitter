@@ -2,14 +2,15 @@ package model
 
 import (
 	"context"
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/mapx"
-	"go.atoms.co/slicex"
 	"fmt"
 	"sort"
 	"sync"
 	"time"
+
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/mapx"
+	"go.atoms.co/slicex"
 )
 
 // ClusterID identifies cluster version and origin information.

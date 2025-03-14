@@ -1,9 +1,10 @@
 package model
 
 import (
+	"github.com/golang/protobuf/proto"
+
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
-	"github.com/golang/protobuf/proto"
 )
 
 type TenantOperationalOption func(*public_v1.Tenant_Operational)

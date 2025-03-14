@@ -1,12 +1,13 @@
 package leader
 
 import (
+	"time"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	"time"
 )
 
 type (

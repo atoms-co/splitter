@@ -1,10 +1,11 @@
 package storage
 
 import (
+	"fmt"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	"fmt"
 )
 
 type Tenants interface {

@@ -2,6 +2,11 @@ package model
 
 import (
 	"context"
+	"errors"
+	"time"
+
+	"google.golang.org/grpc"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
@@ -12,9 +17,6 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
-	"errors"
-	"google.golang.org/grpc"
-	"time"
 )
 
 var (

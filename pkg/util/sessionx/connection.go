@@ -2,14 +2,15 @@ package sessionx
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
-	"fmt"
-	"sync/atomic"
-	"time"
 )
 
 // Connection represents an async session-enabled connection. Useful for muxing multiple session streams into one.

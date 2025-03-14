@@ -1,15 +1,17 @@
 package prefab
 
 import (
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/lib/service/location/pb"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb"
-	"fmt"
-	"github.com/google/uuid"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"time"
 )
 
 var (

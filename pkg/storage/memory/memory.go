@@ -2,9 +2,10 @@ package memory
 
 import (
 	"context"
+	"sync"
+
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/storage"
-	"sync"
 )
 
 // Storage is an in-memory storage implementation. Useful for single-node setups and testing. Thread-safe.

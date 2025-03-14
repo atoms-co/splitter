@@ -1,15 +1,17 @@
 package model
 
 import (
-	"go.atoms.co/slicex"
-	"go.atoms.co/lib/uuidx"
-	"go.atoms.co/splitter/pb"
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
-	"strings"
-	"time"
+
+	"go.atoms.co/slicex"
+	"go.atoms.co/lib/uuidx"
+	"go.atoms.co/splitter/pb"
 )
 
 type Version int64

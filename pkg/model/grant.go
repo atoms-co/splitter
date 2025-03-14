@@ -2,11 +2,12 @@ package model
 
 import (
 	"context"
+	"fmt"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
-	"fmt"
-	"time"
 )
 
 // LeaseState represents the current state of a grant.

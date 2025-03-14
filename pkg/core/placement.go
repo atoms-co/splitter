@@ -1,18 +1,20 @@
 package core
 
 import (
+	"fmt"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"go.atoms.co/lib/container"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
-	"github.com/golang/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"slices"
-	"strconv"
-	"strings"
-	"time"
 )
 
 // Block is a block number in the range [0;1023].

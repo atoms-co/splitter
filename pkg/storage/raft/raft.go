@@ -2,15 +2,17 @@ package raft
 
 import (
 	"context"
+	"fmt"
+	"time"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/hashicorp/raft"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
-	"github.com/golang/protobuf/proto"
-	"github.com/hashicorp/raft"
-	"time"
 )
 
 var (

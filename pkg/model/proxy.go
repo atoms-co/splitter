@@ -2,15 +2,17 @@ package model
 
 import (
 	"context"
-	"go.atoms.co/lib/backoffx"
-	"go.atoms.co/lib/contextx"
-	"go.atoms.co/lib/iox"
 	"errors"
 	"fmt"
+	"time"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"time"
+
+	"go.atoms.co/lib/backoffx"
+	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/iox"
 )
 
 var (

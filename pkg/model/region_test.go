@@ -2,11 +2,12 @@ package model_test
 
 import (
 	"context"
+	"testing"
+	"time"
+
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/splitter/pkg/model"
-	"testing"
-	"time"
 )
 
 var (

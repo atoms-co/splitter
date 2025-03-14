@@ -2,13 +2,14 @@ package leader
 
 import (
 	"context"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pb/private"
-	"time"
 )
 
 // LocalManager is a leader manager that always uses local leader. Useful for testing.

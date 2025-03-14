@@ -2,13 +2,15 @@ package cmd
 
 import (
 	"context"
-	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pkg/model"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/spf13/cobra"
 	"sort"
 	"strings"
+
+	"github.com/google/uuid"
+	"github.com/spf13/cobra"
+
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 var (

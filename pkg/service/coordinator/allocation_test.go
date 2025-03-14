@@ -1,6 +1,13 @@
 package coordinator_test
 
 import (
+	"testing"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
@@ -9,11 +16,6 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pb"
 	"go.atoms.co/splitter/testing/prefab"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"testing"
-	"time"
 )
 
 func TestNamedShards(t *testing.T) {

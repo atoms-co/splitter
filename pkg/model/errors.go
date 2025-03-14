@@ -1,10 +1,12 @@
 package model
 
 import (
-	"go.atoms.co/lib/backoffx"
 	"errors"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"go.atoms.co/lib/backoffx"
 )
 
 var (

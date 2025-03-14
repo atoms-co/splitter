@@ -2,16 +2,18 @@ package model_test
 
 import (
 	"context"
+	"io"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
-	"github.com/stretchr/testify/assert"
-	"io"
-	"sync"
-	"testing"
-	"time"
 )
 
 func TestPeeredConnectionCache(t *testing.T) {

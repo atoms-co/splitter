@@ -1,13 +1,15 @@
 package model
 
 import (
-	"go.atoms.co/lib/mapx"
-	"go.atoms.co/splitter/pb"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"slices"
 	"sort"
 	"sync"
+
+	"github.com/golang/protobuf/proto"
+
+	"go.atoms.co/lib/mapx"
+	"go.atoms.co/splitter/pb"
 )
 
 type ShardingPolicyOption func(policy *public_v1.ShardingPolicy)

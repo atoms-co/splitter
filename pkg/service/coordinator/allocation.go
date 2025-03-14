@@ -1,6 +1,9 @@
 package coordinator
 
 import (
+	"fmt"
+	"time"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
@@ -9,8 +12,6 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb"
-	"fmt"
-	"time"
 )
 
 const (

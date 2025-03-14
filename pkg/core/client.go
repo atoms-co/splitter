@@ -2,11 +2,13 @@ package core
 
 import (
 	"context"
+
+	"google.golang.org/grpc"
+
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
-	"google.golang.org/grpc"
 )
 
 type UpdatePlacementOption func(req *internal_v1.UpdatePlacementRequest)

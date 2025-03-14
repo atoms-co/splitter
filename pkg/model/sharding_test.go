@@ -1,11 +1,13 @@
 package model_test
 
 import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/testing/prefab"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestShardMap(t *testing.T) {

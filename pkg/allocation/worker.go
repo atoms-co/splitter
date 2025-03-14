@@ -1,11 +1,12 @@
 package allocation
 
 import (
+	"fmt"
+	"time"
+
 	"go.atoms.co/lib/container"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
-	"fmt"
-	"time"
 )
 
 // Worker is a temporary entity that can be assigned work. All active and allocated grants are covered

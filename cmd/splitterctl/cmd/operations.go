@@ -2,17 +2,19 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"slices"
+	"time"
+
+	"github.com/spf13/cobra"
+
 	"go.atoms.co/lib/backoffx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	"encoding/json"
-	"errors"
-	"fmt"
-	"github.com/spf13/cobra"
-	"slices"
-	"time"
 )
 
 var (

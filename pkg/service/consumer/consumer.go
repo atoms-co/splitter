@@ -2,6 +2,10 @@ package consumer
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
@@ -15,9 +19,6 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
-	"errors"
-	"fmt"
-	"time"
 )
 
 // Consumer handles splitter consumer connections

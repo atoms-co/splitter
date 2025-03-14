@@ -1,13 +1,15 @@
 package model
 
 import (
+	"time"
+
+	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
-	"github.com/golang/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"time"
 )
 
 type JoinMessage struct {

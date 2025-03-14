@@ -2,10 +2,12 @@ package leader
 
 import (
 	"context"
+
+	"github.com/golang/protobuf/proto"
+
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
-	"github.com/golang/protobuf/proto"
 )
 
 type Resolver = model.SimpleResolver[internal_v1.LeaderServiceClient, model.DomainKey]

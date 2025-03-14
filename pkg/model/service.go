@@ -1,15 +1,17 @@
 package model
 
 import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pb"
-	"fmt"
-	"github.com/golang/protobuf/proto"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"strings"
-	"time"
 )
 
 type ServiceName string

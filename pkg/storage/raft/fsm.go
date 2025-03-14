@@ -2,6 +2,12 @@ package raft
 
 import (
 	"context"
+	"io"
+	"sync"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/hashicorp/raft"
+
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/protox"
@@ -9,10 +15,6 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pb/private"
-	"github.com/golang/protobuf/proto"
-	"github.com/hashicorp/raft"
-	"io"
-	"sync"
 )
 
 var (

@@ -1,15 +1,17 @@
 package model
 
 import (
-	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pb"
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	"github.com/google/uuid"
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/pb"
 )
 
 // DistributionSplit represents a region change in a distribution from a given key.

@@ -2,6 +2,10 @@ package leader
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
@@ -21,9 +25,6 @@ import (
 	"go.atoms.co/splitter/pkg/util/sessionx"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
-	"fmt"
-	"sync"
-	"time"
 )
 
 const (

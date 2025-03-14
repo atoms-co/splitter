@@ -2,17 +2,19 @@ package cmd
 
 import (
 	"context"
-	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/lib/statshandlerx"
-	"go.atoms.co/splitter/pkg/core"
-	"go.atoms.co/splitter/pkg/model"
 	"fmt"
+	"strings"
+	"time"
+
 	_ "github.com/Jille/grpc-multi-resolver"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
-	"strings"
-	"time"
+
+	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/lib/statshandlerx"
+	"go.atoms.co/splitter/pkg/core"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 var (

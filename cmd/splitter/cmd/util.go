@@ -2,10 +2,11 @@ package cmd
 
 import (
 	"context"
-	"go.atoms.co/lib/log"
 	"fmt"
 	"net/http"
 	"os"
+
+	"go.atoms.co/lib/log"
 )
 
 func startHealthCheck(ctx context.Context, port int) {

@@ -1,12 +1,13 @@
 package core
 
 import (
+	"fmt"
+	"time"
+
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
-	"time"
 )
 
 // Assignment holds a coordinator instance and its active grants, potentially none.

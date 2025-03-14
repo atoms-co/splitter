@@ -1,15 +1,17 @@
 package model
 
 import (
+	"fmt"
+	"time"
+
+	"github.com/golang/protobuf/proto"
+	"github.com/google/uuid"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pb"
-	"fmt"
-	"github.com/golang/protobuf/proto"
-	"github.com/google/uuid"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"time"
 )
 
 type ConsumerID = InstanceID

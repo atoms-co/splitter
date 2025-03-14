@@ -1,10 +1,11 @@
 package storage
 
 import (
+	"fmt"
+
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	"fmt"
 )
 
 type tenantInfo struct {

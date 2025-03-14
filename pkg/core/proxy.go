@@ -2,8 +2,9 @@ package core
 
 import (
 	"context"
-	"go.atoms.co/splitter/pkg/model"
 	"errors"
+
+	"go.atoms.co/splitter/pkg/model"
 )
 
 // Invoke makes a grpc invocation to the owner of the given key, if remote, and calls the

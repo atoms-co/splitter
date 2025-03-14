@@ -1,12 +1,14 @@
 package core
 
 import (
+	"fmt"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
+
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
-	"google.golang.org/protobuf/types/known/timestamppb"
-	"time"
 )
 
 // GrantID is a leader-determined grant id.

@@ -1,10 +1,11 @@
 package worker
 
 import (
+	"fmt"
+
 	"go.atoms.co/lib/clockx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/service/coordinator"
-	"fmt"
 )
 
 // LeaseState represents the current lease state of a grant.

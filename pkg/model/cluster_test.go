@@ -3,15 +3,7 @@ package model_test
 import (
 	"bytes"
 	"context"
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/lib/testing/requirex"
-	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/testing/prefab"
 	"fmt"
-	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path"
 	"path/filepath"
@@ -19,6 +11,16 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
+
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/lib/testing/assertx"
+	"go.atoms.co/lib/testing/requirex"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/testing/prefab"
 )
 
 var (

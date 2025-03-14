@@ -1,16 +1,18 @@
 package model_test
 
 import (
+	"fmt"
+	"testing"
+
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/testing/prefab"
-	"fmt"
-	"github.com/google/uuid"
-	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 var (

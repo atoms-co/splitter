@@ -1,10 +1,11 @@
 package coordinator
 
 import (
+	"github.com/golang/protobuf/proto"
+
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pb/private"
-	"github.com/golang/protobuf/proto"
 )
 
 type ConnectMessage struct {

@@ -2,6 +2,8 @@ package leader
 
 import (
 	"context"
+	"fmt"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/iox"
@@ -11,7 +13,6 @@ import (
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pb"
-	"fmt"
 )
 
 const (

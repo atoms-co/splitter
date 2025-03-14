@@ -2,6 +2,8 @@ package frontend
 
 import (
 	"context"
+	"fmt"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -13,7 +15,6 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
 )
 
 // CoordinatorService is a grpc frontend for the internal coordinator api.

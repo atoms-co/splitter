@@ -1,6 +1,14 @@
 package allocation_test
 
 import (
+	"slices"
+	"sort"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
@@ -8,12 +16,6 @@ import (
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/allocation"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"slices"
-	"sort"
-	"testing"
-	"time"
 )
 
 var (

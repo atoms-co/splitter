@@ -2,14 +2,15 @@ package model
 
 import (
 	"context"
+	"fmt"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
-	"fmt"
-	"time"
 )
 
 // TODO(herohde) 8/23/2024: Dispatcher/Processor/Range are all somewhat prescriptive. We may want to

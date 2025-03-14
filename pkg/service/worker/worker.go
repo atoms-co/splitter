@@ -2,6 +2,10 @@ package worker
 
 import (
 	"context"
+	"fmt"
+	"sync"
+	"time"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
@@ -21,9 +25,6 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
-	"sync"
-	"time"
 )
 
 const (

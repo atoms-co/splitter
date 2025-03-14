@@ -2,6 +2,8 @@ package frontend
 
 import (
 	"context"
+	"fmt"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
@@ -13,7 +15,6 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pb/private"
-	"fmt"
 )
 
 type LeaderService struct {
