@@ -10,8 +10,8 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pb/private"
-	"go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type ManagementService struct {
@@ -23,9 +23,9 @@ func NewManagementService(proxy leader.Proxy, resolver leader.Resolver) *Managem
 	return &ManagementService{proxy: proxy, resolver: resolver}
 }
 
-func (s *ManagementService) ListTenants(ctx context.Context, req *public_v1.ListTenantsRequest) (*public_v1.ListTenantsResponse, error) {
-	resp, err := s.invokeTenant(ctx, &internal_v1.TenantRequest{
-		Req: &internal_v1.TenantRequest_List{
+func (s *ManagementService) ListTenants(ctx context.Context, req *splitterpb.ListTenantsRequest) (*splitterpb.ListTenantsResponse, error) {
+	resp, err := s.invokeTenant(ctx, &splitterprivatepb.TenantRequest{
+		Req: &splitterprivatepb.TenantRequest_List{
 			List: req,
 		},
 	})
@@ -35,13 +35,13 @@ func (s *ManagementService) ListTenants(ctx context.Context, req *public_v1.List
 	return resp.GetList(), nil
 }
 
-func (s *ManagementService) NewTenant(ctx context.Context, req *public_v1.NewTenantRequest) (*public_v1.NewTenantResponse, error) {
+func (s *ManagementService) NewTenant(ctx context.Context, req *splitterpb.NewTenantRequest) (*splitterpb.NewTenantResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "empty tenant name")
 	}
 
-	resp, err := s.invokeTenant(ctx, &internal_v1.TenantRequest{
-		Req: &internal_v1.TenantRequest_New{
+	resp, err := s.invokeTenant(ctx, &splitterprivatepb.TenantRequest{
+		Req: &splitterprivatepb.TenantRequest_New{
 			New: req,
 		},
 	})
@@ -51,13 +51,13 @@ func (s *ManagementService) NewTenant(ctx context.Context, req *public_v1.NewTen
 	return resp.GetNew(), nil
 }
 
-func (s *ManagementService) InfoTenant(ctx context.Context, req *public_v1.InfoTenantRequest) (*public_v1.InfoTenantResponse, error) {
+func (s *ManagementService) InfoTenant(ctx context.Context, req *splitterpb.InfoTenantRequest) (*splitterpb.InfoTenantResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "empty tenant name")
 	}
 
-	resp, err := s.invokeTenant(ctx, &internal_v1.TenantRequest{
-		Req: &internal_v1.TenantRequest_Info{
+	resp, err := s.invokeTenant(ctx, &splitterprivatepb.TenantRequest{
+		Req: &splitterprivatepb.TenantRequest_Info{
 			Info: req,
 		},
 	})
@@ -67,13 +67,13 @@ func (s *ManagementService) InfoTenant(ctx context.Context, req *public_v1.InfoT
 	return resp.GetInfo(), nil
 }
 
-func (s *ManagementService) UpdateTenant(ctx context.Context, req *public_v1.UpdateTenantRequest) (*public_v1.UpdateTenantResponse, error) {
+func (s *ManagementService) UpdateTenant(ctx context.Context, req *splitterpb.UpdateTenantRequest) (*splitterpb.UpdateTenantResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "empty tenant name")
 	}
 
-	resp, err := s.invokeTenant(ctx, &internal_v1.TenantRequest{
-		Req: &internal_v1.TenantRequest_Update{
+	resp, err := s.invokeTenant(ctx, &splitterprivatepb.TenantRequest{
+		Req: &splitterprivatepb.TenantRequest_Update{
 			Update: req,
 		},
 	})
@@ -83,13 +83,13 @@ func (s *ManagementService) UpdateTenant(ctx context.Context, req *public_v1.Upd
 	return resp.GetUpdate(), nil
 }
 
-func (s *ManagementService) DeleteTenant(ctx context.Context, req *public_v1.DeleteTenantRequest) (*public_v1.DeleteTenantResponse, error) {
+func (s *ManagementService) DeleteTenant(ctx context.Context, req *splitterpb.DeleteTenantRequest) (*splitterpb.DeleteTenantResponse, error) {
 	if req.GetName() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "empty tenant name")
 	}
 
-	resp, err := s.invokeTenant(ctx, &internal_v1.TenantRequest{
-		Req: &internal_v1.TenantRequest_Delete{
+	resp, err := s.invokeTenant(ctx, &splitterprivatepb.TenantRequest{
+		Req: &splitterprivatepb.TenantRequest_Delete{
 			Delete: req,
 		},
 	})
@@ -99,13 +99,13 @@ func (s *ManagementService) DeleteTenant(ctx context.Context, req *public_v1.Del
 	return resp.GetDelete(), nil
 }
 
-func (s *ManagementService) ListServices(ctx context.Context, req *public_v1.ListServicesRequest) (*public_v1.ListServicesResponse, error) {
+func (s *ManagementService) ListServices(ctx context.Context, req *splitterpb.ListServicesRequest) (*splitterpb.ListServicesResponse, error) {
 	if req.GetTenant() == "" {
 		return nil, status.Errorf(codes.InvalidArgument, "empty tenant name")
 	}
 
-	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
-		Req: &internal_v1.ServiceRequest_List{
+	resp, err := s.invokeService(ctx, &splitterprivatepb.ServiceRequest{
+		Req: &splitterprivatepb.ServiceRequest_List{
 			List: req,
 		},
 	})
@@ -115,13 +115,13 @@ func (s *ManagementService) ListServices(ctx context.Context, req *public_v1.Lis
 	return resp.GetList(), nil
 }
 
-func (s *ManagementService) NewService(ctx context.Context, req *public_v1.NewServiceRequest) (*public_v1.NewServiceResponse, error) {
+func (s *ManagementService) NewService(ctx context.Context, req *splitterpb.NewServiceRequest) (*splitterpb.NewServiceResponse, error) {
 	if _, err := model.ParseQualifiedServiceName(req.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
-		Req: &internal_v1.ServiceRequest_New{
+	resp, err := s.invokeService(ctx, &splitterprivatepb.ServiceRequest{
+		Req: &splitterprivatepb.ServiceRequest_New{
 			New: req,
 		},
 	})
@@ -131,13 +131,13 @@ func (s *ManagementService) NewService(ctx context.Context, req *public_v1.NewSe
 	return resp.GetNew(), nil
 }
 
-func (s *ManagementService) InfoService(ctx context.Context, req *public_v1.InfoServiceRequest) (*public_v1.InfoServiceResponse, error) {
+func (s *ManagementService) InfoService(ctx context.Context, req *splitterpb.InfoServiceRequest) (*splitterpb.InfoServiceResponse, error) {
 	if _, err := model.ParseQualifiedServiceName(req.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
-		Req: &internal_v1.ServiceRequest_Info{
+	resp, err := s.invokeService(ctx, &splitterprivatepb.ServiceRequest{
+		Req: &splitterprivatepb.ServiceRequest_Info{
 			Info: req,
 		},
 	})
@@ -147,13 +147,13 @@ func (s *ManagementService) InfoService(ctx context.Context, req *public_v1.Info
 	return resp.GetInfo(), nil
 }
 
-func (s *ManagementService) UpdateService(ctx context.Context, req *public_v1.UpdateServiceRequest) (*public_v1.UpdateServiceResponse, error) {
+func (s *ManagementService) UpdateService(ctx context.Context, req *splitterpb.UpdateServiceRequest) (*splitterpb.UpdateServiceResponse, error) {
 	if _, err := model.ParseQualifiedServiceName(req.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
-		Req: &internal_v1.ServiceRequest_Update{
+	resp, err := s.invokeService(ctx, &splitterprivatepb.ServiceRequest{
+		Req: &splitterprivatepb.ServiceRequest_Update{
 			Update: req,
 		},
 	})
@@ -163,13 +163,13 @@ func (s *ManagementService) UpdateService(ctx context.Context, req *public_v1.Up
 	return resp.GetUpdate(), nil
 }
 
-func (s *ManagementService) DeleteService(ctx context.Context, req *public_v1.DeleteServiceRequest) (*public_v1.DeleteServiceResponse, error) {
+func (s *ManagementService) DeleteService(ctx context.Context, req *splitterpb.DeleteServiceRequest) (*splitterpb.DeleteServiceResponse, error) {
 	if _, err := model.ParseQualifiedServiceName(req.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := s.invokeService(ctx, &internal_v1.ServiceRequest{
-		Req: &internal_v1.ServiceRequest_Delete{
+	resp, err := s.invokeService(ctx, &splitterprivatepb.ServiceRequest{
+		Req: &splitterprivatepb.ServiceRequest_Delete{
 			Delete: req,
 		},
 	})
@@ -179,13 +179,13 @@ func (s *ManagementService) DeleteService(ctx context.Context, req *public_v1.De
 	return resp.GetDelete(), nil
 }
 
-func (s *ManagementService) ListDomains(ctx context.Context, req *public_v1.ListDomainsRequest) (*public_v1.ListDomainsResponse, error) {
+func (s *ManagementService) ListDomains(ctx context.Context, req *splitterpb.ListDomainsRequest) (*splitterpb.ListDomainsResponse, error) {
 	if _, err := model.ParseQualifiedServiceName(req.GetService()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := s.invokeDomain(ctx, &internal_v1.DomainRequest{
-		Req: &internal_v1.DomainRequest_List{
+	resp, err := s.invokeDomain(ctx, &splitterprivatepb.DomainRequest{
+		Req: &splitterprivatepb.DomainRequest_List{
 			List: req,
 		},
 	})
@@ -195,13 +195,13 @@ func (s *ManagementService) ListDomains(ctx context.Context, req *public_v1.List
 	return resp.GetList(), nil
 }
 
-func (s *ManagementService) NewDomain(ctx context.Context, req *public_v1.NewDomainRequest) (*public_v1.NewDomainResponse, error) {
+func (s *ManagementService) NewDomain(ctx context.Context, req *splitterpb.NewDomainRequest) (*splitterpb.NewDomainResponse, error) {
 	if _, err := model.ParseQualifiedDomainName(req.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := s.invokeDomain(ctx, &internal_v1.DomainRequest{
-		Req: &internal_v1.DomainRequest_New{
+	resp, err := s.invokeDomain(ctx, &splitterprivatepb.DomainRequest{
+		Req: &splitterprivatepb.DomainRequest_New{
 			New: req,
 		},
 	})
@@ -211,13 +211,13 @@ func (s *ManagementService) NewDomain(ctx context.Context, req *public_v1.NewDom
 	return resp.GetNew(), nil
 }
 
-func (s *ManagementService) UpdateDomain(ctx context.Context, req *public_v1.UpdateDomainRequest) (*public_v1.UpdateDomainResponse, error) {
+func (s *ManagementService) UpdateDomain(ctx context.Context, req *splitterpb.UpdateDomainRequest) (*splitterpb.UpdateDomainResponse, error) {
 	if _, err := model.ParseQualifiedDomainName(req.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := s.invokeDomain(ctx, &internal_v1.DomainRequest{
-		Req: &internal_v1.DomainRequest_Update{
+	resp, err := s.invokeDomain(ctx, &splitterprivatepb.DomainRequest{
+		Req: &splitterprivatepb.DomainRequest_Update{
 			Update: req,
 		},
 	})
@@ -227,13 +227,13 @@ func (s *ManagementService) UpdateDomain(ctx context.Context, req *public_v1.Upd
 	return resp.GetUpdate(), nil
 }
 
-func (s *ManagementService) DeleteDomain(ctx context.Context, req *public_v1.DeleteDomainRequest) (*public_v1.DeleteDomainResponse, error) {
+func (s *ManagementService) DeleteDomain(ctx context.Context, req *splitterpb.DeleteDomainRequest) (*splitterpb.DeleteDomainResponse, error) {
 	if _, err := model.ParseQualifiedDomainName(req.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := s.invokeDomain(ctx, &internal_v1.DomainRequest{
-		Req: &internal_v1.DomainRequest_Delete{
+	resp, err := s.invokeDomain(ctx, &splitterprivatepb.DomainRequest{
+		Req: &splitterprivatepb.DomainRequest_Delete{
 			Delete: req,
 		},
 	})
@@ -243,11 +243,11 @@ func (s *ManagementService) DeleteDomain(ctx context.Context, req *public_v1.Del
 	return resp.GetDelete(), nil
 }
 
-func (s *ManagementService) invokeTenant(ctx context.Context, request *internal_v1.TenantRequest) (*internal_v1.TenantResponse, error) {
+func (s *ManagementService) invokeTenant(ctx context.Context, request *splitterprivatepb.TenantRequest) (*splitterprivatepb.TenantResponse, error) {
 	req := leader.NewHandleTenantRequest(request)
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return core.InvokeZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*splitterprivatepb.LeaderHandleResponse, error) {
+		return core.InvokeZero(ctx, s.resolver, splitterprivatepb.LeaderServiceClient.Handle, req.Proto, func() (*splitterprivatepb.LeaderHandleResponse, error) {
 			return s.proxy.Handle(ctx, req)
 		})
 	})
@@ -259,11 +259,11 @@ func (s *ManagementService) invokeTenant(ctx context.Context, request *internal_
 	return resp.GetTenant(), nil
 }
 
-func (s *ManagementService) invokeService(ctx context.Context, request *internal_v1.ServiceRequest) (*internal_v1.ServiceResponse, error) {
+func (s *ManagementService) invokeService(ctx context.Context, request *splitterprivatepb.ServiceRequest) (*splitterprivatepb.ServiceResponse, error) {
 	req := leader.NewHandleServiceRequest(request)
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return core.InvokeZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*splitterprivatepb.LeaderHandleResponse, error) {
+		return core.InvokeZero(ctx, s.resolver, splitterprivatepb.LeaderServiceClient.Handle, req.Proto, func() (*splitterprivatepb.LeaderHandleResponse, error) {
 			return s.proxy.Handle(ctx, req)
 		})
 	})
@@ -275,11 +275,11 @@ func (s *ManagementService) invokeService(ctx context.Context, request *internal
 	return resp.GetService(), nil
 }
 
-func (s *ManagementService) invokeDomain(ctx context.Context, request *internal_v1.DomainRequest) (*internal_v1.DomainResponse, error) {
+func (s *ManagementService) invokeDomain(ctx context.Context, request *splitterprivatepb.DomainRequest) (*splitterprivatepb.DomainResponse, error) {
 	req := leader.NewHandleDomainRequest(request)
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return core.InvokeZero(ctx, s.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*splitterprivatepb.LeaderHandleResponse, error) {
+		return core.InvokeZero(ctx, s.resolver, splitterprivatepb.LeaderServiceClient.Handle, req.Proto, func() (*splitterprivatepb.LeaderHandleResponse, error) {
 			return s.proxy.Handle(ctx, req)
 		})
 	})

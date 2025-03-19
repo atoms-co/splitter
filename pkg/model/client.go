@@ -16,7 +16,7 @@ import (
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 var (
@@ -172,69 +172,69 @@ func WaitForAction(ctx context.Context, c iox.RAsyncCloser, o Ownership) error {
 }
 
 // UpdateTenantOption represents an option to NewTenant.
-type UpdateTenantOption func(*public_v1.UpdateTenantRequest)
+type UpdateTenantOption func(*splitterpb.UpdateTenantRequest)
 
 // WithUpdateTenantOperational update the operational metadata of a tenant.
 func WithUpdateTenantOperational(operational TenantOperational) UpdateTenantOption {
-	return func(request *public_v1.UpdateTenantRequest) {
+	return func(request *splitterpb.UpdateTenantRequest) {
 		request.Operational = UnwrapTenantOperational(operational)
 	}
 }
 
 // WithUpdateTenantConfig defines config for a tenant.
 func WithUpdateTenantConfig(config TenantConfig) UpdateTenantOption {
-	return func(request *public_v1.UpdateTenantRequest) {
+	return func(request *splitterpb.UpdateTenantRequest) {
 		request.Config = UnwrapTenantConfig(config)
 	}
 }
 
 // UpdateServiceOption represents an option to NewService.
-type UpdateServiceOption func(*public_v1.UpdateServiceRequest)
+type UpdateServiceOption func(*splitterpb.UpdateServiceRequest)
 
 // WithUpdateServiceOperational update the operational metadata of a service.
 func WithUpdateServiceOperational(operational ServiceOperational) UpdateServiceOption {
-	return func(request *public_v1.UpdateServiceRequest) {
+	return func(request *splitterpb.UpdateServiceRequest) {
 		request.Operational = UnwrapServiceOperational(operational)
 	}
 }
 
 // WithUpdateServiceConfig defines config for a tenant.
 func WithUpdateServiceConfig(config ServiceConfig) UpdateServiceOption {
-	return func(request *public_v1.UpdateServiceRequest) {
+	return func(request *splitterpb.UpdateServiceRequest) {
 		request.Config = UnwrapServiceConfig(config)
 	}
 }
 
 // NewDomainOption represents an option to NewDomain.
-type NewDomainOption func(*public_v1.NewDomainRequest)
+type NewDomainOption func(*splitterpb.NewDomainRequest)
 
 // WithNewDomainState updates the state of a domain.
 func WithNewDomainState(state DomainState) NewDomainOption {
-	return func(request *public_v1.NewDomainRequest) {
+	return func(request *splitterpb.NewDomainRequest) {
 		request.State = state
 	}
 }
 
 // UpdateDomainOption represents an option to UpdateDomain.
-type UpdateDomainOption func(*public_v1.UpdateDomainRequest)
+type UpdateDomainOption func(*splitterpb.UpdateDomainRequest)
 
 // WithUpdateDomainOperational update the operational metadata of a domain.
 func WithUpdateDomainOperational(operational DomainOperational) UpdateDomainOption {
-	return func(request *public_v1.UpdateDomainRequest) {
+	return func(request *splitterpb.UpdateDomainRequest) {
 		request.Operational = UnwrapDomainOperational(operational)
 	}
 }
 
 // WithUpdateDomainState update the state of a domain.
 func WithUpdateDomainState(state DomainState) UpdateDomainOption {
-	return func(request *public_v1.UpdateDomainRequest) {
+	return func(request *splitterpb.UpdateDomainRequest) {
 		request.State = state
 	}
 }
 
 // WithUpdateDomainConfig defines config for a domain.
 func WithUpdateDomainConfig(config DomainConfig) UpdateDomainOption {
-	return func(request *public_v1.UpdateDomainRequest) {
+	return func(request *splitterpb.UpdateDomainRequest) {
 		request.Config = UnwrapDomainConfig(config)
 	}
 }
@@ -268,16 +268,16 @@ type Client interface {
 	InfoPlacement(ctx context.Context, name QualifiedPlacementName) (PlacementInfo, error)
 }
 
-type ConsumerOption func(pb *public_v1.ClientMessage_Register_Options)
+type ConsumerOption func(pb *splitterpb.ClientMessage_Register_Options)
 
 func WithKeyNames(names ...DomainKeyName) ConsumerOption {
-	return func(pb *public_v1.ClientMessage_Register_Options) {
+	return func(pb *splitterpb.ClientMessage_Register_Options) {
 		pb.Names = slicex.Map(names, DomainKeyName.ToProto)
 	}
 }
 
 func WithCapacityLimit(limit int) ConsumerOption {
-	return func(pb *public_v1.ClientMessage_Register_Options) {
+	return func(pb *splitterpb.ClientMessage_Register_Options) {
 		pb.CapacityLimit = uint64(limit)
 	}
 }
@@ -292,7 +292,7 @@ type ConsumerClient interface {
 
 type consumerClient struct {
 	cl       clock.Clock
-	consumer public_v1.ConsumerServiceClient
+	consumer splitterpb.ConsumerServiceClient
 }
 
 func (c consumerClient) Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, handler Handler, opts ...ConsumerOption) (<-chan Cluster, iox.RAsyncCloser) {
@@ -305,8 +305,8 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 		defer sess.Close()
 		wctx, _ := contextx.WithQuitCancel(ctx, sess.Closed()) // cancel context if session client closes
 
-		return grpcx.Connect(wctx, c.consumer.Join, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
-			ch := chanx.MapIf(in, func(pb *public_v1.JoinMessage) (ConsumerMessage, bool) {
+		return grpcx.Connect(wctx, c.consumer.Join, func(ctx context.Context, in <-chan *splitterpb.JoinMessage) (<-chan *splitterpb.JoinMessage, error) {
+			ch := chanx.MapIf(in, func(pb *splitterpb.JoinMessage) (ConsumerMessage, bool) {
 				if pb.GetSession() != nil {
 					sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session client
 					return ConsumerMessage{}, false
@@ -341,28 +341,28 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 func NewConsumerClient(cc *grpc.ClientConn) ConsumerClient {
 	return &consumerClient{
 		cl:       clock.New(),
-		consumer: public_v1.NewConsumerServiceClient(cc),
+		consumer: splitterpb.NewConsumerServiceClient(cc),
 	}
 }
 
 type client struct {
 	cl         clock.Clock
-	consumer   public_v1.ConsumerServiceClient
-	management public_v1.ManagementServiceClient
-	placement  public_v1.PlacementServiceClient
+	consumer   splitterpb.ConsumerServiceClient
+	management splitterpb.ManagementServiceClient
+	placement  splitterpb.PlacementServiceClient
 }
 
 func NewClient(cc *grpc.ClientConn) Client {
 	return &client{
 		cl:         clock.New(),
-		consumer:   public_v1.NewConsumerServiceClient(cc),
-		management: public_v1.NewManagementServiceClient(cc),
-		placement:  public_v1.NewPlacementServiceClient(cc),
+		consumer:   splitterpb.NewConsumerServiceClient(cc),
+		management: splitterpb.NewManagementServiceClient(cc),
+		placement:  splitterpb.NewPlacementServiceClient(cc),
 	}
 }
 
 func (c *client) ListTenants(ctx context.Context) ([]TenantInfo, error) {
-	req := &public_v1.ListTenantsRequest{}
+	req := &splitterpb.ListTenantsRequest{}
 	resp, err := c.management.ListTenants(ctx, req)
 	if err != nil {
 		return nil, FromGRPCError(err)
@@ -371,7 +371,7 @@ func (c *client) ListTenants(ctx context.Context) ([]TenantInfo, error) {
 }
 
 func (c *client) NewTenant(ctx context.Context, name TenantName, cfg TenantConfig) (TenantInfo, error) {
-	req := &public_v1.NewTenantRequest{
+	req := &splitterpb.NewTenantRequest{
 		Name:   string(name),
 		Config: UnwrapTenantConfig(cfg),
 	}
@@ -383,7 +383,7 @@ func (c *client) NewTenant(ctx context.Context, name TenantName, cfg TenantConfi
 }
 
 func (c *client) InfoTenant(ctx context.Context, name TenantName) (TenantInfo, error) {
-	req := &public_v1.InfoTenantRequest{Name: string(name)}
+	req := &splitterpb.InfoTenantRequest{Name: string(name)}
 	resp, err := c.management.InfoTenant(ctx, req)
 	if err != nil {
 		return TenantInfo{}, FromGRPCError(err)
@@ -392,7 +392,7 @@ func (c *client) InfoTenant(ctx context.Context, name TenantName) (TenantInfo, e
 }
 
 func (c *client) UpdateTenant(ctx context.Context, name TenantName, guard Version, opts ...UpdateTenantOption) (TenantInfo, error) {
-	req := &public_v1.UpdateTenantRequest{
+	req := &splitterpb.UpdateTenantRequest{
 		Name:    string(name),
 		Version: int64(guard),
 	}
@@ -408,13 +408,13 @@ func (c *client) UpdateTenant(ctx context.Context, name TenantName, guard Versio
 }
 
 func (c *client) DeleteTenant(ctx context.Context, name TenantName) error {
-	req := &public_v1.DeleteTenantRequest{Name: string(name)}
+	req := &splitterpb.DeleteTenantRequest{Name: string(name)}
 	_, err := c.management.DeleteTenant(ctx, req)
 	return FromGRPCError(err)
 }
 
 func (c *client) ListServices(ctx context.Context, tenant TenantName) ([]ServiceInfoEx, error) {
-	req := &public_v1.ListServicesRequest{
+	req := &splitterpb.ListServicesRequest{
 		Tenant: string(tenant),
 	}
 	resp, err := c.management.ListServices(ctx, req)
@@ -425,7 +425,7 @@ func (c *client) ListServices(ctx context.Context, tenant TenantName) ([]Service
 }
 
 func (c *client) NewService(ctx context.Context, name QualifiedServiceName, cfg ServiceConfig) (ServiceInfo, error) {
-	req := &public_v1.NewServiceRequest{
+	req := &splitterpb.NewServiceRequest{
 		Name:   name.ToProto(),
 		Config: UnwrapServiceConfig(cfg),
 	}
@@ -437,7 +437,7 @@ func (c *client) NewService(ctx context.Context, name QualifiedServiceName, cfg 
 }
 
 func (c *client) InfoService(ctx context.Context, name QualifiedServiceName) (ServiceInfoEx, error) {
-	req := &public_v1.InfoServiceRequest{Name: name.ToProto()}
+	req := &splitterpb.InfoServiceRequest{Name: name.ToProto()}
 	resp, err := c.management.InfoService(ctx, req)
 	if err != nil {
 		return ServiceInfoEx{}, FromGRPCError(err)
@@ -446,7 +446,7 @@ func (c *client) InfoService(ctx context.Context, name QualifiedServiceName) (Se
 }
 
 func (c *client) UpdateService(ctx context.Context, name QualifiedServiceName, guard Version, opts ...UpdateServiceOption) (ServiceInfo, error) {
-	req := &public_v1.UpdateServiceRequest{
+	req := &splitterpb.UpdateServiceRequest{
 		Name:    name.ToProto(),
 		Version: int64(guard),
 	}
@@ -462,13 +462,13 @@ func (c *client) UpdateService(ctx context.Context, name QualifiedServiceName, g
 }
 
 func (c *client) DeleteService(ctx context.Context, name QualifiedServiceName) error {
-	req := &public_v1.DeleteServiceRequest{Name: name.ToProto()}
+	req := &splitterpb.DeleteServiceRequest{Name: name.ToProto()}
 	_, err := c.management.DeleteService(ctx, req)
 	return FromGRPCError(err)
 }
 
 func (c *client) ListDomains(ctx context.Context, service QualifiedServiceName) ([]Domain, error) {
-	req := &public_v1.ListDomainsRequest{
+	req := &splitterpb.ListDomainsRequest{
 		Service: service.ToProto(),
 	}
 	resp, err := c.management.ListDomains(ctx, req)
@@ -479,7 +479,7 @@ func (c *client) ListDomains(ctx context.Context, service QualifiedServiceName) 
 }
 
 func (c *client) NewDomain(ctx context.Context, name QualifiedDomainName, domainType DomainType, cfg DomainConfig, opts ...NewDomainOption) (Domain, error) {
-	req := &public_v1.NewDomainRequest{
+	req := &splitterpb.NewDomainRequest{
 		Name:   name.ToProto(),
 		Type:   domainType,
 		Config: UnwrapDomainConfig(cfg),
@@ -495,7 +495,7 @@ func (c *client) NewDomain(ctx context.Context, name QualifiedDomainName, domain
 }
 
 func (c *client) UpdateDomain(ctx context.Context, name QualifiedDomainName, guard Version, opts ...UpdateDomainOption) (Domain, error) {
-	req := &public_v1.UpdateDomainRequest{
+	req := &splitterpb.UpdateDomainRequest{
 		Name:           name.ToProto(),
 		ServiceVersion: int64(guard),
 	}
@@ -511,13 +511,13 @@ func (c *client) UpdateDomain(ctx context.Context, name QualifiedDomainName, gua
 }
 
 func (c *client) DeleteDomain(ctx context.Context, name QualifiedDomainName) error {
-	req := &public_v1.DeleteDomainRequest{Name: name.ToProto()}
+	req := &splitterpb.DeleteDomainRequest{Name: name.ToProto()}
 	_, err := c.management.DeleteDomain(ctx, req)
 	return FromGRPCError(err)
 }
 
 func (c *client) ListPlacements(ctx context.Context, name TenantName) ([]PlacementInfo, error) {
-	req := &public_v1.ListPlacementsRequest{
+	req := &splitterpb.ListPlacementsRequest{
 		Tenant: string(name),
 	}
 	resp, err := c.placement.List(ctx, req)
@@ -528,7 +528,7 @@ func (c *client) ListPlacements(ctx context.Context, name TenantName) ([]Placeme
 }
 
 func (c *client) InfoPlacement(ctx context.Context, name QualifiedPlacementName) (PlacementInfo, error) {
-	req := &public_v1.InfoPlacementRequest{
+	req := &splitterpb.InfoPlacementRequest{
 		Name: name.ToProto(),
 	}
 	resp, err := c.placement.Info(ctx, req)

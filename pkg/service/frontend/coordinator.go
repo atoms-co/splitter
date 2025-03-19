@@ -14,7 +14,7 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 // CoordinatorService is a grpc frontend for the internal coordinator api.
@@ -31,15 +31,15 @@ func NewCoordinatorService(cl clock.Clock, w worker.Worker) *CoordinatorService 
 	return &c
 }
 
-func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_ConnectServer) error {
+func (c *CoordinatorService) Connect(server splitterprivatepb.CoordinatorService_ConnectServer) error {
 	quit := iox.NewAsyncCloser()
 	defer quit.Close()
 
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if session server closes
 
-	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
+	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *splitterprivatepb.ConnectMessage) (<-chan *splitterprivatepb.ConnectMessage, error) {
 		// Read session initialization message
-		establish, err := session.ReadEstablish(c.cl, in, func(m *internal_v1.ConnectMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(c.cl, in, func(m *splitterprivatepb.ConnectMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
 				return session.WrapMessage(m.GetSession()), true
 			}
@@ -55,7 +55,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 		sess, out, established := session.NewServer(ctx, c.cl, c.worker.Self(), establish)
 		iox.WhenClosed(sess, quit)
 
-		ch := chanx.MapIf(in, func(pb *internal_v1.ConnectMessage) (model.ConsumerMessage, bool) {
+		ch := chanx.MapIf(in, func(pb *splitterprivatepb.ConnectMessage) (model.ConsumerMessage, bool) {
 			if pb.GetSession() != nil {
 				sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session client
 				return model.ConsumerMessage{}, false
@@ -85,7 +85,7 @@ func (c *CoordinatorService) Connect(server internal_v1.CoordinatorService_Conne
 	return model.ToGRPCError(err)
 }
 
-func (c *CoordinatorService) Handle(ctx context.Context, request *internal_v1.CoordinatorHandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+func (c *CoordinatorService) Handle(ctx context.Context, request *splitterprivatepb.CoordinatorHandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error) {
 	resp, err := c.worker.Handle(ctx, coordinator.HandleRequest{Proto: request})
 	return resp, model.ToGRPCError(err)
 }

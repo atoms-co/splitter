@@ -14,7 +14,7 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 type LeaderService struct {
@@ -31,15 +31,15 @@ func NewLeaderService(cl clock.Clock, loc location.Location, proxy leader.Proxy)
 	}
 }
 
-func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error {
+func (l *LeaderService) Join(server splitterprivatepb.LeaderService_JoinServer) error {
 	quit := iox.NewAsyncCloser()
 	defer quit.Close()
 
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if session server closes
 
-	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *internal_v1.JoinMessage) (<-chan *internal_v1.JoinMessage, error) {
+	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *splitterprivatepb.JoinMessage) (<-chan *splitterprivatepb.JoinMessage, error) {
 		// Read session initialization message
-		establish, err := session.ReadEstablish(l.cl, in, func(m *internal_v1.JoinMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(l.cl, in, func(m *splitterprivatepb.JoinMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
 				return session.WrapMessage(m.GetSession()), true
 			}
@@ -55,7 +55,7 @@ func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error 
 		sess, out, established := session.NewServer(ctx, l.cl, l.self, establish)
 		iox.WhenClosed(sess, quit)
 
-		ch := chanx.MapIf(in, func(pb *internal_v1.JoinMessage) (leader.Message, bool) {
+		ch := chanx.MapIf(in, func(pb *splitterprivatepb.JoinMessage) (leader.Message, bool) {
 			if pb.GetSession() != nil {
 				sess.Observe(ctx, session.WrapMessage(pb.GetSession())) // inject into session server
 				return leader.Message{}, false
@@ -86,7 +86,7 @@ func (l *LeaderService) Join(server internal_v1.LeaderService_JoinServer) error 
 	return model.ToGRPCError(err)
 }
 
-func (l *LeaderService) Handle(ctx context.Context, request *internal_v1.LeaderHandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (l *LeaderService) Handle(ctx context.Context, request *splitterprivatepb.LeaderHandleRequest) (*splitterprivatepb.LeaderHandleResponse, error) {
 	resp, err := l.proxy.Handle(ctx, leader.HandleRequest{Proto: request})
 	if err != nil {
 		log.Errorf(ctx, "Handle %v failed: %v", request, err)

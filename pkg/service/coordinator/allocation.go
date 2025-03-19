@@ -11,7 +11,7 @@ import (
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -404,7 +404,7 @@ func fromGrantState(s model.GrantState) (allocation.GrantState, allocation.Grant
 }
 
 func toGrantInfo(g Grant) model.GrantInfo {
-	return model.WrapGrantInfo(&public_v1.ClusterMessage_GrantInfo{
+	return model.WrapGrantInfo(&splitterpb.ClusterMessage_GrantInfo{
 		Id:    string(g.ID),
 		Shard: g.Unit.ToProto(),
 		State: toGrantState(g.State, g.Mod),

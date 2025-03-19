@@ -4,27 +4,27 @@ import (
 	"fmt"
 
 	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type InstanceID = location.InstanceID
 
 type Instance struct {
-	pb *public_v1.Instance
+	pb *splitterpb.Instance
 }
 
 func NewInstance(instance location.Instance, endpoint string) Instance {
-	return WrapInstance(&public_v1.Instance{
+	return WrapInstance(&splitterpb.Instance{
 		Instance: location.UnwrapInstance(instance),
 		Endpoint: endpoint,
 	})
 }
 
-func WrapInstance(pb *public_v1.Instance) Instance {
+func WrapInstance(pb *splitterpb.Instance) Instance {
 	return Instance{pb: pb}
 }
 
-func UnwrapInstance(instance Instance) *public_v1.Instance {
+func UnwrapInstance(instance Instance) *splitterpb.Instance {
 	return instance.pb
 }
 

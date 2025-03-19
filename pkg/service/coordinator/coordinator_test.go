@@ -16,7 +16,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 const (
@@ -479,11 +479,11 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 
 	toRevoke := assign.Grants()[0]
 
-	req := coordinator.NewHandleCoordinatorOperationRequest(serviceName, &internal_v1.CoordinatorOperationRequest{
-		Req: &internal_v1.CoordinatorOperationRequest_RevokeGrants{
-			RevokeGrants: &internal_v1.CoordinatorRevokeGrantsRequest{
+	req := coordinator.NewHandleCoordinatorOperationRequest(serviceName, &splitterprivatepb.CoordinatorOperationRequest{
+		Req: &splitterprivatepb.CoordinatorOperationRequest_RevokeGrants{
+			RevokeGrants: &splitterprivatepb.CoordinatorRevokeGrantsRequest{
 				Service: serviceName.ToProto(),
-				Grants: []*internal_v1.CoordinatorRevokeGrantsRequest_ConsumerGrants{
+				Grants: []*splitterprivatepb.CoordinatorRevokeGrantsRequest_ConsumerGrants{
 					{
 						Consumer: string(w.ID()),
 						Grants:   []string{string(toRevoke.ID())},

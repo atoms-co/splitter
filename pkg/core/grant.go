@@ -8,18 +8,18 @@ import (
 
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 // GrantID is a leader-determined grant id.
 type GrantID = allocation.GrantID
 
 type Grant struct {
-	pb *internal_v1.Grant
+	pb *splitterprivatepb.Grant
 }
 
 func NewGrant(id GrantID, name model.QualifiedServiceName, lease, assigned time.Time) Grant {
-	return WrapGrant(&internal_v1.Grant{
+	return WrapGrant(&splitterprivatepb.Grant{
 		Id:       string(id),
 		Service:  name.ToProto(),
 		Lease:    timestamppb.New(lease),
@@ -27,11 +27,11 @@ func NewGrant(id GrantID, name model.QualifiedServiceName, lease, assigned time.
 	})
 }
 
-func WrapGrant(pb *internal_v1.Grant) Grant {
+func WrapGrant(pb *splitterprivatepb.Grant) Grant {
 	return Grant{pb: pb}
 }
 
-func UnwrapGrant(g Grant) *internal_v1.Grant {
+func UnwrapGrant(g Grant) *splitterprivatepb.Grant {
 	return g.pb
 }
 

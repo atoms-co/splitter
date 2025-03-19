@@ -18,7 +18,7 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 // Consumer handles splitter consumer connections
@@ -99,7 +99,7 @@ func (c *consumer) Self() location.Instance {
 	return c.self
 }
 
-func (c *consumer) forwardRemote(ctx context.Context, consumerSession *session.Server, client internal_v1.CoordinatorServiceClient, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+func (c *consumer) forwardRemote(ctx context.Context, consumerSession *session.Server, client splitterprivatepb.CoordinatorServiceClient, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	// Create a client session with the coordinator instance
 	coordinatorSession, establish, sessionOut := session.NewClient(ctx, c.cl, c.self)
 	wctx, _ := contextx.WithQuitCancel(ctx, coordinatorSession.Closed()) // cancel context if session closes
@@ -111,7 +111,7 @@ func (c *consumer) forwardRemote(ctx context.Context, consumerSession *session.S
 	out := make(chan model.ConsumerMessage, 100)
 	go func() {
 		defer coordinatorSession.Close()
-		err := grpcx.Connect(wctx, client.Connect, func(ctx context.Context, coordinatorIn <-chan *internal_v1.ConnectMessage) (<-chan *internal_v1.ConnectMessage, error) {
+		err := grpcx.Connect(wctx, client.Connect, func(ctx context.Context, coordinatorIn <-chan *splitterprivatepb.ConnectMessage) (<-chan *splitterprivatepb.ConnectMessage, error) {
 			// Process incoming messages by either copying to the output buffer or sending to the session
 			go func() {
 				for pb := range coordinatorIn {

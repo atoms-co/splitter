@@ -27,8 +27,8 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
-	"go.atoms.co/splitter/pb/private"
-	"go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -80,7 +80,7 @@ type Coordinator interface {
 
 	// Handle is used to invoke a coordinator request.
 	// Returns a response or a logical error.
-	Handle(ctx context.Context, request HandleRequest) (*internal_v1.CoordinatorHandleResponse, error)
+	Handle(ctx context.Context, request HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error)
 
 	Self() location.Instance
 	Drain(timeout time.Duration)
@@ -207,7 +207,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin locati
 	})
 }
 
-func (c *coordinator) Handle(ctx context.Context, req HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+func (c *coordinator) Handle(ctx context.Context, req HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error) {
 	wctx, cancel := context.WithTimeout(ctx, handleTimeout)
 	defer cancel()
 
@@ -232,7 +232,7 @@ func (c *coordinator) String() string {
 	return fmt.Sprintf("%v[alloc=%v, #consumers=%v]", c.name, c.alloc, len(c.consumers))
 }
 
-func (c *coordinator) handle(ctx context.Context, req HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+func (c *coordinator) handle(ctx context.Context, req HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error) {
 	switch {
 	case req.Proto.GetOperation() != nil:
 		ret, err := c.handleOperationRequest(ctx, req.Proto.GetOperation())
@@ -246,7 +246,7 @@ func (c *coordinator) handle(ctx context.Context, req HandleRequest) (*internal_
 	}
 }
 
-func (c *coordinator) handleOperationRequest(ctx context.Context, op *internal_v1.CoordinatorOperationRequest) (*internal_v1.CoordinatorOperationResponse, error) {
+func (c *coordinator) handleOperationRequest(ctx context.Context, op *splitterprivatepb.CoordinatorOperationRequest) (*splitterprivatepb.CoordinatorOperationResponse, error) {
 	switch {
 	case op.GetInfo() != nil:
 		return c.handleServiceInfoRequest(ctx)
@@ -936,12 +936,12 @@ func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
 	log.Infof(ctx, "Sent cluster update %v/%v: %v", c.name, c.alloc, c.cluster.ID())
 }
 
-func (c *coordinator) handleServiceInfoRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {
+func (c *coordinator) handleServiceInfoRequest(ctx context.Context) (*splitterprivatepb.CoordinatorOperationResponse, error) {
 	consumers, snapshot, err := syncx.Txn2(ctx, c.txn, func() ([]model.Consumer, model.ClusterSnapshot, error) {
 		consumers := mapx.MapValues(c.consumers, func(s *consumerSession) model.Consumer {
 			return s.consumer.Instance()
 		})
-		snapshot := model.WrapClusterSnapshot(&public_v1.ClusterMessage_Snapshot{
+		snapshot := model.WrapClusterSnapshot(&splitterpb.ClusterMessage_Snapshot{
 			Assignments: slicex.Map(c.cluster.Assignments(), model.UnwrapAssignment),
 			Origin:      location.UnwrapInstance(c.cluster.ID().Origin),
 		})
@@ -950,9 +950,9 @@ func (c *coordinator) handleServiceInfoRequest(ctx context.Context) (*internal_v
 	if err != nil {
 		return nil, err
 	}
-	return &internal_v1.CoordinatorOperationResponse{
-		Resp: &internal_v1.CoordinatorOperationResponse_Info{
-			Info: &internal_v1.CoordinatorInfoResponse{
+	return &splitterprivatepb.CoordinatorOperationResponse{
+		Resp: &splitterprivatepb.CoordinatorOperationResponse_Info{
+			Info: &splitterprivatepb.CoordinatorInfoResponse{
 				Consumers: slicex.Map(consumers, model.UnwrapInstance),
 				Snapshot:  model.UnwrapClusterSnapshot(snapshot),
 			},
@@ -960,21 +960,21 @@ func (c *coordinator) handleServiceInfoRequest(ctx context.Context) (*internal_v
 	}, nil
 }
 
-func (c *coordinator) handleServiceRestartRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {
+func (c *coordinator) handleServiceRestartRequest(ctx context.Context) (*splitterprivatepb.CoordinatorOperationResponse, error) {
 	log.Infof(ctx, "Received restart request for %v, draining the coordinator", c.info.Name())
 	c.Drain(20 * time.Second)
-	return &internal_v1.CoordinatorOperationResponse{
-		Resp: &internal_v1.CoordinatorOperationResponse_Restart{
-			Restart: &internal_v1.CoordinatorRestartResponse{},
+	return &splitterprivatepb.CoordinatorOperationResponse{
+		Resp: &splitterprivatepb.CoordinatorOperationResponse_Restart{
+			Restart: &splitterprivatepb.CoordinatorRestartResponse{},
 		},
 	}, nil
 }
 
-func (c *coordinator) handleRevokeGrantsRequest(ctx context.Context, grants map[model.InstanceID][]model.GrantID) (*internal_v1.CoordinatorOperationResponse, error) {
+func (c *coordinator) handleRevokeGrantsRequest(ctx context.Context, grants map[model.InstanceID][]model.GrantID) (*splitterprivatepb.CoordinatorOperationResponse, error) {
 	log.Infof(ctx, "Received revoke request for %v. Revoking %v grants", c.info.Name(), len(grants))
-	ret := &internal_v1.CoordinatorOperationResponse{
-		Resp: &internal_v1.CoordinatorOperationResponse_RevokeGrants{
-			RevokeGrants: &internal_v1.CoordinatorRevokeGrantsResponse{},
+	ret := &splitterprivatepb.CoordinatorOperationResponse{
+		Resp: &splitterprivatepb.CoordinatorOperationResponse_RevokeGrants{
+			RevokeGrants: &splitterprivatepb.CoordinatorRevokeGrantsResponse{},
 		},
 	}
 	if len(grants) == 0 {
@@ -1015,7 +1015,7 @@ func (c *coordinator) handleRevokeGrantsRequest(ctx context.Context, grants map[
 	return ret, nil
 }
 
-func (c *coordinator) handleServiceSyncRequest(ctx context.Context) (*internal_v1.CoordinatorOperationResponse, error) {
+func (c *coordinator) handleServiceSyncRequest(ctx context.Context) (*splitterprivatepb.CoordinatorOperationResponse, error) {
 	log.Infof(ctx, "Received sync request for %v, sending cluster %v to all connected consumers", c.info.Name(), c.cluster.ID())
 	syncx.Txn0(ctx, c.txn, func() {
 		for _, s := range c.consumers {
@@ -1026,14 +1026,14 @@ func (c *coordinator) handleServiceSyncRequest(ctx context.Context) (*internal_v
 			}
 		}
 	})
-	return &internal_v1.CoordinatorOperationResponse{
-		Resp: &internal_v1.CoordinatorOperationResponse_Sync{
-			Sync: &internal_v1.CoordinatorClusterSyncResponse{},
+	return &splitterprivatepb.CoordinatorOperationResponse{
+		Resp: &splitterprivatepb.CoordinatorOperationResponse_Sync{
+			Sync: &splitterprivatepb.CoordinatorClusterSyncResponse{},
 		},
 	}, nil
 }
 
-func (c *coordinator) handleConsumerSuspendRequest(ctx context.Context, id model.InstanceID) (*internal_v1.CoordinatorOperationResponse, error) {
+func (c *coordinator) handleConsumerSuspendRequest(ctx context.Context, id model.InstanceID) (*splitterprivatepb.CoordinatorOperationResponse, error) {
 	_, err := syncx.Txn1(ctx, c.txn, func() (model.Consumer, error) {
 		s, ok := c.consumers[id]
 		if !ok {
@@ -1049,14 +1049,14 @@ func (c *coordinator) handleConsumerSuspendRequest(ctx context.Context, id model
 	if err != nil {
 		return nil, err
 	}
-	return &internal_v1.CoordinatorOperationResponse{
-		Resp: &internal_v1.CoordinatorOperationResponse_Suspend{
-			Suspend: &internal_v1.ConsumerSuspendResponse{},
+	return &splitterprivatepb.CoordinatorOperationResponse{
+		Resp: &splitterprivatepb.CoordinatorOperationResponse_Suspend{
+			Suspend: &splitterprivatepb.ConsumerSuspendResponse{},
 		},
 	}, nil
 }
 
-func (c *coordinator) handleConsumerResumeRequest(ctx context.Context, id model.InstanceID) (*internal_v1.CoordinatorOperationResponse, error) {
+func (c *coordinator) handleConsumerResumeRequest(ctx context.Context, id model.InstanceID) (*splitterprivatepb.CoordinatorOperationResponse, error) {
 	_, err := syncx.Txn1(ctx, c.txn, func() (model.Consumer, error) {
 		s, ok := c.consumers[id]
 		if !ok {
@@ -1072,14 +1072,14 @@ func (c *coordinator) handleConsumerResumeRequest(ctx context.Context, id model.
 	if err != nil {
 		return nil, err
 	}
-	return &internal_v1.CoordinatorOperationResponse{
-		Resp: &internal_v1.CoordinatorOperationResponse_Resume{
-			Resume: &internal_v1.ConsumerResumeResponse{},
+	return &splitterprivatepb.CoordinatorOperationResponse{
+		Resp: &splitterprivatepb.CoordinatorOperationResponse_Resume{
+			Resume: &splitterprivatepb.ConsumerResumeResponse{},
 		},
 	}, nil
 }
 
-func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.InstanceID) (*internal_v1.CoordinatorOperationResponse, error) {
+func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.InstanceID) (*splitterprivatepb.CoordinatorOperationResponse, error) {
 	_, err := syncx.Txn1(ctx, c.txn, func() (model.Consumer, error) {
 		s, ok := c.consumers[id]
 		if !ok {
@@ -1112,9 +1112,9 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 	if err != nil {
 		return nil, err
 	}
-	return &internal_v1.CoordinatorOperationResponse{
-		Resp: &internal_v1.CoordinatorOperationResponse_Drain{
-			Drain: &internal_v1.ConsumerDrainResponse{},
+	return &splitterprivatepb.CoordinatorOperationResponse{
+		Resp: &splitterprivatepb.CoordinatorOperationResponse_Drain{
+			Drain: &splitterprivatepb.ConsumerDrainResponse{},
 		},
 	}, nil
 }

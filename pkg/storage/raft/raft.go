@@ -12,7 +12,7 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/storage"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 var (
@@ -67,8 +67,8 @@ func (s *Storage) Update(ctx context.Context, update core.Update) error {
 		return ErrNotLeader
 	}
 
-	return s.apply(ctx, &internal_v1.Mutation{
-		Msg: &internal_v1.Mutation_Update{
+	return s.apply(ctx, &splitterprivatepb.Mutation{
+		Msg: &splitterprivatepb.Mutation_Update{
 			Update: core.UnwrapUpdate(update),
 		},
 	})
@@ -79,8 +79,8 @@ func (s *Storage) Delete(ctx context.Context, del core.Delete) error {
 		return ErrNotLeader
 	}
 
-	return s.apply(ctx, &internal_v1.Mutation{
-		Msg: &internal_v1.Mutation_Delete{
+	return s.apply(ctx, &splitterprivatepb.Mutation{
+		Msg: &splitterprivatepb.Mutation_Delete{
 			Delete: core.UnwrapDelete(del),
 		},
 	})
@@ -91,14 +91,14 @@ func (s *Storage) Restore(ctx context.Context, res core.Restore) error {
 		return ErrNotLeader
 	}
 
-	return s.apply(ctx, &internal_v1.Mutation{
-		Msg: &internal_v1.Mutation_Restore{
+	return s.apply(ctx, &splitterprivatepb.Mutation{
+		Msg: &splitterprivatepb.Mutation_Restore{
 			Restore: core.UnwrapRestore(res),
 		},
 	})
 }
 
-func (s *Storage) apply(ctx context.Context, mutation *internal_v1.Mutation) error {
+func (s *Storage) apply(ctx context.Context, mutation *splitterprivatepb.Mutation) error {
 	buf, err := proto.Marshal(mutation)
 	if err != nil {
 		log.Errorf(context.Background(), "Failed to marshal raft mutation: %v", proto.MarshalTextString(mutation), err)

@@ -9,24 +9,24 @@ import (
 	"github.com/golang/protobuf/proto"
 
 	"go.atoms.co/lib/mapx"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
-type ShardingPolicyOption func(policy *public_v1.ShardingPolicy)
+type ShardingPolicyOption func(policy *splitterpb.ShardingPolicy)
 
 func WithShards(shards int) ShardingPolicyOption {
-	return func(policy *public_v1.ShardingPolicy) {
+	return func(policy *splitterpb.ShardingPolicy) {
 		policy.Shards = int64(shards)
 	}
 }
 
 // ShardingPolicy represents a configurable shard policy for Splitter
 type ShardingPolicy struct {
-	pb *public_v1.ShardingPolicy
+	pb *splitterpb.ShardingPolicy
 }
 
 func NewShardingPolicy(shards int, opts ...ShardingPolicyOption) ShardingPolicy {
-	pb := &public_v1.ShardingPolicy{Shards: int64(shards)}
+	pb := &splitterpb.ShardingPolicy{Shards: int64(shards)}
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -34,18 +34,18 @@ func NewShardingPolicy(shards int, opts ...ShardingPolicyOption) ShardingPolicy 
 }
 
 func UpdateShardingPolicy(policy ShardingPolicy, opts ...ShardingPolicyOption) ShardingPolicy {
-	pb := proto.Clone(UnwrapShardingPolicy(policy)).(*public_v1.ShardingPolicy)
+	pb := proto.Clone(UnwrapShardingPolicy(policy)).(*splitterpb.ShardingPolicy)
 	for _, fn := range opts {
 		fn(pb)
 	}
 	return WrapShardingPolicy(pb)
 }
 
-func WrapShardingPolicy(pb *public_v1.ShardingPolicy) ShardingPolicy {
+func WrapShardingPolicy(pb *splitterpb.ShardingPolicy) ShardingPolicy {
 	return ShardingPolicy{pb: pb}
 }
 
-func UnwrapShardingPolicy(policy ShardingPolicy) *public_v1.ShardingPolicy {
+func UnwrapShardingPolicy(policy ShardingPolicy) *splitterpb.ShardingPolicy {
 	return policy.pb
 }
 

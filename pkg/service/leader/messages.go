@@ -11,70 +11,70 @@ import (
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb/private"
-	"go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type JoinMessage struct {
-	pb *internal_v1.JoinMessage
+	pb *splitterprivatepb.JoinMessage
 }
 
-func WrapJoinMessage(pb *internal_v1.JoinMessage) JoinMessage {
+func WrapJoinMessage(pb *splitterprivatepb.JoinMessage) JoinMessage {
 	return JoinMessage{pb: pb}
 }
 
-func UnwrapJoinMessage(m JoinMessage) *internal_v1.JoinMessage {
+func UnwrapJoinMessage(m JoinMessage) *splitterprivatepb.JoinMessage {
 	return m.pb
 }
 
 func NewJoinMessage(m Message) JoinMessage {
-	return JoinMessage{pb: &internal_v1.JoinMessage{
-		Msg: &internal_v1.JoinMessage_Leader{
+	return JoinMessage{pb: &splitterprivatepb.JoinMessage{
+		Msg: &splitterprivatepb.JoinMessage_Leader{
 			Leader: UnwrapMessage(m),
 		},
 	}}
 }
 
 func NewJoinSessionMessage(m session.Message) JoinMessage {
-	return JoinMessage{pb: &internal_v1.JoinMessage{
-		Msg: &internal_v1.JoinMessage_Session{
+	return JoinMessage{pb: &splitterprivatepb.JoinMessage{
+		Msg: &splitterprivatepb.JoinMessage_Session{
 			Session: session.UnwrapMessage(m),
 		},
 	}}
 }
 
 type Message struct {
-	pb *internal_v1.LeaderMessage
+	pb *splitterprivatepb.LeaderMessage
 }
 
-func WrapMessage(pb *internal_v1.LeaderMessage) Message {
+func WrapMessage(pb *splitterprivatepb.LeaderMessage) Message {
 	return Message{pb: pb}
 }
 
-func UnwrapMessage(m Message) *internal_v1.LeaderMessage {
+func UnwrapMessage(m Message) *splitterprivatepb.LeaderMessage {
 	return m.pb
 }
 
 func NewWorkerMessage(m WorkerMessage) Message {
-	return Message{pb: &internal_v1.LeaderMessage{
-		Msg: &internal_v1.LeaderMessage_Worker{
+	return Message{pb: &splitterprivatepb.LeaderMessage{
+		Msg: &splitterprivatepb.LeaderMessage_Worker{
 			Worker: UnwrapWorkerMessage(m),
 		},
 	}}
 }
 
 func NewClusterMessage(m ClusterMessage) Message {
-	return Message{pb: &internal_v1.LeaderMessage{
-		Msg: &internal_v1.LeaderMessage_Cluster{
+	return Message{pb: &splitterprivatepb.LeaderMessage{
+		Msg: &splitterprivatepb.LeaderMessage_Cluster{
 			Cluster: UnwrapClusterMessage(m),
 		},
 	}}
 }
 
 func NewRegister(worker model.Instance, grants ...core.Grant) Message {
-	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Register_{
-			Register: &internal_v1.WorkerMessage_Register{
+	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
+		Msg: &splitterprivatepb.WorkerMessage_Register_{
+			Register: &splitterprivatepb.WorkerMessage_Register{
 				Worker: model.UnwrapInstance(worker),
 				Active: slicex.Map(grants, core.UnwrapGrant),
 			},
@@ -82,16 +82,16 @@ func NewRegister(worker model.Instance, grants ...core.Grant) Message {
 	}})
 }
 func NewDeregister() Message {
-	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Deregister_{
-			Deregister: &internal_v1.WorkerMessage_Deregister{},
+	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
+		Msg: &splitterprivatepb.WorkerMessage_Deregister_{
+			Deregister: &splitterprivatepb.WorkerMessage_Deregister{},
 		},
 	}})
 }
 func NewLeaseUpdate(ttl time.Time) Message {
-	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Lease{
-			Lease: &internal_v1.WorkerMessage_LeaseUpdate{
+	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
+		Msg: &splitterprivatepb.WorkerMessage_Lease{
+			Lease: &splitterprivatepb.WorkerMessage_LeaseUpdate{
 				Ttl: timestamppb.New(ttl),
 			},
 		},
@@ -99,9 +99,9 @@ func NewLeaseUpdate(ttl time.Time) Message {
 }
 
 func NewAssign(grant core.Grant, state core.State) Message {
-	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Assign_{
-			Assign: &internal_v1.WorkerMessage_Assign{
+	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
+		Msg: &splitterprivatepb.WorkerMessage_Assign_{
+			Assign: &splitterprivatepb.WorkerMessage_Assign{
 				Grant: core.UnwrapGrant(grant),
 				State: core.UnwrapState(state),
 			},
@@ -110,9 +110,9 @@ func NewAssign(grant core.Grant, state core.State) Message {
 }
 
 func NewUpdate(grant core.Grant, state core.Update) Message {
-	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Update_{
-			Update: &internal_v1.WorkerMessage_Update{
+	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
+		Msg: &splitterprivatepb.WorkerMessage_Update_{
+			Update: &splitterprivatepb.WorkerMessage_Update{
 				Grant: core.UnwrapGrant(grant),
 				State: core.UnwrapUpdate(state),
 			},
@@ -121,9 +121,9 @@ func NewUpdate(grant core.Grant, state core.Update) Message {
 }
 
 func NewRevoke(grants ...core.Grant) Message {
-	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Revoke_{
-			Revoke: &internal_v1.WorkerMessage_Revoke{
+	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
+		Msg: &splitterprivatepb.WorkerMessage_Revoke_{
+			Revoke: &splitterprivatepb.WorkerMessage_Revoke{
 				Grants: slicex.Map(grants, core.UnwrapGrant),
 			},
 		},
@@ -131,9 +131,9 @@ func NewRevoke(grants ...core.Grant) Message {
 }
 
 func NewRelinquished(grants ...core.Grant) Message {
-	return NewWorkerMessage(WorkerMessage{pb: &internal_v1.WorkerMessage{
-		Msg: &internal_v1.WorkerMessage_Relinquished_{
-			Relinquished: &internal_v1.WorkerMessage_Relinquished{
+	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
+		Msg: &splitterprivatepb.WorkerMessage_Relinquished_{
+			Relinquished: &splitterprivatepb.WorkerMessage_Relinquished{
 				Grants: slicex.Map(grants, core.UnwrapGrant),
 			},
 		},
@@ -141,12 +141,12 @@ func NewRelinquished(grants ...core.Grant) Message {
 }
 
 func NewClusterSnapshot(id model.ClusterID, assignments []core.Assignment) Message {
-	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
+	return NewClusterMessage(ClusterMessage{pb: &splitterprivatepb.ClusterMessage{
 		Id:        string(id.Origin.ID()),
 		Version:   int64(id.Version),
 		Timestamp: timestamppb.New(id.Timestamp),
-		Msg: &internal_v1.ClusterMessage_Snapshot_{
-			Snapshot: &internal_v1.ClusterMessage_Snapshot{
+		Msg: &splitterprivatepb.ClusterMessage_Snapshot_{
+			Snapshot: &splitterprivatepb.ClusterMessage_Snapshot{
 				Assignments: slicex.Map(assignments, core.Assignment.ToProto),
 				Origin:      location.UnwrapInstance(id.Origin),
 			},
@@ -155,12 +155,12 @@ func NewClusterSnapshot(id model.ClusterID, assignments []core.Assignment) Messa
 }
 
 func NewClusterUpdate(id model.ClusterID, assignments []core.Assignment) Message {
-	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
+	return NewClusterMessage(ClusterMessage{pb: &splitterprivatepb.ClusterMessage{
 		Id:        string(id.Origin.ID()),
 		Version:   int64(id.Version),
 		Timestamp: timestamppb.New(id.Timestamp),
-		Msg: &internal_v1.ClusterMessage_Update_{
-			Update: &internal_v1.ClusterMessage_Update{
+		Msg: &splitterprivatepb.ClusterMessage_Update_{
+			Update: &splitterprivatepb.ClusterMessage_Update{
 				Assignments: slicex.Map(assignments, core.Assignment.ToProto),
 			},
 		},
@@ -168,12 +168,12 @@ func NewClusterUpdate(id model.ClusterID, assignments []core.Assignment) Message
 }
 
 func NewClusterRemove(id model.ClusterID, remove []model.QualifiedServiceName) Message {
-	return NewClusterMessage(ClusterMessage{pb: &internal_v1.ClusterMessage{
+	return NewClusterMessage(ClusterMessage{pb: &splitterprivatepb.ClusterMessage{
 		Id:        string(id.Origin.ID()),
 		Version:   int64(id.Version),
 		Timestamp: timestamppb.New(id.Timestamp),
-		Msg: &internal_v1.ClusterMessage_Remove_{
-			Remove: &internal_v1.ClusterMessage_Remove{
+		Msg: &splitterprivatepb.ClusterMessage_Remove_{
+			Remove: &splitterprivatepb.ClusterMessage_Remove{
 				Services: slicex.Map(remove, model.QualifiedServiceName.ToProto),
 			},
 		},
@@ -214,14 +214,14 @@ func (m Message) String() string {
 }
 
 type WorkerMessage struct {
-	pb *internal_v1.WorkerMessage
+	pb *splitterprivatepb.WorkerMessage
 }
 
-func WrapWorkerMessage(pb *internal_v1.WorkerMessage) WorkerMessage {
+func WrapWorkerMessage(pb *splitterprivatepb.WorkerMessage) WorkerMessage {
 	return WorkerMessage{pb: pb}
 }
 
-func UnwrapWorkerMessage(m WorkerMessage) *internal_v1.WorkerMessage {
+func UnwrapWorkerMessage(m WorkerMessage) *splitterprivatepb.WorkerMessage {
 	return m.pb
 }
 
@@ -327,7 +327,7 @@ func (m WorkerMessage) String() string {
 }
 
 type RegisterMessage struct {
-	pb *internal_v1.WorkerMessage_Register
+	pb *splitterprivatepb.WorkerMessage_Register
 }
 
 func (m RegisterMessage) Worker() model.Instance {
@@ -343,7 +343,7 @@ func (m RegisterMessage) String() string {
 }
 
 type DeregisterMessage struct {
-	pb *internal_v1.WorkerMessage_Deregister
+	pb *splitterprivatepb.WorkerMessage_Deregister
 }
 
 func (m DeregisterMessage) String() string {
@@ -351,7 +351,7 @@ func (m DeregisterMessage) String() string {
 }
 
 type LeaseUpdateMessage struct {
-	pb *internal_v1.WorkerMessage_LeaseUpdate
+	pb *splitterprivatepb.WorkerMessage_LeaseUpdate
 }
 
 func (m LeaseUpdateMessage) Ttl() time.Time {
@@ -363,7 +363,7 @@ func (m LeaseUpdateMessage) String() string {
 }
 
 type AssignMessage struct {
-	pb *internal_v1.WorkerMessage_Assign
+	pb *splitterprivatepb.WorkerMessage_Assign
 }
 
 func (m AssignMessage) Grant() core.Grant {
@@ -379,7 +379,7 @@ func (m AssignMessage) String() string {
 }
 
 type UpdateMessage struct {
-	pb *internal_v1.WorkerMessage_Update
+	pb *splitterprivatepb.WorkerMessage_Update
 }
 
 func (m UpdateMessage) Grant() core.Grant {
@@ -395,7 +395,7 @@ func (m UpdateMessage) String() string {
 }
 
 type RevokeMessage struct {
-	pb *internal_v1.WorkerMessage_Revoke
+	pb *splitterprivatepb.WorkerMessage_Revoke
 }
 
 func (m RevokeMessage) Grants() []core.Grant {
@@ -407,7 +407,7 @@ func (m RevokeMessage) String() string {
 }
 
 type RelinquishedMessage struct {
-	pb *internal_v1.WorkerMessage_Relinquished
+	pb *splitterprivatepb.WorkerMessage_Relinquished
 }
 
 func (m RelinquishedMessage) Grants() []core.Grant {
@@ -419,14 +419,14 @@ func (m RelinquishedMessage) String() string {
 }
 
 type ClusterMessage struct {
-	pb *internal_v1.ClusterMessage
+	pb *splitterprivatepb.ClusterMessage
 }
 
-func WrapClusterMessage(pb *internal_v1.ClusterMessage) ClusterMessage {
+func WrapClusterMessage(pb *splitterprivatepb.ClusterMessage) ClusterMessage {
 	return ClusterMessage{pb: pb}
 }
 
-func UnwrapClusterMessage(m ClusterMessage) *internal_v1.ClusterMessage {
+func UnwrapClusterMessage(m ClusterMessage) *splitterprivatepb.ClusterMessage {
 	return m.pb
 }
 
@@ -493,7 +493,7 @@ func (m ClusterMessage) String() string {
 }
 
 type ClusterSnapshotMessage struct {
-	pb *internal_v1.ClusterMessage_Snapshot
+	pb *splitterprivatepb.ClusterMessage_Snapshot
 }
 
 func (m ClusterSnapshotMessage) Assignments() []core.Assignment {
@@ -506,7 +506,7 @@ func (m ClusterSnapshotMessage) Origin() (location.Instance, bool) {
 }
 
 type ClusterUpdateMessage struct {
-	pb *internal_v1.ClusterMessage_Update
+	pb *splitterprivatepb.ClusterMessage_Update
 }
 
 func (m ClusterUpdateMessage) Assignments() []core.Assignment {
@@ -514,11 +514,11 @@ func (m ClusterUpdateMessage) Assignments() []core.Assignment {
 }
 
 type ClusterRemoveMessage struct {
-	pb *internal_v1.ClusterMessage_Remove
+	pb *splitterprivatepb.ClusterMessage_Remove
 }
 
 func (m ClusterRemoveMessage) Services() []model.QualifiedServiceName {
-	return slicex.Map(m.pb.GetServices(), func(t *public_v1.QualifiedServiceName) model.QualifiedServiceName {
+	return slicex.Map(m.pb.GetServices(), func(t *splitterpb.QualifiedServiceName) model.QualifiedServiceName {
 		ret, _ := model.ParseQualifiedServiceName(t)
 		return ret
 	})

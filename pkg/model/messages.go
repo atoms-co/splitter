@@ -9,96 +9,96 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type JoinMessage struct {
-	pb *public_v1.JoinMessage
+	pb *splitterpb.JoinMessage
 }
 
-func WrapJoinMessage(pb *public_v1.JoinMessage) JoinMessage {
+func WrapJoinMessage(pb *splitterpb.JoinMessage) JoinMessage {
 	return JoinMessage{pb: pb}
 }
 
-func UnwrapJoinMessage(m JoinMessage) *public_v1.JoinMessage {
+func UnwrapJoinMessage(m JoinMessage) *splitterpb.JoinMessage {
 	return m.pb
 }
 
 func NewJoinMessage(m ConsumerMessage) JoinMessage {
-	return JoinMessage{pb: &public_v1.JoinMessage{
-		Msg: &public_v1.JoinMessage_Consumer{
+	return JoinMessage{pb: &splitterpb.JoinMessage{
+		Msg: &splitterpb.JoinMessage_Consumer{
 			Consumer: UnwrapConsumerMessage(m),
 		},
 	}}
 }
 
 func NewJoinSessionMessage(m session.Message) JoinMessage {
-	return JoinMessage{pb: &public_v1.JoinMessage{
-		Msg: &public_v1.JoinMessage_Session{
+	return JoinMessage{pb: &splitterpb.JoinMessage{
+		Msg: &splitterpb.JoinMessage_Session{
 			Session: session.UnwrapMessage(m),
 		},
 	}}
 }
 
 type ConsumerMessage struct {
-	pb *public_v1.ConsumerMessage
+	pb *splitterpb.ConsumerMessage
 }
 
-func WrapConsumerMessage(pb *public_v1.ConsumerMessage) ConsumerMessage {
+func WrapConsumerMessage(pb *splitterpb.ConsumerMessage) ConsumerMessage {
 	return ConsumerMessage{pb: pb}
 }
 
-func UnwrapConsumerMessage(m ConsumerMessage) *public_v1.ConsumerMessage {
+func UnwrapConsumerMessage(m ConsumerMessage) *splitterpb.ConsumerMessage {
 	return m.pb
 }
 
 func NewClientMessage(m ClientMessage) ConsumerMessage {
-	return WrapConsumerMessage(&public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Client{
+	return WrapConsumerMessage(&splitterpb.ConsumerMessage{
+		Msg: &splitterpb.ConsumerMessage_Client{
 			Client: UnwrapClientMessage(m),
 		},
 	})
 }
 
 func NewClusterMessage(m ClusterMessage) ConsumerMessage {
-	return ConsumerMessage{pb: &public_v1.ConsumerMessage{
-		Msg: &public_v1.ConsumerMessage_Cluster{
+	return ConsumerMessage{pb: &splitterpb.ConsumerMessage{
+		Msg: &splitterpb.ConsumerMessage_Cluster{
 			Cluster: UnwrapClusterMessage(m),
 		},
 	}}
 }
 
 func NewRegister(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant, opts ...ConsumerOption) ConsumerMessage {
-	register := &public_v1.ClientMessage_Register{
+	register := &splitterpb.ClientMessage_Register{
 		Consumer: UnwrapInstance(consumer),
 		Service:  service.ToProto(),
 		Domains:  slicex.Map(domains, QualifiedDomainName.ToProto),
 		Active:   slicex.Map(grants, UnwrapGrant),
-		Options:  &public_v1.ClientMessage_Register_Options{},
+		Options:  &splitterpb.ClientMessage_Register_Options{},
 	}
 	for _, opt := range opts {
 		opt(register.Options)
 	}
 
-	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
-		Msg: &public_v1.ClientMessage_Register_{
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Register_{
 			Register: register,
 		},
 	}})
 }
 
 func NewDeregister() ConsumerMessage {
-	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
-		Msg: &public_v1.ClientMessage_Deregister_{
-			Deregister: &public_v1.ClientMessage_Deregister{},
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Deregister_{
+			Deregister: &splitterpb.ClientMessage_Deregister{},
 		},
 	}})
 }
 
 func NewExtend(lease time.Time) ConsumerMessage {
-	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
-		Msg: &public_v1.ClientMessage_Extend_{
-			Extend: &public_v1.ClientMessage_Extend{
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Extend_{
+			Extend: &splitterpb.ClientMessage_Extend{
 				Lease: timestamppb.New(lease),
 			},
 		},
@@ -106,9 +106,9 @@ func NewExtend(lease time.Time) ConsumerMessage {
 }
 
 func NewAssign(grants ...Grant) ConsumerMessage {
-	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
-		Msg: &public_v1.ClientMessage_Assign_{
-			Assign: &public_v1.ClientMessage_Assign{
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Assign_{
+			Assign: &splitterpb.ClientMessage_Assign{
 				Grants: slicex.Map(grants, UnwrapGrant),
 			},
 		},
@@ -116,9 +116,9 @@ func NewAssign(grants ...Grant) ConsumerMessage {
 }
 
 func NewPromote(grants ...Grant) ConsumerMessage {
-	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
-		Msg: &public_v1.ClientMessage_Promote_{
-			Promote: &public_v1.ClientMessage_Promote{
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Promote_{
+			Promote: &splitterpb.ClientMessage_Promote{
 				Grants: slicex.Map(grants, UnwrapGrant),
 			},
 		},
@@ -126,9 +126,9 @@ func NewPromote(grants ...Grant) ConsumerMessage {
 }
 
 func NewRevoke(grants ...Grant) ConsumerMessage {
-	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
-		Msg: &public_v1.ClientMessage_Revoke_{
-			Revoke: &public_v1.ClientMessage_Revoke{
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Revoke_{
+			Revoke: &splitterpb.ClientMessage_Revoke{
 				Grants: slicex.Map(grants, UnwrapGrant),
 			},
 		},
@@ -136,9 +136,9 @@ func NewRevoke(grants ...Grant) ConsumerMessage {
 }
 
 func NewReleased(grants ...Grant) ConsumerMessage {
-	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
-		Msg: &public_v1.ClientMessage_Released_{
-			Released: &public_v1.ClientMessage_Released{
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Released_{
+			Released: &splitterpb.ClientMessage_Released{
 				Grants: slicex.Map(grants, UnwrapGrant),
 			},
 		},
@@ -146,9 +146,9 @@ func NewReleased(grants ...Grant) ConsumerMessage {
 }
 
 func NewUpdate(grant Grant) ConsumerMessage {
-	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
-		Msg: &public_v1.ClientMessage_Update_{
-			Update: &public_v1.ClientMessage_Update{
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Update_{
+			Update: &splitterpb.ClientMessage_Update{
 				Grant: UnwrapGrant(grant),
 			},
 		},
@@ -156,9 +156,9 @@ func NewUpdate(grant Grant) ConsumerMessage {
 }
 
 func NewNotify(update, target Grant) ConsumerMessage {
-	return NewClientMessage(ClientMessage{pb: &public_v1.ClientMessage{
-		Msg: &public_v1.ClientMessage_Notify_{
-			Notify: &public_v1.ClientMessage_Notify{
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Notify_{
+			Notify: &splitterpb.ClientMessage_Notify{
 				Update: UnwrapGrant(update),
 				Target: UnwrapGrant(target),
 			},
@@ -167,12 +167,12 @@ func NewNotify(update, target Grant) ConsumerMessage {
 }
 
 func NewClusterSnapshot(id ClusterID, assignments []Assignment, shards []Shard) ClusterMessage {
-	return ClusterMessage{pb: &public_v1.ClusterMessage{
+	return ClusterMessage{pb: &splitterpb.ClusterMessage{
 		Id:        string(id.Origin.ID()),
 		Version:   int64(id.Version),
 		Timestamp: timestamppb.New(id.Timestamp),
-		Msg: &public_v1.ClusterMessage_Snapshot_{
-			Snapshot: &public_v1.ClusterMessage_Snapshot{
+		Msg: &splitterpb.ClusterMessage_Snapshot_{
+			Snapshot: &splitterpb.ClusterMessage_Snapshot{
 				Assignments: slicex.Map(assignments, UnwrapAssignment),
 				Origin:      location.UnwrapInstance(id.Origin),
 				Shards:      slicex.Map(shards, Shard.ToProto),
@@ -181,39 +181,39 @@ func NewClusterSnapshot(id ClusterID, assignments []Assignment, shards []Shard) 
 	}}
 }
 
-type ClusterChangeOption func(*public_v1.ClusterMessage)
+type ClusterChangeOption func(*splitterpb.ClusterMessage)
 
 func WithClusterChangeShards(shards ...Shard) ClusterChangeOption {
-	return func(o *public_v1.ClusterMessage) {
+	return func(o *splitterpb.ClusterMessage) {
 		if o.GetChange() == nil {
-			o.Msg = &public_v1.ClusterMessage_Change_{Change: &public_v1.ClusterMessage_Change{
-				Shards: &public_v1.ClusterMessage_Shards{},
+			o.Msg = &splitterpb.ClusterMessage_Change_{Change: &splitterpb.ClusterMessage_Change{
+				Shards: &splitterpb.ClusterMessage_Shards{},
 			}}
 		}
 		if o.GetChange().GetShards() == nil {
-			o.GetChange().Shards = &public_v1.ClusterMessage_Shards{}
+			o.GetChange().Shards = &splitterpb.ClusterMessage_Shards{}
 		}
 		o.GetChange().GetShards().Shards = slicex.Map(shards, Shard.ToProto)
 	}
 }
 
 func NewClusterChange(id ClusterID, assigned []Assignment, updated []GrantInfo, unassigned []GrantID, removed []ConsumerID, opts ...ClusterChangeOption) ClusterMessage {
-	pb := public_v1.ClusterMessage{
+	pb := splitterpb.ClusterMessage{
 		Id:        string(id.Origin.ID()),
 		Version:   int64(id.Version),
 		Timestamp: timestamppb.New(id.Timestamp),
-		Msg: &public_v1.ClusterMessage_Change_{
-			Change: &public_v1.ClusterMessage_Change{
-				Assign: &public_v1.ClusterMessage_Assign{
+		Msg: &splitterpb.ClusterMessage_Change_{
+			Change: &splitterpb.ClusterMessage_Change{
+				Assign: &splitterpb.ClusterMessage_Assign{
 					Assignments: slicex.Map(assigned, UnwrapAssignment),
 				},
-				Update: &public_v1.ClusterMessage_Update{
+				Update: &splitterpb.ClusterMessage_Update{
 					Grants: slicex.Map(updated, UnwrapGrantInfo),
 				},
-				Unassign: &public_v1.ClusterMessage_Unassign{
+				Unassign: &splitterpb.ClusterMessage_Unassign{
 					Grants: slicex.Map(unassigned, func(id GrantID) string { return string(id) }),
 				},
-				Remove: &public_v1.ClusterMessage_Remove{
+				Remove: &splitterpb.ClusterMessage_Remove{
 					Consumers: slicex.Map(removed, func(id ConsumerID) string { return string(id) }),
 				},
 			},
@@ -262,14 +262,14 @@ func (m ConsumerMessage) String() string {
 }
 
 type ClientMessage struct {
-	pb *public_v1.ClientMessage
+	pb *splitterpb.ClientMessage
 }
 
-func WrapClientMessage(pb *public_v1.ClientMessage) ClientMessage {
+func WrapClientMessage(pb *splitterpb.ClientMessage) ClientMessage {
 	return ClientMessage{pb: pb}
 }
 
-func UnwrapClientMessage(m ClientMessage) *public_v1.ClientMessage {
+func UnwrapClientMessage(m ClientMessage) *splitterpb.ClientMessage {
 	return m.pb
 }
 
@@ -402,14 +402,14 @@ func (m ClientMessage) String() string {
 }
 
 type RegisterMessage struct {
-	pb *public_v1.ClientMessage_Register
+	pb *splitterpb.ClientMessage_Register
 }
 
-func WrapRegisterMessage(pb *public_v1.ClientMessage_Register) RegisterMessage {
+func WrapRegisterMessage(pb *splitterpb.ClientMessage_Register) RegisterMessage {
 	return RegisterMessage{pb: pb}
 }
 
-func UnwrapRegisterMessage(m RegisterMessage) *public_v1.ClientMessage_Register {
+func UnwrapRegisterMessage(m RegisterMessage) *splitterpb.ClientMessage_Register {
 	return m.pb
 }
 
@@ -435,19 +435,19 @@ func (m RegisterMessage) Active() []Grant {
 }
 
 type Options struct {
-	pb *public_v1.ClientMessage_Register_Options
+	pb *splitterpb.ClientMessage_Register_Options
 }
 
-func WrapOptions(pb *public_v1.ClientMessage_Register_Options) Options {
+func WrapOptions(pb *splitterpb.ClientMessage_Register_Options) Options {
 	return Options{pb: pb}
 }
 
-func UnwrapOptions(options Options) *public_v1.ClientMessage_Register_Options {
+func UnwrapOptions(options Options) *splitterpb.ClientMessage_Register_Options {
 	return options.pb
 }
 
 func (o Options) DomainKeyNames() []DomainKeyName {
-	return slicex.Map(o.pb.GetNames(), func(name *public_v1.DomainKeyName) DomainKeyName {
+	return slicex.Map(o.pb.GetNames(), func(name *splitterpb.DomainKeyName) DomainKeyName {
 		return DomainKeyName{
 			Domain: DomainName(name.Domain),
 			Name:   name.Name,
@@ -468,14 +468,14 @@ func (m RegisterMessage) String() string {
 }
 
 type DeregisterMessage struct {
-	pb *public_v1.ClientMessage_Deregister
+	pb *splitterpb.ClientMessage_Deregister
 }
 
-func WrapDeregisterMessage(pb *public_v1.ClientMessage_Deregister) DeregisterMessage {
+func WrapDeregisterMessage(pb *splitterpb.ClientMessage_Deregister) DeregisterMessage {
 	return DeregisterMessage{pb: pb}
 }
 
-func UnwrapDeregisterMessage(m DeregisterMessage) *public_v1.ClientMessage_Deregister {
+func UnwrapDeregisterMessage(m DeregisterMessage) *splitterpb.ClientMessage_Deregister {
 	return m.pb
 }
 
@@ -484,14 +484,14 @@ func (m DeregisterMessage) String() string {
 }
 
 type ExtendMessage struct {
-	pb *public_v1.ClientMessage_Extend
+	pb *splitterpb.ClientMessage_Extend
 }
 
-func WrapExtendMessage(pb *public_v1.ClientMessage_Extend) ExtendMessage {
+func WrapExtendMessage(pb *splitterpb.ClientMessage_Extend) ExtendMessage {
 	return ExtendMessage{pb: pb}
 }
 
-func UnwrapExtendMessage(m ExtendMessage) *public_v1.ClientMessage_Extend {
+func UnwrapExtendMessage(m ExtendMessage) *splitterpb.ClientMessage_Extend {
 	return m.pb
 }
 
@@ -500,14 +500,14 @@ func (m ExtendMessage) Lease() time.Time {
 }
 
 type AssignMessage struct {
-	pb *public_v1.ClientMessage_Assign
+	pb *splitterpb.ClientMessage_Assign
 }
 
-func WrapAssignMessage(pb *public_v1.ClientMessage_Assign) AssignMessage {
+func WrapAssignMessage(pb *splitterpb.ClientMessage_Assign) AssignMessage {
 	return AssignMessage{pb: pb}
 }
 
-func UnwrapAssignMessage(m AssignMessage) *public_v1.ClientMessage_Assign {
+func UnwrapAssignMessage(m AssignMessage) *splitterpb.ClientMessage_Assign {
 	return m.pb
 }
 
@@ -516,14 +516,14 @@ func (m AssignMessage) Grants() []Grant {
 }
 
 type PromoteMessage struct {
-	pb *public_v1.ClientMessage_Promote
+	pb *splitterpb.ClientMessage_Promote
 }
 
-func WrapPromoteMessage(pb *public_v1.ClientMessage_Promote) PromoteMessage {
+func WrapPromoteMessage(pb *splitterpb.ClientMessage_Promote) PromoteMessage {
 	return PromoteMessage{pb: pb}
 }
 
-func UnwrapPromoteMessage(m PromoteMessage) *public_v1.ClientMessage_Promote {
+func UnwrapPromoteMessage(m PromoteMessage) *splitterpb.ClientMessage_Promote {
 	return m.pb
 }
 
@@ -532,14 +532,14 @@ func (m PromoteMessage) Grants() []Grant {
 }
 
 type RevokeMessage struct {
-	pb *public_v1.ClientMessage_Revoke
+	pb *splitterpb.ClientMessage_Revoke
 }
 
-func WrapRevokeMessage(pb *public_v1.ClientMessage_Revoke) RevokeMessage {
+func WrapRevokeMessage(pb *splitterpb.ClientMessage_Revoke) RevokeMessage {
 	return RevokeMessage{pb: pb}
 }
 
-func UnwrapRevokeMessage(m RevokeMessage) *public_v1.ClientMessage_Revoke {
+func UnwrapRevokeMessage(m RevokeMessage) *splitterpb.ClientMessage_Revoke {
 	return m.pb
 }
 
@@ -548,14 +548,14 @@ func (m RevokeMessage) Grants() []Grant {
 }
 
 type ReleasedMessage struct {
-	pb *public_v1.ClientMessage_Released
+	pb *splitterpb.ClientMessage_Released
 }
 
-func WrapReleasedMessage(pb *public_v1.ClientMessage_Released) ReleasedMessage {
+func WrapReleasedMessage(pb *splitterpb.ClientMessage_Released) ReleasedMessage {
 	return ReleasedMessage{pb: pb}
 }
 
-func UnwrapReleasedMessage(m ReleasedMessage) *public_v1.ClientMessage_Released {
+func UnwrapReleasedMessage(m ReleasedMessage) *splitterpb.ClientMessage_Released {
 	return m.pb
 }
 
@@ -568,14 +568,14 @@ func (m ReleasedMessage) String() string {
 }
 
 type UpdateMessage struct {
-	pb *public_v1.ClientMessage_Update
+	pb *splitterpb.ClientMessage_Update
 }
 
-func WrapUpdateMessage(pb *public_v1.ClientMessage_Update) UpdateMessage {
+func WrapUpdateMessage(pb *splitterpb.ClientMessage_Update) UpdateMessage {
 	return UpdateMessage{pb: pb}
 }
 
-func UnwrapUpdateMessage(m UpdateMessage) *public_v1.ClientMessage_Update {
+func UnwrapUpdateMessage(m UpdateMessage) *splitterpb.ClientMessage_Update {
 	return m.pb
 }
 
@@ -588,14 +588,14 @@ func (m UpdateMessage) String() string {
 }
 
 type NotifyMessage struct {
-	pb *public_v1.ClientMessage_Notify
+	pb *splitterpb.ClientMessage_Notify
 }
 
-func WrapNotifyMessage(pb *public_v1.ClientMessage_Notify) NotifyMessage {
+func WrapNotifyMessage(pb *splitterpb.ClientMessage_Notify) NotifyMessage {
 	return NotifyMessage{pb: pb}
 }
 
-func UnwrapNotifyMessage(m NotifyMessage) *public_v1.ClientMessage_Notify {
+func UnwrapNotifyMessage(m NotifyMessage) *splitterpb.ClientMessage_Notify {
 	return m.pb
 }
 
@@ -612,14 +612,14 @@ func (m NotifyMessage) String() string {
 }
 
 type ClusterMessage struct {
-	pb *public_v1.ClusterMessage
+	pb *splitterpb.ClusterMessage
 }
 
-func WrapClusterMessage(pb *public_v1.ClusterMessage) ClusterMessage {
+func WrapClusterMessage(pb *splitterpb.ClusterMessage) ClusterMessage {
 	return ClusterMessage{pb: pb}
 }
 
-func UnwrapClusterMessage(m ClusterMessage) *public_v1.ClusterMessage {
+func UnwrapClusterMessage(m ClusterMessage) *splitterpb.ClusterMessage {
 	return m.pb
 }
 
@@ -673,20 +673,20 @@ func (m ClusterMessage) String() string {
 }
 
 type Assignment struct {
-	pb *public_v1.ClusterMessage_Assignment
+	pb *splitterpb.ClusterMessage_Assignment
 }
 
-func WrapAssignment(pb *public_v1.ClusterMessage_Assignment) Assignment {
+func WrapAssignment(pb *splitterpb.ClusterMessage_Assignment) Assignment {
 	return Assignment{pb: pb}
 }
 
-func UnwrapAssignment(a Assignment) *public_v1.ClusterMessage_Assignment {
+func UnwrapAssignment(a Assignment) *splitterpb.ClusterMessage_Assignment {
 	return a.pb
 }
 
 func NewAssignment(consumer Consumer, grants ...GrantInfo) Assignment {
 	return Assignment{
-		pb: &public_v1.ClusterMessage_Assignment{
+		pb: &splitterpb.ClusterMessage_Assignment{
 			Consumer: UnwrapInstance(consumer),
 			Grants:   slicex.Map(grants, UnwrapGrantInfo),
 		},
@@ -706,14 +706,14 @@ func (a Assignment) String() string {
 }
 
 type ClusterSnapshot struct {
-	pb *public_v1.ClusterMessage_Snapshot
+	pb *splitterpb.ClusterMessage_Snapshot
 }
 
-func WrapClusterSnapshot(pb *public_v1.ClusterMessage_Snapshot) ClusterSnapshot {
+func WrapClusterSnapshot(pb *splitterpb.ClusterMessage_Snapshot) ClusterSnapshot {
 	return ClusterSnapshot{pb: pb}
 }
 
-func UnwrapClusterSnapshot(s ClusterSnapshot) *public_v1.ClusterMessage_Snapshot {
+func UnwrapClusterSnapshot(s ClusterSnapshot) *splitterpb.ClusterMessage_Snapshot {
 	return s.pb
 }
 
@@ -735,14 +735,14 @@ func (s ClusterSnapshot) String() string {
 }
 
 type ClusterChange struct {
-	pb *public_v1.ClusterMessage_Change
+	pb *splitterpb.ClusterMessage_Change
 }
 
-func WrapClusterChange(pb *public_v1.ClusterMessage_Change) ClusterChange {
+func WrapClusterChange(pb *splitterpb.ClusterMessage_Change) ClusterChange {
 	return ClusterChange{pb: pb}
 }
 
-func UnwrapClusterChange(m ClusterChange) *public_v1.ClusterMessage_Change {
+func UnwrapClusterChange(m ClusterChange) *splitterpb.ClusterMessage_Change {
 	return m.pb
 }
 
@@ -777,14 +777,14 @@ func (c ClusterChange) String() string {
 }
 
 type ClusterAssign struct {
-	pb *public_v1.ClusterMessage_Assign
+	pb *splitterpb.ClusterMessage_Assign
 }
 
-func WrapClusterAssign(pb *public_v1.ClusterMessage_Assign) ClusterAssign {
+func WrapClusterAssign(pb *splitterpb.ClusterMessage_Assign) ClusterAssign {
 	return ClusterAssign{pb: pb}
 }
 
-func UnwrapClusterAssign(a ClusterAssign) *public_v1.ClusterMessage_Assign {
+func UnwrapClusterAssign(a ClusterAssign) *splitterpb.ClusterMessage_Assign {
 	return a.pb
 }
 
@@ -797,14 +797,14 @@ func (a ClusterAssign) String() string {
 }
 
 type ClusterUpdate struct {
-	pb *public_v1.ClusterMessage_Update
+	pb *splitterpb.ClusterMessage_Update
 }
 
-func WrapClusterUpdate(pb *public_v1.ClusterMessage_Update) ClusterUpdate {
+func WrapClusterUpdate(pb *splitterpb.ClusterMessage_Update) ClusterUpdate {
 	return ClusterUpdate{pb: pb}
 }
 
-func UnwrapClusterUpdate(u ClusterUpdate) *public_v1.ClusterMessage_Update {
+func UnwrapClusterUpdate(u ClusterUpdate) *splitterpb.ClusterMessage_Update {
 	return u.pb
 }
 
@@ -817,14 +817,14 @@ func (u ClusterUpdate) String() string {
 }
 
 type ClusterUnassign struct {
-	pb *public_v1.ClusterMessage_Unassign
+	pb *splitterpb.ClusterMessage_Unassign
 }
 
-func WrapClusterUnassign(pb *public_v1.ClusterMessage_Unassign) ClusterUnassign {
+func WrapClusterUnassign(pb *splitterpb.ClusterMessage_Unassign) ClusterUnassign {
 	return ClusterUnassign{pb: pb}
 }
 
-func UnwrapClusterUnassign(u ClusterUnassign) *public_v1.ClusterMessage_Unassign {
+func UnwrapClusterUnassign(u ClusterUnassign) *splitterpb.ClusterMessage_Unassign {
 	return u.pb
 }
 
@@ -837,14 +837,14 @@ func (u ClusterUnassign) String() string {
 }
 
 type ClusterRemove struct {
-	pb *public_v1.ClusterMessage_Remove
+	pb *splitterpb.ClusterMessage_Remove
 }
 
-func WrapClusterRemove(pb *public_v1.ClusterMessage_Remove) ClusterRemove {
+func WrapClusterRemove(pb *splitterpb.ClusterMessage_Remove) ClusterRemove {
 	return ClusterRemove{pb: pb}
 }
 
-func UnwrapClusterRemove(r ClusterRemove) *public_v1.ClusterMessage_Remove {
+func UnwrapClusterRemove(r ClusterRemove) *splitterpb.ClusterMessage_Remove {
 	return r.pb
 }
 
@@ -857,14 +857,14 @@ func (d ClusterRemove) String() string {
 }
 
 type ClusterShards struct {
-	pb *public_v1.ClusterMessage_Shards
+	pb *splitterpb.ClusterMessage_Shards
 }
 
-func WrapClusterShards(pb *public_v1.ClusterMessage_Shards) ClusterShards {
+func WrapClusterShards(pb *splitterpb.ClusterMessage_Shards) ClusterShards {
 	return ClusterShards{pb: pb}
 }
 
-func UnwrapClusterShards(s ClusterShards) *public_v1.ClusterMessage_Shards {
+func UnwrapClusterShards(s ClusterShards) *splitterpb.ClusterMessage_Shards {
 	return s.pb
 }
 

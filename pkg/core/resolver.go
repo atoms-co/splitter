@@ -9,12 +9,12 @@ import (
 
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 // ServiceResolver resolves a gRPC connection to an instance with service's coordinator. Uses model.ErrNoResolution
 // to indicate that service is local.
-type ServiceResolver = model.SimpleResolver[internal_v1.CoordinatorServiceClient, model.QualifiedServiceName]
+type ServiceResolver = model.SimpleResolver[splitterprivatepb.CoordinatorServiceClient, model.QualifiedServiceName]
 
 type resolver struct {
 	pool *model.PeeredConnectionCache[grpc.ClientConnInterface]
@@ -34,7 +34,7 @@ func NewServiceResolver(ctx context.Context, cl clock.Clock, self model.Instance
 	return r
 }
 
-func (r *resolver) Resolve(ctx context.Context, service model.QualifiedServiceName) (internal_v1.CoordinatorServiceClient, error) {
+func (r *resolver) Resolve(ctx context.Context, service model.QualifiedServiceName) (splitterprivatepb.CoordinatorServiceClient, error) {
 	cluster, ok := r.Cluster()
 	if !ok {
 		return nil, fmt.Errorf("not initialized: %w", model.ErrNotFound)
@@ -48,7 +48,7 @@ func (r *resolver) Resolve(ctx context.Context, service model.QualifiedServiceNa
 	if err != nil {
 		return nil, err
 	}
-	return internal_v1.NewCoordinatorServiceClient(cc), nil
+	return splitterprivatepb.NewCoordinatorServiceClient(cc), nil
 }
 
 func (r *resolver) Cluster() (*Cluster, bool) {

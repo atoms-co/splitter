@@ -11,8 +11,8 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
-	"go.atoms.co/splitter/pb/private"
-	"go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -70,7 +70,7 @@ func (w *Writer) Init(ctx context.Context) (core.Snapshot, error) {
 // HandleAsync attempts to update the state as requested. If the request is accepted, it is applied to the writer
 // and (tentative) result available. The caller should delay returning the result until it has been successfully
 // applied. A write failure is a total leader failure.
-func (w *Writer) HandleAsync(ctx context.Context, req HandleRequest) (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
+func (w *Writer) HandleAsync(ctx context.Context, req HandleRequest) (iox.AsyncCloser, *splitterprivatepb.LeaderHandleResponse, error) {
 	if len(w.pool.Chan()) == pendingApplyCapacity {
 		log.Warnf(ctx, "Internal: pending applies reached internal limit: %v", pendingApplyCapacity)
 		return nil, nil, model.ErrOverloaded
@@ -92,7 +92,7 @@ func (w *Writer) UpdatePlacementAsync(ctx context.Context, placement core.Intern
 	return nil
 }
 
-func (w *Writer) handle(ctx context.Context, req HandleRequest) (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
+func (w *Writer) handle(ctx context.Context, req HandleRequest) (iox.AsyncCloser, *splitterprivatepb.LeaderHandleResponse, error) {
 	switch {
 	case req.Proto.GetTenant() != nil:
 		done, ret, err := w.handleTenantRequest(ctx, req.Proto.GetTenant())
@@ -134,7 +134,7 @@ func (w *Writer) handle(ctx context.Context, req HandleRequest) (iox.AsyncCloser
 	}
 }
 
-func (w *Writer) handleTenantRequest(ctx context.Context, req *internal_v1.TenantRequest) (iox.AsyncCloser, *internal_v1.TenantResponse, error) {
+func (w *Writer) handleTenantRequest(ctx context.Context, req *splitterprivatepb.TenantRequest) (iox.AsyncCloser, *splitterprivatepb.TenantResponse, error) {
 	switch {
 	case req.GetNew() != nil:
 		return w.handleNewTenantRequest(ctx, req.GetNew())
@@ -147,7 +147,7 @@ func (w *Writer) handleTenantRequest(ctx context.Context, req *internal_v1.Tenan
 	}
 }
 
-func (w *Writer) handleNewTenantRequest(ctx context.Context, req *public_v1.NewTenantRequest) (iox.AsyncCloser, *internal_v1.TenantResponse, error) {
+func (w *Writer) handleNewTenantRequest(ctx context.Context, req *splitterpb.NewTenantRequest) (iox.AsyncCloser, *splitterprivatepb.TenantResponse, error) {
 	name := model.TenantName(req.GetName())
 
 	var opts []model.TenantOption
@@ -165,16 +165,16 @@ func (w *Writer) handleNewTenantRequest(ctx context.Context, req *public_v1.NewT
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.TenantResponse{
-		Resp: &internal_v1.TenantResponse_New{
-			New: &public_v1.NewTenantResponse{
+	return done, &splitterprivatepb.TenantResponse{
+		Resp: &splitterprivatepb.TenantResponse_New{
+			New: &splitterpb.NewTenantResponse{
 				Tenant: model.UnwrapTenantInfo(info),
 			},
 		},
 	}, nil
 }
 
-func (w *Writer) handleUpdateTenantRequest(ctx context.Context, req *public_v1.UpdateTenantRequest) (iox.AsyncCloser, *internal_v1.TenantResponse, error) {
+func (w *Writer) handleUpdateTenantRequest(ctx context.Context, req *splitterpb.UpdateTenantRequest) (iox.AsyncCloser, *splitterprivatepb.TenantResponse, error) {
 	name := model.TenantName(req.GetName())
 	guard := model.Version(req.GetVersion())
 
@@ -204,16 +204,16 @@ func (w *Writer) handleUpdateTenantRequest(ctx context.Context, req *public_v1.U
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.TenantResponse{
-		Resp: &internal_v1.TenantResponse_Update{
-			Update: &public_v1.UpdateTenantResponse{
+	return done, &splitterprivatepb.TenantResponse{
+		Resp: &splitterprivatepb.TenantResponse_Update{
+			Update: &splitterpb.UpdateTenantResponse{
 				Tenant: model.UnwrapTenantInfo(info),
 			},
 		},
 	}, nil
 }
 
-func (w *Writer) handleDeleteTenantRequest(ctx context.Context, req *public_v1.DeleteTenantRequest) (iox.AsyncCloser, *internal_v1.TenantResponse, error) {
+func (w *Writer) handleDeleteTenantRequest(ctx context.Context, req *splitterpb.DeleteTenantRequest) (iox.AsyncCloser, *splitterprivatepb.TenantResponse, error) {
 	name := model.TenantName(req.GetName())
 
 	del, err := w.writer.Tenants.Delete(name)
@@ -222,14 +222,14 @@ func (w *Writer) handleDeleteTenantRequest(ctx context.Context, req *public_v1.D
 	}
 	done := w.deleteAsync(ctx, del)
 
-	return done, &internal_v1.TenantResponse{
-		Resp: &internal_v1.TenantResponse_Delete{
-			Delete: &public_v1.DeleteTenantResponse{},
+	return done, &splitterprivatepb.TenantResponse{
+		Resp: &splitterprivatepb.TenantResponse_Delete{
+			Delete: &splitterpb.DeleteTenantResponse{},
 		},
 	}, nil
 }
 
-func (w *Writer) handleServiceRequest(ctx context.Context, req *internal_v1.ServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
+func (w *Writer) handleServiceRequest(ctx context.Context, req *splitterprivatepb.ServiceRequest) (iox.AsyncCloser, *splitterprivatepb.ServiceResponse, error) {
 	switch {
 	case req.GetNew() != nil:
 		return w.handleNewServiceRequest(ctx, req.GetNew())
@@ -242,7 +242,7 @@ func (w *Writer) handleServiceRequest(ctx context.Context, req *internal_v1.Serv
 	}
 }
 
-func (w *Writer) handleNewServiceRequest(ctx context.Context, req *public_v1.NewServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
+func (w *Writer) handleNewServiceRequest(ctx context.Context, req *splitterpb.NewServiceRequest) (iox.AsyncCloser, *splitterprivatepb.ServiceResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
@@ -263,16 +263,16 @@ func (w *Writer) handleNewServiceRequest(ctx context.Context, req *public_v1.New
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.ServiceResponse{
-		Resp: &internal_v1.ServiceResponse_New{
-			New: &public_v1.NewServiceResponse{
+	return done, &splitterprivatepb.ServiceResponse{
+		Resp: &splitterprivatepb.ServiceResponse_New{
+			New: &splitterpb.NewServiceResponse{
 				Service: model.UnwrapServiceInfo(info),
 			},
 		},
 	}, nil
 }
 
-func (w *Writer) handleUpdateServiceRequest(ctx context.Context, req *public_v1.UpdateServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
+func (w *Writer) handleUpdateServiceRequest(ctx context.Context, req *splitterpb.UpdateServiceRequest) (iox.AsyncCloser, *splitterprivatepb.ServiceResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
@@ -305,16 +305,16 @@ func (w *Writer) handleUpdateServiceRequest(ctx context.Context, req *public_v1.
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.ServiceResponse{
-		Resp: &internal_v1.ServiceResponse_Update{
-			Update: &public_v1.UpdateServiceResponse{
+	return done, &splitterprivatepb.ServiceResponse{
+		Resp: &splitterprivatepb.ServiceResponse_Update{
+			Update: &splitterpb.UpdateServiceResponse{
 				Service: model.UnwrapServiceInfo(info),
 			},
 		},
 	}, nil
 }
 
-func (w *Writer) handleDeleteServiceRequest(ctx context.Context, req *public_v1.DeleteServiceRequest) (iox.AsyncCloser, *internal_v1.ServiceResponse, error) {
+func (w *Writer) handleDeleteServiceRequest(ctx context.Context, req *splitterpb.DeleteServiceRequest) (iox.AsyncCloser, *splitterprivatepb.ServiceResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
@@ -326,14 +326,14 @@ func (w *Writer) handleDeleteServiceRequest(ctx context.Context, req *public_v1.
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.ServiceResponse{
-		Resp: &internal_v1.ServiceResponse_Delete{
-			Delete: &public_v1.DeleteServiceResponse{},
+	return done, &splitterprivatepb.ServiceResponse{
+		Resp: &splitterprivatepb.ServiceResponse_Delete{
+			Delete: &splitterpb.DeleteServiceResponse{},
 		},
 	}, nil
 }
 
-func (w *Writer) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
+func (w *Writer) handleDomainRequest(ctx context.Context, req *splitterprivatepb.DomainRequest) (iox.AsyncCloser, *splitterprivatepb.DomainResponse, error) {
 	switch {
 	case req.GetNew() != nil:
 		return w.handleNewDomainRequest(ctx, req.GetNew())
@@ -346,7 +346,7 @@ func (w *Writer) handleDomainRequest(ctx context.Context, req *internal_v1.Domai
 	}
 }
 
-func (w *Writer) handleNewDomainRequest(ctx context.Context, req *public_v1.NewDomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
+func (w *Writer) handleNewDomainRequest(ctx context.Context, req *splitterpb.NewDomainRequest) (iox.AsyncCloser, *splitterprivatepb.DomainResponse, error) {
 	name, err := model.ParseQualifiedDomainName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid DQN: %w", model.ErrInvalid)
@@ -370,16 +370,16 @@ func (w *Writer) handleNewDomainRequest(ctx context.Context, req *public_v1.NewD
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.DomainResponse{
-		Resp: &internal_v1.DomainResponse_New{
-			New: &public_v1.NewDomainResponse{
+	return done, &splitterprivatepb.DomainResponse{
+		Resp: &splitterprivatepb.DomainResponse_New{
+			New: &splitterpb.NewDomainResponse{
 				Domain: model.UnwrapDomain(info),
 			},
 		},
 	}, nil
 }
 
-func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.UpdateDomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
+func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *splitterpb.UpdateDomainRequest) (iox.AsyncCloser, *splitterprivatepb.DomainResponse, error) {
 	name, err := model.ParseQualifiedDomainName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid DQN: %w", model.ErrInvalid)
@@ -417,16 +417,16 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *public_v1.U
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.DomainResponse{
-		Resp: &internal_v1.DomainResponse_Update{
-			Update: &public_v1.UpdateDomainResponse{
+	return done, &splitterprivatepb.DomainResponse{
+		Resp: &splitterprivatepb.DomainResponse_Update{
+			Update: &splitterpb.UpdateDomainResponse{
 				Domain: model.UnwrapDomain(domain),
 			},
 		},
 	}, nil
 }
 
-func (w *Writer) handleDeleteDomainRequest(ctx context.Context, req *public_v1.DeleteDomainRequest) (iox.AsyncCloser, *internal_v1.DomainResponse, error) {
+func (w *Writer) handleDeleteDomainRequest(ctx context.Context, req *splitterpb.DeleteDomainRequest) (iox.AsyncCloser, *splitterprivatepb.DomainResponse, error) {
 	name, err := model.ParseQualifiedDomainName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid DQN: %w", model.ErrInvalid)
@@ -438,14 +438,14 @@ func (w *Writer) handleDeleteDomainRequest(ctx context.Context, req *public_v1.D
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.DomainResponse{
-		Resp: &internal_v1.DomainResponse_Delete{
-			Delete: &public_v1.DeleteDomainResponse{},
+	return done, &splitterprivatepb.DomainResponse{
+		Resp: &splitterprivatepb.DomainResponse_Delete{
+			Delete: &splitterpb.DeleteDomainResponse{},
 		},
 	}, nil
 }
 
-func (w *Writer) handlePlacementRequest(ctx context.Context, req *internal_v1.PlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
+func (w *Writer) handlePlacementRequest(ctx context.Context, req *splitterprivatepb.PlacementRequest) (iox.AsyncCloser, *splitterprivatepb.PlacementResponse, error) {
 	switch {
 	case req.GetNew() != nil:
 		return w.handleNewPlacementRequest(ctx, req.GetNew())
@@ -458,7 +458,7 @@ func (w *Writer) handlePlacementRequest(ctx context.Context, req *internal_v1.Pl
 	}
 }
 
-func (w *Writer) handleNewPlacementRequest(ctx context.Context, req *internal_v1.NewPlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
+func (w *Writer) handleNewPlacementRequest(ctx context.Context, req *splitterprivatepb.NewPlacementRequest) (iox.AsyncCloser, *splitterprivatepb.PlacementResponse, error) {
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
@@ -475,16 +475,16 @@ func (w *Writer) handleNewPlacementRequest(ctx context.Context, req *internal_v1
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.PlacementResponse{
-		Resp: &internal_v1.PlacementResponse_New{
-			New: &internal_v1.NewPlacementResponse{
+	return done, &splitterprivatepb.PlacementResponse{
+		Resp: &splitterprivatepb.PlacementResponse_New{
+			New: &splitterprivatepb.NewPlacementResponse{
 				Info: core.UnwrapInternalPlacementInfo(info),
 			},
 		},
 	}, nil
 }
 
-func (w *Writer) handleUpdatePlacementRequest(ctx context.Context, req *internal_v1.UpdatePlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
+func (w *Writer) handleUpdatePlacementRequest(ctx context.Context, req *splitterprivatepb.UpdatePlacementRequest) (iox.AsyncCloser, *splitterprivatepb.PlacementResponse, error) {
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
@@ -523,16 +523,16 @@ func (w *Writer) handleUpdatePlacementRequest(ctx context.Context, req *internal
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.PlacementResponse{
-		Resp: &internal_v1.PlacementResponse_Update{
-			Update: &internal_v1.UpdatePlacementResponse{
+	return done, &splitterprivatepb.PlacementResponse{
+		Resp: &splitterprivatepb.PlacementResponse_Update{
+			Update: &splitterprivatepb.UpdatePlacementResponse{
 				Info: core.UnwrapInternalPlacementInfo(info),
 			},
 		},
 	}, nil
 }
 
-func (w *Writer) handleDeletePlacementRequest(ctx context.Context, req *internal_v1.DeletePlacementRequest) (iox.AsyncCloser, *internal_v1.PlacementResponse, error) {
+func (w *Writer) handleDeletePlacementRequest(ctx context.Context, req *splitterprivatepb.DeletePlacementRequest) (iox.AsyncCloser, *splitterprivatepb.PlacementResponse, error) {
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
@@ -562,14 +562,14 @@ func (w *Writer) handleDeletePlacementRequest(ctx context.Context, req *internal
 	}
 	done := w.updateAsync(ctx, upd)
 
-	return done, &internal_v1.PlacementResponse{
-		Resp: &internal_v1.PlacementResponse_Delete{
-			Delete: &internal_v1.DeletePlacementResponse{},
+	return done, &splitterprivatepb.PlacementResponse{
+		Resp: &splitterprivatepb.PlacementResponse_Delete{
+			Delete: &splitterprivatepb.DeletePlacementResponse{},
 		},
 	}, nil
 }
 
-func (w *Writer) handleOperationRequest(ctx context.Context, req *internal_v1.OperationRequest) (iox.AsyncCloser, *internal_v1.OperationResponse, error) {
+func (w *Writer) handleOperationRequest(ctx context.Context, req *splitterprivatepb.OperationRequest) (iox.AsyncCloser, *splitterprivatepb.OperationResponse, error) {
 	switch {
 	case req.GetRestore() != nil:
 		return w.handleNewRestoreRequest(ctx, req.GetRestore())
@@ -578,7 +578,7 @@ func (w *Writer) handleOperationRequest(ctx context.Context, req *internal_v1.Op
 	}
 }
 
-func (w *Writer) handleNewRestoreRequest(ctx context.Context, req *internal_v1.RestoreRequest) (iox.AsyncCloser, *internal_v1.OperationResponse, error) {
+func (w *Writer) handleNewRestoreRequest(ctx context.Context, req *splitterprivatepb.RestoreRequest) (iox.AsyncCloser, *splitterprivatepb.OperationResponse, error) {
 	nuke := req.GetNuke()
 	snapshot := req.GetSnapshot()
 
@@ -592,9 +592,9 @@ func (w *Writer) handleNewRestoreRequest(ctx context.Context, req *internal_v1.R
 	}
 	done := w.restoreAsync(ctx, res)
 
-	return done, &internal_v1.OperationResponse{
-		Resp: &internal_v1.OperationResponse_Restore{
-			Restore: &internal_v1.RestoreResponse{
+	return done, &splitterprivatepb.OperationResponse{
+		Resp: &splitterprivatepb.OperationResponse_Restore{
+			Restore: &splitterprivatepb.RestoreResponse{
 				Snapshot: core.UnwrapSnapshot(res.Snapshot()),
 			},
 		},

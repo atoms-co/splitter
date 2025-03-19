@@ -11,7 +11,7 @@ import (
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/allocation"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type ConsumerID = InstanceID
@@ -42,7 +42,7 @@ func NewShards(domain QualifiedDomainName, dtype DomainType, r Region, n int) []
 	})
 }
 
-func ParseShard(pb *public_v1.Shard) (Shard, error) {
+func ParseShard(pb *splitterpb.Shard) (Shard, error) {
 	if pb.GetDomain() == nil {
 		return Shard{}, fmt.Errorf("missing domain: %v", proto.MarshalTextString(pb))
 	}
@@ -134,8 +134,8 @@ func (s Shard) hasRangeOverlap(t Shard) bool {
 	return res
 }
 
-func (s Shard) ToProto() *public_v1.Shard {
-	return &public_v1.Shard{
+func (s Shard) ToProto() *splitterpb.Shard {
+	return &splitterpb.Shard{
 		Region: string(s.Region),
 		Type:   s.Type,
 		Domain: s.Domain.ToProto(),
@@ -157,15 +157,15 @@ func (s Shard) String() string {
 	}
 }
 
-type GrantState = public_v1.GrantState
+type GrantState = splitterpb.GrantState
 
 var (
-	InvalidGrantState   = public_v1.GrantState_UNKNOWN
-	ActiveGrantState    = public_v1.GrantState_ACTIVE
-	AllocatedGrantState = public_v1.GrantState_ALLOCATED
-	RevokedGrantState   = public_v1.GrantState_REVOKED
-	LoadedGrantState    = public_v1.GrantState_ALLOCATED_LOADED
-	UnloadedGrantState  = public_v1.GrantState_REVOKED_UNLOADED
+	InvalidGrantState   = splitterpb.GrantState_UNKNOWN
+	ActiveGrantState    = splitterpb.GrantState_ACTIVE
+	AllocatedGrantState = splitterpb.GrantState_ALLOCATED
+	RevokedGrantState   = splitterpb.GrantState_REVOKED
+	LoadedGrantState    = splitterpb.GrantState_ALLOCATED_LOADED
+	UnloadedGrantState  = splitterpb.GrantState_REVOKED_UNLOADED
 )
 
 func IsActiveGrant(state GrantState) bool {
@@ -218,11 +218,11 @@ func GrantStateCanAdvanceTo(state GrantState, next GrantState) bool {
 type GrantID = allocation.GrantID
 
 type Grant struct {
-	pb *public_v1.Grant
+	pb *splitterpb.Grant
 }
 
 func NewGrant(id GrantID, shard Shard, state GrantState, lease, assigned time.Time) Grant {
-	return WrapGrant(&public_v1.Grant{
+	return WrapGrant(&splitterpb.Grant{
 		Id:       string(id),
 		Shard:    shard.ToProto(),
 		State:    state,
@@ -231,11 +231,11 @@ func NewGrant(id GrantID, shard Shard, state GrantState, lease, assigned time.Ti
 	})
 }
 
-func WrapGrant(pb *public_v1.Grant) Grant {
+func WrapGrant(pb *splitterpb.Grant) Grant {
 	return Grant{pb: pb}
 }
 
-func UnwrapGrant(g Grant) *public_v1.Grant {
+func UnwrapGrant(g Grant) *splitterpb.Grant {
 	return g.pb
 }
 
@@ -269,22 +269,22 @@ func (g Grant) String() string {
 }
 
 type GrantInfo struct {
-	pb *public_v1.ClusterMessage_GrantInfo
+	pb *splitterpb.ClusterMessage_GrantInfo
 }
 
 func NewGrantInfo(id GrantID, shard Shard, state GrantState) GrantInfo {
-	return GrantInfo{pb: &public_v1.ClusterMessage_GrantInfo{
+	return GrantInfo{pb: &splitterpb.ClusterMessage_GrantInfo{
 		Id:    string(id),
 		Shard: shard.ToProto(),
 		State: state,
 	}}
 }
 
-func WrapGrantInfo(pb *public_v1.ClusterMessage_GrantInfo) GrantInfo {
+func WrapGrantInfo(pb *splitterpb.ClusterMessage_GrantInfo) GrantInfo {
 	return GrantInfo{pb: pb}
 }
 
-func UnwrapGrantInfo(g GrantInfo) *public_v1.ClusterMessage_GrantInfo {
+func UnwrapGrantInfo(g GrantInfo) *splitterpb.ClusterMessage_GrantInfo {
 	return g.pb
 }
 

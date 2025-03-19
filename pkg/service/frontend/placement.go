@@ -12,8 +12,8 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pb/private"
-	"go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -28,25 +28,25 @@ func NewPlacementService(internal *InternalPlacementService) *PlacementService {
 	return &PlacementService{internal: internal}
 }
 
-func (p *PlacementService) List(ctx context.Context, request *public_v1.ListPlacementsRequest) (*public_v1.ListPlacementsResponse, error) {
-	resp, err := p.internal.List(ctx, &internal_v1.ListPlacementsRequest{Tenant: request.GetTenant()})
+func (p *PlacementService) List(ctx context.Context, request *splitterpb.ListPlacementsRequest) (*splitterpb.ListPlacementsResponse, error) {
+	resp, err := p.internal.List(ctx, &splitterprivatepb.ListPlacementsRequest{Tenant: request.GetTenant()})
 	if err != nil {
 		return nil, err
 	}
 
-	return &public_v1.ListPlacementsResponse{
-		Info: slicex.Map(resp.GetInfo(), func(t *internal_v1.InternalPlacementInfo) *public_v1.PlacementInfo {
+	return &splitterpb.ListPlacementsResponse{
+		Info: slicex.Map(resp.GetInfo(), func(t *splitterprivatepb.InternalPlacementInfo) *splitterpb.PlacementInfo {
 			return model.UnwrapPlacementInfo(core.WrapInternalPlacementInfo(t).ToPlacementInfo())
 		}),
 	}, nil
 }
 
-func (p *PlacementService) Info(ctx context.Context, request *public_v1.InfoPlacementRequest) (*public_v1.InfoPlacementResponse, error) {
-	resp, err := p.internal.Info(ctx, &internal_v1.InfoPlacementRequest{Name: request.GetName()})
+func (p *PlacementService) Info(ctx context.Context, request *splitterpb.InfoPlacementRequest) (*splitterpb.InfoPlacementResponse, error) {
+	resp, err := p.internal.Info(ctx, &splitterprivatepb.InfoPlacementRequest{Name: request.GetName()})
 	if err != nil {
 		return nil, err
 	}
-	return &public_v1.InfoPlacementResponse{
+	return &splitterpb.InfoPlacementResponse{
 		Info: model.UnwrapPlacementInfo(core.WrapInternalPlacementInfo(resp.GetInfo()).ToPlacementInfo()),
 	}, nil
 }
@@ -60,13 +60,13 @@ func NewInternalPlacementService(proxy leader.Proxy, resolver leader.Resolver) *
 	return &InternalPlacementService{proxy: proxy, resolver: resolver}
 }
 
-func (i *InternalPlacementService) List(ctx context.Context, request *internal_v1.ListPlacementsRequest) (*internal_v1.ListPlacementsResponse, error) {
+func (i *InternalPlacementService) List(ctx context.Context, request *splitterprivatepb.ListPlacementsRequest) (*splitterprivatepb.ListPlacementsResponse, error) {
 	if request.GetTenant() == "" {
 		return nil, status.Error(codes.InvalidArgument, "empty tenant")
 	}
 
-	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
-		Req: &internal_v1.PlacementRequest_List{
+	resp, err := i.invoke(ctx, &splitterprivatepb.PlacementRequest{
+		Req: &splitterprivatepb.PlacementRequest_List{
 			List: request,
 		},
 	})
@@ -76,7 +76,7 @@ func (i *InternalPlacementService) List(ctx context.Context, request *internal_v
 	return resp.GetList(), err
 }
 
-func (i *InternalPlacementService) New(ctx context.Context, request *internal_v1.NewPlacementRequest) (*internal_v1.NewPlacementResponse, error) {
+func (i *InternalPlacementService) New(ctx context.Context, request *splitterprivatepb.NewPlacementRequest) (*splitterprivatepb.NewPlacementResponse, error) {
 	if _, err := model.ParseQualifiedPlacementName(request.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -84,8 +84,8 @@ func (i *InternalPlacementService) New(ctx context.Context, request *internal_v1
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
-		Req: &internal_v1.PlacementRequest_New{
+	resp, err := i.invoke(ctx, &splitterprivatepb.PlacementRequest{
+		Req: &splitterprivatepb.PlacementRequest_New{
 			New: request,
 		},
 	})
@@ -95,13 +95,13 @@ func (i *InternalPlacementService) New(ctx context.Context, request *internal_v1
 	return resp.GetNew(), err
 }
 
-func (i *InternalPlacementService) Info(ctx context.Context, request *internal_v1.InfoPlacementRequest) (*internal_v1.InfoPlacementResponse, error) {
+func (i *InternalPlacementService) Info(ctx context.Context, request *splitterprivatepb.InfoPlacementRequest) (*splitterprivatepb.InfoPlacementResponse, error) {
 	if _, err := model.ParseQualifiedPlacementName(request.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
-		Req: &internal_v1.PlacementRequest_Info{
+	resp, err := i.invoke(ctx, &splitterprivatepb.PlacementRequest{
+		Req: &splitterprivatepb.PlacementRequest_Info{
 			Info: request,
 		},
 	})
@@ -111,13 +111,13 @@ func (i *InternalPlacementService) Info(ctx context.Context, request *internal_v
 	return resp.GetInfo(), err
 }
 
-func (i *InternalPlacementService) Update(ctx context.Context, request *internal_v1.UpdatePlacementRequest) (*internal_v1.UpdatePlacementResponse, error) {
+func (i *InternalPlacementService) Update(ctx context.Context, request *splitterprivatepb.UpdatePlacementRequest) (*splitterprivatepb.UpdatePlacementResponse, error) {
 	if _, err := model.ParseQualifiedPlacementName(request.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
-		Req: &internal_v1.PlacementRequest_Update{
+	resp, err := i.invoke(ctx, &splitterprivatepb.PlacementRequest{
+		Req: &splitterprivatepb.PlacementRequest_Update{
 			Update: request,
 		},
 	})
@@ -127,13 +127,13 @@ func (i *InternalPlacementService) Update(ctx context.Context, request *internal
 	return resp.GetUpdate(), err
 }
 
-func (i *InternalPlacementService) Delete(ctx context.Context, request *internal_v1.DeletePlacementRequest) (*internal_v1.DeletePlacementResponse, error) {
+func (i *InternalPlacementService) Delete(ctx context.Context, request *splitterprivatepb.DeletePlacementRequest) (*splitterprivatepb.DeletePlacementResponse, error) {
 	if _, err := model.ParseQualifiedPlacementName(request.GetName()); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	resp, err := i.invoke(ctx, &internal_v1.PlacementRequest{
-		Req: &internal_v1.PlacementRequest_Delete{
+	resp, err := i.invoke(ctx, &splitterprivatepb.PlacementRequest{
+		Req: &splitterprivatepb.PlacementRequest_Delete{
 			Delete: request,
 		},
 	})
@@ -143,11 +143,11 @@ func (i *InternalPlacementService) Delete(ctx context.Context, request *internal
 	return resp.GetDelete(), err
 }
 
-func (i *InternalPlacementService) invoke(ctx context.Context, request *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
+func (i *InternalPlacementService) invoke(ctx context.Context, request *splitterprivatepb.PlacementRequest) (*splitterprivatepb.PlacementResponse, error) {
 	req := leader.NewHandlePlacementRequest(request)
 
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return core.InvokeZero(ctx, i.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*splitterprivatepb.LeaderHandleResponse, error) {
+		return core.InvokeZero(ctx, i.resolver, splitterprivatepb.LeaderServiceClient.Handle, req.Proto, func() (*splitterprivatepb.LeaderHandleResponse, error) {
 			return i.proxy.Handle(ctx, req)
 		})
 	})

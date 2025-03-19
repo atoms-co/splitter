@@ -11,7 +11,7 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type ServiceName string
@@ -40,7 +40,7 @@ func MustParseQualifiedServiceNameStr(name string) QualifiedServiceName {
 	return n
 }
 
-func ParseQualifiedServiceName(pb *public_v1.QualifiedServiceName) (QualifiedServiceName, error) {
+func ParseQualifiedServiceName(pb *splitterpb.QualifiedServiceName) (QualifiedServiceName, error) {
 	if pb.GetTenant() == "" || pb.GetService() == "" {
 		return QualifiedServiceName{}, fmt.Errorf("invalid service name: %v", proto.MarshalTextString(pb))
 	}
@@ -50,8 +50,8 @@ func ParseQualifiedServiceName(pb *public_v1.QualifiedServiceName) (QualifiedSer
 	}, nil
 }
 
-func (n QualifiedServiceName) ToProto() *public_v1.QualifiedServiceName {
-	return &public_v1.QualifiedServiceName{
+func (n QualifiedServiceName) ToProto() *splitterpb.QualifiedServiceName {
+	return &splitterpb.QualifiedServiceName{
 		Tenant:  string(n.Tenant),
 		Service: string(n.Service),
 	}
@@ -61,29 +61,29 @@ func (n QualifiedServiceName) String() string {
 	return fmt.Sprintf("%v/%v", n.Tenant, n.Service)
 }
 
-type ServiceOption func(service *public_v1.Service)
+type ServiceOption func(service *splitterpb.Service)
 
 func WithServiceOperational(t ServiceOperational) ServiceOption {
-	return func(service *public_v1.Service) {
+	return func(service *splitterpb.Service) {
 		service.Operational = UnwrapServiceOperational(t)
 	}
 }
 
 func WithServiceConfig(cfg ServiceConfig) ServiceOption {
-	return func(service *public_v1.Service) {
+	return func(service *splitterpb.Service) {
 		service.Config = UnwrapServiceConfig(cfg)
 	}
 }
 
 // Service represents a top-level namespace.
 type Service struct {
-	pb *public_v1.Service
+	pb *splitterpb.Service
 }
 
 func NewService(name QualifiedServiceName, now time.Time, opts ...ServiceOption) (Service, error) {
-	pb := &public_v1.Service{
+	pb := &splitterpb.Service{
 		Name:    name.ToProto(),
-		Config:  &public_v1.Service_Config{},
+		Config:  &splitterpb.Service_Config{},
 		Created: timestamppb.New(now),
 	}
 	for _, fn := range opts {
@@ -92,30 +92,30 @@ func NewService(name QualifiedServiceName, now time.Time, opts ...ServiceOption)
 	return ParseService(pb)
 }
 
-func ParseService(pb *public_v1.Service) (Service, error) {
+func ParseService(pb *splitterpb.Service) (Service, error) {
 	if err := validateService(pb); err != nil {
 		return Service{}, fmt.Errorf("invalid service: %w", err)
 	}
-	return Service{pb: proto.Clone(pb).(*public_v1.Service)}, nil
+	return Service{pb: proto.Clone(pb).(*splitterpb.Service)}, nil
 }
 
-func validateService(pb *public_v1.Service) error {
+func validateService(pb *splitterpb.Service) error {
 	return nil // TODO(jhhurwitz): 08/18/2023 Actually validate
 }
 
 func UpdateService(service Service, opts ...ServiceOption) (Service, error) {
-	upd := proto.Clone(service.pb).(*public_v1.Service)
+	upd := proto.Clone(service.pb).(*splitterpb.Service)
 	for _, fn := range opts {
 		fn(upd)
 	}
 	return ParseService(upd)
 }
 
-func WrapService(service *public_v1.Service) Service {
+func WrapService(service *splitterpb.Service) Service {
 	return Service{pb: service}
 }
 
-func UnwrapService(service Service) *public_v1.Service {
+func UnwrapService(service Service) *splitterpb.Service {
 	return service.pb
 }
 
@@ -140,24 +140,24 @@ func (t Service) String() string {
 	return proto.MarshalTextString(t.pb)
 }
 
-type ServiceConfigOption func(cfg *public_v1.Service_Config)
+type ServiceConfigOption func(cfg *splitterpb.Service_Config)
 
 func WithServiceRegion(region Region) ServiceConfigOption {
-	return func(cfg *public_v1.Service_Config) {
+	return func(cfg *splitterpb.Service_Config) {
 		cfg.Region = string(region)
 	}
 }
 
 func WithServiceDefaultShardingPolicy(policy ShardingPolicy) ServiceConfigOption {
-	return func(cfg *public_v1.Service_Config) {
+	return func(cfg *splitterpb.Service_Config) {
 		cfg.DefaultShardingPolicy = UnwrapShardingPolicy(policy)
 	}
 }
 
 func WithLocalityOverrides(overrides map[location.Region]location.Region) ServiceConfigOption {
-	return func(cfg *public_v1.Service_Config) {
-		cfg.Overrides = mapx.MapToSlice(overrides, func(shard location.Region, consumer location.Region) *public_v1.Service_Config_LocalityOverride {
-			return &public_v1.Service_Config_LocalityOverride{
+	return func(cfg *splitterpb.Service_Config) {
+		cfg.Overrides = mapx.MapToSlice(overrides, func(shard location.Region, consumer location.Region) *splitterpb.Service_Config_LocalityOverride {
+			return &splitterpb.Service_Config_LocalityOverride{
 				ShardRegion:    string(shard),
 				ConsumerRegion: string(consumer),
 			}
@@ -167,11 +167,11 @@ func WithLocalityOverrides(overrides map[location.Region]location.Region) Servic
 
 // ServiceConfig holds service configuration.
 type ServiceConfig struct {
-	pb *public_v1.Service_Config
+	pb *splitterpb.Service_Config
 }
 
 func NewServiceConfig(opts ...ServiceConfigOption) ServiceConfig {
-	pb := &public_v1.Service_Config{}
+	pb := &splitterpb.Service_Config{}
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -181,9 +181,9 @@ func NewServiceConfig(opts ...ServiceConfigOption) ServiceConfig {
 func UpdateServiceConfig(service Service, opts ...ServiceConfigOption) (ServiceConfig, error) {
 	pb := UnwrapService(service).Config
 	if pb == nil {
-		pb = &public_v1.Service_Config{}
+		pb = &splitterpb.Service_Config{}
 	}
-	pb = proto.Clone(pb).(*public_v1.Service_Config)
+	pb = proto.Clone(pb).(*splitterpb.Service_Config)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -193,11 +193,11 @@ func UpdateServiceConfig(service Service, opts ...ServiceConfigOption) (ServiceC
 	return WrapServiceConfig(pb), nil
 }
 
-func WrapServiceConfig(pb *public_v1.Service_Config) ServiceConfig {
+func WrapServiceConfig(pb *splitterpb.Service_Config) ServiceConfig {
 	return ServiceConfig{pb: pb}
 }
 
-func UnwrapServiceConfig(cfg ServiceConfig) *public_v1.Service_Config {
+func UnwrapServiceConfig(cfg ServiceConfig) *splitterpb.Service_Config {
 	return cfg.pb
 }
 
@@ -210,7 +210,7 @@ func (c ServiceConfig) DefaultShardingPolicy() ShardingPolicy {
 }
 
 func (c ServiceConfig) Overrides() map[location.Region]location.Region {
-	return mapx.MapNew(c.pb.GetOverrides(), func(t *public_v1.Service_Config_LocalityOverride) (location.Region, location.Region) {
+	return mapx.MapNew(c.pb.GetOverrides(), func(t *splitterpb.Service_Config_LocalityOverride) (location.Region, location.Region) {
 		return location.Region(t.GetShardRegion()), location.Region(t.GetConsumerRegion())
 	})
 }
@@ -221,19 +221,19 @@ func (c ServiceConfig) Equals(c1 ServiceConfig) bool {
 
 // ServiceInfo captures the full service information.
 type ServiceInfo struct {
-	pb *public_v1.ServiceInfo
+	pb *splitterpb.ServiceInfo
 }
 
-func WrapServiceInfo(pb *public_v1.ServiceInfo) ServiceInfo {
+func WrapServiceInfo(pb *splitterpb.ServiceInfo) ServiceInfo {
 	return ServiceInfo{pb: pb}
 }
 
-func UnwrapServiceInfo(t ServiceInfo) *public_v1.ServiceInfo {
+func UnwrapServiceInfo(t ServiceInfo) *splitterpb.ServiceInfo {
 	return t.pb
 }
 
 func NewServiceInfo(service Service, version Version, now time.Time) ServiceInfo {
-	return WrapServiceInfo(&public_v1.ServiceInfo{
+	return WrapServiceInfo(&splitterpb.ServiceInfo{
 		Service:   UnwrapService(service),
 		Version:   int64(version),
 		Timestamp: timestamppb.New(now),
@@ -262,19 +262,19 @@ func (t ServiceInfo) String() string {
 
 // ServiceInfoEx captures the full service information and associated Domains.
 type ServiceInfoEx struct {
-	pb *public_v1.ServiceInfoEx
+	pb *splitterpb.ServiceInfoEx
 }
 
-func WrapServiceInfoEx(pb *public_v1.ServiceInfoEx) ServiceInfoEx {
+func WrapServiceInfoEx(pb *splitterpb.ServiceInfoEx) ServiceInfoEx {
 	return ServiceInfoEx{pb: pb}
 }
 
-func UnwrapServiceInfoEx(t ServiceInfoEx) *public_v1.ServiceInfoEx {
+func UnwrapServiceInfoEx(t ServiceInfoEx) *splitterpb.ServiceInfoEx {
 	return t.pb
 }
 
 func NewServiceInfoEx(service ServiceInfo, domains []Domain) ServiceInfoEx {
-	return WrapServiceInfoEx(&public_v1.ServiceInfoEx{
+	return WrapServiceInfoEx(&splitterpb.ServiceInfoEx{
 		Service: UnwrapServiceInfo(service),
 		Domains: slicex.Map(domains, UnwrapDomain),
 	})
@@ -297,7 +297,7 @@ func (t ServiceInfoEx) Domains() []Domain {
 }
 
 func (t ServiceInfoEx) Domain(name DomainName) (Domain, bool) {
-	s, ok := slicex.First(t.pb.Domains, func(d *public_v1.Domain) bool {
+	s, ok := slicex.First(t.pb.Domains, func(d *splitterpb.Domain) bool {
 		return d.GetName().GetName() == string(name)
 	})
 	return WrapDomain(s), ok

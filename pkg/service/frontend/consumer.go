@@ -14,7 +14,7 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/consumer"
 	"go.atoms.co/splitter/pkg/service/worker"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 // ConsumerService is used by clients to participate in the work distribution process.
@@ -34,7 +34,7 @@ func NewConsumerService(cl clock.Clock, c consumer.Consumer, w worker.Worker) *C
 	}
 }
 
-func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) error {
+func (s *ConsumerService) Join(server splitterpb.ConsumerService_JoinServer) error {
 	quit := iox.NewAsyncCloser()
 	defer quit.Close()
 
@@ -45,9 +45,9 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if consumer session closes
 
-	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *public_v1.JoinMessage) (<-chan *public_v1.JoinMessage, error) {
+	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *splitterpb.JoinMessage) (<-chan *splitterpb.JoinMessage, error) {
 		// Read session initialization message
-		establish, err := session.ReadEstablish(s.cl, in, func(m *public_v1.JoinMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(s.cl, in, func(m *splitterpb.JoinMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
 				return session.WrapMessage(m.GetSession()), true
 			}
@@ -63,7 +63,7 @@ func (s *ConsumerService) Join(server public_v1.ConsumerService_JoinServer) erro
 		consumerSession, sessionOut, established := session.NewServer(ctx, s.cl, s.consumer.Self(), establish)
 		iox.WhenClosed(consumerSession, quit)
 
-		consumerIn := chanx.MapIf(in, func(pb *public_v1.JoinMessage) (model.ConsumerMessage, bool) {
+		consumerIn := chanx.MapIf(in, func(pb *splitterpb.JoinMessage) (model.ConsumerMessage, bool) {
 			if pb.GetSession() != nil {
 				consumerSession.Observe(ctx, session.WrapMessage(pb.GetSession()))
 				// Do not propagate consumer session messages to the coordinator

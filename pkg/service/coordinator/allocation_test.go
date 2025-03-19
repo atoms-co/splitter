@@ -14,7 +14,7 @@ import (
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 	"go.atoms.co/splitter/testing/prefab"
 )
 
@@ -45,16 +45,16 @@ func TestNamedShards(t *testing.T) {
 	require.NoError(t, err)
 
 	canaryKeys := []model.QualifiedDomainKey{
-		model.MustParseQualifiedDomainKey(&public_v1.QualifiedDomainKey{
+		model.MustParseQualifiedDomainKey(&splitterpb.QualifiedDomainKey{
 			Domain: d1.Name().ToProto(),
-			Key: &public_v1.DomainKey{
+			Key: &splitterpb.DomainKey{
 				Region: "centralus",
 				Key:    "b188ea31-f889-4ce5-9fc9-77fda8ab5c83",
 			},
 		}),
-		model.MustParseQualifiedDomainKey(&public_v1.QualifiedDomainKey{
+		model.MustParseQualifiedDomainKey(&splitterpb.QualifiedDomainKey{
 			Domain: d2.Name().ToProto(),
-			Key: &public_v1.DomainKey{
+			Key: &splitterpb.DomainKey{
 				Region: "northcentralus",
 				Key:    "c5b6882b-3dee-4e21-874d-14824bc86c82",
 			},

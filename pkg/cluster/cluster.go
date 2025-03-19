@@ -21,7 +21,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 const (
@@ -274,9 +274,9 @@ func (c *cluster) notifyPeer(ctx context.Context, endpoint string) {
 	}
 	defer cc.Close()
 
-	client := internal_v1.NewClusterServiceClient(cc)
+	client := splitterprivatepb.NewClusterServiceClient(cc)
 
-	if _, err := client.Notify(ctx, &internal_v1.ClusterNotifyRequest{
+	if _, err := client.Notify(ctx, &splitterprivatepb.ClusterNotifyRequest{
 		Id:      string(c.id),
 		Address: string(c.addr),
 	}); err != nil {

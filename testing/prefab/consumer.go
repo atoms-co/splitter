@@ -11,7 +11,7 @@ import (
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/lib/service/location/pb"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 var (
@@ -45,7 +45,7 @@ func NewShard(domain string, dtype model.DomainType, region model.Region, from, 
 }
 
 func NewGrantInfo(id string, domain string, dtype model.DomainType, region model.Region, from, to string, state model.GrantState) model.GrantInfo {
-	return model.WrapGrantInfo(&public_v1.ClusterMessage_GrantInfo{
+	return model.WrapGrantInfo(&splitterpb.ClusterMessage_GrantInfo{
 		Id:    id,
 		Shard: NewShard(domain, dtype, region, from, to).ToProto(),
 		State: state,

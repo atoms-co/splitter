@@ -13,7 +13,7 @@ import (
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 type DirectiveType string
@@ -51,9 +51,9 @@ type Factory func(ctx context.Context) (iox.AsyncCloser, Proxy)
 type Manager interface {
 	iox.RAsyncCloser
 
-	Resolve(ctx context.Context, key model.DomainKey) (internal_v1.LeaderServiceClient, error)
+	Resolve(ctx context.Context, key model.DomainKey) (splitterprivatepb.LeaderServiceClient, error)
 	Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error)
-	Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error)
+	Handle(ctx context.Context, request HandleRequest) (*splitterprivatepb.LeaderHandleResponse, error)
 	Drain(timeout time.Duration)
 }
 
@@ -63,9 +63,9 @@ type ResolvingManager struct {
 	cl      clock.Clock
 	factory Factory
 
-	remote internal_v1.LeaderServiceClient // nil if local
-	local  Proxy                           // nil if remote
-	halt   iox.AsyncCloser                 // stop signal for local/remote re-creation if active
+	remote splitterprivatepb.LeaderServiceClient // nil if local
+	local  Proxy                              // nil if remote
+	halt   iox.AsyncCloser                    // stop signal for local/remote re-creation if active
 	mu     sync.Mutex
 
 	drain iox.AsyncCloser
@@ -89,7 +89,7 @@ func (m *ResolvingManager) Drain(timeout time.Duration) {
 	m.cl.AfterFunc(timeout, m.Close)
 }
 
-func (m *ResolvingManager) Resolve(ctx context.Context, key model.DomainKey) (internal_v1.LeaderServiceClient, error) {
+func (m *ResolvingManager) Resolve(ctx context.Context, key model.DomainKey) (splitterprivatepb.LeaderServiceClient, error) {
 	if client, ok := m.tryRemote(); ok {
 		return client, nil
 	}
@@ -103,7 +103,7 @@ func (m *ResolvingManager) Join(ctx context.Context, sid session.ID, in <-chan M
 	return nil, model.ErrNotOwned
 }
 
-func (m *ResolvingManager) Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (m *ResolvingManager) Handle(ctx context.Context, request HandleRequest) (*splitterprivatepb.LeaderHandleResponse, error) {
 	if l, ok := m.tryLocal(); ok {
 		return l.Handle(ctx, request)
 	}
@@ -213,7 +213,7 @@ func (m *ResolvingManager) follow(ctx context.Context, halt iox.AsyncCloser, id,
 			m.mu.Unlock()
 			return // leadership change
 		}
-		m.remote = internal_v1.NewLeaderServiceClient(cc)
+		m.remote = splitterprivatepb.NewLeaderServiceClient(cc)
 		m.mu.Unlock()
 
 		// TODO(herohde) 9/7/2023: periodic connection health check at the grpc level?
@@ -222,7 +222,7 @@ func (m *ResolvingManager) follow(ctx context.Context, halt iox.AsyncCloser, id,
 	}
 }
 
-func (m *ResolvingManager) tryRemote() (internal_v1.LeaderServiceClient, bool) {
+func (m *ResolvingManager) tryRemote() (splitterprivatepb.LeaderServiceClient, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

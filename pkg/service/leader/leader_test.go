@@ -18,7 +18,7 @@ import (
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/storage/memory"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 const (
@@ -179,8 +179,8 @@ func TestLeader_Operations(t *testing.T) {
 	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
 	<-l.Initialized().Closed()
 
-	resp, err := l.Handle(ctx, leader.NewHandleOperationRequest(&internal_v1.OperationRequest{
-		Req: &internal_v1.OperationRequest_Snapshot{Snapshot: &internal_v1.SnapshotRequest{}},
+	resp, err := l.Handle(ctx, leader.NewHandleOperationRequest(&splitterprivatepb.OperationRequest{
+		Req: &splitterprivatepb.OperationRequest_Snapshot{Snapshot: &splitterprivatepb.SnapshotRequest{}},
 	}))
 	require.NoError(t, err)
 	require.NotNil(t, resp.GetOperation())

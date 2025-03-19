@@ -11,7 +11,7 @@ import (
 
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type Version int64
@@ -45,7 +45,7 @@ func MustParseQualifiedDomainNameStr(name string) QualifiedDomainName {
 	return n
 }
 
-func ParseQualifiedDomainName(pb *public_v1.QualifiedDomainName) (QualifiedDomainName, error) {
+func ParseQualifiedDomainName(pb *splitterpb.QualifiedDomainName) (QualifiedDomainName, error) {
 	if pb.GetName() == "" {
 		return QualifiedDomainName{}, fmt.Errorf("invalid domain name: %v", proto.MarshalTextString(pb))
 	}
@@ -60,8 +60,8 @@ func ParseQualifiedDomainName(pb *public_v1.QualifiedDomainName) (QualifiedDomai
 	}, nil
 }
 
-func (n QualifiedDomainName) ToProto() *public_v1.QualifiedDomainName {
-	return &public_v1.QualifiedDomainName{
+func (n QualifiedDomainName) ToProto() *splitterpb.QualifiedDomainName {
+	return &splitterpb.QualifiedDomainName{
 		Service: n.Service.ToProto(),
 		Name:    string(n.Domain),
 	}
@@ -71,61 +71,61 @@ func (n QualifiedDomainName) String() string {
 	return fmt.Sprintf("%v/%v", n.Service, n.Domain)
 }
 
-type DomainType = public_v1.Domain_Type
+type DomainType = splitterpb.Domain_Type
 
 const (
-	Unit     = public_v1.Domain_UNIT
-	Global   = public_v1.Domain_GLOBAL
-	Regional = public_v1.Domain_REGIONAL
+	Unit     = splitterpb.Domain_UNIT
+	Global   = splitterpb.Domain_GLOBAL
+	Regional = splitterpb.Domain_REGIONAL
 )
 
 func ParseDomainType(str string) (DomainType, bool) {
-	v, ok := public_v1.Domain_Type_value[strings.ToUpper(str)]
+	v, ok := splitterpb.Domain_Type_value[strings.ToUpper(str)]
 	return DomainType(v), ok && v != 0
 }
 
-type DomainState = public_v1.Domain_State
+type DomainState = splitterpb.Domain_State
 
 const (
-	DomainActive    = public_v1.Domain_ACTIVE
-	DomainSuspended = public_v1.Domain_SUSPENDED
+	DomainActive    = splitterpb.Domain_ACTIVE
+	DomainSuspended = splitterpb.Domain_SUSPENDED
 )
 
 func ParseDomainState(str string) (DomainState, bool) {
-	v, ok := public_v1.Domain_State_value[strings.ToUpper(str)]
+	v, ok := splitterpb.Domain_State_value[strings.ToUpper(str)]
 	return DomainState(v), ok && v != 0
 }
 
-type DomainOption func(domain *public_v1.Domain)
+type DomainOption func(domain *splitterpb.Domain)
 
-func WithDomainState(state public_v1.Domain_State) DomainOption {
-	return func(domain *public_v1.Domain) {
+func WithDomainState(state splitterpb.Domain_State) DomainOption {
+	return func(domain *splitterpb.Domain) {
 		domain.State = state
 	}
 }
 
 func WithDomainOperational(t DomainOperational) DomainOption {
-	return func(domain *public_v1.Domain) {
+	return func(domain *splitterpb.Domain) {
 		domain.Operational = UnwrapDomainOperational(t)
 	}
 }
 
 func WithDomainConfig(cfg DomainConfig) DomainOption {
-	return func(domain *public_v1.Domain) {
+	return func(domain *splitterpb.Domain) {
 		domain.Config = UnwrapDomainConfig(cfg)
 	}
 }
 
 type Domain struct {
-	pb *public_v1.Domain
+	pb *splitterpb.Domain
 }
 
 func NewDomain(name QualifiedDomainName, t DomainType, now time.Time, opts ...DomainOption) (Domain, error) {
-	pb := &public_v1.Domain{
+	pb := &splitterpb.Domain{
 		Name:    name.ToProto(),
 		Type:    t,
 		State:   DomainActive,
-		Config:  &public_v1.Domain_Config{},
+		Config:  &splitterpb.Domain_Config{},
 		Created: timestamppb.New(now),
 	}
 	for _, fn := range opts {
@@ -134,14 +134,14 @@ func NewDomain(name QualifiedDomainName, t DomainType, now time.Time, opts ...Do
 	return ParseDomain(pb)
 }
 
-func ParseDomain(pb *public_v1.Domain) (Domain, error) {
+func ParseDomain(pb *splitterpb.Domain) (Domain, error) {
 	if err := validateDomain(pb); err != nil {
 		return Domain{}, fmt.Errorf("invalid domain: %w", err)
 	}
-	return Domain{pb: proto.Clone(pb).(*public_v1.Domain)}, nil
+	return Domain{pb: proto.Clone(pb).(*splitterpb.Domain)}, nil
 }
 
-func validateDomain(pb *public_v1.Domain) error {
+func validateDomain(pb *splitterpb.Domain) error {
 	// Validate state
 	switch pb.GetState() {
 	case DomainActive:
@@ -165,7 +165,7 @@ func validateDomain(pb *public_v1.Domain) error {
 	}
 }
 
-func validRegionalConfig(config *public_v1.Domain_Config) error {
+func validRegionalConfig(config *splitterpb.Domain_Config) error {
 	if err := validateShardingPolicy(config.GetShardingPolicy()); err != nil {
 		return err
 	}
@@ -184,14 +184,14 @@ func validRegionalConfig(config *public_v1.Domain_Config) error {
 	return nil
 }
 
-func validateGlobalConfig(config *public_v1.Domain_Config) error {
+func validateGlobalConfig(config *splitterpb.Domain_Config) error {
 	if err := validateShardingPolicy(config.GetShardingPolicy()); err != nil {
 		return err
 	}
 	return nil
 }
 
-func validateShardingPolicy(policy *public_v1.ShardingPolicy) error {
+func validateShardingPolicy(policy *splitterpb.ShardingPolicy) error {
 	if policy.GetShards() < 1 {
 		return fmt.Errorf("shard count must be >= 1, given: %v", policy.GetShards())
 	}
@@ -199,7 +199,7 @@ func validateShardingPolicy(policy *public_v1.ShardingPolicy) error {
 	return nil
 }
 
-func validateUnitConfig(config *public_v1.Domain_Config) error {
+func validateUnitConfig(config *splitterpb.Domain_Config) error {
 
 	// TODO(jhhurwitz) 03/07/24 Validate unit when something to validate
 
@@ -207,18 +207,18 @@ func validateUnitConfig(config *public_v1.Domain_Config) error {
 }
 
 func UpdateDomain(domain Domain, opts ...DomainOption) (Domain, error) {
-	upd := proto.Clone(domain.pb).(*public_v1.Domain)
+	upd := proto.Clone(domain.pb).(*splitterpb.Domain)
 	for _, fn := range opts {
 		fn(upd)
 	}
 	return ParseDomain(upd)
 }
 
-func WrapDomain(pb *public_v1.Domain) Domain {
+func WrapDomain(pb *splitterpb.Domain) Domain {
 	return Domain{pb: pb}
 }
 
-func UnwrapDomain(domain Domain) *public_v1.Domain {
+func UnwrapDomain(domain Domain) *splitterpb.Domain {
 	return domain.pb
 }
 
@@ -263,16 +263,16 @@ func (t Domain) String() string {
 	return proto.MarshalTextString(t.pb)
 }
 
-type DomainConfigOption func(cfg *public_v1.Domain_Config)
+type DomainConfigOption func(cfg *splitterpb.Domain_Config)
 
 func WithDomainPlacement(placement PlacementName) DomainConfigOption {
-	return func(cfg *public_v1.Domain_Config) {
+	return func(cfg *splitterpb.Domain_Config) {
 		cfg.Placement = string(placement)
 	}
 }
 
 func WithDomainRegions(regions ...Region) DomainConfigOption {
-	return func(cfg *public_v1.Domain_Config) {
+	return func(cfg *splitterpb.Domain_Config) {
 		cfg.Regions = slicex.Map(regions, func(t Region) string {
 			return string(t)
 		})
@@ -280,19 +280,19 @@ func WithDomainRegions(regions ...Region) DomainConfigOption {
 }
 
 func WithDomainShardingPolicy(policy ShardingPolicy) DomainConfigOption {
-	return func(cfg *public_v1.Domain_Config) {
+	return func(cfg *splitterpb.Domain_Config) {
 		cfg.ShardingPolicy = UnwrapShardingPolicy(policy)
 	}
 }
 
 func WithDomainNamedKeys(named ...NamedDomainKey) DomainConfigOption {
-	return func(cfg *public_v1.Domain_Config) {
+	return func(cfg *splitterpb.Domain_Config) {
 		cfg.Named = slicex.Map(named, NamedDomainKey.ToProto)
 	}
 }
 
 func WithDomainAntiAffinity(domains ...DomainName) DomainConfigOption {
-	return func(cfg *public_v1.Domain_Config) {
+	return func(cfg *splitterpb.Domain_Config) {
 		cfg.AntiAffinity = slicex.Map(domains, func(t DomainName) string {
 			return string(t)
 		})
@@ -301,11 +301,11 @@ func WithDomainAntiAffinity(domains ...DomainName) DomainConfigOption {
 
 // DomainConfig holds domain configuration.
 type DomainConfig struct {
-	pb *public_v1.Domain_Config
+	pb *splitterpb.Domain_Config
 }
 
 func NewDomainConfig(opts ...DomainConfigOption) DomainConfig {
-	pb := &public_v1.Domain_Config{}
+	pb := &splitterpb.Domain_Config{}
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -315,9 +315,9 @@ func NewDomainConfig(opts ...DomainConfigOption) DomainConfig {
 func UpdateDomainConfig(domain Domain, opts ...DomainConfigOption) (DomainConfig, error) {
 	pb := UnwrapDomain(domain).Config
 	if pb == nil {
-		pb = &public_v1.Domain_Config{}
+		pb = &splitterpb.Domain_Config{}
 	}
-	pb = proto.Clone(pb).(*public_v1.Domain_Config)
+	pb = proto.Clone(pb).(*splitterpb.Domain_Config)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -327,11 +327,11 @@ func UpdateDomainConfig(domain Domain, opts ...DomainConfigOption) (DomainConfig
 	return WrapDomainConfig(pb), nil
 }
 
-func WrapDomainConfig(pb *public_v1.Domain_Config) DomainConfig {
+func WrapDomainConfig(pb *splitterpb.Domain_Config) DomainConfig {
 	return DomainConfig{pb: pb}
 }
 
-func UnwrapDomainConfig(cfg DomainConfig) *public_v1.Domain_Config {
+func UnwrapDomainConfig(cfg DomainConfig) *splitterpb.Domain_Config {
 	return cfg.pb
 }
 
@@ -352,7 +352,7 @@ func (c DomainConfig) AntiAffinity() []DomainName {
 }
 
 func (c DomainConfig) NamedDomainKeys() []NamedDomainKey {
-	return slicex.Map(c.pb.GetNamed(), func(key *public_v1.NamedDomainKey) NamedDomainKey {
+	return slicex.Map(c.pb.GetNamed(), func(key *splitterpb.NamedDomainKey) NamedDomainKey {
 		ret, _ := ParseNamedDomainKey(key)
 		return ret
 	})
@@ -414,7 +414,7 @@ type DomainKey struct {
 	Key    Key    // if REGIONAL/GLOBAL
 }
 
-func ParseDomainKey(key *public_v1.DomainKey) (DomainKey, error) {
+func ParseDomainKey(key *splitterpb.DomainKey) (DomainKey, error) {
 	k, err := ParseKey(key.Key)
 	if err != nil {
 		return DomainKey{}, err
@@ -435,8 +435,8 @@ func ToZeroDomainKey[K any](k K) DomainKey {
 	return ZeroDomainKey
 }
 
-func (k DomainKey) ToProto() *public_v1.DomainKey {
-	return &public_v1.DomainKey{
+func (k DomainKey) ToProto() *splitterpb.DomainKey {
+	return &splitterpb.DomainKey{
 		Region: string(k.Region),
 		Key:    k.Key.String(),
 	}
@@ -462,7 +462,7 @@ type NamedDomainKey struct {
 	Key  DomainKey
 }
 
-func ParseNamedDomainKey(key *public_v1.NamedDomainKey) (NamedDomainKey, error) {
+func ParseNamedDomainKey(key *splitterpb.NamedDomainKey) (NamedDomainKey, error) {
 	if key.GetName() == "" {
 		return NamedDomainKey{}, fmt.Errorf("name must be non-empty")
 	}
@@ -476,8 +476,8 @@ func ParseNamedDomainKey(key *public_v1.NamedDomainKey) (NamedDomainKey, error) 
 	}, nil
 }
 
-func (k NamedDomainKey) ToProto() *public_v1.NamedDomainKey {
-	return &public_v1.NamedDomainKey{
+func (k NamedDomainKey) ToProto() *splitterpb.NamedDomainKey {
+	return &splitterpb.NamedDomainKey{
 		Name: k.Name,
 		Key:  k.Key.ToProto(),
 	}
@@ -503,8 +503,8 @@ func ParseDomainKeyNameStr(name string) (DomainKeyName, bool) {
 	}, true
 }
 
-func (d DomainKeyName) ToProto() *public_v1.DomainKeyName {
-	return &public_v1.DomainKeyName{
+func (d DomainKeyName) ToProto() *splitterpb.DomainKeyName {
+	return &splitterpb.DomainKeyName{
 		Domain: string(d.Domain),
 		Name:   d.Name,
 	}
@@ -520,7 +520,7 @@ type QualifiedDomainKey struct {
 	Key    DomainKey
 }
 
-func ParseQualifiedDomainKey(key *public_v1.QualifiedDomainKey) (QualifiedDomainKey, error) {
+func ParseQualifiedDomainKey(key *splitterpb.QualifiedDomainKey) (QualifiedDomainKey, error) {
 	domain, err := ParseQualifiedDomainName(key.Domain)
 	if err != nil {
 		return QualifiedDomainKey{}, err
@@ -535,7 +535,7 @@ func ParseQualifiedDomainKey(key *public_v1.QualifiedDomainKey) (QualifiedDomain
 	}, nil
 }
 
-func MustParseQualifiedDomainKey(key *public_v1.QualifiedDomainKey) QualifiedDomainKey {
+func MustParseQualifiedDomainKey(key *splitterpb.QualifiedDomainKey) QualifiedDomainKey {
 	ret, err := ParseQualifiedDomainKey(key)
 	if err != nil {
 		panic(err)
@@ -543,8 +543,8 @@ func MustParseQualifiedDomainKey(key *public_v1.QualifiedDomainKey) QualifiedDom
 	return ret
 }
 
-func (k QualifiedDomainKey) ToProto() *public_v1.QualifiedDomainKey {
-	return &public_v1.QualifiedDomainKey{
+func (k QualifiedDomainKey) ToProto() *splitterpb.QualifiedDomainKey {
+	return &splitterpb.QualifiedDomainKey{
 		Domain: k.Domain.ToProto(),
 		Key:    k.Key.ToProto(),
 	}

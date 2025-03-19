@@ -24,7 +24,7 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 const (
@@ -54,7 +54,7 @@ type Worker interface {
 
 	// Handle is used to invoke a coordinator request.
 	// Returns a response or a logical error.
-	Handle(ctx context.Context, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error)
+	Handle(ctx context.Context, req coordinator.HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error)
 
 	Self() location.Instance
 	Joined(ctx context.Context) (bool, error)
@@ -137,7 +137,7 @@ func (w *worker) Connect(ctx context.Context, sid session.ID, consumer location.
 	return c.Connect(ctx, sid, consumer, chanx.Prepend(in, msg))
 }
 
-func (w *worker) Handle(ctx context.Context, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+func (w *worker) Handle(ctx context.Context, req coordinator.HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error) {
 	c, err := syncx.Txn1(ctx, w.txn, func() (coordinator.Coordinator, error) {
 		gid, ok := w.services[req.Service()]
 		if !ok {

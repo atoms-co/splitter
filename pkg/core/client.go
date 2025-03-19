@@ -8,19 +8,19 @@ import (
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
-type UpdatePlacementOption func(req *internal_v1.UpdatePlacementRequest)
+type UpdatePlacementOption func(req *splitterprivatepb.UpdatePlacementRequest)
 
 func WithPlacementState(state PlacementState) UpdatePlacementOption {
-	return func(req *internal_v1.UpdatePlacementRequest) {
+	return func(req *splitterprivatepb.UpdatePlacementRequest) {
 		req.State = state
 	}
 }
 
 func WithPlacementConfig(cfg InternalPlacementConfig) UpdatePlacementOption {
-	return func(req *internal_v1.UpdatePlacementRequest) {
+	return func(req *splitterprivatepb.UpdatePlacementRequest) {
 		req.Config = UnwrapInternalPlacementConfig(cfg)
 	}
 }
@@ -48,19 +48,19 @@ type Client interface {
 }
 
 type client struct {
-	placement internal_v1.PlacementManagementServiceClient
-	operation internal_v1.OperationServiceClient
+	placement splitterprivatepb.PlacementManagementServiceClient
+	operation splitterprivatepb.OperationServiceClient
 }
 
 func NewClient(cc *grpc.ClientConn) Client {
 	return &client{
-		placement: internal_v1.NewPlacementManagementServiceClient(cc),
-		operation: internal_v1.NewOperationServiceClient(cc),
+		placement: splitterprivatepb.NewPlacementManagementServiceClient(cc),
+		operation: splitterprivatepb.NewOperationServiceClient(cc),
 	}
 }
 
 func (c *client) ListPlacements(ctx context.Context, tenant model.TenantName) ([]InternalPlacementInfo, error) {
-	req := &internal_v1.ListPlacementsRequest{
+	req := &splitterprivatepb.ListPlacementsRequest{
 		Tenant: string(tenant),
 	}
 	resp, err := c.placement.List(ctx, req)
@@ -71,7 +71,7 @@ func (c *client) ListPlacements(ctx context.Context, tenant model.TenantName) ([
 }
 
 func (c *client) NewPlacement(ctx context.Context, name model.QualifiedPlacementName, target BlockDistribution) (InternalPlacementInfo, error) {
-	req := &internal_v1.NewPlacementRequest{
+	req := &splitterprivatepb.NewPlacementRequest{
 		Name:   name.ToProto(),
 		Config: UnwrapInternalPlacementConfig(NewInternalPlacementConfig(target, target, 1)),
 	}
@@ -84,7 +84,7 @@ func (c *client) NewPlacement(ctx context.Context, name model.QualifiedPlacement
 }
 
 func (c *client) InfoPlacement(ctx context.Context, name model.QualifiedPlacementName) (InternalPlacementInfo, error) {
-	req := &internal_v1.InfoPlacementRequest{
+	req := &splitterprivatepb.InfoPlacementRequest{
 		Name: name.ToProto(),
 	}
 	resp, err := c.placement.Info(ctx, req)
@@ -95,7 +95,7 @@ func (c *client) InfoPlacement(ctx context.Context, name model.QualifiedPlacemen
 }
 
 func (c *client) UpdatePlacement(ctx context.Context, name model.QualifiedPlacementName, guard model.Version, opts ...UpdatePlacementOption) (InternalPlacementInfo, error) {
-	req := &internal_v1.UpdatePlacementRequest{
+	req := &splitterprivatepb.UpdatePlacementRequest{
 		Name:    name.ToProto(),
 		Version: int64(guard),
 	}
@@ -111,7 +111,7 @@ func (c *client) UpdatePlacement(ctx context.Context, name model.QualifiedPlacem
 }
 
 func (c *client) DeletePlacement(ctx context.Context, name model.QualifiedPlacementName) error {
-	req := &internal_v1.DeletePlacementRequest{
+	req := &splitterprivatepb.DeletePlacementRequest{
 		Name: name.ToProto(),
 	}
 	_, err := c.placement.Delete(ctx, req)
@@ -119,7 +119,7 @@ func (c *client) DeletePlacement(ctx context.Context, name model.QualifiedPlacem
 }
 
 func (c *client) CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error) {
-	req := &internal_v1.CoordinatorInfoRequest{
+	req := &splitterprivatepb.CoordinatorInfoRequest{
 		Service: service.ToProto(),
 	}
 
@@ -131,7 +131,7 @@ func (c *client) CoordinatorInfo(ctx context.Context, service model.QualifiedSer
 }
 
 func (c *client) CoordinatorRestart(ctx context.Context, service model.QualifiedServiceName) error {
-	req := &internal_v1.CoordinatorRestartRequest{
+	req := &splitterprivatepb.CoordinatorRestartRequest{
 		Service: service.ToProto(),
 	}
 
@@ -140,15 +140,15 @@ func (c *client) CoordinatorRestart(ctx context.Context, service model.Qualified
 }
 
 func (c *client) CoordinatorRevokeGrants(ctx context.Context, service model.QualifiedServiceName, grants map[model.ConsumerID][]model.GrantID) error {
-	var pbs []*internal_v1.CoordinatorRevokeGrantsRequest_ConsumerGrants
+	var pbs []*splitterprivatepb.CoordinatorRevokeGrantsRequest_ConsumerGrants
 	for cid, gs := range grants {
-		pbs = append(pbs, &internal_v1.CoordinatorRevokeGrantsRequest_ConsumerGrants{
+		pbs = append(pbs, &splitterprivatepb.CoordinatorRevokeGrantsRequest_ConsumerGrants{
 			Consumer: string(cid),
 			Grants:   slicex.Map(gs, stringx.ToString[model.GrantID]),
 		})
 	}
 
-	req := &internal_v1.CoordinatorRevokeGrantsRequest{
+	req := &splitterprivatepb.CoordinatorRevokeGrantsRequest{
 		Service: service.ToProto(),
 		Grants:  pbs,
 	}
@@ -158,7 +158,7 @@ func (c *client) CoordinatorRevokeGrants(ctx context.Context, service model.Qual
 }
 
 func (c *client) CoordinatorClusterSync(ctx context.Context, service model.QualifiedServiceName) error {
-	req := &internal_v1.CoordinatorClusterSyncRequest{
+	req := &splitterprivatepb.CoordinatorClusterSyncRequest{
 		Service: service.ToProto(),
 	}
 
@@ -167,7 +167,7 @@ func (c *client) CoordinatorClusterSync(ctx context.Context, service model.Quali
 }
 
 func (c *client) ConsumerSuspend(ctx context.Context, service model.QualifiedServiceName, id model.InstanceID) error {
-	req := &internal_v1.ConsumerSuspendRequest{
+	req := &splitterprivatepb.ConsumerSuspendRequest{
 		Service:    service.ToProto(),
 		ConsumerId: string(id),
 	}
@@ -177,7 +177,7 @@ func (c *client) ConsumerSuspend(ctx context.Context, service model.QualifiedSer
 }
 
 func (c *client) ConsumerResume(ctx context.Context, service model.QualifiedServiceName, id model.InstanceID) error {
-	req := &internal_v1.ConsumerResumeRequest{
+	req := &splitterprivatepb.ConsumerResumeRequest{
 		Service:    service.ToProto(),
 		ConsumerId: string(id),
 	}
@@ -187,7 +187,7 @@ func (c *client) ConsumerResume(ctx context.Context, service model.QualifiedServ
 }
 
 func (c *client) ConsumerDrain(ctx context.Context, service model.QualifiedServiceName, id model.InstanceID) error {
-	req := &internal_v1.ConsumerDrainRequest{
+	req := &splitterprivatepb.ConsumerDrainRequest{
 		Service:    service.ToProto(),
 		ConsumerId: string(id),
 	}
@@ -197,21 +197,21 @@ func (c *client) ConsumerDrain(ctx context.Context, service model.QualifiedServi
 }
 
 func (c *client) RaftInfo(ctx context.Context) (map[string]string, error) {
-	req := &internal_v1.RaftInfoRequest{}
+	req := &splitterprivatepb.RaftInfoRequest{}
 
 	resp, err := c.operation.RaftInfo(ctx, req)
 	return resp.GetRaftState(), err
 }
 
 func (c *client) Snapshot(ctx context.Context) (Snapshot, error) {
-	req := &internal_v1.SnapshotRequest{}
+	req := &splitterprivatepb.SnapshotRequest{}
 
 	resp, err := c.operation.Snapshot(ctx, req)
 	return WrapSnapshot(resp.GetSnapshot()), err
 }
 
 func (c *client) Restore(ctx context.Context, nuke bool) (Snapshot, error) {
-	req := &internal_v1.RestoreRequest{
+	req := &splitterprivatepb.RestoreRequest{
 		Nuke: nuke,
 	}
 
@@ -220,7 +220,7 @@ func (c *client) Restore(ctx context.Context, nuke bool) (Snapshot, error) {
 }
 
 func (c *client) RestoreFromSnapshot(ctx context.Context, snapshot Snapshot) (Snapshot, error) {
-	req := &internal_v1.RestoreRequest{
+	req := &splitterprivatepb.RestoreRequest{
 		Snapshot: UnwrapSnapshot(snapshot),
 	}
 

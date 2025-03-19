@@ -14,7 +14,7 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 type OperationService struct {
@@ -35,15 +35,15 @@ func NewOperationService(c cluster.Cluster, w worker.Worker, serviceResolver cor
 	}
 }
 
-func (o *OperationService) CoordinatorInfo(ctx context.Context, request *internal_v1.CoordinatorInfoRequest) (*internal_v1.CoordinatorInfoResponse, error) {
+func (o *OperationService) CoordinatorInfo(ctx context.Context, request *splitterprivatepb.CoordinatorInfoRequest) (*splitterprivatepb.CoordinatorInfoResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
-		&internal_v1.CoordinatorOperationRequest{
-			Req: &internal_v1.CoordinatorOperationRequest_Info{
+		&splitterprivatepb.CoordinatorOperationRequest{
+			Req: &splitterprivatepb.CoordinatorOperationRequest_Info{
 				Info: request,
 			},
 		})
@@ -56,15 +56,15 @@ func (o *OperationService) CoordinatorInfo(ctx context.Context, request *interna
 	return resp.GetOperation().GetInfo(), nil
 }
 
-func (o *OperationService) CoordinatorRestart(ctx context.Context, request *internal_v1.CoordinatorRestartRequest) (*internal_v1.CoordinatorRestartResponse, error) {
+func (o *OperationService) CoordinatorRestart(ctx context.Context, request *splitterprivatepb.CoordinatorRestartRequest) (*splitterprivatepb.CoordinatorRestartResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
-		&internal_v1.CoordinatorOperationRequest{
-			Req: &internal_v1.CoordinatorOperationRequest_Restart{
+		&splitterprivatepb.CoordinatorOperationRequest{
+			Req: &splitterprivatepb.CoordinatorOperationRequest_Restart{
 				Restart: request,
 			},
 		})
@@ -77,15 +77,15 @@ func (o *OperationService) CoordinatorRestart(ctx context.Context, request *inte
 	return resp.GetOperation().GetRestart(), nil
 }
 
-func (o *OperationService) CoordinatorClusterSync(ctx context.Context, request *internal_v1.CoordinatorClusterSyncRequest) (*internal_v1.CoordinatorClusterSyncResponse, error) {
+func (o *OperationService) CoordinatorClusterSync(ctx context.Context, request *splitterprivatepb.CoordinatorClusterSyncRequest) (*splitterprivatepb.CoordinatorClusterSyncResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
-		&internal_v1.CoordinatorOperationRequest{
-			Req: &internal_v1.CoordinatorOperationRequest_Sync{
+		&splitterprivatepb.CoordinatorOperationRequest{
+			Req: &splitterprivatepb.CoordinatorOperationRequest_Sync{
 				Sync: request,
 			},
 		})
@@ -98,15 +98,15 @@ func (o *OperationService) CoordinatorClusterSync(ctx context.Context, request *
 	return resp.GetOperation().GetSync(), nil
 }
 
-func (o *OperationService) ConsumerSuspend(ctx context.Context, request *internal_v1.ConsumerSuspendRequest) (*internal_v1.ConsumerSuspendResponse, error) {
+func (o *OperationService) ConsumerSuspend(ctx context.Context, request *splitterprivatepb.ConsumerSuspendRequest) (*splitterprivatepb.ConsumerSuspendResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
-		&internal_v1.CoordinatorOperationRequest{
-			Req: &internal_v1.CoordinatorOperationRequest_Suspend{
+		&splitterprivatepb.CoordinatorOperationRequest{
+			Req: &splitterprivatepb.CoordinatorOperationRequest_Suspend{
 				Suspend: request,
 			},
 		})
@@ -119,15 +119,15 @@ func (o *OperationService) ConsumerSuspend(ctx context.Context, request *interna
 	return resp.GetOperation().GetSuspend(), nil
 }
 
-func (o *OperationService) ConsumerResume(ctx context.Context, request *internal_v1.ConsumerResumeRequest) (*internal_v1.ConsumerResumeResponse, error) {
+func (o *OperationService) ConsumerResume(ctx context.Context, request *splitterprivatepb.ConsumerResumeRequest) (*splitterprivatepb.ConsumerResumeResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
-		&internal_v1.CoordinatorOperationRequest{
-			Req: &internal_v1.CoordinatorOperationRequest_Resume{
+		&splitterprivatepb.CoordinatorOperationRequest{
+			Req: &splitterprivatepb.CoordinatorOperationRequest_Resume{
 				Resume: request,
 			},
 		})
@@ -140,15 +140,15 @@ func (o *OperationService) ConsumerResume(ctx context.Context, request *internal
 	return resp.GetOperation().GetResume(), nil
 }
 
-func (o *OperationService) ConsumerDrain(ctx context.Context, request *internal_v1.ConsumerDrainRequest) (*internal_v1.ConsumerDrainResponse, error) {
+func (o *OperationService) ConsumerDrain(ctx context.Context, request *splitterprivatepb.ConsumerDrainRequest) (*splitterprivatepb.ConsumerDrainResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
-		&internal_v1.CoordinatorOperationRequest{
-			Req: &internal_v1.CoordinatorOperationRequest_Drain{
+		&splitterprivatepb.CoordinatorOperationRequest{
+			Req: &splitterprivatepb.CoordinatorOperationRequest_Drain{
 				Drain: request,
 			},
 		})
@@ -161,15 +161,15 @@ func (o *OperationService) ConsumerDrain(ctx context.Context, request *internal_
 	return resp.GetOperation().GetDrain(), nil
 }
 
-func (o *OperationService) CoordinatorRevokeGrants(ctx context.Context, request *internal_v1.CoordinatorRevokeGrantsRequest) (*internal_v1.CoordinatorRevokeGrantsResponse, error) {
+func (o *OperationService) CoordinatorRevokeGrants(ctx context.Context, request *splitterprivatepb.CoordinatorRevokeGrantsRequest) (*splitterprivatepb.CoordinatorRevokeGrantsResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
-		&internal_v1.CoordinatorOperationRequest{
-			Req: &internal_v1.CoordinatorOperationRequest_RevokeGrants{
+		&splitterprivatepb.CoordinatorOperationRequest{
+			Req: &splitterprivatepb.CoordinatorOperationRequest_RevokeGrants{
 				RevokeGrants: request,
 			},
 		})
@@ -182,9 +182,9 @@ func (o *OperationService) CoordinatorRevokeGrants(ctx context.Context, request 
 	return resp.GetOperation().GetRevokeGrants(), nil
 }
 
-func (o *OperationService) executeCoordinatorRequest(ctx context.Context, name model.QualifiedServiceName, req coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.CoordinatorHandleResponse, error) {
-		return core.Invoke(ctx, o.serviceResolver, name, internal_v1.CoordinatorServiceClient.Handle, req.Proto, func() (*internal_v1.CoordinatorHandleResponse, error) {
+func (o *OperationService) executeCoordinatorRequest(ctx context.Context, name model.QualifiedServiceName, req coordinator.HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error) {
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*splitterprivatepb.CoordinatorHandleResponse, error) {
+		return core.Invoke(ctx, o.serviceResolver, name, splitterprivatepb.CoordinatorServiceClient.Handle, req.Proto, func() (*splitterprivatepb.CoordinatorHandleResponse, error) {
 			return o.worker.Handle(ctx, req)
 		})
 	})
@@ -195,16 +195,16 @@ func (o *OperationService) executeCoordinatorRequest(ctx context.Context, name m
 	return resp, err
 }
 
-func (o *OperationService) RaftInfo(ctx context.Context, request *internal_v1.RaftInfoRequest) (*internal_v1.RaftInfoResponse, error) {
-	return &internal_v1.RaftInfoResponse{
+func (o *OperationService) RaftInfo(ctx context.Context, request *splitterprivatepb.RaftInfoRequest) (*splitterprivatepb.RaftInfoResponse, error) {
+	return &splitterprivatepb.RaftInfoResponse{
 		RaftState: o.cluster.Info(ctx),
 	}, nil
 }
 
-func (o *OperationService) Snapshot(ctx context.Context, request *internal_v1.SnapshotRequest) (*internal_v1.SnapshotResponse, error) {
-	req := leader.NewHandleOperationRequest(&internal_v1.OperationRequest{
-		Req: &internal_v1.OperationRequest_Snapshot{
-			Snapshot: &internal_v1.SnapshotRequest{},
+func (o *OperationService) Snapshot(ctx context.Context, request *splitterprivatepb.SnapshotRequest) (*splitterprivatepb.SnapshotResponse, error) {
+	req := leader.NewHandleOperationRequest(&splitterprivatepb.OperationRequest{
+		Req: &splitterprivatepb.OperationRequest_Snapshot{
+			Snapshot: &splitterprivatepb.SnapshotRequest{},
 		},
 	})
 
@@ -215,9 +215,9 @@ func (o *OperationService) Snapshot(ctx context.Context, request *internal_v1.Sn
 	return resp.GetOperation().GetSnapshot(), nil
 }
 
-func (o *OperationService) Restore(ctx context.Context, request *internal_v1.RestoreRequest) (*internal_v1.RestoreResponse, error) {
-	req := leader.NewHandleOperationRequest(&internal_v1.OperationRequest{
-		Req: &internal_v1.OperationRequest_Restore{
+func (o *OperationService) Restore(ctx context.Context, request *splitterprivatepb.RestoreRequest) (*splitterprivatepb.RestoreResponse, error) {
+	req := leader.NewHandleOperationRequest(&splitterprivatepb.OperationRequest{
+		Req: &splitterprivatepb.OperationRequest_Restore{
 			Restore: request,
 		},
 	})
@@ -229,9 +229,9 @@ func (o *OperationService) Restore(ctx context.Context, request *internal_v1.Res
 	return resp.GetOperation().GetRestore(), nil
 }
 
-func (o *OperationService) executeLeaderRequest(ctx context.Context, req leader.HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
-	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*internal_v1.LeaderHandleResponse, error) {
-		return core.InvokeZero(ctx, o.resolver, internal_v1.LeaderServiceClient.Handle, req.Proto, func() (*internal_v1.LeaderHandleResponse, error) {
+func (o *OperationService) executeLeaderRequest(ctx context.Context, req leader.HandleRequest) (*splitterprivatepb.LeaderHandleResponse, error) {
+	resp, err := model.RetryOwnership1(ctx, handleTimeout, func(ctx context.Context) (*splitterprivatepb.LeaderHandleResponse, error) {
+		return core.InvokeZero(ctx, o.resolver, splitterprivatepb.LeaderServiceClient.Handle, req.Proto, func() (*splitterprivatepb.LeaderHandleResponse, error) {
 			return o.proxy.Handle(ctx, req)
 		})
 	})

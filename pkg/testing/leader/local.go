@@ -9,7 +9,7 @@ import (
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 // LocalManager is a leader manager that always uses local leader. Useful for testing.
@@ -32,7 +32,7 @@ func (m *LocalManager) Drain(timeout time.Duration) {
 	m.cl.AfterFunc(timeout, m.Close)
 }
 
-func (m *LocalManager) Resolve(ctx context.Context, key model.DomainKey) (internal_v1.LeaderServiceClient, error) {
+func (m *LocalManager) Resolve(ctx context.Context, key model.DomainKey) (splitterprivatepb.LeaderServiceClient, error) {
 	return nil, model.ErrNoResolution
 }
 
@@ -40,6 +40,6 @@ func (m *LocalManager) Join(ctx context.Context, sid session.ID, in <-chan leade
 	return m.local.Join(ctx, sid, in)
 }
 
-func (m *LocalManager) Handle(ctx context.Context, request leader.HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (m *LocalManager) Handle(ctx context.Context, request leader.HandleRequest) (*splitterprivatepb.LeaderHandleResponse, error) {
 	return m.local.Handle(ctx, request)
 }

@@ -20,7 +20,7 @@ import (
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 var (
@@ -155,7 +155,7 @@ func (f *fakeCoordinator) Initialized() iox.RAsyncCloser {
 	return f.initialized
 }
 
-func (f *fakeCoordinator) Handle(ctx context.Context, request coordinator.HandleRequest) (*internal_v1.CoordinatorHandleResponse, error) {
+func (f *fakeCoordinator) Handle(ctx context.Context, request coordinator.HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error) {
 	return nil, nil
 }
 

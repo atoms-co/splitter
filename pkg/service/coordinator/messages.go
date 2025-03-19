@@ -5,32 +5,32 @@ import (
 
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 type ConnectMessage struct {
-	pb *internal_v1.ConnectMessage
+	pb *splitterprivatepb.ConnectMessage
 }
 
-func WrapConnectMessage(pb *internal_v1.ConnectMessage) ConnectMessage {
+func WrapConnectMessage(pb *splitterprivatepb.ConnectMessage) ConnectMessage {
 	return ConnectMessage{pb: pb}
 }
 
-func UnwrapConnectMessage(m ConnectMessage) *internal_v1.ConnectMessage {
+func UnwrapConnectMessage(m ConnectMessage) *splitterprivatepb.ConnectMessage {
 	return m.pb
 }
 
 func NewConnectConsumerMessage(m model.ConsumerMessage) ConnectMessage {
-	return WrapConnectMessage(&internal_v1.ConnectMessage{
-		Msg: &internal_v1.ConnectMessage_Consumer{
+	return WrapConnectMessage(&splitterprivatepb.ConnectMessage{
+		Msg: &splitterprivatepb.ConnectMessage_Consumer{
 			Consumer: model.UnwrapConsumerMessage(m),
 		},
 	})
 }
 
 func NewConnectSessionMessage(m session.Message) ConnectMessage {
-	return WrapConnectMessage(&internal_v1.ConnectMessage{
-		Msg: &internal_v1.ConnectMessage_Session{
+	return WrapConnectMessage(&splitterprivatepb.ConnectMessage{
+		Msg: &splitterprivatepb.ConnectMessage_Session{
 			Session: session.UnwrapMessage(m),
 		},
 	})
@@ -38,23 +38,23 @@ func NewConnectSessionMessage(m session.Message) ConnectMessage {
 
 // HandleRequest is an internal coordinator handle request jacket for routing. Not thread-safe.
 type HandleRequest struct {
-	Proto *internal_v1.CoordinatorHandleRequest
+	Proto *splitterprivatepb.CoordinatorHandleRequest
 }
 
-func NewHandleCoordinatorOperationRequest(service model.QualifiedServiceName, req *internal_v1.CoordinatorOperationRequest) HandleRequest {
+func NewHandleCoordinatorOperationRequest(service model.QualifiedServiceName, req *splitterprivatepb.CoordinatorOperationRequest) HandleRequest {
 	return HandleRequest{
-		Proto: &internal_v1.CoordinatorHandleRequest{
+		Proto: &splitterprivatepb.CoordinatorHandleRequest{
 			Service: service.ToProto(),
-			Req: &internal_v1.CoordinatorHandleRequest_Operation{
+			Req: &splitterprivatepb.CoordinatorHandleRequest_Operation{
 				Operation: req,
 			},
 		},
 	}
 }
 
-func NewHandleCoordinatorOperationResponse(req *internal_v1.CoordinatorOperationResponse) *internal_v1.CoordinatorHandleResponse {
-	return &internal_v1.CoordinatorHandleResponse{
-		Resp: &internal_v1.CoordinatorHandleResponse_Operation{
+func NewHandleCoordinatorOperationResponse(req *splitterprivatepb.CoordinatorOperationResponse) *splitterprivatepb.CoordinatorHandleResponse {
+	return &splitterprivatepb.CoordinatorHandleResponse{
+		Resp: &splitterprivatepb.CoordinatorHandleResponse_Operation{
 			Operation: req,
 		},
 	}

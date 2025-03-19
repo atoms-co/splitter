@@ -7,34 +7,34 @@ import (
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type TenantName string
 
-type TenantOption func(tenant *public_v1.Tenant)
+type TenantOption func(tenant *splitterpb.Tenant)
 
 func WithTenantOperational(t TenantOperational) TenantOption {
-	return func(tenant *public_v1.Tenant) {
+	return func(tenant *splitterpb.Tenant) {
 		tenant.Operational = UnwrapTenantOperational(t)
 	}
 }
 
 func WithTenantConfig(cfg TenantConfig) TenantOption {
-	return func(tenant *public_v1.Tenant) {
+	return func(tenant *splitterpb.Tenant) {
 		tenant.Config = UnwrapTenantConfig(cfg)
 	}
 }
 
 // Tenant represents a top-level namespace.
 type Tenant struct {
-	pb *public_v1.Tenant
+	pb *splitterpb.Tenant
 }
 
 func NewTenant(name TenantName, now time.Time, opts ...TenantOption) (Tenant, error) {
-	pb := &public_v1.Tenant{
+	pb := &splitterpb.Tenant{
 		Name:    string(name),
-		Config:  &public_v1.Tenant_Config{},
+		Config:  &splitterpb.Tenant_Config{},
 		Created: timestamppb.New(now),
 	}
 	for _, fn := range opts {
@@ -43,30 +43,30 @@ func NewTenant(name TenantName, now time.Time, opts ...TenantOption) (Tenant, er
 	return ParseTenant(pb)
 }
 
-func ParseTenant(pb *public_v1.Tenant) (Tenant, error) {
+func ParseTenant(pb *splitterpb.Tenant) (Tenant, error) {
 	if err := validateTenant(pb); err != nil {
 		return Tenant{}, fmt.Errorf("invalid tenant: %w", err)
 	}
-	return Tenant{pb: proto.Clone(pb).(*public_v1.Tenant)}, nil
+	return Tenant{pb: proto.Clone(pb).(*splitterpb.Tenant)}, nil
 }
 
-func validateTenant(pb *public_v1.Tenant) error {
+func validateTenant(pb *splitterpb.Tenant) error {
 	return nil // TODO(jhhurwitz): 08/18/2023 Actually validate
 }
 
 func UpdateTenant(tenant Tenant, opts ...TenantOption) (Tenant, error) {
-	upd := proto.Clone(tenant.pb).(*public_v1.Tenant)
+	upd := proto.Clone(tenant.pb).(*splitterpb.Tenant)
 	for _, fn := range opts {
 		fn(upd)
 	}
 	return ParseTenant(upd)
 }
 
-func WrapTenant(tenant *public_v1.Tenant) Tenant {
+func WrapTenant(tenant *splitterpb.Tenant) Tenant {
 	return Tenant{pb: tenant}
 }
 
-func UnwrapTenant(tenant Tenant) *public_v1.Tenant {
+func UnwrapTenant(tenant Tenant) *splitterpb.Tenant {
 	return tenant.pb
 }
 
@@ -90,15 +90,15 @@ func (t Tenant) String() string {
 	return proto.MarshalTextString(t.pb)
 }
 
-type TenantConfigOption func(cfg *public_v1.Tenant_Config)
+type TenantConfigOption func(cfg *splitterpb.Tenant_Config)
 
 // TenantConfig holds tenant configuration.
 type TenantConfig struct {
-	pb *public_v1.Tenant_Config
+	pb *splitterpb.Tenant_Config
 }
 
 func NewTenantConfig(opts ...TenantConfigOption) TenantConfig {
-	pb := &public_v1.Tenant_Config{}
+	pb := &splitterpb.Tenant_Config{}
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -108,9 +108,9 @@ func NewTenantConfig(opts ...TenantConfigOption) TenantConfig {
 func UpdateTenantConfig(tenant Tenant, opts ...TenantConfigOption) (TenantConfig, error) {
 	pb := UnwrapTenant(tenant).Config
 	if pb == nil {
-		pb = &public_v1.Tenant_Config{}
+		pb = &splitterpb.Tenant_Config{}
 	}
-	pb = proto.Clone(pb).(*public_v1.Tenant_Config)
+	pb = proto.Clone(pb).(*splitterpb.Tenant_Config)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -120,11 +120,11 @@ func UpdateTenantConfig(tenant Tenant, opts ...TenantConfigOption) (TenantConfig
 	return WrapTenantConfig(pb), nil
 }
 
-func WrapTenantConfig(pb *public_v1.Tenant_Config) TenantConfig {
+func WrapTenantConfig(pb *splitterpb.Tenant_Config) TenantConfig {
 	return TenantConfig{pb: pb}
 }
 
-func UnwrapTenantConfig(cfg TenantConfig) *public_v1.Tenant_Config {
+func UnwrapTenantConfig(cfg TenantConfig) *splitterpb.Tenant_Config {
 	return cfg.pb
 }
 
@@ -138,19 +138,19 @@ func (c TenantConfig) String() string {
 
 // TenantInfo captures the full tenant information.
 type TenantInfo struct {
-	pb *public_v1.TenantInfo
+	pb *splitterpb.TenantInfo
 }
 
-func WrapTenantInfo(pb *public_v1.TenantInfo) TenantInfo {
+func WrapTenantInfo(pb *splitterpb.TenantInfo) TenantInfo {
 	return TenantInfo{pb: pb}
 }
 
-func UnwrapTenantInfo(t TenantInfo) *public_v1.TenantInfo {
+func UnwrapTenantInfo(t TenantInfo) *splitterpb.TenantInfo {
 	return t.pb
 }
 
 func NewTenantInfo(tenant Tenant, version Version, now time.Time) TenantInfo {
-	return WrapTenantInfo(&public_v1.TenantInfo{
+	return WrapTenantInfo(&splitterpb.TenantInfo{
 		Tenant:    UnwrapTenant(tenant),
 		Version:   int64(version),
 		Timestamp: timestamppb.New(now),

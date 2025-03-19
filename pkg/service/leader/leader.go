@@ -23,8 +23,8 @@ import (
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
-	"go.atoms.co/splitter/pb/private"
-	"go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -63,7 +63,7 @@ type Leader interface {
 	iox.AsyncCloser
 
 	Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error)
-	Handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error)
+	Handle(ctx context.Context, req HandleRequest) (*splitterprivatepb.LeaderHandleResponse, error)
 	Initialized() iox.AsyncCloser
 }
 
@@ -158,7 +158,7 @@ func (l *leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 	})
 }
 
-func (l *leader) Handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (l *leader) Handle(ctx context.Context, req HandleRequest) (*splitterprivatepb.LeaderHandleResponse, error) {
 	wctx, cancel := context.WithTimeout(ctx, handleTimeout)
 	defer cancel()
 
@@ -686,7 +686,7 @@ func (l *leader) snapshot() []core.Assignment {
 	return cluster
 }
 
-func (l *leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (l *leader) handle(ctx context.Context, req HandleRequest) (*splitterprivatepb.LeaderHandleResponse, error) {
 	if req.IsMutation() {
 		return l.handleWrite(ctx, req)
 	}
@@ -732,8 +732,8 @@ func (l *leader) handle(ctx context.Context, req HandleRequest) (*internal_v1.Le
 	}
 }
 
-func (l *leader) handleTenantRequest(ctx context.Context, req *internal_v1.TenantRequest) (*internal_v1.TenantResponse, error) {
-	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.TenantResponse, error) {
+func (l *leader) handleTenantRequest(ctx context.Context, req *splitterprivatepb.TenantRequest) (*splitterprivatepb.TenantResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*splitterprivatepb.TenantResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListTenantsRequest(ctx, req.GetList())
@@ -745,17 +745,17 @@ func (l *leader) handleTenantRequest(ctx context.Context, req *internal_v1.Tenan
 	})
 }
 
-func (l *leader) handleListTenantsRequest(ctx context.Context, req *public_v1.ListTenantsRequest) (*internal_v1.TenantResponse, error) {
-	return &internal_v1.TenantResponse{
-		Resp: &internal_v1.TenantResponse_List{
-			List: &public_v1.ListTenantsResponse{
+func (l *leader) handleListTenantsRequest(ctx context.Context, req *splitterpb.ListTenantsRequest) (*splitterprivatepb.TenantResponse, error) {
+	return &splitterprivatepb.TenantResponse{
+		Resp: &splitterprivatepb.TenantResponse_List{
+			List: &splitterpb.ListTenantsResponse{
 				Tenants: slicex.Map(l.cache.Tenants(), model.UnwrapTenantInfo),
 			},
 		},
 	}, nil
 }
 
-func (l *leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.InfoTenantRequest) (*internal_v1.TenantResponse, error) {
+func (l *leader) handleInfoTenantRequest(ctx context.Context, req *splitterpb.InfoTenantRequest) (*splitterprivatepb.TenantResponse, error) {
 	name := model.TenantName(req.GetName())
 
 	info, ok := l.cache.Tenant(name)
@@ -763,17 +763,17 @@ func (l *leader) handleInfoTenantRequest(ctx context.Context, req *public_v1.Inf
 		return nil, fmt.Errorf("tenant %v not found: %w", name, model.ErrNotFound)
 	}
 
-	return &internal_v1.TenantResponse{
-		Resp: &internal_v1.TenantResponse_Info{
-			Info: &public_v1.InfoTenantResponse{
+	return &splitterprivatepb.TenantResponse{
+		Resp: &splitterprivatepb.TenantResponse_Info{
+			Info: &splitterpb.InfoTenantResponse{
 				Tenant: model.UnwrapTenantInfo(info),
 			},
 		},
 	}, nil
 }
 
-func (l *leader) handleServiceRequest(ctx context.Context, req *internal_v1.ServiceRequest) (*internal_v1.ServiceResponse, error) {
-	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.ServiceResponse, error) {
+func (l *leader) handleServiceRequest(ctx context.Context, req *splitterprivatepb.ServiceRequest) (*splitterprivatepb.ServiceResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*splitterprivatepb.ServiceResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListServicesRequest(ctx, req.GetList())
@@ -785,17 +785,17 @@ func (l *leader) handleServiceRequest(ctx context.Context, req *internal_v1.Serv
 	})
 }
 
-func (l *leader) handleListServicesRequest(ctx context.Context, req *public_v1.ListServicesRequest) (*internal_v1.ServiceResponse, error) {
-	return &internal_v1.ServiceResponse{
-		Resp: &internal_v1.ServiceResponse_List{
-			List: &public_v1.ListServicesResponse{
+func (l *leader) handleListServicesRequest(ctx context.Context, req *splitterpb.ListServicesRequest) (*splitterprivatepb.ServiceResponse, error) {
+	return &splitterprivatepb.ServiceResponse{
+		Resp: &splitterprivatepb.ServiceResponse_List{
+			List: &splitterpb.ListServicesResponse{
 				Services: slicex.Map(l.cache.Services(model.TenantName(req.GetTenant())), model.UnwrapServiceInfoEx),
 			},
 		},
 	}, nil
 }
 
-func (l *leader) handleInfoServiceRequest(ctx context.Context, req *public_v1.InfoServiceRequest) (*internal_v1.ServiceResponse, error) {
+func (l *leader) handleInfoServiceRequest(ctx context.Context, req *splitterpb.InfoServiceRequest) (*splitterprivatepb.ServiceResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetName())
 	if err != nil {
 		return nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
@@ -806,17 +806,17 @@ func (l *leader) handleInfoServiceRequest(ctx context.Context, req *public_v1.In
 		return nil, fmt.Errorf("service %v not found: %w", name, model.ErrNotFound)
 	}
 
-	return &internal_v1.ServiceResponse{
-		Resp: &internal_v1.ServiceResponse_Info{
-			Info: &public_v1.InfoServiceResponse{
+	return &splitterprivatepb.ServiceResponse{
+		Resp: &splitterprivatepb.ServiceResponse_Info{
+			Info: &splitterpb.InfoServiceResponse{
 				Service: model.UnwrapServiceInfoEx(info),
 			},
 		},
 	}, nil
 }
 
-func (l *leader) handleDomainRequest(ctx context.Context, req *internal_v1.DomainRequest) (*internal_v1.DomainResponse, error) {
-	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.DomainResponse, error) {
+func (l *leader) handleDomainRequest(ctx context.Context, req *splitterprivatepb.DomainRequest) (*splitterprivatepb.DomainResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*splitterprivatepb.DomainResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListDomainsRequest(ctx, req.GetList())
@@ -826,7 +826,7 @@ func (l *leader) handleDomainRequest(ctx context.Context, req *internal_v1.Domai
 	})
 }
 
-func (l *leader) handleListDomainsRequest(ctx context.Context, req *public_v1.ListDomainsRequest) (*internal_v1.DomainResponse, error) {
+func (l *leader) handleListDomainsRequest(ctx context.Context, req *splitterpb.ListDomainsRequest) (*splitterprivatepb.DomainResponse, error) {
 	name, err := model.ParseQualifiedServiceName(req.GetService())
 	if err != nil {
 		return nil, fmt.Errorf("invalid SQN: %w", model.ErrInvalid)
@@ -836,17 +836,17 @@ func (l *leader) handleListDomainsRequest(ctx context.Context, req *public_v1.Li
 		return nil, fmt.Errorf("service %v not found: %w", name, model.ErrNotFound)
 	}
 
-	return &internal_v1.DomainResponse{
-		Resp: &internal_v1.DomainResponse_List{
-			List: &public_v1.ListDomainsResponse{
+	return &splitterprivatepb.DomainResponse{
+		Resp: &splitterprivatepb.DomainResponse_List{
+			List: &splitterpb.ListDomainsResponse{
 				Domains: slicex.Map(l.cache.Domains(name), model.UnwrapDomain),
 			},
 		},
 	}, nil
 }
 
-func (l *leader) handlePlacementRequest(ctx context.Context, req *internal_v1.PlacementRequest) (*internal_v1.PlacementResponse, error) {
-	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.PlacementResponse, error) {
+func (l *leader) handlePlacementRequest(ctx context.Context, req *splitterprivatepb.PlacementRequest) (*splitterprivatepb.PlacementResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*splitterprivatepb.PlacementResponse, error) {
 		switch {
 		case req.GetList() != nil:
 			return l.handleListPlacementsRequest(ctx, req.GetList())
@@ -858,23 +858,23 @@ func (l *leader) handlePlacementRequest(ctx context.Context, req *internal_v1.Pl
 	})
 }
 
-func (l *leader) handleListPlacementsRequest(ctx context.Context, req *internal_v1.ListPlacementsRequest) (*internal_v1.PlacementResponse, error) {
+func (l *leader) handleListPlacementsRequest(ctx context.Context, req *splitterprivatepb.ListPlacementsRequest) (*splitterprivatepb.PlacementResponse, error) {
 	name := model.TenantName(req.GetTenant())
 
 	if _, ok := l.cache.Tenant(name); !ok {
 		return nil, fmt.Errorf("tenant not found: %w", model.ErrNotFound)
 	}
 
-	return &internal_v1.PlacementResponse{
-		Resp: &internal_v1.PlacementResponse_List{
-			List: &internal_v1.ListPlacementsResponse{
+	return &splitterprivatepb.PlacementResponse{
+		Resp: &splitterprivatepb.PlacementResponse_List{
+			List: &splitterprivatepb.ListPlacementsResponse{
 				Info: slicex.Map(l.cache.Placements(name), core.UnwrapInternalPlacementInfo),
 			},
 		},
 	}, nil
 }
 
-func (l *leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v1.InfoPlacementRequest) (*internal_v1.PlacementResponse, error) {
+func (l *leader) handleInfoPlacementRequest(ctx context.Context, req *splitterprivatepb.InfoPlacementRequest) (*splitterprivatepb.PlacementResponse, error) {
 	name, err := model.ParseQualifiedPlacementName(req.GetName())
 	if err != nil {
 		return nil, fmt.Errorf("invalid PQN: %w", model.ErrInvalid)
@@ -885,17 +885,17 @@ func (l *leader) handleInfoPlacementRequest(ctx context.Context, req *internal_v
 		return nil, fmt.Errorf("placement %v not found: %w", name, model.ErrNotFound)
 	}
 
-	return &internal_v1.PlacementResponse{
-		Resp: &internal_v1.PlacementResponse_Info{
-			Info: &internal_v1.InfoPlacementResponse{
+	return &splitterprivatepb.PlacementResponse{
+		Resp: &splitterprivatepb.PlacementResponse_Info{
+			Info: &splitterprivatepb.InfoPlacementResponse{
 				Info: core.UnwrapInternalPlacementInfo(info),
 			},
 		},
 	}, nil
 }
 
-func (l *leader) handleOperationRequest(ctx context.Context, req *internal_v1.OperationRequest) (*internal_v1.OperationResponse, error) {
-	return syncx.Txn1(ctx, l.txn, func() (*internal_v1.OperationResponse, error) {
+func (l *leader) handleOperationRequest(ctx context.Context, req *splitterprivatepb.OperationRequest) (*splitterprivatepb.OperationResponse, error) {
+	return syncx.Txn1(ctx, l.txn, func() (*splitterprivatepb.OperationResponse, error) {
 		switch {
 		case req.GetSnapshot() != nil:
 			return l.handleSnapshotRequest(ctx, req.GetSnapshot())
@@ -905,20 +905,20 @@ func (l *leader) handleOperationRequest(ctx context.Context, req *internal_v1.Op
 	})
 }
 
-func (l *leader) handleSnapshotRequest(ctx context.Context, snapshot *internal_v1.SnapshotRequest) (*internal_v1.OperationResponse, error) {
-	return &internal_v1.OperationResponse{
-		Resp: &internal_v1.OperationResponse_Snapshot{
-			Snapshot: &internal_v1.SnapshotResponse{
+func (l *leader) handleSnapshotRequest(ctx context.Context, snapshot *splitterprivatepb.SnapshotRequest) (*splitterprivatepb.OperationResponse, error) {
+	return &splitterprivatepb.OperationResponse{
+		Resp: &splitterprivatepb.OperationResponse_Snapshot{
+			Snapshot: &splitterprivatepb.SnapshotResponse{
 				Snapshot: core.UnwrapSnapshot(l.cache.Snapshot()),
 			},
 		},
 	}, nil
 }
 
-func (l *leader) handleWrite(ctx context.Context, req HandleRequest) (*internal_v1.LeaderHandleResponse, error) {
+func (l *leader) handleWrite(ctx context.Context, req HandleRequest) (*splitterprivatepb.LeaderHandleResponse, error) {
 	// (1) Storage operation. Validate and enqueue it sync if mutation.
 
-	done, resp, err := syncx.Txn2(ctx, l.txn, func() (iox.AsyncCloser, *internal_v1.LeaderHandleResponse, error) {
+	done, resp, err := syncx.Txn2(ctx, l.txn, func() (iox.AsyncCloser, *splitterprivatepb.LeaderHandleResponse, error) {
 		return l.writer.HandleAsync(ctx, req)
 	})
 	if err != nil {

@@ -7,7 +7,7 @@ import (
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 // Assignment holds a coordinator instance and its active grants, potentially none.
@@ -16,15 +16,15 @@ type Assignment struct {
 	Grants []Grant
 }
 
-func ParseClusterAssignment(assignment *internal_v1.ClusterMessage_Assignment) Assignment {
+func ParseClusterAssignment(assignment *splitterprivatepb.ClusterMessage_Assignment) Assignment {
 	return Assignment{
 		Worker: model.WrapInstance(assignment.GetWorker()),
 		Grants: slicex.Map(assignment.GetGrants(), WrapGrant),
 	}
 }
 
-func (a Assignment) ToProto() *internal_v1.ClusterMessage_Assignment {
-	return &internal_v1.ClusterMessage_Assignment{
+func (a Assignment) ToProto() *splitterprivatepb.ClusterMessage_Assignment {
+	return &splitterprivatepb.ClusterMessage_Assignment{
 		Worker: model.UnwrapInstance(a.Worker),
 		Grants: slicex.Map(a.Grants, UnwrapGrant),
 	}

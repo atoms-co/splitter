@@ -14,7 +14,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 var (
@@ -51,7 +51,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 	// invalid updates/deletes per https://github.com/hashicorp/raft/issues/307. However, Splitter can re-create
 	// its data, so we skip bad updates instead.
 
-	pb, err := protox.Unmarshal[internal_v1.Mutation](l.Data)
+	pb, err := protox.Unmarshal[splitterprivatepb.Mutation](l.Data)
 	if err != nil {
 		log.Errorf(context.Background(), "Internal: invalid raft mutation %v @%v: %v", l.Index, l.AppendedAt, err)
 
@@ -114,7 +114,7 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 		recordAction("restore/read", err)
 		return err
 	}
-	pb, err := protox.Unmarshal[internal_v1.Snapshot](buf)
+	pb, err := protox.Unmarshal[splitterprivatepb.Snapshot](buf)
 	if err != nil {
 		log.Errorf(context.Background(), "Failed to unmarshal raft snapshot: %v", err)
 

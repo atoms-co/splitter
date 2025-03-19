@@ -7,10 +7,10 @@ import (
 
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
-type Resolver = model.SimpleResolver[internal_v1.LeaderServiceClient, model.DomainKey]
+type Resolver = model.SimpleResolver[splitterprivatepb.LeaderServiceClient, model.DomainKey]
 
 // Proxy is a local proxy for accessing the leader, if present. Returns ErrNotOwned if not.
 type Proxy interface {
@@ -18,58 +18,58 @@ type Proxy interface {
 	// Returns a channel with messages for the worker or a logical error.
 	Join(ctx context.Context, sid session.ID, in <-chan Message) (<-chan Message, error)
 
-	Handle(ctx context.Context, request HandleRequest) (*internal_v1.LeaderHandleResponse, error)
+	Handle(ctx context.Context, request HandleRequest) (*splitterprivatepb.LeaderHandleResponse, error)
 }
 
 // HandleRequest is an internal leader handle request jacket for routing. Not threadsafe.
 type HandleRequest struct {
-	Proto *internal_v1.LeaderHandleRequest
+	Proto *splitterprivatepb.LeaderHandleRequest
 }
 
-func NewHandleTenantRequest(req *internal_v1.TenantRequest) HandleRequest {
+func NewHandleTenantRequest(req *splitterprivatepb.TenantRequest) HandleRequest {
 	return HandleRequest{
-		Proto: &internal_v1.LeaderHandleRequest{
-			Req: &internal_v1.LeaderHandleRequest_Tenant{
+		Proto: &splitterprivatepb.LeaderHandleRequest{
+			Req: &splitterprivatepb.LeaderHandleRequest_Tenant{
 				Tenant: req,
 			},
 		},
 	}
 }
 
-func NewHandleServiceRequest(req *internal_v1.ServiceRequest) HandleRequest {
+func NewHandleServiceRequest(req *splitterprivatepb.ServiceRequest) HandleRequest {
 	return HandleRequest{
-		Proto: &internal_v1.LeaderHandleRequest{
-			Req: &internal_v1.LeaderHandleRequest_Service{
+		Proto: &splitterprivatepb.LeaderHandleRequest{
+			Req: &splitterprivatepb.LeaderHandleRequest_Service{
 				Service: req,
 			},
 		},
 	}
 }
 
-func NewHandleDomainRequest(req *internal_v1.DomainRequest) HandleRequest {
+func NewHandleDomainRequest(req *splitterprivatepb.DomainRequest) HandleRequest {
 	return HandleRequest{
-		Proto: &internal_v1.LeaderHandleRequest{
-			Req: &internal_v1.LeaderHandleRequest_Domain{
+		Proto: &splitterprivatepb.LeaderHandleRequest{
+			Req: &splitterprivatepb.LeaderHandleRequest_Domain{
 				Domain: req,
 			},
 		},
 	}
 }
 
-func NewHandlePlacementRequest(req *internal_v1.PlacementRequest) HandleRequest {
+func NewHandlePlacementRequest(req *splitterprivatepb.PlacementRequest) HandleRequest {
 	return HandleRequest{
-		Proto: &internal_v1.LeaderHandleRequest{
-			Req: &internal_v1.LeaderHandleRequest_Placement{
+		Proto: &splitterprivatepb.LeaderHandleRequest{
+			Req: &splitterprivatepb.LeaderHandleRequest_Placement{
 				Placement: req,
 			},
 		},
 	}
 }
 
-func NewHandleOperationRequest(req *internal_v1.OperationRequest) HandleRequest {
+func NewHandleOperationRequest(req *splitterprivatepb.OperationRequest) HandleRequest {
 	return HandleRequest{
-		Proto: &internal_v1.LeaderHandleRequest{
-			Req: &internal_v1.LeaderHandleRequest_Operation{
+		Proto: &splitterprivatepb.LeaderHandleRequest{
+			Req: &splitterprivatepb.LeaderHandleRequest_Operation{
 				Operation: req,
 			},
 		},
@@ -125,41 +125,41 @@ func (m HandleRequest) String() string {
 	return proto.CompactTextString(m.Proto)
 }
 
-func NewHandleTenantResponse(req *internal_v1.TenantResponse) *internal_v1.LeaderHandleResponse {
-	return &internal_v1.LeaderHandleResponse{
-		Resp: &internal_v1.LeaderHandleResponse_Tenant{
+func NewHandleTenantResponse(req *splitterprivatepb.TenantResponse) *splitterprivatepb.LeaderHandleResponse {
+	return &splitterprivatepb.LeaderHandleResponse{
+		Resp: &splitterprivatepb.LeaderHandleResponse_Tenant{
 			Tenant: req,
 		},
 	}
 }
 
-func NewHandleServiceResponse(req *internal_v1.ServiceResponse) *internal_v1.LeaderHandleResponse {
-	return &internal_v1.LeaderHandleResponse{
-		Resp: &internal_v1.LeaderHandleResponse_Service{
+func NewHandleServiceResponse(req *splitterprivatepb.ServiceResponse) *splitterprivatepb.LeaderHandleResponse {
+	return &splitterprivatepb.LeaderHandleResponse{
+		Resp: &splitterprivatepb.LeaderHandleResponse_Service{
 			Service: req,
 		},
 	}
 }
 
-func NewHandleDomainResponse(req *internal_v1.DomainResponse) *internal_v1.LeaderHandleResponse {
-	return &internal_v1.LeaderHandleResponse{
-		Resp: &internal_v1.LeaderHandleResponse_Domain{
+func NewHandleDomainResponse(req *splitterprivatepb.DomainResponse) *splitterprivatepb.LeaderHandleResponse {
+	return &splitterprivatepb.LeaderHandleResponse{
+		Resp: &splitterprivatepb.LeaderHandleResponse_Domain{
 			Domain: req,
 		},
 	}
 }
 
-func NewHandlePlacementResponse(req *internal_v1.PlacementResponse) *internal_v1.LeaderHandleResponse {
-	return &internal_v1.LeaderHandleResponse{
-		Resp: &internal_v1.LeaderHandleResponse_Placement{
+func NewHandlePlacementResponse(req *splitterprivatepb.PlacementResponse) *splitterprivatepb.LeaderHandleResponse {
+	return &splitterprivatepb.LeaderHandleResponse{
+		Resp: &splitterprivatepb.LeaderHandleResponse_Placement{
 			Placement: req,
 		},
 	}
 }
 
-func NewHandleOperationResponse(req *internal_v1.OperationResponse) *internal_v1.LeaderHandleResponse {
-	return &internal_v1.LeaderHandleResponse{
-		Resp: &internal_v1.LeaderHandleResponse_Operation{
+func NewHandleOperationResponse(req *splitterprivatepb.OperationResponse) *splitterprivatepb.LeaderHandleResponse {
+	return &splitterprivatepb.LeaderHandleResponse{
+		Resp: &splitterprivatepb.LeaderHandleResponse_Operation{
 			Operation: req,
 		},
 	}

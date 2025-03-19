@@ -4,13 +4,13 @@ import (
 	"github.com/golang/protobuf/proto"
 
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pb"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
-type TenantOperationalOption func(*public_v1.Tenant_Operational)
+type TenantOperationalOption func(*splitterpb.Tenant_Operational)
 
 func WithTenantOperationalBannedRegions(regions ...Region) TenantOperationalOption {
-	return func(t *public_v1.Tenant_Operational) {
+	return func(t *splitterpb.Tenant_Operational) {
 		t.BannedRegions = slicex.Map(regions, func(r Region) string {
 			return string(r)
 		})
@@ -18,11 +18,11 @@ func WithTenantOperationalBannedRegions(regions ...Region) TenantOperationalOpti
 }
 
 type TenantOperational struct {
-	pb *public_v1.Tenant_Operational
+	pb *splitterpb.Tenant_Operational
 }
 
 func NewTenantOperational(opts ...TenantOperationalOption) TenantOperational {
-	pb := &public_v1.Tenant_Operational{}
+	pb := &splitterpb.Tenant_Operational{}
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -32,9 +32,9 @@ func NewTenantOperational(opts ...TenantOperationalOption) TenantOperational {
 func UpdateTenantOperational(tenant Tenant, opts ...TenantOperationalOption) (TenantOperational, error) {
 	pb := UnwrapTenant(tenant).Operational
 	if pb == nil {
-		pb = &public_v1.Tenant_Operational{}
+		pb = &splitterpb.Tenant_Operational{}
 	}
-	pb = proto.Clone(pb).(*public_v1.Tenant_Operational)
+	pb = proto.Clone(pb).(*splitterpb.Tenant_Operational)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -44,11 +44,11 @@ func UpdateTenantOperational(tenant Tenant, opts ...TenantOperationalOption) (Te
 	return WrapTenantOperational(pb), nil
 }
 
-func WrapTenantOperational(pb *public_v1.Tenant_Operational) TenantOperational {
+func WrapTenantOperational(pb *splitterpb.Tenant_Operational) TenantOperational {
 	return TenantOperational{pb: pb}
 }
 
-func UnwrapTenantOperational(t TenantOperational) *public_v1.Tenant_Operational {
+func UnwrapTenantOperational(t TenantOperational) *splitterpb.Tenant_Operational {
 	return t.pb
 }
 
@@ -62,16 +62,16 @@ func (t TenantOperational) String() string {
 	return proto.MarshalTextString(t.pb)
 }
 
-type ServiceOperationalOption func(*public_v1.Service_Operational)
+type ServiceOperationalOption func(*splitterpb.Service_Operational)
 
 func WithServiceOperationalLocked(locked bool) ServiceOperationalOption {
-	return func(s *public_v1.Service_Operational) {
+	return func(s *splitterpb.Service_Operational) {
 		s.Locked = locked
 	}
 }
 
 func WithServiceOperationalBannedRegions(regions ...Region) ServiceOperationalOption {
-	return func(t *public_v1.Service_Operational) {
+	return func(t *splitterpb.Service_Operational) {
 		t.BannedRegions = slicex.Map(regions, func(r Region) string {
 			return string(r)
 		})
@@ -79,17 +79,17 @@ func WithServiceOperationalBannedRegions(regions ...Region) ServiceOperationalOp
 }
 
 func WithServiceOperationalDisableLoadBalance(disable bool) ServiceOperationalOption {
-	return func(t *public_v1.Service_Operational) {
+	return func(t *splitterpb.Service_Operational) {
 		t.DisableLoadBalance = disable
 	}
 }
 
 type ServiceOperational struct {
-	pb *public_v1.Service_Operational
+	pb *splitterpb.Service_Operational
 }
 
 func NewServiceOperational(opts ...ServiceOperationalOption) ServiceOperational {
-	pb := &public_v1.Service_Operational{}
+	pb := &splitterpb.Service_Operational{}
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -99,9 +99,9 @@ func NewServiceOperational(opts ...ServiceOperationalOption) ServiceOperational 
 func UpdateServiceOperational(service Service, opts ...ServiceOperationalOption) (ServiceOperational, error) {
 	pb := UnwrapService(service).Operational
 	if pb == nil {
-		pb = &public_v1.Service_Operational{}
+		pb = &splitterpb.Service_Operational{}
 	}
-	pb = proto.Clone(pb).(*public_v1.Service_Operational)
+	pb = proto.Clone(pb).(*splitterpb.Service_Operational)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -111,11 +111,11 @@ func UpdateServiceOperational(service Service, opts ...ServiceOperationalOption)
 	return WrapServiceOperational(pb), nil
 }
 
-func WrapServiceOperational(pb *public_v1.Service_Operational) ServiceOperational {
+func WrapServiceOperational(pb *splitterpb.Service_Operational) ServiceOperational {
 	return ServiceOperational{pb: pb}
 }
 
-func UnwrapServiceOperational(t ServiceOperational) *public_v1.Service_Operational {
+func UnwrapServiceOperational(t ServiceOperational) *splitterpb.Service_Operational {
 	return t.pb
 }
 
@@ -133,16 +133,16 @@ func (t ServiceOperational) String() string {
 	return proto.MarshalTextString(t.pb)
 }
 
-type DomainOperationalOption func(*public_v1.Domain_Operational)
+type DomainOperationalOption func(*splitterpb.Domain_Operational)
 
 func WithDomainOperationalLocked(locked bool) DomainOperationalOption {
-	return func(d *public_v1.Domain_Operational) {
+	return func(d *splitterpb.Domain_Operational) {
 		d.Locked = locked
 	}
 }
 
 func WithDomainOperationalBannedRegions(regions ...Region) DomainOperationalOption {
-	return func(t *public_v1.Domain_Operational) {
+	return func(t *splitterpb.Domain_Operational) {
 		t.BannedRegions = slicex.Map(regions, func(r Region) string {
 			return string(r)
 		})
@@ -150,11 +150,11 @@ func WithDomainOperationalBannedRegions(regions ...Region) DomainOperationalOpti
 }
 
 type DomainOperational struct {
-	pb *public_v1.Domain_Operational
+	pb *splitterpb.Domain_Operational
 }
 
 func NewDomainOperational(opts ...DomainOperationalOption) DomainOperational {
-	pb := &public_v1.Domain_Operational{}
+	pb := &splitterpb.Domain_Operational{}
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -164,9 +164,9 @@ func NewDomainOperational(opts ...DomainOperationalOption) DomainOperational {
 func UpdateDomainOperational(domain Domain, opts ...DomainOperationalOption) (DomainOperational, error) {
 	pb := UnwrapDomain(domain).Operational
 	if pb == nil {
-		pb = &public_v1.Domain_Operational{}
+		pb = &splitterpb.Domain_Operational{}
 	}
-	pb = proto.Clone(pb).(*public_v1.Domain_Operational)
+	pb = proto.Clone(pb).(*splitterpb.Domain_Operational)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -176,11 +176,11 @@ func UpdateDomainOperational(domain Domain, opts ...DomainOperationalOption) (Do
 	return WrapDomainOperational(pb), nil
 }
 
-func WrapDomainOperational(pb *public_v1.Domain_Operational) DomainOperational {
+func WrapDomainOperational(pb *splitterpb.Domain_Operational) DomainOperational {
 	return DomainOperational{pb: pb}
 }
 
-func UnwrapDomainOperational(t DomainOperational) *public_v1.Domain_Operational {
+func UnwrapDomainOperational(t DomainOperational) *splitterpb.Domain_Operational {
 	return t.pb
 }
 

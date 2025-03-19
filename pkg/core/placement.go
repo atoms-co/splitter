@@ -14,7 +14,7 @@ import (
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pb/private"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 // Block is a block number in the range [0;1023].
@@ -52,8 +52,8 @@ func (s BlockDistributionSplit) Greater(o BlockDistributionSplit) bool {
 	return s.Block > o.Block
 }
 
-func (s BlockDistributionSplit) ToProto() *internal_v1.BlockDistribution_Split {
-	return &internal_v1.BlockDistribution_Split{
+func (s BlockDistributionSplit) ToProto() *splitterprivatepb.BlockDistribution_Split {
+	return &splitterprivatepb.BlockDistribution_Split{
 		Block:  int64(s.Block),
 		Region: string(s.Region),
 	}
@@ -64,18 +64,18 @@ func (s BlockDistributionSplit) String() string {
 }
 
 type BlockDistribution struct {
-	pb *internal_v1.BlockDistribution
+	pb *splitterprivatepb.BlockDistribution
 }
 
-func WrapBlockDistribution(pb *internal_v1.BlockDistribution) BlockDistribution {
+func WrapBlockDistribution(pb *splitterprivatepb.BlockDistribution) BlockDistribution {
 	return BlockDistribution{pb: pb}
 }
 
-func UnwrapBlockDistribution(t BlockDistribution) *internal_v1.BlockDistribution {
+func UnwrapBlockDistribution(t BlockDistribution) *splitterprivatepb.BlockDistribution {
 	return t.pb
 }
 
-func ParseBlockDistribution(pb *internal_v1.BlockDistribution) (BlockDistribution, error) {
+func ParseBlockDistribution(pb *splitterprivatepb.BlockDistribution) (BlockDistribution, error) {
 	return BlockDistribution{pb: pb}, nil
 }
 
@@ -107,7 +107,7 @@ func ParseBlockDistributionStr(str string) (BlockDistribution, error) {
 }
 
 func NewBlockDistribution(initial model.Region, splits ...BlockDistributionSplit) BlockDistribution {
-	return WrapBlockDistribution(&internal_v1.BlockDistribution{
+	return WrapBlockDistribution(&splitterprivatepb.BlockDistribution{
 		Region: string(initial),
 		Splits: slicex.Map(splits, BlockDistributionSplit.ToProto),
 	})
@@ -182,7 +182,7 @@ func (t BlockDistribution) Initial() model.Region {
 }
 
 func (t BlockDistribution) Splits() []BlockDistributionSplit {
-	return slicex.Map(t.pb.GetSplits(), func(t *internal_v1.BlockDistribution_Split) BlockDistributionSplit {
+	return slicex.Map(t.pb.GetSplits(), func(t *splitterprivatepb.BlockDistribution_Split) BlockDistributionSplit {
 		return BlockDistributionSplit{
 			Block:  Block(t.GetBlock()),
 			Region: model.Region(t.GetRegion()),
@@ -232,37 +232,37 @@ func newSplitHeap(t BlockDistribution, cmp func(a, b BlockDistributionSplit) boo
 	return ret
 }
 
-type PlacementState = internal_v1.InternalPlacement_State
+type PlacementState = splitterprivatepb.InternalPlacement_State
 
 const (
-	PlacementActive         = internal_v1.InternalPlacement_ACTIVE
-	PlacementSuspended      = internal_v1.InternalPlacement_SUSPENDED
-	PlacementDecommissioned = internal_v1.InternalPlacement_DECOMMISSIONED
+	PlacementActive         = splitterprivatepb.InternalPlacement_ACTIVE
+	PlacementSuspended      = splitterprivatepb.InternalPlacement_SUSPENDED
+	PlacementDecommissioned = splitterprivatepb.InternalPlacement_DECOMMISSIONED
 )
 
 func ParsePlacementState(str string) (PlacementState, bool) {
-	num, ok := internal_v1.InternalPlacement_State_value[strings.ToUpper(str)]
+	num, ok := splitterprivatepb.InternalPlacement_State_value[strings.ToUpper(str)]
 	return PlacementState(num), ok
 }
 
 type InternalPlacementConfig struct {
-	pb *internal_v1.InternalPlacement_Config
+	pb *splitterprivatepb.InternalPlacement_Config
 }
 
-func WrapInternalPlacementConfig(pb *internal_v1.InternalPlacement_Config) InternalPlacementConfig {
+func WrapInternalPlacementConfig(pb *splitterprivatepb.InternalPlacement_Config) InternalPlacementConfig {
 	return InternalPlacementConfig{pb: pb}
 }
 
-func UnwrapInternalPlacementConfig(t InternalPlacementConfig) *internal_v1.InternalPlacement_Config {
+func UnwrapInternalPlacementConfig(t InternalPlacementConfig) *splitterprivatepb.InternalPlacement_Config {
 	return t.pb
 }
 
-func ParseInternalPlacementConfig(pb *internal_v1.InternalPlacement_Config) (InternalPlacementConfig, error) {
+func ParseInternalPlacementConfig(pb *splitterprivatepb.InternalPlacement_Config) (InternalPlacementConfig, error) {
 	return WrapInternalPlacementConfig(pb), nil
 }
 
 func NewInternalPlacementConfig(target, current BlockDistribution, speed int) InternalPlacementConfig {
-	return WrapInternalPlacementConfig(&internal_v1.InternalPlacement_Config{
+	return WrapInternalPlacementConfig(&splitterprivatepb.InternalPlacement_Config{
 		Target:         UnwrapBlockDistribution(target),
 		Current:        UnwrapBlockDistribution(current),
 		BlocksPerCycle: int32(max(1, speed)),
@@ -273,26 +273,26 @@ func (t InternalPlacementConfig) String() string {
 	return proto.MarshalTextString(t.pb)
 }
 
-type UpdateInternalPlacementOption func(placement *internal_v1.InternalPlacement)
+type UpdateInternalPlacementOption func(placement *splitterprivatepb.InternalPlacement)
 
 func WithInternalPlacementState(state PlacementState) UpdateInternalPlacementOption {
-	return func(placement *internal_v1.InternalPlacement) {
+	return func(placement *splitterprivatepb.InternalPlacement) {
 		placement.State = state
 	}
 }
 
 func WithInternalPlacementConfig(cfg InternalPlacementConfig) UpdateInternalPlacementOption {
-	return func(placement *internal_v1.InternalPlacement) {
+	return func(placement *splitterprivatepb.InternalPlacement) {
 		placement.Config = cfg.pb
 	}
 }
 
 type InternalPlacement struct {
-	pb *internal_v1.InternalPlacement
+	pb *splitterprivatepb.InternalPlacement
 }
 
 func NewInternalPlacement(name model.QualifiedPlacementName, config InternalPlacementConfig, now time.Time) InternalPlacement {
-	return WrapInternalPlacement(&internal_v1.InternalPlacement{
+	return WrapInternalPlacement(&splitterprivatepb.InternalPlacement{
 		Name:    name.ToProto(),
 		State:   PlacementActive,
 		Config:  UnwrapInternalPlacementConfig(config),
@@ -301,18 +301,18 @@ func NewInternalPlacement(name model.QualifiedPlacementName, config InternalPlac
 }
 
 func UpdateInternalPlacement(p InternalPlacement, opts ...UpdateInternalPlacementOption) InternalPlacement {
-	pb := proto.Clone(p.pb).(*internal_v1.InternalPlacement)
+	pb := proto.Clone(p.pb).(*splitterprivatepb.InternalPlacement)
 	for _, fn := range opts {
 		fn(pb)
 	}
 	return WrapInternalPlacement(pb)
 }
 
-func WrapInternalPlacement(pb *internal_v1.InternalPlacement) InternalPlacement {
+func WrapInternalPlacement(pb *splitterprivatepb.InternalPlacement) InternalPlacement {
 	return InternalPlacement{pb: pb}
 }
 
-func UnwrapInternalPlacement(t InternalPlacement) *internal_v1.InternalPlacement {
+func UnwrapInternalPlacement(t InternalPlacement) *splitterprivatepb.InternalPlacement {
 	return t.pb
 }
 
@@ -326,15 +326,15 @@ func (t InternalPlacement) State() PlacementState {
 }
 
 func (t InternalPlacement) IsActive() bool {
-	return t.pb.GetState() == internal_v1.InternalPlacement_ACTIVE
+	return t.pb.GetState() == splitterprivatepb.InternalPlacement_ACTIVE
 }
 
 func (t InternalPlacement) IsSuspended() bool {
-	return t.pb.GetState() == internal_v1.InternalPlacement_SUSPENDED
+	return t.pb.GetState() == splitterprivatepb.InternalPlacement_SUSPENDED
 }
 
 func (t InternalPlacement) IsDecommissioned() bool {
-	return t.pb.GetState() == internal_v1.InternalPlacement_DECOMMISSIONED
+	return t.pb.GetState() == splitterprivatepb.InternalPlacement_DECOMMISSIONED
 }
 
 func (t InternalPlacement) Target() BlockDistribution {
@@ -366,19 +366,19 @@ func (t InternalPlacement) Equals(o InternalPlacement) bool {
 }
 
 type InternalPlacementInfo struct {
-	pb *internal_v1.InternalPlacementInfo
+	pb *splitterprivatepb.InternalPlacementInfo
 }
 
-func WrapInternalPlacementInfo(pb *internal_v1.InternalPlacementInfo) InternalPlacementInfo {
+func WrapInternalPlacementInfo(pb *splitterprivatepb.InternalPlacementInfo) InternalPlacementInfo {
 	return InternalPlacementInfo{pb: pb}
 }
 
-func UnwrapInternalPlacementInfo(t InternalPlacementInfo) *internal_v1.InternalPlacementInfo {
+func UnwrapInternalPlacementInfo(t InternalPlacementInfo) *splitterprivatepb.InternalPlacementInfo {
 	return t.pb
 }
 
 func NewInternalPlacementInfo(placement InternalPlacement, version model.Version, now time.Time) InternalPlacementInfo {
-	return WrapInternalPlacementInfo(&internal_v1.InternalPlacementInfo{
+	return WrapInternalPlacementInfo(&splitterprivatepb.InternalPlacementInfo{
 		Placement: UnwrapInternalPlacement(placement),
 		Version:   int64(version),
 		Timestamp: timestamppb.New(now),
