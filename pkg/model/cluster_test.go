@@ -24,10 +24,6 @@ import (
 )
 
 var (
-	g0A           = prefab.NewGrantInfo("g0A", "t/s/d", model.Global, "", "0", "a", model.ActiveGrantState)
-	gAD           = prefab.NewGrantInfo("gAD", "t/s/d", model.Global, "", "a", "d", model.ActiveGrantState)
-	shard0A       = g0A.Shard()
-	shardAD       = gAD.Shard()
 	defaultDomain = "t/s/d"
 
 	id = model.ClusterID{Origin: prefab.Instance1.Instance(), Version: 1}
@@ -39,15 +35,17 @@ const (
 
 func TestCluster(t *testing.T) {
 	t.Run("domain shards", func(t *testing.T) {
-		g21 := prefab.NewGrantInfo("g21", "t/s/d2", model.Global, "", "0", "a", model.ActiveGrantState)
-		g22 := prefab.NewGrantInfo("g22", "t/s/d2", model.Global, "", "a", "d", model.ActiveGrantState)
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, g0A, gAD), model.NewAssignment(prefab.Instance2, g21, g22)), shard0A, shardAD, g21.Shard(), g22.Shard())
+		g0A := prefab.NewGrantInfo(t, "g0A", "t/s/d", model.Global, "", "0", "a", model.ActiveGrantState)
+		gAD := prefab.NewGrantInfo(t, "gAD", "t/s/d", model.Global, "", "a", "d", model.ActiveGrantState)
+		g21 := prefab.NewGrantInfo(t, "g21", "t/s/d2", model.Global, "", "0", "a", model.ActiveGrantState)
+		g22 := prefab.NewGrantInfo(t, "g22", "t/s/d2", model.Global, "", "a", "d", model.ActiveGrantState)
+		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, g0A, gAD), model.NewAssignment(prefab.Instance2, g21, g22)), g0A.Shard(), gAD.Shard(), g21.Shard(), g22.Shard())
 
 		actual := model.DomainShards(cluster, prefab.QDN("t/s/d"))
 		sort.Slice(actual, func(i, j int) bool {
 			return actual[i].From.Less(actual[j].From)
 		})
-		assertx.Equal(t, actual, slicex.New(shard0A, shardAD))
+		assertx.Equal(t, actual, slicex.New(g0A.Shard(), gAD.Shard()))
 
 		actual = model.DomainShards(cluster, prefab.QDN("t/s/d2"))
 		sort.Slice(actual, func(i, j int) bool {
@@ -387,17 +385,12 @@ func (s ShardDescription) Shard(t *testing.T) model.Shard {
 	qdn, ok := model.ParseQualifiedDomainNameStr(domain)
 	require.True(t, ok, "invalid domain: %v", domain)
 
-	from, err := prefab.PadToUUID(rangeParts[0])
-	require.NoError(t, err, "invalid range: %v", shardRange)
-	to, err := prefab.PadToUUID(rangeParts[1])
-	require.NoError(t, err, "invalid range: %v", shardRange)
-
 	return model.Shard{
 		Region: model.Region(region),
 		Domain: qdn,
 		Type:   dt,
-		To:     model.Key(to),
-		From:   model.Key(from),
+		To:     model.Key(prefab.PadToUUID(t, rangeParts[1])),
+		From:   model.Key(prefab.PadToUUID(t, rangeParts[0])),
 	}
 }
 
@@ -413,15 +406,13 @@ func (l Lookup) DomainKey(t *testing.T) model.QualifiedDomainKey {
 	if l.Domain == "" {
 		l.Domain = defaultDomain
 	}
-	key, err := prefab.PadToUUID(l.Key)
-	require.NoError(t, err, "invalid key: %v", l.Key)
 
 	qdn, ok := model.ParseQualifiedDomainNameStr(l.Domain)
 	require.True(t, ok, "invalid domain: %v", l.Domain)
 
 	return model.QualifiedDomainKey{
 		Domain: qdn,
-		Key:    model.DomainKey{Region: l.Region, Key: model.Key(key)},
+		Key:    model.DomainKey{Region: l.Region, Key: model.Key(prefab.PadToUUID(t, l.Key))},
 	}
 }
 

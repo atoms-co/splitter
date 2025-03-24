@@ -2,9 +2,11 @@ package prefab
 
 import (
 	"fmt"
+	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/splitter/lib/service/location"
@@ -32,35 +34,34 @@ func NewInstance(region location.Region, node location.Node, id model.InstanceID
 
 var QDN = model.MustParseQualifiedDomainNameStr
 
-func NewShard(domain string, dtype model.DomainType, region model.Region, from, to string) model.Shard {
-	toKey, _ := PadToUUID(to)
-	fromKey, _ := PadToUUID(from)
+func NewShard(t *testing.T, domain string, dtype model.DomainType, region model.Region, from, to string) model.Shard {
 	return model.Shard{
 		Region: region,
 		Domain: QDN(domain),
 		Type:   dtype,
-		To:     model.Key(toKey),
-		From:   model.Key(fromKey),
+		To:     model.Key(PadToUUID(t, to)),
+		From:   model.Key(PadToUUID(t, from)),
 	}
 }
 
-func NewGrantInfo(id string, domain string, dtype model.DomainType, region model.Region, from, to string, state model.GrantState) model.GrantInfo {
+func NewGrantInfo(t *testing.T, id string, domain string, dtype model.DomainType, region model.Region, from, to string, state model.GrantState) model.GrantInfo {
 	return model.WrapGrantInfo(&splitterpb.ClusterMessage_GrantInfo{
 		Id:    id,
-		Shard: NewShard(domain, dtype, region, from, to).ToProto(),
+		Shard: NewShard(t, domain, dtype, region, from, to).ToProto(),
 		State: state,
 	})
 }
 
-func NewQDK(domain string, region model.Region, id string) model.QualifiedDomainKey {
-	key, _ := PadToUUID(id)
+func NewQDK(t *testing.T, domain string, region model.Region, id string) model.QualifiedDomainKey {
 	return model.QualifiedDomainKey{
 		Domain: QDN(domain),
-		Key:    model.DomainKey{Region: region, Key: model.Key(key)},
+		Key:    model.DomainKey{Region: region, Key: model.Key(PadToUUID(t, id))},
 	}
 }
 
 // PadToUUID creates a UUID by appending zeros to the provided prefix
-func PadToUUID(v string) (uuid.UUID, error) {
-	return uuid.Parse(fmt.Sprintf("%v%v", v, uuidx.Min.String()[len(v):]))
+func PadToUUID(t *testing.T, v string) uuid.UUID {
+	rt, err := uuid.Parse(fmt.Sprintf("%v%v", v, uuidx.Min.String()[len(v):]))
+	require.NoError(t, err)
+	return rt
 }
