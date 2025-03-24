@@ -296,15 +296,23 @@ func (f *fakeRange) Drain(ctx context.Context, timeout time.Duration) iox.RAsync
 type fakePool struct {
 	Current    model.Cluster
 	Resolution map[model.InstanceID]grpc.ClientConnInterface
+	Failed     map[model.InstanceID]error
 }
 
 func newFakePool() *fakePool {
 	return &fakePool{
 		Resolution: map[model.InstanceID]grpc.ClientConnInterface{},
+		Failed:     map[model.InstanceID]error{},
 	}
 }
 
 func (f *fakePool) Resolve(ctx context.Context, key model.Instance) (grpc.ClientConnInterface, error) {
+	if err, ok := f.Failed[key.ID()]; ok {
+		return nil, err
+	}
+	if cc, ok := f.Resolution[key.ID()]; ok {
+		return cc, nil
+	}
 	return nil, model.ErrNoResolution
 }
 
