@@ -164,7 +164,7 @@ func TestHandleEx(t *testing.T) {
 		proxy := newTestProxy()
 
 		rt, err := model.HandleEx(ctx, proxy, key, remoteSuccess(resp), req, model.ToGRPCError, localSuccess(resp))
-		requirex.Equal(t, err.Error(), fmt.Sprintf("not initialized: %v", model.ErrNotOwned))
+		requirex.Equal(t, err, model.ToGRPCError(fmt.Errorf("not initialized: %w", model.ErrNotOwned)))
 		requirex.Equal(t, rt, model.QualifiedDomainKey{})
 	})
 
@@ -175,7 +175,7 @@ func TestHandleEx(t *testing.T) {
 		proxy.pool.Current = cluster
 
 		rt, err := model.HandleEx(ctx, proxy, key, remoteSuccess(resp), req, model.ToGRPCError, localSuccess(resp))
-		requirex.Equal(t, err.Error(), fmt.Sprintf("no owner: %v", model.ErrNotOwned))
+		requirex.Equal(t, err, model.ToGRPCError(fmt.Errorf("no owner: %w", model.ErrNotOwned)))
 		requirex.Equal(t, rt, model.QualifiedDomainKey{})
 	})
 
@@ -213,7 +213,7 @@ func TestHandleEx(t *testing.T) {
 		proxy.pool.Failed[prefab.Instance1.ID()] = model.ErrNotFound
 
 		rt, err := model.HandleEx(ctx, proxy, key, remoteSuccess(resp), req, model.ToGRPCError, localSuccess(resp))
-		requirex.Equal(t, err, model.ErrNotFound)
+		requirex.Equal(t, err, model.ToGRPCError(model.ErrNotFound))
 		requirex.Equal(t, rt, model.QualifiedDomainKey{})
 	})
 

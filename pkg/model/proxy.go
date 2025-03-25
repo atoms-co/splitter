@@ -325,15 +325,25 @@ func HandleEx[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], ke
 		return rt, err
 	}
 
-	return Invoke(ctx, p, key, fn, a, func() (B, error) {
-		if r, ok := p.Lookup(key); ok {
-			rt, err := local(r)
-			return rt, w(err)
-		}
+	t, err := p.Resolve(ctx, key)
+	if err != nil {
 		var b B
-		err, _ := OwnershipErrorToGRPC(ErrNotOwned)
-		return b, err
-	})
+		if errors.Is(err, ErrNoResolution) {
+			if r, ok := p.Lookup(key); ok {
+				rt, err := local(r)
+				err = w(err)
+				recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", err)
+				return rt, err
+			}
+			err, _ := OwnershipErrorToGRPC(ErrNotOwned)
+			return b, err
+		}
+		return b, w(err)
+	}
+
+	rt, err := fn(t, ctx, a)
+	recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", err)
+	return rt, err
 }
 
 // HandleWithRetry is a shortcut to call Handle with RetryOwnership1.
