@@ -214,13 +214,10 @@ func makeCoordinatorRevokeCmd() *cobra.Command {
 
 			// (3) Begin Revoking Grants
 
-			for len(filtered) > 0 {
+			batches := slices.Collect(slices.Chunk(filtered, grantsPerCycle))
+
+			for i, batch := range batches {
 				grants := map[model.ConsumerID][]model.GrantID{}
-
-				i := min(grantsPerCycle, len(filtered))
-				batch := filtered[0:i]
-				filtered = filtered[i:]
-
 				for _, cg := range batch {
 					grants[cg.consumerId] = append(grants[cg.consumerId], cg.grantId)
 				}
@@ -235,7 +232,9 @@ func makeCoordinatorRevokeCmd() *cobra.Command {
 						fmt.Printf("revoked consumer=%v grant=%v\n", c, g)
 					}
 				}
-				time.Sleep(delayDuration)
+				if i != len(batches)-1 {
+					time.Sleep(delayDuration)
+				}
 			}
 
 			// (4) Restore load balance operational config
