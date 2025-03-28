@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"errors"
 
 	"google.golang.org/grpc/codes"
@@ -54,6 +55,10 @@ func ToGRPCError(err error) error {
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, ErrOverloaded):
 		return status.Error(codes.ResourceExhausted, err.Error())
+	case errors.Is(err, context.DeadlineExceeded):
+		return err
+	case errors.Is(err, context.Canceled):
+		return err
 	default:
 		if _, ok := status.FromError(err); ok {
 			return err // ok: already a grpc error
