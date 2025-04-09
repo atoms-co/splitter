@@ -165,9 +165,15 @@ func validateDomain(pb *splitterpb.Domain) error {
 	}
 }
 
+const MaxNamedKeysPerDomain = 12
+
 func validRegionalConfig(config *splitterpb.Domain_Config) error {
 	if err := validateShardingPolicy(config.GetShardingPolicy()); err != nil {
 		return err
+	}
+
+	if len(config.GetNamed()) > MaxNamedKeysPerDomain {
+		return fmt.Errorf("number of named keys cannot exceed %d, got %d", MaxNamedKeysPerDomain, len(config.GetNamed()))
 	}
 	// Validate named domain keys
 	for _, named := range config.GetNamed() {
@@ -188,6 +194,21 @@ func validateGlobalConfig(config *splitterpb.Domain_Config) error {
 	if err := validateShardingPolicy(config.GetShardingPolicy()); err != nil {
 		return err
 	}
+
+	if len(config.GetNamed()) > MaxNamedKeysPerDomain {
+		return fmt.Errorf("number of named keys cannot exceed %d, got %d", MaxNamedKeysPerDomain, len(config.GetNamed()))
+	}
+
+	for _, named := range config.GetNamed() {
+		if named.GetKey().GetRegion() != "" {
+			return fmt.Errorf("region of a named key must be empty for global domain, got non-empty value for %q", named.GetName())
+		}
+
+		if _, err := ParseNamedDomainKey(named); err != nil {
+			return fmt.Errorf("invalid named domain key %v: %w", named, err)
+		}
+	}
+
 	return nil
 }
 
@@ -200,8 +221,9 @@ func validateShardingPolicy(policy *splitterpb.ShardingPolicy) error {
 }
 
 func validateUnitConfig(config *splitterpb.Domain_Config) error {
-
-	// TODO(jhhurwitz) 03/07/24 Validate unit when something to validate
+	if config.GetShardingPolicy().GetShards() > 1 {
+		return fmt.Errorf("shards cannot be specified for unit domain")
+	}
 
 	return nil
 }
