@@ -3,13 +3,14 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"go.atoms.co/slicex"
+	"go.atoms.co/lib/stringx"
 	"go.atoms.co/splitter/pkg/model"
 )
 
@@ -108,7 +109,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 	placement := cmd.Flags().String("placement", "", "Placement name")
 	shards := cmd.Flags().Int("shards", 4, "Target shards")
 	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
-	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
+	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 	state := cmd.Flags().String("state", "", "Domain state")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -117,23 +118,9 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
-		var keys []model.NamedDomainKey
-		for _, name := range *named {
-			parts := strings.Split(name, ":")
-			if len(parts) != 3 {
-				return fmt.Errorf("invalid named domain key: %v", name)
-			}
-			key, err := uuid.Parse(parts[2])
-			if err != nil {
-				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
-			}
-			keys = append(keys, model.NamedDomainKey{
-				Name: parts[0],
-				Key: model.DomainKey{
-					Region: model.Region(parts[1]),
-					Key:    model.Key(key),
-				},
-			})
+		keys, err := parseNamedDomainKeys(*named, model.Global, []model.Region{})
+		if err != nil {
+			return err
 		}
 
 		var opts []model.NewDomainOption
@@ -189,23 +176,11 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
-		var keys []model.NamedDomainKey
-		for _, name := range *named {
-			parts := strings.Split(name, ":")
-			if len(parts) != 3 {
-				return fmt.Errorf("invalid named domain key: %v", name)
-			}
-			key, err := uuid.Parse(parts[2])
-			if err != nil {
-				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
-			}
-			keys = append(keys, model.NamedDomainKey{
-				Name: parts[0],
-				Key: model.DomainKey{
-					Region: model.Region(parts[1]),
-					Key:    model.Key(key),
-				},
-			})
+		regions := slicex.Map(*regions, stringx.FromString[model.Region])
+
+		keys, err := parseNamedDomainKeys(*named, model.Regional, regions)
+		if err != nil {
+			return err
 		}
 
 		var opts []model.NewDomainOption
@@ -223,9 +198,7 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 					model.WithDomainPlacement(model.PlacementName(*placement)),
 					model.WithDomainShardingPolicy(model.NewShardingPolicy(*shards)),
 					model.WithDomainNamedKeys(keys...),
-					model.WithDomainRegions(slicex.Map(*regions, func(t string) model.Region {
-						return model.Region(t)
-					})...),
+					model.WithDomainRegions(regions...),
 					model.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) model.DomainName {
 						return model.DomainName(t)
 					})...),
@@ -272,29 +245,7 @@ func makeUpdateDomainCmd() *cobra.Command {
 			opts = append(opts, model.WithUpdateDomainState(s))
 		}
 
-		var keys []model.NamedDomainKey
-		for _, name := range *named {
-			parts := strings.Split(name, ":")
-			if len(parts) != 3 {
-				return fmt.Errorf("invalid named domain key: %v", name)
-			}
-			key, err := uuid.Parse(parts[2])
-			if err != nil {
-				return fmt.Errorf("invalid uuid for named domain key: %v", parts[1])
-			}
-			keys = append(keys, model.NamedDomainKey{
-				Name: parts[0],
-				Key: model.DomainKey{
-					Region: model.Region(parts[1]),
-					Key:    model.Key(key),
-				},
-			})
-		}
-
 		var cfgOptions []model.DomainConfigOption
-		if len(keys) > 0 {
-			cfgOptions = append(cfgOptions, model.WithDomainNamedKeys(keys...))
-		}
 
 		var sCfgOpts []model.ShardingPolicyOption
 		if *shards != -1 {
@@ -323,6 +274,19 @@ func makeUpdateDomainCmd() *cobra.Command {
 			domain, ok := service.Domain(name.Domain)
 			if !ok {
 				return fmt.Errorf("unknown domain: %v", name)
+			}
+
+			if len(*named) > 0 {
+				regions, _ := domain.Regions()
+
+				keys, err := parseNamedDomainKeys(*named, domain.Type(), regions)
+				if err != nil {
+					return err
+				}
+
+				if len(keys) > 0 {
+					cfgOptions = append(cfgOptions, model.WithDomainNamedKeys(keys...))
+				}
 			}
 
 			if len(opOptions) > 0 {
@@ -413,4 +377,58 @@ func makeDeleteDomainCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+func parseNamedDomainKeys(namedKeyStrs []string, domainType model.DomainType, allowedRegions []model.Region) ([]model.NamedDomainKey, error) {
+	var keys []model.NamedDomainKey
+	for _, name := range namedKeyStrs {
+		parts := strings.Split(name, ":")
+
+		if parts[0] == "" {
+			return nil, fmt.Errorf("name cannot be empty in named domain key: %v", name)
+		}
+
+		if domainType == model.Global {
+			if len(parts) != 2 {
+				return nil, fmt.Errorf("invalid global domain named key (expected Name:UUID): %v", name)
+			}
+			key, err := model.ParseKey(parts[1])
+			if err != nil {
+				return nil, fmt.Errorf("invalid named key %v: %w", parts[1], err)
+			}
+			keys = append(keys, model.NamedDomainKey{
+				Name: parts[0],
+				Key: model.DomainKey{
+					Key: key,
+				},
+			})
+		} else {
+			if len(parts) != 3 {
+				return nil, fmt.Errorf("invalid regional domain named key (expected Name:Region:UUID): %v", name)
+			}
+
+			if parts[1] == "" {
+				return nil, fmt.Errorf("region cannot be empty in regional domain named key: %v", name)
+			}
+
+			region := model.Region(parts[1])
+			if len(allowedRegions) > 0 && !slices.Contains(allowedRegions, region) {
+				return nil, fmt.Errorf("invalid region for named key %v, expected one of: %v", region, allowedRegions)
+			}
+
+			key, err := model.ParseKey(parts[2])
+			if err != nil {
+				return nil, fmt.Errorf("invalid named key %v: %w", parts[2], err)
+			}
+
+			keys = append(keys, model.NamedDomainKey{
+				Name: parts[0],
+				Key: model.DomainKey{
+					Region: region,
+					Key:    key,
+				},
+			})
+		}
+	}
+	return keys, nil
 }
