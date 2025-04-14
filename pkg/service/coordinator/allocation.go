@@ -348,10 +348,6 @@ func findShards(service model.Service, domain model.Domain) []uuidx.Range {
 	return shards
 }
 
-func toGrants(grants []Grant) []model.Grant {
-	return slicex.Map(grants, toGrant)
-}
-
 func toGrant(g Grant) model.Grant {
 	return model.NewGrant(g.ID, g.Unit, toGrantState(g.State, g.Mod), g.Expiration, g.Assigned)
 }

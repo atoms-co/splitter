@@ -429,6 +429,7 @@ func (a *Allocation[T, W, K, V]) Modify(id K, grant Grant[T, K]) bool {
 			return false
 		}
 		g.mod = grant.Mod
+		w.live[grant.Unit] = g
 		return true
 	case Unloaded:
 		g, ok := w.revoked[grant.Unit]
@@ -436,6 +437,7 @@ func (a *Allocation[T, W, K, V]) Modify(id K, grant Grant[T, K]) bool {
 			return false
 		}
 		g.Mod = grant.Mod
+		w.revoked[grant.Unit] = g
 		return true
 	default:
 		return false

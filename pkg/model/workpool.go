@@ -406,6 +406,8 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			g.Handler.own.unloader.load() // Notify client that grant was loaded
 		case UnloadedGrantState:
 			g.Handler.own.loader.unload() // Notify client that grant was unloaded
+		default:
+			log.Warnf(ctx, "Received grant update with unexpected state: %v", update)
 		}
 
 	case msg.IsExtend():
