@@ -3,9 +3,11 @@ package core_test
 import (
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/core"
 )
 
@@ -78,5 +80,20 @@ func TestMoveBlockDistribution(t *testing.T) {
 
 		actual := core.MoveBlockDistribution(current, target, tt.n)
 		assert.True(t, actual.Equals(expected), "move(%v,%v,%v)=%v, want %v", tt.current, tt.target, tt.n, actual, tt.expected)
+	}
+}
+
+func TestDivide(t *testing.T) {
+	middle := uuid.MustParse("80000000-0000-0000-0000-000000000000")
+
+	half, err := core.Divide(1, 2)
+	assert.NoError(t, err)
+	assert.Equal(t, middle, half)
+
+	ranges, err := uuidx.Split(uuidx.Domain, 1024)
+	for i := 0; i < 1024; i++ {
+		actual, err := core.Divide(int64(i), 1024)
+		assert.NoError(t, err)
+		assert.Equal(t, ranges[i].From(), actual)
 	}
 }

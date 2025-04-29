@@ -2,12 +2,14 @@ package core
 
 import (
 	"fmt"
+	"math/big"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/lib/container"
@@ -202,7 +204,7 @@ func (t BlockDistribution) Find(n Block) model.Region {
 
 func (t BlockDistribution) ToDistribution() model.Distribution {
 	splits := slicex.Map(t.Splits(), func(s BlockDistributionSplit) model.DistributionSplit {
-		key, _ := uuidx.Divide(int64(s.Block), 1024)
+		key, _ := Divide(int64(s.Block), 1024)
 		return model.DistributionSplit{Key: model.Key(key), Region: s.Region}
 	})
 	return model.NewDistribution(t.Initial(), splits...)
@@ -411,4 +413,17 @@ func (t InternalPlacementInfo) String() string {
 
 func (t InternalPlacementInfo) Equals(o InternalPlacementInfo) bool {
 	return proto.Equal(t.pb, o.pb)
+}
+
+// Divide returns a/b * (uuid.Max+1), i.e, the UUID of the a'th of b partitions.
+func Divide(a, b int64) (uuid.UUID, error) {
+	if b <= a || b < 1 {
+		return uuid.UUID{}, fmt.Errorf("invalid")
+	}
+
+	maxValue := uuidx.Domain.To()
+	end := big.NewInt(0).Add(big.NewInt(0).SetBytes(maxValue[:]), big.NewInt(1))
+	ret := big.NewInt(0).Div(big.NewInt(0).Mul(end, big.NewInt(a)), big.NewInt(b))
+
+	return uuid.FromBytes(ret.FillBytes(make([]byte, 16)))
 }
