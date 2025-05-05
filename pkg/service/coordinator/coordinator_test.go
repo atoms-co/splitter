@@ -1,10 +1,12 @@
-package coordinator_test
+package coordinator
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -13,9 +15,9 @@ import (
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
+	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pkg/service/coordinator"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
@@ -479,7 +481,7 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 
 	toRevoke := assign.Grants()[0]
 
-	req := coordinator.NewHandleCoordinatorOperationRequest(serviceName, &splitterprivatepb.CoordinatorOperationRequest{
+	req := NewHandleCoordinatorOperationRequest(serviceName, &splitterprivatepb.CoordinatorOperationRequest{
 		Req: &splitterprivatepb.CoordinatorOperationRequest_RevokeGrants{
 			RevokeGrants: &splitterprivatepb.CoordinatorRevokeGrantsRequest{
 				Service: serviceName.ToProto(),
@@ -507,7 +509,156 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 	assert.Equal(t, toRevoke.Shard().From, assign3.Grants()[0].Shard().From)
 }
 
-func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Domain, withFastActivation bool) coordinator.Coordinator {
+func TestCoordinator_CustomShards(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+
+	initialShards := []model.ShardingPolicyShard{
+		model.NewShardingPolicyShard(model.MustParseKey("00000000-0000-0000-0000-000000000000"), model.MustParseKey("80000000-0000-0000-0000-000000000000"), ""),
+		model.NewShardingPolicyShard(model.MustParseKey("80000000-0000-0000-0000-000000000000"), model.MustParseKey("ffffffff-ffff-ffff-ffff-ffffffffffff"), ""),
+	}
+
+	sp := model.NewShardingPolicy(2, model.WithShardingPolicyShards(initialShards))
+	opts := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp), model.WithDomainRegions("centralus")))
+	domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), opts)
+
+	require.NoError(t, err)
+
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+
+	consumer1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
+	in1 := make(chan model.ConsumerMessage, 1)
+	in1 <- model.NewRegister(consumer1, serviceName, nil, nil)
+
+	out1, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in1)
+	require.NoError(t, err, "First consumer failed to connect")
+
+	readFn(t, out1, isClusterSnapshot)
+
+	var receivedGrants []model.Grant
+	for i := 0; i < 2; i++ {
+		assign := readFn(t, out1, isAssign)
+		assert.Len(t, assign.Grants(), 1, "Expected a single grant in each assign message")
+		receivedGrants = append(receivedGrants, assign.Grants()[0])
+	}
+
+	assert.Equal(t, 2, len(receivedGrants), "Should have received 2 shards")
+
+	consumer2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
+	in2 := make(chan model.ConsumerMessage, 1)
+	in2 <- model.NewRegister(consumer2, serviceName, nil, nil)
+
+	out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
+	require.NoError(t, err, "Second consumer failed to connect")
+
+	readFn(t, out2, isClusterSnapshot)
+
+	cl.Add(15 * time.Second)
+	time.Sleep(50 * time.Millisecond)
+
+	revoke := readFn(t, out1, isRevoke)
+	assert.NotNil(t, revoke, "Expected a revoke message")
+	assert.Greater(t, len(revoke.Grants()), 0, "Expected at least one grant to be revoked")
+
+	allocate := readFn(t, out2, isAssign)
+	assert.NotNil(t, allocate, "Expected an assign message")
+	assert.Greater(t, len(allocate.Grants()), 0, "Expected at least one grant to be allocated")
+
+	in1 <- model.NewReleased(revoke.Grants()...)
+
+	promote := readFn(t, out2, isPromote)
+	assert.NotNil(t, promote, "Expected a promote message")
+	assert.Greater(t, len(promote.Grants()), 0, "Expected at least one grant to be promoted")
+	assert.Equal(t, model.ActiveGrantState, promote.Grants()[0].State(), "Expected active state")
+
+	in1 <- model.NewDeregister()
+	in2 <- model.NewDeregister()
+
+	coord.Close()
+}
+
+func TestCoordinator_RegionSpecificShards(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+
+	customShards := []model.ShardingPolicyShard{
+		model.NewShardingPolicyShard(model.MustParseKey("00000000-0000-0000-0000-000000000000"), model.MustParseKey("10000000-0000-0000-0000-000000000000"), "centralus"),
+		model.NewShardingPolicyShard(model.MustParseKey("10000000-0000-0000-0000-000000000000"), model.MustParseKey("20000000-0000-0000-0000-000000000000"), "eastus"),
+	}
+
+	sp := model.NewShardingPolicy(2, model.WithShardingPolicyShards(customShards))
+	opts := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp), model.WithDomainRegions("centralus", "eastus")))
+	domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), opts)
+
+	require.NoError(t, err)
+
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+
+	expectedRegionResults := map[model.Region][]uuidx.Range{
+		"centralus": {
+			uuidx.MustNewRange(uuid.MustParse("00000000-0000-0000-0000-000000000000"), uuid.MustParse("10000000-0000-0000-0000-000000000000")),
+			uuidx.MustNewRange(uuid.MustParse("10000000-0000-0000-0000-000000000000"), uuid.MustParse("80000000-0000-0000-0000-000000000000")),
+			uuidx.MustNewRange(uuid.MustParse("80000000-0000-0000-0000-000000000000"), uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")),
+		},
+		"eastus": {
+			uuidx.MustNewRange(uuid.MustParse("00000000-0000-0000-0000-000000000000"), uuid.MustParse("10000000-0000-0000-0000-000000000000")),
+			uuidx.MustNewRange(uuid.MustParse("10000000-0000-0000-0000-000000000000"), uuid.MustParse("20000000-0000-0000-0000-000000000000")),
+			uuidx.MustNewRange(uuid.MustParse("20000000-0000-0000-0000-000000000000"), uuid.MustParse("80000000-0000-0000-0000-000000000000")),
+			uuidx.MustNewRange(uuid.MustParse("80000000-0000-0000-0000-000000000000"), uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff"))},
+	}
+
+	consumer1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
+	in1 := make(chan model.ConsumerMessage, 1)
+	in1 <- model.NewRegister(consumer1, serviceName, nil, nil)
+
+	out1, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in1)
+	require.NoError(t, err, "Consumer from centralus failed to connect")
+
+	readFn(t, out1, isClusterSnapshot)
+
+	var allGrants []model.Grant
+	for i := 0; i < 7; i++ {
+		assign := readFn(t, out1, isAssign)
+		allGrants = append(allGrants, assign.Grants()[0])
+	}
+
+	consumer2 := model.NewInstance(location.NewInstance(location.New("eastus", "pod1")), "endpoint1")
+	in2 := make(chan model.ConsumerMessage, 1)
+	in2 <- model.NewRegister(consumer2, serviceName, nil, nil)
+
+	out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("eastus", "splitter1")), in2)
+	require.NoError(t, err, "Consumer from eastus failed to connect")
+
+	readFn(t, out2, isClusterSnapshot)
+
+	cl.Add(45 * time.Second)
+	time.Sleep(1000 * time.Millisecond)
+
+	var eastusGrants []model.Grant
+	for i := 0; i < 4; i++ {
+		assign := readFn(t, out2, isAssign)
+		eastusGrants = append(eastusGrants, assign.Grants()[0])
+	}
+
+	assert.True(t, matchesRange(allGrants, expectedRegionResults["centralus"], "centralus"), "Expected centralus ranges not found in allGrants")
+	assert.True(t, matchesRange(eastusGrants, expectedRegionResults["eastus"], "eastus"), "Expected eastus ranges not found in eastusGrants")
+
+	in1 <- model.NewDeregister()
+	in2 <- model.NewDeregister()
+	coord.Close()
+}
+
+func matchesRange(grants []model.Grant, ranges []uuidx.Range, region string) bool {
+	return slices.ContainsFunc(grants, func(grant model.Grant) bool {
+		return slices.ContainsFunc(ranges, func(r uuidx.Range) bool {
+			return uuidx.Equal(r.From(), uuid.UUID(grant.Shard().From)) &&
+				uuidx.Equal(r.To(), uuid.UUID(grant.Shard().To)) &&
+				grant.Shard().Region == model.Region(region)
+		})
+	})
+}
+
+func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Domain, withFastActivation bool) Coordinator {
 	t.Helper()
 
 	loc := location.New("centralus", "splitter-0")
@@ -526,11 +677,11 @@ func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Do
 
 	updates := make(chan core.Update)
 
-	var cOpts []coordinator.Option
+	var cOpts []Option
 	if withFastActivation {
-		cOpts = append(cOpts, coordinator.WithFastActivation())
+		cOpts = append(cOpts, WithFastActivation())
 	}
-	c := coordinator.New(ctx, cl, loc, serviceName, state, updates, cOpts...)
+	c := New(ctx, cl, loc, serviceName, state, updates, cOpts...)
 	<-c.Initialized().Closed()
 
 	return c

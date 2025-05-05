@@ -1,4 +1,4 @@
-package coordinator_test
+package coordinator
 
 import (
 	"testing"
@@ -11,9 +11,10 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/mockclock"
+	"go.atoms.co/slicex"
+	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/pkg/service/coordinator"
 	splitterpb "go.atoms.co/splitter/pb"
 	"go.atoms.co/splitter/testing/prefab"
 )
@@ -78,29 +79,29 @@ func TestNamedShards(t *testing.T) {
 		},
 	}
 
-	ctrl := coordinator.NewNamedShards(namedShards...)
+	ctrl := NewNamedShards(namedShards...)
 
-	w1 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
+	w1 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker1",
-		coordinator.NewConsumer(
+		NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""),
 			cl.Now(),
-			coordinator.WithKeys(canaryKeys[0]),
+			WithKeys(canaryKeys[0]),
 		),
 	)
 
-	w2 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
+	w2 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker2",
-		coordinator.NewConsumer(
+		NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("northcentralus", "unknown")), ""),
 			cl.Now(),
-			coordinator.WithKeys(canaryKeys[1]),
+			WithKeys(canaryKeys[1]),
 		),
 	)
 
-	w3 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
+	w3 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker3",
-		coordinator.NewConsumer(
+		NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""),
 			cl.Now(),
 		),
@@ -165,11 +166,11 @@ func TestDomainState(t *testing.T) {
 	tInfo := model.NewTenantInfo(t1, 1, time.Time{})
 	s1Info := model.NewServiceInfoEx(model.NewServiceInfo(s1, 1, time.Time{}), []model.Domain{d1, d2})
 
-	ctrl := coordinator.NewDomainState(tInfo, s1Info)
+	ctrl := NewDomainState(tInfo, s1Info)
 
-	w1 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
+	w1 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker1",
-		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
 	)
 
 	_, ok := ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
@@ -214,26 +215,26 @@ func TestBannedWorkerRegion(t *testing.T) {
 	tInfo := model.NewTenantInfo(t1, 1, time.Time{})
 	s1Info := model.NewServiceInfoEx(model.NewServiceInfo(s1, 1, time.Time{}), []model.Domain{d1, d2})
 
-	ctrl := coordinator.NewBannedWorkerRegion(tInfo, s1Info)
+	ctrl := NewBannedWorkerRegion(tInfo, s1Info)
 
-	w1 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
+	w1 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker1",
-		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
 	)
 
-	w2 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
+	w2 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker2",
-		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("northcentralus", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("northcentralus", "unknown")), ""), cl.Now()),
 	)
 
-	w3 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
+	w3 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker3",
-		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("eastus2", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("eastus2", "unknown")), ""), cl.Now()),
 	)
 
-	w4 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
+	w4 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker4",
-		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("us-central1", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("us-central1", "unknown")), ""), cl.Now()),
 	)
 
 	_, ok := ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
@@ -289,11 +290,11 @@ func TestRegionAffinity(t *testing.T) {
 	require.NoError(t, err)
 	s1Info := model.NewServiceInfoEx(model.NewServiceInfo(s1, 1, time.Time{}), nil)
 
-	affinity := coordinator.NewRegionAffinity(s1Info)
+	affinity := NewRegionAffinity(s1Info)
 
-	w1 := allocation.NewWorker[location.InstanceID, *coordinator.Consumer](
+	w1 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker1",
-		coordinator.NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
 	)
 
 	penalty, ok := affinity.TryPlace(w1, allocation.Work[model.Shard, location.Location]{
@@ -372,13 +373,378 @@ func TestColocation(t *testing.T) {
 		assert.NoError(t, err)
 
 		info := model.NewServiceInfoEx(model.NewServiceInfo(service, 1, cl.Now()), []model.Domain{dom1, dom2})
-		worker := allocation.NewWorker[model.ConsumerID, *coordinator.Consumer]("worker-id", coordinator.NewConsumer(prefab.Instance1, cl.Now()))
-		affinity := coordinator.NewAntiAffinity(info)
-		load := affinity.Colocate(worker, map[model.Shard]coordinator.Work{
+		worker := allocation.NewWorker[model.ConsumerID, *Consumer]("worker-id", NewConsumer(prefab.Instance1, cl.Now()))
+		affinity := NewAntiAffinity(info)
+		load := affinity.Colocate(worker, map[model.Shard]Work{
 			tt.shard1: {Unit: tt.shard1},
 			tt.shard2: {Unit: tt.shard2},
 		})
 		assertx.Equal(t, load[tt.shard1] > 0, tt.penalized)
 		assertx.Equal(t, load[tt.shard2], 0) // Shard 2 is never penalized
 	}
+}
+
+func TestShardSplitting(t *testing.T) {
+	cl := mockclock.NewUnsynchronized()
+
+	tenant, err := model.NewTenant("tenant1", time.Time{})
+	require.NoError(t, err)
+
+	service, err := model.NewService(model.QualifiedServiceName{Tenant: tenant.Name(), Service: "service1"}, time.Time{})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name         string
+		customShards []model.ShardingPolicyShard
+		expected     []uuidx.Range
+	}{
+		{
+			name:         "default shards",
+			customShards: nil,
+			expected: []uuidx.Range{
+				makeRange("00000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+				makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+			},
+		},
+		{
+			name: "three equal shards",
+			customShards: []model.ShardingPolicyShard{
+				{
+					From: model.MustParseKey("00000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+				},
+				{
+					From: model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("80000000-0000-0000-0000-000000000000"),
+				},
+				{
+					From: model.MustParseKey("80000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+			},
+			expected: []uuidx.Range{
+				makeRange("00000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+				makeRange("40000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+				makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+			},
+		},
+		{
+			name: "overlapping shards",
+			customShards: []model.ShardingPolicyShard{
+				{
+					From: model.MustParseKey("00000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("60000000-0000-0000-0000-000000000000"),
+				},
+				{
+					From: model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+			},
+			expected: []uuidx.Range{
+				makeRange("00000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+				makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+			},
+		},
+		{
+			name: "non overlapping shards",
+			customShards: []model.ShardingPolicyShard{
+				{
+					From: model.MustParseKey("00000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+				},
+				{
+					From: model.MustParseKey("50000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+			},
+			expected: []uuidx.Range{
+				makeRange("00000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+				makeRange("40000000-0000-0000-0000-000000000000", "50000000-0000-0000-0000-000000000000"),
+				makeRange("50000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+			},
+		},
+		{
+			name: "UnevenCustomShards",
+			customShards: []model.ShardingPolicyShard{
+				{
+					From: model.MustParseKey("00000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("20000000-0000-0000-0000-000000000000"),
+				},
+				{
+					From: model.MustParseKey("20000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+				},
+				{
+					From: model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("a0000000-0000-0000-0000-000000000000"),
+				},
+				{
+					From: model.MustParseKey("a0000000-0000-0000-0000-000000000000"),
+					To:   model.MustParseKey("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+			},
+			expected: []uuidx.Range{
+				makeRange("00000000-0000-0000-0000-000000000000", "20000000-0000-0000-0000-000000000000"),
+				makeRange("20000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+				makeRange("40000000-0000-0000-0000-000000000000", "a0000000-0000-0000-0000-000000000000"),
+				makeRange("a0000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name := model.QualifiedDomainName{Service: service.Name(), Domain: "test-domain"}
+			sp := model.NewShardingPolicy(2, model.WithShardingPolicyShards(tt.customShards))
+			opts := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp)))
+			domain, err := model.NewDomain(name, model.Global, cl.Now(), opts)
+			require.NoError(t, err)
+
+			actual := findShards(domain)
+
+			assertx.Equal(t, len(tt.expected), len(actual), "expected %d shards, got %d", len(tt.expected), len(actual))
+
+			assertSameShards(t, tt.expected, actual)
+		})
+	}
+}
+
+func TestFindShardsForRegion(t *testing.T) {
+	cl := mockclock.NewUnsynchronized()
+
+	tenant, err := model.NewTenant("tenant1", time.Time{})
+	require.NoError(t, err)
+
+	service, err := model.NewService(model.QualifiedServiceName{Tenant: tenant.Name(), Service: "service1"}, time.Time{})
+	require.NoError(t, err)
+
+	tests := []struct {
+		name          string
+		targetShards  int
+		customShards  []model.ShardingPolicyShard
+		regionResults map[model.Region][]uuidx.Range
+	}{
+		{
+			name:         "multiple regions with non-overlapping custom shards",
+			targetShards: 2,
+			customShards: []model.ShardingPolicyShard{
+				{
+					From:   model.MustParseKey("00000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					Region: "us",
+				},
+				{
+					From:   model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("80000000-0000-0000-0000-000000000000"),
+					Region: "eu",
+				},
+				{
+					From:   model.MustParseKey("80000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+					Region: "asia",
+				},
+			},
+			regionResults: map[model.Region][]uuidx.Range{
+				"us": {
+					makeRange("00000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+					makeRange("40000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"eu": {
+					makeRange("00000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+					makeRange("40000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"asia": {
+					makeRange("00000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+			},
+		},
+		{
+			name:         "overlapping shards across regions",
+			targetShards: 2,
+			customShards: []model.ShardingPolicyShard{
+				{
+					From:   model.MustParseKey("00000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("80000000-0000-0000-0000-000000000000"),
+					Region: "us",
+				},
+				{
+					From:   model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("c0000000-0000-0000-0000-000000000000"),
+					Region: "eu",
+				},
+				{
+					From:   model.MustParseKey("80000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+					Region: "asia",
+				},
+			},
+			regionResults: map[model.Region][]uuidx.Range{
+				"us": {
+					makeRange("00000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"eu": {
+					makeRange("00000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+					makeRange("40000000-0000-0000-0000-000000000000", "c0000000-0000-0000-0000-000000000000"),
+					makeRange("c0000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"asia": {
+					makeRange("00000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+			},
+		},
+		{
+			name:         "identical single uuid custom shards across different regions",
+			targetShards: 2,
+			customShards: []model.ShardingPolicyShard{
+				{
+					From:   model.MustParseKey("00000000-0000-0000-0000-000000000001"),
+					To:     model.MustParseKey("00000000-0000-0000-0000-000000000002"),
+					Region: "us",
+				},
+				{
+					From:   model.MustParseKey("00000000-0000-0000-0000-000000000001"),
+					To:     model.MustParseKey("00000000-0000-0000-0000-000000000002"),
+					Region: "eu",
+				},
+				{
+					From:   model.MustParseKey("00000000-0000-0000-0000-000000000001"),
+					To:     model.MustParseKey("00000000-0000-0000-0000-000000000002"),
+					Region: "asia",
+				},
+			},
+			regionResults: map[model.Region][]uuidx.Range{
+				"us": {
+					makeRange("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001"),
+					makeRange("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"),
+					makeRange("00000000-0000-0000-0000-000000000002", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"eu": {
+					makeRange("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001"),
+					makeRange("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"),
+					makeRange("00000000-0000-0000-0000-000000000002", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"asia": {
+					makeRange("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000001"),
+					makeRange("00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"),
+					makeRange("00000000-0000-0000-0000-000000000002", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+			},
+		},
+		{
+			name:         "some regions with custom shards, others with defaults",
+			targetShards: 2,
+			customShards: []model.ShardingPolicyShard{
+				{
+					From:   model.MustParseKey("00000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					Region: "us",
+				},
+				{
+					From:   model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+					Region: "us",
+				},
+			},
+			regionResults: map[model.Region][]uuidx.Range{
+				"us": {
+					makeRange("00000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+					makeRange("40000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"eu": {
+					makeRange("00000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"asia": {
+					makeRange("00000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+			},
+		},
+		{
+			name:         "complex multi-region configuration with gaps",
+			targetShards: 4,
+			customShards: []model.ShardingPolicyShard{
+				{
+					From:   model.MustParseKey("00000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					Region: "us",
+				},
+				{
+					From:   model.MustParseKey("80000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("c0000000-0000-0000-0000-000000000000"),
+					Region: "us",
+				},
+				{
+					From:   model.MustParseKey("40000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("80000000-0000-0000-0000-000000000000"),
+					Region: "eu",
+				},
+				{
+					From:   model.MustParseKey("c0000000-0000-0000-0000-000000000000"),
+					To:     model.MustParseKey("ffffffff-ffff-ffff-ffff-ffffffffffff"),
+					Region: "asia",
+				},
+			},
+			regionResults: map[model.Region][]uuidx.Range{
+				"us": {
+					makeRange("00000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+					makeRange("40000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "c0000000-0000-0000-0000-000000000000"),
+					makeRange("c0000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"eu": {
+					makeRange("00000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+					makeRange("40000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "c0000000-0000-0000-0000-000000000000"),
+					makeRange("c0000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+				"asia": {
+					makeRange("00000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+					makeRange("40000000-0000-0000-0000-000000000000", "80000000-0000-0000-0000-000000000000"),
+					makeRange("80000000-0000-0000-0000-000000000000", "c0000000-0000-0000-0000-000000000000"),
+					makeRange("c0000000-0000-0000-0000-000000000000", "ffffffff-ffff-ffff-ffff-ffffffffffff"),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name := model.QualifiedDomainName{Service: service.Name(), Domain: "test-domain"}
+			sp := model.NewShardingPolicy(tt.targetShards, model.WithShardingPolicyShards(tt.customShards))
+			opts := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp)))
+			domain, err := model.NewDomain(name, model.Regional, cl.Now(), opts)
+			require.NoError(t, err)
+
+			for region, expectedShards := range tt.regionResults {
+				t.Run(string(region), func(t *testing.T) {
+					actual := findShardsForRegion(domain, region)
+
+					assertx.Equal(t, len(expectedShards), len(actual), "for region %v: expected %d shards, got %d", region, len(expectedShards), len(actual))
+					assertSameShards(t, expectedShards, actual)
+				})
+			}
+		})
+	}
+}
+
+func assertSameShards(t *testing.T, expected, actual []uuidx.Range) {
+	t.Helper()
+
+	expectedShards := slicex.Map(expected, uuidx.Range.String)
+	actualShards := slicex.Map(actual, uuidx.Range.String)
+
+	assertx.Equal(t, expectedShards, actualShards, "shards don't match")
+}
+
+func makeRange(from, to string) uuidx.Range {
+	return uuidx.MustNewRange(uuid.MustParse(from), uuid.MustParse(to))
 }

@@ -7,8 +7,12 @@ import (
 	"sync"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/google/uuid"
 
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/slicex"
+	"go.atoms.co/lib/uuidx"
+	splitteruuidx "go.atoms.co/splitter/pkg/util/uuidx"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 
@@ -17,6 +21,64 @@ type ShardingPolicyOption func(policy *splitterpb.ShardingPolicy)
 func WithShards(shards int) ShardingPolicyOption {
 	return func(policy *splitterpb.ShardingPolicy) {
 		policy.Shards = int64(shards)
+	}
+}
+
+type ShardingPolicyShard struct {
+	From   Key
+	To     Key
+	Region Region
+}
+
+func ParseShardingPolicyShard(pb *splitterpb.ShardingPolicy_Shard) (ShardingPolicyShard, error) {
+	from, err := ParseKey(pb.GetFrom())
+	if err != nil {
+		return ShardingPolicyShard{}, fmt.Errorf("invalid 'from' key: %w", err)
+	}
+
+	to, err := ParseKey(pb.GetTo())
+	if err != nil {
+		return ShardingPolicyShard{}, fmt.Errorf("invalid 'to' key: %w", err)
+	}
+
+	return ShardingPolicyShard{
+		From:   from,
+		To:     to,
+		Region: Region(pb.GetRegion()),
+	}, nil
+}
+
+func validateShardingPolicyShards(shards []ShardingPolicyShard) error {
+	ranges, err := slicex.TryMap(shards, func(shard ShardingPolicyShard) (uuidx.Range, error) {
+		return uuidx.NewRange(uuid.UUID(shard.From), uuid.UUID(shard.To))
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return splitteruuidx.RangesIntersect(ranges)
+}
+
+func WithShardingPolicyShards(shards []ShardingPolicyShard) ShardingPolicyOption {
+	return func(policy *splitterpb.ShardingPolicy) {
+		policy.CustomShards = slicex.Map(shards, ShardingPolicyShard.ToProto)
+	}
+}
+
+func NewShardingPolicyShard(from, to Key, region Region) ShardingPolicyShard {
+	return ShardingPolicyShard{
+		From:   from,
+		To:     to,
+		Region: region,
+	}
+}
+
+func (s ShardingPolicyShard) ToProto() *splitterpb.ShardingPolicy_Shard {
+	return &splitterpb.ShardingPolicy_Shard{
+		From:   s.From.String(),
+		To:     s.To.String(),
+		Region: string(s.Region),
 	}
 }
 
@@ -51,6 +113,35 @@ func UnwrapShardingPolicy(policy ShardingPolicy) *splitterpb.ShardingPolicy {
 
 func (p ShardingPolicy) Shards() int {
 	return int(p.pb.GetShards())
+}
+
+func (s ShardingPolicy) HasShardingPolicyShards() bool {
+	return len(s.pb.GetCustomShards()) > 0
+}
+
+func (s ShardingPolicy) GetShardingPolicyShards() ([]ShardingPolicyShard, error) {
+	return slicex.TryMap(s.pb.GetCustomShards(), func(pb *splitterpb.ShardingPolicy_Shard) (ShardingPolicyShard, error) {
+		shard, err := ParseShardingPolicyShard(pb)
+		if err != nil {
+			return ShardingPolicyShard{}, fmt.Errorf("invalid custom shard: %w", err)
+		}
+		return shard, nil
+	})
+}
+
+func (s ShardingPolicy) ShardingPolicyShards() ([]ShardingPolicyShard, error) {
+	result, err := s.GetShardingPolicyShards()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(result) > 0 {
+		if err := validateShardingPolicyShards(result); err != nil {
+			return nil, fmt.Errorf("invalid custom shards: %w", err)
+		}
+	}
+
+	return result, nil
 }
 
 // ShardKV is a key-value with a shard.

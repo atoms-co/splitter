@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
+
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
@@ -11,6 +13,7 @@ import (
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
+	splitteruuidx "go.atoms.co/splitter/pkg/util/uuidx"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 
@@ -262,7 +265,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 			ret = append(ret, w)
 
 		case model.Global:
-			shards := findShards(state.Info().Service(), domain)
+			shards := findShards(domain)
 
 			if placement, ok := domain.Config().Placement(); ok {
 				// Dynamic region domain
@@ -312,22 +315,21 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 			}
 
 		case model.Regional:
-			shards := findShards(state.Info().Service(), domain)
+			for _, region := range domain.Config().Regions() {
+				shards := findShardsForRegion(domain, region)
 
-			for _, r := range domain.Config().Regions() {
 				for _, shard := range shards {
-					w := Work{
+					ret = append(ret, Work{
 						Unit: model.Shard{
-							Region: r,
+							Region: region,
 							Type:   model.Regional,
 							Domain: domain.Name(),
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),
 						},
-						Data: location.Location{Region: r},
+						Data: location.Location{Region: region},
 						Load: ShardLoad,
-					}
-					ret = append(ret, w)
+					})
 				}
 			}
 
@@ -339,13 +341,83 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 	return ret
 }
 
-func findShards(service model.Service, domain model.Domain) []uuidx.Range {
-	n := domain.Config().ShardingPolicy().Shards()
-	if n < 1 {
-		n = service.Config().DefaultShardingPolicy().Shards()
+func findShards(domain model.Domain) []uuidx.Range {
+	policy := domain.Config().ShardingPolicy()
+	targetShardCount := policy.Shards()
+
+	customShards := getShards(policy)
+
+	result, err := splitteruuidx.SplitWithCustomRanges(targetShardCount, customShards)
+	if err != nil {
+		// If complement splitting fails, fall back to equal splitting
+		shards, _ := uuidx.Split(uuidx.Domain, min(max(1, targetShardCount), 1024))
+		return shards
 	}
-	shards, _ := uuidx.Split(uuidx.Domain, min(max(1, n), 1024))
-	return shards
+
+	return result
+}
+
+func findShardsForRegion(domain model.Domain, region model.Region) []uuidx.Range {
+	policy := domain.Config().ShardingPolicy()
+	targetShardCount := policy.Shards()
+
+	customShards := getRegionalShards(policy, region)
+
+	result, err := splitteruuidx.SplitWithCustomRanges(targetShardCount, customShards)
+	if err != nil {
+		shards, _ := uuidx.Split(uuidx.Domain, min(max(1, targetShardCount), 1024))
+		return shards
+	}
+
+	return result
+}
+
+func getShards(policy model.ShardingPolicy) []uuidx.Range {
+	if !policy.HasShardingPolicyShards() {
+		return nil
+	}
+
+	customShards, err := policy.ShardingPolicyShards()
+	if err != nil {
+		return nil
+	}
+
+	ranges, err := slicex.TryMap(customShards, func(cs model.ShardingPolicyShard) (uuidx.Range, error) {
+		return uuidx.NewRange(uuid.UUID(cs.From), uuid.UUID(cs.To))
+	})
+	if err != nil {
+		return nil
+	}
+
+	return ranges
+}
+
+func getRegionalShards(policy model.ShardingPolicy, region model.Region) []uuidx.Range {
+	if !policy.HasShardingPolicyShards() {
+		return nil
+	}
+
+	shards, err := policy.GetShardingPolicyShards()
+	if err != nil {
+		return nil
+	}
+
+	regionalShards := slicex.Filter(shards, func(shard model.ShardingPolicyShard) bool {
+		return shard.Region == region
+	})
+
+	ranges, err := slicex.TryMap(regionalShards, func(shard model.ShardingPolicyShard) (uuidx.Range, error) {
+		return uuidx.NewRange(uuid.UUID(shard.From), uuid.UUID(shard.To))
+	})
+	if err != nil {
+		return nil
+	}
+
+	if err := splitteruuidx.RangesIntersect(ranges); err != nil {
+		return nil
+	}
+
+	return ranges
 }
 
 func toGrant(g Grant) model.Grant {

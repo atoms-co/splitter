@@ -178,4 +178,14 @@ message Domain {
 
 message ShardingPolicy {
   int64 shards = 1; // target #shards (guaranteed minimum)
+  message Shard {
+    string from = 1;
+    string to = 2;
+    string region = 3;
+  }
+  // Use to define custom UUID ranges for shards instead of default equal split of UUID range. Optional.
+  // The custom shards are carved out of the UUID range and rest of the range is split equally based on #shards.
+  // Custom shards should be non over-lapping and defining custom shards changes the number of shards,
+  // final shard count can exceed or be less than target shard count.
+  repeated Shard custom_shards = 2;
 }
