@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -40,7 +43,10 @@ func (s *ConsumerService) Join(server splitterpb.ConsumerService_JoinServer) err
 
 	// check if connected to leader and reject otherwise
 	if joined, err := s.worker.Joined(server.Context()); !joined || err != nil {
-		return model.ToGRPCError(fmt.Errorf("worker not connected to Leader"))
+		if err != nil {
+			return err
+		}
+		return status.Errorf(codes.Unavailable, "worker not connected to leader")
 	}
 
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed()) // cancel context if consumer session closes
