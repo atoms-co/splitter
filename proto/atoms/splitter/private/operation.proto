@@ -6,11 +6,9 @@ import "splitter/proto/internal_v1/state.proto";
 import "splitter/proto/public_v1/consumer.proto";
 import "splitter/proto/public_v1/management.proto";
 
-option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
 
 message RaftInfoRequest {
-
 }
 
 message RaftInfoResponse {
@@ -18,20 +16,19 @@ message RaftInfoResponse {
 }
 
 message SnapshotRequest {
-
 }
 
 message SnapshotResponse {
-  atoms.splitter.private.Snapshot snapshot = 1;
+  Snapshot snapshot = 1;
 }
 
 message RestoreRequest {
   bool nuke = 1; // Set the raft log to an empty snapshot
-  atoms.splitter.private.Snapshot snapshot = 2;
+  Snapshot snapshot = 2;
 }
 
 message RestoreResponse {
-  atoms.splitter.private.Snapshot snapshot = 1;
+  Snapshot snapshot = 1;
 }
 
 message CoordinatorInfoRequest {
@@ -47,18 +44,14 @@ message CoordinatorRestartRequest {
   atoms.splitter.QualifiedServiceName service = 1;
 }
 
-
 message CoordinatorRestartResponse {
-
 }
 
 message CoordinatorClusterSyncRequest {
   atoms.splitter.QualifiedServiceName service = 1;
 }
 
-
 message CoordinatorClusterSyncResponse {
-
 }
 
 // Request to revoke specific grants on specific consumers. Will immediately release allocated grants and
@@ -73,7 +66,6 @@ message CoordinatorRevokeGrantsRequest {
 }
 
 message CoordinatorRevokeGrantsResponse {
-
 }
 
 message ConsumerSuspendRequest {
@@ -81,9 +73,7 @@ message ConsumerSuspendRequest {
   string consumer_id = 2;
 }
 
-
 message ConsumerSuspendResponse {
-
 }
 
 message ConsumerResumeRequest {
@@ -91,9 +81,7 @@ message ConsumerResumeRequest {
   string consumer_id = 2;
 }
 
-
 message ConsumerResumeResponse {
-
 }
 
 message ConsumerDrainRequest {
@@ -101,9 +89,7 @@ message ConsumerDrainRequest {
   string consumer_id = 2;
 }
 
-
 message ConsumerDrainResponse {
-
 }
 
 // OperationService is the internal service for operational apis.

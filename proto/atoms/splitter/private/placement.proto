@@ -5,7 +5,6 @@ package atoms.splitter.private;
 import "splitter/proto/public_v1/placement.proto";
 import "google/protobuf/timestamp.proto";
 
-option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
 
 // BlockDistribution is an internal representation of a region assignment as 1024 blocks. That
@@ -93,7 +92,6 @@ message DeletePlacementRequest {
 }
 
 message DeletePlacementResponse {
-
 }
 
 // PlacementManagementService is the internal placement management service.

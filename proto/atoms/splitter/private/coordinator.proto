@@ -7,30 +7,29 @@ import "splitter/proto/public_v1/management.proto";
 import "splitter/proto/internal_v1/operation.proto";
 import "atoms/splitter/lib/service/session/session.proto";
 
-option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
 
 message CoordinatorOperationRequest {
   oneof req {
-    atoms.splitter.private.CoordinatorInfoRequest info = 1;
-    atoms.splitter.private.CoordinatorRestartRequest restart = 2;
-    atoms.splitter.private.ConsumerSuspendRequest suspend = 3;
-    atoms.splitter.private.ConsumerResumeRequest resume = 4;
-    atoms.splitter.private.ConsumerDrainRequest drain = 5;
-    atoms.splitter.private.CoordinatorClusterSyncRequest sync = 6;
-    atoms.splitter.private.CoordinatorRevokeGrantsRequest revoke_grants = 7;
+    CoordinatorInfoRequest info = 1;
+    CoordinatorRestartRequest restart = 2;
+    ConsumerSuspendRequest suspend = 3;
+    ConsumerResumeRequest resume = 4;
+    ConsumerDrainRequest drain = 5;
+    CoordinatorClusterSyncRequest sync = 6;
+    CoordinatorRevokeGrantsRequest revoke_grants = 7;
   }
 }
 
 message CoordinatorOperationResponse {
   oneof resp {
-    atoms.splitter.private.CoordinatorInfoResponse info = 1;
-    atoms.splitter.private.CoordinatorRestartResponse restart = 2;
-    atoms.splitter.private.ConsumerSuspendResponse suspend = 3;
-    atoms.splitter.private.ConsumerResumeResponse resume = 4;
-    atoms.splitter.private.ConsumerDrainResponse drain = 5;
-    atoms.splitter.private.CoordinatorClusterSyncResponse sync = 6;
-    atoms.splitter.private.CoordinatorRevokeGrantsResponse revoke_grants = 7;
+    CoordinatorInfoResponse info = 1;
+    CoordinatorRestartResponse restart = 2;
+    ConsumerSuspendResponse suspend = 3;
+    ConsumerResumeResponse resume = 4;
+    ConsumerDrainResponse drain = 5;
+    CoordinatorClusterSyncResponse sync = 6;
+    CoordinatorRevokeGrantsResponse revoke_grants = 7;
   }
 }
 

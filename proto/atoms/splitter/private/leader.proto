@@ -12,7 +12,6 @@ import "atoms/splitter/lib/service/session/session.proto";
 import "atoms/splitter/lib/service/location/location.proto";
 import "google/protobuf/timestamp.proto";
 
-option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb/private";
 
 message TenantRequest {
@@ -75,36 +74,36 @@ message DomainResponse {
 
 message PlacementRequest {
   oneof req {
-    atoms.splitter.private.ListPlacementsRequest list = 1;
-    atoms.splitter.private.NewPlacementRequest new = 2;
-    atoms.splitter.private.InfoPlacementRequest info = 3;
-    atoms.splitter.private.UpdatePlacementRequest update = 4;
-    atoms.splitter.private.DeletePlacementRequest delete = 5;
+    ListPlacementsRequest list = 1;
+    NewPlacementRequest new = 2;
+    InfoPlacementRequest info = 3;
+    UpdatePlacementRequest update = 4;
+    DeletePlacementRequest delete = 5;
   }
 }
 
 message PlacementResponse {
   oneof resp {
-    atoms.splitter.private.ListPlacementsResponse list = 1;
-    atoms.splitter.private.NewPlacementResponse new = 2;
-    atoms.splitter.private.InfoPlacementResponse info = 3;
-    atoms.splitter.private.UpdatePlacementResponse update = 4;
-    atoms.splitter.private.DeletePlacementResponse delete = 5;
+    ListPlacementsResponse list = 1;
+    NewPlacementResponse new = 2;
+    InfoPlacementResponse info = 3;
+    UpdatePlacementResponse update = 4;
+    DeletePlacementResponse delete = 5;
   }
 }
 
 
 message OperationRequest {
   oneof req {
-    atoms.splitter.private.RestoreRequest restore = 1;
-    atoms.splitter.private.SnapshotRequest snapshot = 2;
+    RestoreRequest restore = 1;
+    SnapshotRequest snapshot = 2;
   }
 }
 
 message OperationResponse {
   oneof resp {
-    atoms.splitter.private.RestoreResponse restore = 1;
-    atoms.splitter.private.SnapshotResponse snapshot = 2;
+    RestoreResponse restore = 1;
+    SnapshotResponse snapshot = 2;
   }
 }
 
