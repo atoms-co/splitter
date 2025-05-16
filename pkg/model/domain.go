@@ -423,7 +423,7 @@ func FromKey[T ~[16]byte](key Key) T {
 }
 
 func (k Key) Less(o Key) bool {
-	return uuidx.Less(uuid.UUID(k), uuid.UUID(o))
+	return uuidx.Less(k, o)
 }
 
 func (k Key) String() string {
