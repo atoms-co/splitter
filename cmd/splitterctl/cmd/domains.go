@@ -109,7 +109,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 	placement := cmd.Flags().String("placement", "", "Placement name")
 	shards := cmd.Flags().Int("shards", 4, "Target shards")
 	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
-	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
+	namedKeys := cmd.Flags().StringSlice("namedKeys", []string{}, "Named domain keys e.g. Ruff:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 	state := cmd.Flags().String("state", "", "Domain state")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -118,7 +118,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 			return fmt.Errorf("invalid qualified domain name: %v", args[0])
 		}
 
-		keys, err := parseNamedDomainKeys(*named, model.Global, []model.Region{})
+		keys, err := parseNamedDomainKeys(*namedKeys, model.Global, []model.Region{})
 		if err != nil {
 			return err
 		}
@@ -167,7 +167,7 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 	shards := cmd.Flags().Int("shards", 4, "Target shards")
 	regions := cmd.Flags().StringSlice("regions", []string{"centralus"}, "Regions")
 	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
-	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
+	namedKeys := cmd.Flags().StringSlice("namedKeys", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 	state := cmd.Flags().String("state", "", "Domain state")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -178,7 +178,7 @@ func makeNewRegionalDomainCmd() *cobra.Command {
 
 		regions := slicex.Map(*regions, stringx.FromString[model.Region])
 
-		keys, err := parseNamedDomainKeys(*named, model.Regional, regions)
+		keys, err := parseNamedDomainKeys(*namedKeys, model.Regional, regions)
 		if err != nil {
 			return err
 		}
@@ -228,7 +228,7 @@ func makeUpdateDomainCmd() *cobra.Command {
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
 	locked := cmd.Flags().Bool("locked", false, "Locked operational state")
 	shards := cmd.Flags().Int("shards", -1, "Shard count")
-	named := cmd.Flags().StringSlice("named", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
+	namedKeys := cmd.Flags().StringSlice("namedKeys", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := model.ParseQualifiedDomainNameStr(args[0])
@@ -276,10 +276,10 @@ func makeUpdateDomainCmd() *cobra.Command {
 				return fmt.Errorf("unknown domain: %v", name)
 			}
 
-			if len(*named) > 0 {
+			if len(*namedKeys) > 0 {
 				regions, _ := domain.Regions()
 
-				keys, err := parseNamedDomainKeys(*named, domain.Type(), regions)
+				keys, err := parseNamedDomainKeys(*namedKeys, domain.Type(), regions)
 				if err != nil {
 					return err
 				}
