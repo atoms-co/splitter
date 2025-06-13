@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package atoms.splitter.private;
+
+import "atoms/splitter/lib/service/session/session.proto";
+import "splitter/proto/public_v1/consumer.proto";
+import "splitter/proto/public_v1/management.proto";
+
+option go_package = "go.atoms.co/splitter/pb/private";
+
+// ObserverClientMessage is a message sent from observer to coordinator
+message ObserverClientMessage {
+  message Register {
+    atoms.splitter.Instance observer = 1;
+    atoms.splitter.QualifiedServiceName service = 2;
+
+    message Options {
+    }
+    Options options = 3;
+  }
+
+  oneof msg {
+    atoms.splitter.lib.service.service.Message session = 1;
+    Register register = 2;
+  }
+}
+
+// ObserverServerMessage is a message sent from coordinator to observer
+message ObserverServerMessage {
+  oneof msg {
+    atoms.splitter.lib.service.service.Message session = 1;
+    atoms.splitter.ClusterMessage cluster = 2;
+  }
+}
+
+// ObserverService is used by clients to observe participating consumers.
+service ObserverService {
+  // Observe allows clients to receive information about joined consumers (clients that have assigned work).
+  rpc Observe (stream ObserverClientMessage) returns (stream ObserverServerMessage);
+}
