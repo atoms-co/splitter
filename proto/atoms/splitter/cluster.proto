@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package atoms.splitter;
+
+import "google/protobuf/timestamp.proto";
+import "atoms/splitter/lib/service/location/location.proto";
+import "splitter/proto/public_v1/model.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb";
+option java_package = "co.atoms.splitter.pb";
+
+// ClusterMessage represents an update in grant ownership.
+message ClusterMessage {
+  // GrantInfo is information about a grant assigned to some consumer. It only contains information relevant
+  // to the consumers not owning the grant (e.g. lease is excluded).
+  message GrantInfo {
+    string id = 1;
+    Shard shard = 2;
+    GrantState state = 3;
+  }
+
+  // Assignment a list of grants assigned to a consumer. This can be a full or a partial list of grants.
+  message Assignment {
+    Instance consumer = 1;
+    repeated GrantInfo grants = 2;
+  }
+
+  // Snapshot contains assignments for all known consumers, including consumers without grants.
+  message Snapshot {
+    repeated Assignment assignments = 1;
+    atoms.splitter.lib.service.location.Instance origin = 2; // coordinator instance (for debugging)
+    repeated Shard shards = 3; // All known shards in the cluster. Some shards may not have assigned grants.
+  }
+
+  // Assign contains changes in grant ownership. The list of consumer grants is partial and only contains
+  // assigned grants.
+  message Assign {
+    repeated Assignment assignments = 1;
+  }
+
+  // Update indicates a change in a grant state.
+  message Update {
+    repeated GrantInfo grants = 1;
+  }
+
+  // Unassign signals that grants are not owned by consumers.
+  message Unassign {
+    repeated string grants = 1;
+  }
+
+  // Remove signals that consumers have left the work distribution process.
+  message Remove {
+    repeated string consumers = 1;
+  }
+
+  // Shards indicates that the current set of valid shards has changed and contains the new set of shards.
+  // Grants for invalid shards should be removed.
+  // Note that presence of this message implies that list of shards has changed even if the list is empty.
+  // When list is empty, the service has not domains and no shards.
+  message Shards {
+    repeated Shard shards = 1;
+  }
+
+  // Change is a series of modifications of a previously defined cluster.
+  message Change {
+    Assign assign = 1;
+    Update update = 2;
+    Unassign unassign = 3;
+    Remove remove = 4;
+    Shards shards = 5;
+  }
+
+  oneof msg {
+    Snapshot snapshot = 1;
+    Change change = 2;
+  }
+
+  string id = 3;     // coordinator instance id
+  int64 version = 4; // cluster version (strictly sequential if change)
+  google.protobuf.Timestamp timestamp = 5;
+}

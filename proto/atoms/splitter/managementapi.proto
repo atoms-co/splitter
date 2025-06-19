@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package atoms.splitter;
 
+import "splitter/proto/public_v1/model.proto";
 import "splitter/proto/public_v1/management.proto";
 
 option java_multiple_files = true;
@@ -106,7 +107,7 @@ message ListDomainsResponse {
 
 message NewDomainRequest {
   QualifiedDomainName name = 1;
-  Domain.Type type = 2;
+  DomainType type = 2;
   Domain.Config config = 3;
   Domain.State state = 4;
 }

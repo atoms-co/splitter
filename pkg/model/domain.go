@@ -71,16 +71,16 @@ func (n QualifiedDomainName) String() string {
 	return fmt.Sprintf("%v/%v", n.Service, n.Domain)
 }
 
-type DomainType = splitterpb.Domain_Type
+type DomainType = splitterpb.DomainType
 
 const (
-	Unit     = splitterpb.Domain_UNIT
-	Global   = splitterpb.Domain_GLOBAL
-	Regional = splitterpb.Domain_REGIONAL
+	Unit     = splitterpb.DomainType_UNIT
+	Global   = splitterpb.DomainType_GLOBAL
+	Regional = splitterpb.DomainType_REGIONAL
 )
 
 func ParseDomainType(str string) (DomainType, bool) {
-	v, ok := splitterpb.Domain_Type_value[strings.ToUpper(str)]
+	v, ok := splitterpb.DomainType_value[strings.ToUpper(str)]
 	return DomainType(v), ok && v != 0
 }
 

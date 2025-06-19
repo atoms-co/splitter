@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package atoms.splitter;
+
+import "google/protobuf/timestamp.proto";
+import "atoms/splitter/lib/service/location/location.proto";
+
+option java_multiple_files = true;
+option go_package = "go.atoms.co/splitter/pb";
+option java_package = "co.atoms.splitter.pb";
+
+// QualifiedServiceName represents a service within a tenant.
+message QualifiedServiceName {
+  string tenant = 1;
+  string service = 2; // service namespace
+}
+
+// QualifiedDomainName represents a domain within a service.
+message QualifiedDomainName {
+  QualifiedServiceName service = 1;
+  string name = 2;
+}
+
+// DomainKey specifies a domain element for an implicit domain.
+message DomainKey {
+  string region = 1;
+  string key = 2;
+}
+
+// NamedDomainKey specifies a named domain key
+message NamedDomainKey {
+  string name = 1;
+  DomainKey key = 2;
+}
+
+// DomainKeyName specifies a name for a domain key
+message DomainKeyName {
+  string domain = 1;
+  string name = 2;
+}
+
+// QualifiedDomainKey fully specifies a domain element.
+message QualifiedDomainKey {
+  QualifiedDomainName domain = 1;
+  DomainKey key = 2;
+}
+
+// DomainType represents the type of a domain.
+enum DomainType {
+  INVALID = 0;
+  // Domain is a indivisible unit, useful for leader election. Key is not used.
+  UNIT = 1;
+  // Domain is a global uuid range.
+  GLOBAL = 2;
+  // Domain is a set of region-explicit uuid ranges. Each key must be qualified by a region.
+  REGIONAL = 3;
+}
+
+// Shard is a unit of work. Usually it is a continuous subrange of UUIDs, but can also span the whole UUID space.
+message Shard {
+  QualifiedDomainName domain = 1;
+  DomainType type = 2;
+  // Region is the optional region of the shard.
+  string region = 3;
+  string from = 4;
+  string to = 5;
+}
+
+// Instance defines an addressable dynamic component instance. Immutable.
+message Instance {
+  atoms.splitter.lib.service.location.Instance instance = 1;
+  string endpoint = 2;
+}
+
+enum GrantState {
+  UNKNOWN = 0;
+  // Active indicates work assigned to a single worker. No other grants for this work exist.
+  ACTIVE = 1;
+  // Allocated indicates the destination location for work movement, matching a Revoked grant (possibly
+  // unassigned).
+  ALLOCATED = 2;
+  // Revoked indicates the source location for work movement, matching an Allocated grant (possibly unassigned).
+  REVOKED = 3;
+  // Allocated_Loaded is sub-state to Allocated that indicates a consumer has signaled that the grant has been Loaded.
+  ALLOCATED_LOADED = 4;
+  // Revoked_Unloaded is sub-state to Revoked that indicates a consumer has signaled that the grant has been Unloaded.
+  REVOKED_UNLOADED = 5;
+}
+
+// Grant represents a shard with a lease.
+message Grant {
+  string id = 1;
+  Shard shard = 2;
+  GrantState state = 3;
+
+  // Lease of the grant. Informational for allocated and active grants (they follow consumer lease).
+  google.protobuf.Timestamp lease = 4;
+  // Assigned is the time when this grant was assigned to the shard with the status
+  google.protobuf.Timestamp assigned = 5;
+}
