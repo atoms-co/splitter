@@ -69,15 +69,17 @@ func NewClusterMessage(m ClusterMessage) ConsumerMessage {
 }
 
 func NewRegister(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant, opts ...ConsumerOption) ConsumerMessage {
+	options := NewOptions()
+	for _, opt := range opts {
+		opt(options)
+	}
+
 	register := &splitterpb.ClientMessage_Register{
 		Consumer: UnwrapInstance(consumer),
 		Service:  service.ToProto(),
 		Domains:  slicex.Map(domains, QualifiedDomainName.ToProto),
 		Active:   slicex.Map(grants, UnwrapGrant),
-		Options:  &splitterpb.ClientMessage_Register_Options{},
-	}
-	for _, opt := range opts {
-		opt(register.Options)
+		Options:  UnwrapOptions(options),
 	}
 
 	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
@@ -436,6 +438,10 @@ func (m RegisterMessage) Active() []Grant {
 
 type Options struct {
 	pb *splitterpb.ClientMessage_Register_Options
+}
+
+func NewOptions() Options {
+	return WrapOptions(&splitterpb.ClientMessage_Register_Options{})
 }
 
 func WrapOptions(pb *splitterpb.ClientMessage_Register_Options) Options {

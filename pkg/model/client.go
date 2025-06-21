@@ -268,17 +268,16 @@ type Client interface {
 	InfoPlacement(ctx context.Context, name QualifiedPlacementName) (PlacementInfo, error)
 }
 
-type ConsumerOption func(pb *splitterpb.ClientMessage_Register_Options)
+type ConsumerOption func(opts Options)
 
 func WithKeyNames(names ...DomainKeyName) ConsumerOption {
-	return func(pb *splitterpb.ClientMessage_Register_Options) {
-		pb.Names = slicex.Map(names, DomainKeyName.ToProto)
+	return func(opts Options) {
+		opts.pb.Names = slicex.Map(names, DomainKeyName.ToProto)
 	}
 }
-
 func WithCapacityLimit(limit int) ConsumerOption {
-	return func(pb *splitterpb.ClientMessage_Register_Options) {
-		pb.CapacityLimit = uint64(limit)
+	return func(opts Options) {
+		opts.pb.CapacityLimit = uint64(limit)
 	}
 }
 
