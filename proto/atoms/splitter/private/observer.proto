@@ -13,10 +13,6 @@ message ObserverClientMessage {
   message Register {
     atoms.splitter.Instance observer = 1;
     atoms.splitter.QualifiedServiceName service = 2;
-
-    message Options {
-    }
-    Options options = 3;
   }
 
   oneof msg {

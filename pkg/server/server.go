@@ -170,6 +170,7 @@ func (s *Server) ServeInternal(ctx context.Context, listeners ...net.Listener) e
 	splitterprivatepb.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.loc, s.manager))
 	splitterprivatepb.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.cl, s.worker))
 	splitterprivatepb.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cluster))
+	splitterprivatepb.RegisterObserverServiceServer(gs, frontend.NewObserverService(s.cl, s.worker))
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex

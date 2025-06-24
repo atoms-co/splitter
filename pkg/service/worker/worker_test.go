@@ -177,6 +177,9 @@ func (f *fakeCoordinator) Connect(ctx context.Context, sid session.ID, consumer 
 func (f *fakeCoordinator) Drain(timeout time.Duration) {
 	f.Close()
 }
+func (f *fakeCoordinator) Observe(ctx context.Context, sid session.ID, observer location.Instance, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error) {
+	return nil, nil
+}
 
 type fakeCon[T any] struct {
 	iox.AsyncCloser

@@ -56,6 +56,10 @@ type Worker interface {
 	// Returns a response or a logical error.
 	Handle(ctx context.Context, req coordinator.HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error)
 
+	// Observe handles connection of an observer to a local coordinator
+	// Returns a channel with messages for the observer or a logical error.
+	Observe(ctx context.Context, sid session.ID, observer location.Instance, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error)
+
 	Self() location.Instance
 	Joined(ctx context.Context) (bool, error)
 	Drain(timeout time.Duration)
@@ -149,6 +153,38 @@ func (w *worker) Handle(ctx context.Context, req coordinator.HandleRequest) (*sp
 		return nil, err
 	}
 	return c.Handle(ctx, req)
+}
+
+func (w *worker) Observe(ctx context.Context, sid session.ID, observer location.Instance, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error) {
+	msg, ok := chanx.TryRead(in, w.cl, 20*time.Second)
+	if !ok {
+		log.Errorf(ctx, "No observer registration message received: %v", msg)
+		return nil, fmt.Errorf("no observer registration message received %v: %w", msg, model.ErrInvalid)
+	}
+
+	if !msg.IsRegister() {
+		log.Errorf(ctx, "expected observer registration message, got %v", msg)
+		return nil, fmt.Errorf("invalid observer registration message: %w", model.ErrInvalid)
+	}
+
+	register, _ := msg.Register()
+	service, err := register.Service()
+	if err != nil {
+		log.Errorf(ctx, "invalid service in observer registration: %v", err)
+		return nil, fmt.Errorf("invalid service: %w", model.ErrInvalid)
+	}
+
+	c, err := syncx.Txn1(ctx, w.txn, func() (coordinator.Coordinator, error) {
+		gid, ok := w.services[service]
+		if !ok {
+			return nil, fmt.Errorf("coordinator not found for service %v: %w", service, model.ErrNotOwned)
+		}
+		return w.grants[gid].Coordinator, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return c.Observe(ctx, sid, observer, chanx.Prepend(in, msg))
 }
 
 func (w *worker) Joined(ctx context.Context) (bool, error) {

@@ -86,5 +86,5 @@ func (c *consumerSession) ID() model.ConsumerID {
 }
 
 func (c *consumerSession) String() string {
-	return fmt.Sprintf("%v[consumer=%v]", c.connection.Sid(), c.consumer)
+	return fmt.Sprintf("%v[consumer=%v, origin=%v]", c.connection.Sid(), c.consumer, c.origin)
 }

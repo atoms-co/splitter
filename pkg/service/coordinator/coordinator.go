@@ -42,6 +42,9 @@ var (
 	numConsumers = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
 	)
+	numObservers = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_observers", "Connected observer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+	)
 	numAssignments = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey)...),
 	)
@@ -82,6 +85,10 @@ type Coordinator interface {
 	// Returns a response or a logical error.
 	Handle(ctx context.Context, request HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error)
 
+	// Observe handles connection of an observer
+	// Returns a channel with messages for the observer or a logical error.
+	Observe(ctx context.Context, sid session.ID, observer location.Instance, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error)
+
 	Self() location.Instance
 	Drain(timeout time.Duration)
 }
@@ -118,6 +125,7 @@ type coordinator struct {
 	cache  *storage.Cache
 
 	consumers map[model.InstanceID]*consumerSession
+	observers map[model.InstanceID]*observerSession
 	alloc     *Allocation
 	noLb      map[model.Shard]bool // shards excluded from load balancing
 	cluster   *model.ClusterMap
@@ -137,6 +145,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, service mod
 		name:         service,
 		cache:        storage.NewCache(),
 		consumers:    map[model.InstanceID]*consumerSession{},
+		observers:    map[model.InstanceID]*observerSession{},
 		messages:     make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 		inject:       make(chan func()),
 		initialized:  iox.NewAsyncCloser(),
@@ -203,6 +212,42 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin locati
 				}
 			})
 		}()
+		return out, nil
+	})
+}
+
+func (c *coordinator) Observe(ctx context.Context, sid session.ID, origin location.Instance, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error) {
+	msg, ok := chanx.TryRead(in, c.cl, handleTimeout)
+	if !ok {
+		log.Errorf(ctx, "No observer registration message received")
+		return nil, fmt.Errorf("no observer registration message received: %w", model.ErrInvalid)
+	}
+
+	if !msg.IsRegister() {
+		log.Errorf(ctx, "expected observer registration message, got %v", msg)
+		return nil, fmt.Errorf("invalid observer registration message: %w", model.ErrInvalid)
+	}
+
+	register, _ := msg.Register()
+
+	return syncx.Txn1(ctx, c.txn, func() (<-chan core.ObserverServerMessage, error) {
+		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
+
+		s, out := c.observe(wctx, sid, origin, register)
+
+		go func() {
+			defer cancel()
+			<-s.Closed()
+
+			syncx.AsyncTxn(c.txn, func() {
+				if cur, ok := c.observers[s.observer.ID()]; ok {
+					if ok && cur.sid == sid { // guard against race
+						c.disconnectObserver(wctx, "connection closed", cur)
+					}
+				}
+			})
+		}()
+
 		return out, nil
 	})
 }
@@ -393,6 +438,50 @@ func (c *coordinator) disconnect(ctx context.Context, reason string, consumers .
 	}
 }
 
+func (c *coordinator) observe(ctx context.Context, sid session.ID, origin location.Instance, register core.ObserverRegisterMessage) (*observerSession, <-chan core.ObserverServerMessage) {
+	now := c.cl.Now()
+
+	service, _ := register.Service()
+	observer := newObserver(register.Observer(), service, now)
+
+	if old, ok := c.observers[observer.ID()]; ok {
+		log.Infof(ctx, "Observer %v re-connected (session=%v). Disconnecting stale session", observer, sid)
+		c.disconnectObserver(ctx, "reconnect", old)
+	} else {
+		log.Infof(ctx, "Observer %v connected (session=%v)", observer, sid)
+	}
+
+	out := make(chan core.ObserverServerMessage, 100)
+
+	s := &observerSession{
+		AsyncCloser: iox.NewAsyncCloser(),
+		cl:          c.cl,
+		observer:    observer,
+		sid:         sid,
+		out:         out,
+		origin:      origin,
+	}
+	c.observers[observer.ID()] = s
+
+	clusterSnapshot := model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments(), c.alloc.Units())
+
+	if !c.mustSendToObserver(ctx, s, core.NewObserverClusterMessage(clusterSnapshot)) {
+		log.Errorf(ctx, "Failed to send initial cluster snapshot to observer: %v", s)
+	}
+
+	return s, out
+}
+
+func (c *coordinator) disconnectObserver(ctx context.Context, reason string, observers ...*observerSession) {
+	for _, s := range observers {
+		log.Infof(ctx, "Disconnecting observer (reason: %v): %v", reason, s.observer)
+		c.recordAction(ctx, "observer/disconnect", "ok")
+
+		s.Disconnect()
+		delete(c.observers, s.observer.ID())
+	}
+}
+
 func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan core.Update) {
 	defer c.Close()
 	defer c.drain.Close()
@@ -436,6 +525,11 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	// Close consumer connections
 	for _, s := range c.consumers {
 		s.connection.Disconnect()
+	}
+
+	// Close observer connections
+	for _, s := range c.observers {
+		s.Disconnect()
 	}
 
 	log.Infof(ctx, "Coordinator %v/%v closed", c.name, c.self)
@@ -933,6 +1027,13 @@ func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
 		c.mustSend(ctx, s, msg)
 	}
 
+	if len(c.observers) > 0 {
+		observeMsg := core.NewObserverClusterMessage(change)
+		for _, observer := range c.observers {
+			c.mustSendToObserver(ctx, observer, observeMsg)
+		}
+	}
+
 	log.Infof(ctx, "Sent cluster update %v/%v: %v", c.name, c.alloc, c.cluster.ID())
 }
 
@@ -1016,13 +1117,23 @@ func (c *coordinator) handleRevokeGrantsRequest(ctx context.Context, grants map[
 }
 
 func (c *coordinator) handleServiceSyncRequest(ctx context.Context) (*splitterprivatepb.CoordinatorOperationResponse, error) {
-	log.Infof(ctx, "Received sync request for %v, sending cluster %v to all connected consumers", c.info.Name(), c.cluster.ID())
+	log.Infof(ctx, "Received sync request for %v, sending cluster %v to all connected consumers and observers", c.info.Name(), c.cluster.ID())
 	syncx.Txn0(ctx, c.txn, func() {
+		snapshot := model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments(), c.alloc.Units())
+
 		for _, s := range c.consumers {
 			// Send full cluster to the consumer
-			if !s.TrySend(ctx, model.NewClusterMessage(model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments(), c.alloc.Units()))) {
+			if !s.TrySend(ctx, model.NewClusterMessage(snapshot)) {
 				log.Errorf(ctx, "Internal: failed to send overwrite cluster map to consumer: %v. Closing", s)
 				s.connection.Disconnect()
+			}
+		}
+
+		if len(c.observers) > 0 {
+			observeMsg := core.NewObserverClusterMessage(snapshot)
+
+			for _, s := range c.observers {
+				c.mustSendToObserver(ctx, s, observeMsg)
 			}
 		}
 	})
@@ -1131,6 +1242,18 @@ func (c *coordinator) mustSend(ctx context.Context, s *consumerSession, message 
 	return true
 }
 
+// mustSendToObserver attempts to send a message on an observer connection. If it fails, disconnect the observer
+func (c *coordinator) mustSendToObserver(ctx context.Context, s *observerSession, message core.ObserverServerMessage) bool {
+	if s == nil {
+		return false
+	}
+	if !s.TrySend(ctx, message) {
+		c.disconnectObserver(ctx, "stuck", s)
+		return false
+	}
+	return true
+}
+
 func (c *coordinator) emitMetrics(ctx context.Context) {
 	defer c.recordActionLatency(ctx, "metrics", c.cl.Now())
 
@@ -1143,6 +1266,14 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 	}
 	for loc, n := range consumersByLocation {
 		numConsumers.Set(ctx, float64(n), slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.LocationTag(loc))...)
+	}
+
+	observersByLocation := map[location.Location]int{}
+	for _, observer := range c.observers {
+		observersByLocation[observer.observer.Instance().Location()] += 1
+	}
+	for loc, n := range observersByLocation {
+		numObservers.Set(ctx, float64(n), slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.LocationTag(loc))...)
 	}
 
 	// Static shard counts
@@ -1250,6 +1381,7 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 
 func (c *coordinator) resetMetrics(ctx context.Context) {
 	numConsumers.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	numObservers.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numShards.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numAssignments.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numAssignmentsByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)

@@ -658,6 +658,130 @@ func matchesRange(grants []model.Grant, ranges []uuidx.Range, region string) boo
 	})
 }
 
+func TestObserverConnection(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+	cl.Set(time.Now())
+
+	coord := setup(ctx, cl, t, []model.Domain{}, true)
+
+	observer := location.NewNamedInstance("observer-1", location.New("us-west-2", "fubar-xyz123"))
+	observerInstance := model.NewInstance(observer, "foo")
+	in := make(chan core.ObserverClientMessage, 10)
+	sid := session.NewID()
+
+	in <- core.NewObserverRegisterMessage(observerInstance, serviceName)
+
+	out, err := coord.Observe(ctx, sid, observer, in)
+	require.NoError(t, err)
+	require.NotNil(t, out)
+
+	snapshot := readFn(t, out, isObserverClusterSnapshot)
+	require.NotNil(t, snapshot)
+
+	coord.Close()
+
+	select {
+	case <-out:
+	case <-time.After(time.Second):
+		t.Fatal("Observer channel should be closed")
+	}
+}
+
+func TestObserverReceivesClusterUpdates(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+	cl.Set(time.Now())
+
+	domain, err := model.NewDomain(domainName, model.Unit, cl.Now())
+	require.NoError(t, err)
+
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+
+	observer := location.NewInstance(location.New("us-west-2", "fubar-xyz123"))
+	observerInstance := model.NewInstance(observer, "foo")
+	in := make(chan core.ObserverClientMessage, 10)
+	sid := session.NewID()
+
+	in <- core.NewObserverRegisterMessage(observerInstance, serviceName)
+	out, err := coord.Observe(ctx, sid, observer, in)
+	require.NoError(t, err)
+
+	msg := readFn(t, out, isObserverClusterSnapshot)
+	require.NotNil(t, msg)
+
+	consumer := location.NewInstance(location.New("us-west-2", "fubar-xyz-123"))
+	consumerIn := make(chan model.ConsumerMessage, 10)
+	consumerSid := session.NewID()
+
+	consumerInstance := model.NewInstance(consumer, "foo")
+	consumerIn <- model.NewRegister(consumerInstance, serviceName, nil, nil)
+
+	_, err = coord.Connect(ctx, consumerSid, consumer, consumerIn)
+	require.NoError(t, err)
+
+	cl.Add(200 * time.Millisecond)
+
+	change := readFn(t, out, isObserverClusterChange)
+	require.NotNil(t, change)
+
+	assignments := change.Assign().Assignments()
+	require.Len(t, assignments, 1, "should have one assignment for the new consumer")
+	require.Equal(t, consumerInstance.ID(), assignments[0].Consumer().ID(), "assignment should be for the consumer we added")
+}
+
+func TestMultipleObservers(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+	cl.Set(time.Now())
+
+	domain, err := model.NewDomain(domainName, model.Unit, cl.Now())
+	require.NoError(t, err)
+
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+
+	observers := make([]struct {
+		location location.Instance
+		instance model.Instance
+		in       chan core.ObserverClientMessage
+		out      <-chan core.ObserverServerMessage
+	}, 3)
+
+	for i := range observers {
+		observers[i].location = location.NewInstance(location.New("us-west-2", "fubar-xyz123"))
+		observers[i].instance = model.NewInstance(observers[i].location, "foo")
+		observers[i].in = make(chan core.ObserverClientMessage, 10)
+		sid := session.NewID()
+
+		observers[i].in <- core.NewObserverRegisterMessage(observers[i].instance, serviceName)
+
+		out, err := coord.Observe(ctx, sid, observers[i].location, observers[i].in)
+		require.NoError(t, err)
+		observers[i].out = out
+
+		msg := readFn(t, out, isObserverClusterSnapshot)
+		require.NotNil(t, msg)
+	}
+
+	consumer := location.NewInstance(location.New("us-west-2", "fubar-xyz-123"))
+	consumerIn := make(chan model.ConsumerMessage, 10)
+	consumerSid := session.NewID()
+
+	consumerInstance := model.NewInstance(consumer, "foo")
+	consumerIn <- model.NewRegister(consumerInstance, serviceName, nil, nil)
+	_, err = coord.Connect(ctx, consumerSid, consumer, consumerIn)
+	require.NoError(t, err)
+
+	cl.Add(200 * time.Millisecond)
+
+	for i, obs := range observers {
+		change := readFn(t, obs.out, isObserverClusterChange)
+		require.NotNil(t, change, "observer %d should receive update", i+1)
+		assignments := change.Assign().Assignments()
+		require.Equal(t, consumerInstance.ID(), assignments[0].Consumer().ID(), "assignment should be for the consumer we added")
+	}
+}
+
 func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Domain, withFastActivation bool) Coordinator {
 	t.Helper()
 
@@ -727,7 +851,23 @@ func isClusterChange(msg model.ConsumerMessage) (model.ClusterChange, bool) {
 	return model.ClusterChange{}, false
 }
 
-func readFn[T any](t *testing.T, in <-chan model.ConsumerMessage, fn func(message model.ConsumerMessage) (T, bool)) T {
+func isObserverClusterSnapshot(msg core.ObserverServerMessage) (model.ClusterSnapshot, bool) {
+	if msg.IsCluster() {
+		c, _ := msg.Cluster()
+		return c.Snapshot()
+	}
+	return model.ClusterSnapshot{}, false
+}
+
+func isObserverClusterChange(msg core.ObserverServerMessage) (model.ClusterChange, bool) {
+	if msg.IsCluster() {
+		c, _ := msg.Cluster()
+		return c.Change()
+	}
+	return model.ClusterChange{}, false
+}
+
+func readFn[M any, T any](t *testing.T, in <-chan M, fn func(message M) (T, bool)) T {
 	t.Helper()
 	for {
 		select {
