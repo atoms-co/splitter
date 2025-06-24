@@ -17,7 +17,6 @@ import (
 	"go.atoms.co/lib/encoding/yamlx"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/log/hclog"
-	"go.atoms.co/lib/service/envoyx"
 	"go.atoms.co/lib/service/locationx"
 	"go.atoms.co/lib/service/metricsx"
 	"go.atoms.co/lib/service/pprofx"
@@ -61,7 +60,6 @@ func makeStartCommand() *cobra.Command {
 
 		// (1) Initialize
 
-		envoyx.EnsureReady(ctx, envoyx.WaitTimeout)
 		metricsx.Init(ctx, "splitter")
 		err := tracing.RegisterExporter("")
 		if err != nil {
