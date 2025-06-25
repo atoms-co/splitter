@@ -8,12 +8,13 @@ import (
 )
 
 type Ownership struct {
-	active         iox.AsyncCloser
-	waitingActive  iox.AsyncCloser
-	revoked        iox.AsyncCloser
-	waitingRevoked iox.AsyncCloser
-	expired        iox.AsyncCloser
-	waitingExpired iox.AsyncCloser
+	active          iox.AsyncCloser
+	waitingActive   iox.AsyncCloser
+	revokeRequested iox.AsyncCloser
+	revoked         iox.AsyncCloser
+	waitingRevoked  iox.AsyncCloser
+	expired         iox.AsyncCloser
+	waitingExpired  iox.AsyncCloser
 
 	loader   splitter.Loader
 	unloader splitter.Unloader
@@ -43,12 +44,13 @@ func OwnershipWithExpiration(expiration time.Time) OwnershipOption {
 
 func NewOwnership(opts ...OwnershipOption) *Ownership {
 	o := &Ownership{
-		active:         iox.NewAsyncCloser(),
-		waitingActive:  iox.NewAsyncCloser(),
-		revoked:        iox.NewAsyncCloser(),
-		waitingRevoked: iox.NewAsyncCloser(),
-		expired:        iox.NewAsyncCloser(),
-		waitingExpired: iox.NewAsyncCloser(),
+		active:          iox.NewAsyncCloser(),
+		waitingActive:   iox.NewAsyncCloser(),
+		revokeRequested: iox.NewAsyncCloser(),
+		revoked:         iox.NewAsyncCloser(),
+		waitingRevoked:  iox.NewAsyncCloser(),
+		expired:         iox.NewAsyncCloser(),
+		waitingExpired:  iox.NewAsyncCloser(),
 	}
 	for _, opt := range opts {
 		opt(o)
@@ -105,4 +107,8 @@ func (o *Ownership) Unloader() splitter.Unloader {
 
 func (o *Ownership) Expiration() time.Time {
 	return o.expiration
+}
+
+func (o *Ownership) RequestRevoke() {
+	o.revokeRequested.Close()
 }

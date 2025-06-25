@@ -16,9 +16,10 @@ func TestClient_WaitForActive(t *testing.T) {
 		active := iox.NewAsyncCloser()
 		active.Close()
 		err := model.WaitForActive(context.Background(), &testOwnership{
-			active:  active,
-			revoked: iox.NewAsyncCloser(),
-			expired: iox.NewAsyncCloser(),
+			active:          active,
+			revoked:         iox.NewAsyncCloser(),
+			revokeRequested: iox.NewAsyncCloser(),
+			expired:         iox.NewAsyncCloser(),
 		})
 		assert.NoError(t, err)
 	})
@@ -27,9 +28,10 @@ func TestClient_WaitForActive(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		err := model.WaitForActive(ctx, &testOwnership{
-			active:  iox.NewAsyncCloser(),
-			revoked: iox.NewAsyncCloser(),
-			expired: iox.NewAsyncCloser(),
+			active:          iox.NewAsyncCloser(),
+			revoked:         iox.NewAsyncCloser(),
+			revokeRequested: iox.NewAsyncCloser(),
+			expired:         iox.NewAsyncCloser(),
 		})
 		assert.Error(t, err)
 		assert.Equal(t, err, ctx.Err())
@@ -39,9 +41,10 @@ func TestClient_WaitForActive(t *testing.T) {
 		revoked := iox.NewAsyncCloser()
 		revoked.Close()
 		err := model.WaitForActive(context.Background(), &testOwnership{
-			active:  iox.NewAsyncCloser(),
-			revoked: revoked,
-			expired: iox.NewAsyncCloser(),
+			active:          iox.NewAsyncCloser(),
+			revoked:         revoked,
+			revokeRequested: iox.NewAsyncCloser(),
+			expired:         iox.NewAsyncCloser(),
 		})
 		assert.Error(t, err)
 		assert.Equal(t, err, model.ErrRevoked)
@@ -51,9 +54,10 @@ func TestClient_WaitForActive(t *testing.T) {
 		expired := iox.NewAsyncCloser()
 		expired.Close()
 		err := model.WaitForActive(context.Background(), &testOwnership{
-			active:  iox.NewAsyncCloser(),
-			revoked: iox.NewAsyncCloser(),
-			expired: expired,
+			active:          iox.NewAsyncCloser(),
+			revoked:         iox.NewAsyncCloser(),
+			revokeRequested: iox.NewAsyncCloser(),
+			expired:         expired,
 		})
 		assert.Error(t, err)
 		assert.Equal(t, err, model.ErrExpired)
@@ -65,8 +69,9 @@ func TestClient_WaitForRevoke(t *testing.T) {
 		revoked := iox.NewAsyncCloser()
 		revoked.Close()
 		_, err := model.WaitForRevoke(context.Background(), &testOwnership{
-			revoked: revoked,
-			expired: iox.NewAsyncCloser(),
+			revoked:         revoked,
+			revokeRequested: iox.NewAsyncCloser(),
+			expired:         iox.NewAsyncCloser(),
 		})
 		assert.NoError(t, err)
 	})
@@ -75,8 +80,9 @@ func TestClient_WaitForRevoke(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 		_, err := model.WaitForRevoke(ctx, &testOwnership{
-			revoked: iox.NewAsyncCloser(),
-			expired: iox.NewAsyncCloser(),
+			revoked:         iox.NewAsyncCloser(),
+			revokeRequested: iox.NewAsyncCloser(),
+			expired:         iox.NewAsyncCloser(),
 		})
 		assert.Error(t, err)
 		assert.Equal(t, err, ctx.Err())
@@ -86,8 +92,9 @@ func TestClient_WaitForRevoke(t *testing.T) {
 		expired := iox.NewAsyncCloser()
 		expired.Close()
 		_, err := model.WaitForRevoke(context.Background(), &testOwnership{
-			revoked: iox.NewAsyncCloser(),
-			expired: expired,
+			revoked:         iox.NewAsyncCloser(),
+			revokeRequested: iox.NewAsyncCloser(),
+			expired:         expired,
 		})
 		assert.Error(t, err)
 		assert.Equal(t, err, model.ErrExpired)
@@ -95,18 +102,20 @@ func TestClient_WaitForRevoke(t *testing.T) {
 }
 
 type testOwnership struct {
-	active   iox.AsyncCloser
-	revoked  iox.AsyncCloser
-	expired  iox.AsyncCloser
-	loader   *loader
-	unloader *unloader
+	active          iox.AsyncCloser
+	revoked         iox.AsyncCloser
+	revokeRequested iox.AsyncCloser
+	expired         iox.AsyncCloser
+	loader          *loader
+	unloader        *unloader
 }
 
 func newTestOwnership() *testOwnership {
 	return &testOwnership{
-		active:  iox.NewAsyncCloser(),
-		revoked: iox.NewAsyncCloser(),
-		expired: iox.NewAsyncCloser(),
+		active:          iox.NewAsyncCloser(),
+		revoked:         iox.NewAsyncCloser(),
+		expired:         iox.NewAsyncCloser(),
+		revokeRequested: iox.NewAsyncCloser(),
 		loader: &loader{
 			unloaded: iox.NewAsyncCloser(),
 			load:     iox.NewAsyncCloser(),
@@ -124,6 +133,10 @@ func (t *testOwnership) Active() iox.RAsyncCloser {
 
 func (t *testOwnership) Revoked() iox.RAsyncCloser {
 	return t.revoked
+}
+
+func (t *testOwnership) RequestRevoke() {
+	t.revokeRequested.Close()
 }
 
 type loader struct {

@@ -50,36 +50,36 @@ func (g *grant) String() string {
 type handler struct {
 	iox.AsyncCloser
 
-	cl  clock.Clock
-	own *ownership
+	cl        clock.Clock
+	ownership *ownership
 }
 
 func newHandler(ctx context.Context, cl clock.Clock, grant Grant, expiration func() time.Time, loader *loader, unloader *unloader, handlerFn Handler) *handler {
 	h := &handler{
 		AsyncCloser: iox.NewAsyncCloser(),
 		cl:          cl,
-		own:         newOwnership(cl, grant.State(), expiration, loader, unloader),
+		ownership:   newOwnership(cl, grant.State(), expiration, loader, unloader),
 	}
 
 	hctx, cancel := context.WithCancel(ctx)
 	go func() {
 		defer h.Close()
 
-		handlerFn(hctx, grant.ID(), grant.Shard(), h.own)
+		handlerFn(hctx, grant.ID(), grant.Shard(), h.ownership)
 	}()
 
 	go func() {
 		<-h.Closed()
 
 		cancel()
-		h.own.expire()
+		h.ownership.expire()
 	}()
 
 	return h
 }
 
 func (h *handler) Ownership() Ownership {
-	return h.own
+	return h.ownership
 }
 
 func (h *handler) Drain(timeout time.Duration) {
@@ -87,24 +87,26 @@ func (h *handler) Drain(timeout time.Duration) {
 }
 
 type ownership struct {
-	cl         clock.Clock
-	active     iox.AsyncCloser
-	revoked    iox.AsyncCloser
-	expired    iox.AsyncCloser
-	loader     *loader
-	unloader   *unloader
-	expiration func() time.Time
+	cl              clock.Clock
+	active          iox.AsyncCloser
+	revokeRequested iox.AsyncCloser
+	revoked         iox.AsyncCloser
+	expired         iox.AsyncCloser
+	loader          *loader
+	unloader        *unloader
+	expiration      func() time.Time
 }
 
 func newOwnership(cl clock.Clock, state GrantState, expiration func() time.Time, loader *loader, unloader *unloader) *ownership {
 	ret := &ownership{
-		cl:         cl,
-		active:     iox.NewAsyncCloser(),
-		revoked:    iox.NewAsyncCloser(),
-		expired:    iox.NewAsyncCloser(),
-		loader:     loader,
-		unloader:   unloader,
-		expiration: expiration,
+		cl:              cl,
+		active:          iox.NewAsyncCloser(),
+		revokeRequested: iox.NewAsyncCloser(),
+		revoked:         iox.NewAsyncCloser(),
+		expired:         iox.NewAsyncCloser(),
+		loader:          loader,
+		unloader:        unloader,
+		expiration:      expiration,
 	}
 
 	// Initialize correct signals using GrantState
@@ -156,6 +158,10 @@ func (o *ownership) Unloader() Unloader {
 
 func (o *ownership) Expiration() time.Time {
 	return o.expiration()
+}
+
+func (o *ownership) RequestRevoke() {
+	o.revokeRequested.Close()
 }
 
 type loader struct {

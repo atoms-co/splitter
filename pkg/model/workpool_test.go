@@ -455,6 +455,49 @@ func TestWorkpool(t *testing.T) {
 
 		requirex.Closed(t, done.Closed())
 	})
+
+	t.Run("Release grant", func(t *testing.T) {
+		coordinatorCon := newFakeCon[model.ConsumerMessage]()
+		defer coordinatorCon.Close()
+
+		done := iox.NewAsyncCloser()
+
+		consumer := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		w, _ := model.NewWorkPool(cl, consumer, service1, []model.QualifiedDomainName{domain1},
+			func(ctx context.Context, self location.Instance, handler grpcx.Handler[model.ConsumerMessage, model.ConsumerMessage]) error {
+				return coordinatorCon.connect(ctx, handler)
+			},
+			func(ctx context.Context, id model.GrantID, shard model.Shard, ownership model.Ownership) {
+				ownership.RequestRevoke() // request revoke grant
+				select {
+				case <-done.Closed():
+					return
+				}
+			},
+		)
+		defer w.Drain(10 * time.Second)
+		defer w.Close()
+
+		<-coordinatorCon.Connected.Closed()
+
+		requirex.Element(t, coordinatorCon.In)                           // register
+		coordinatorCon.Out <- model.NewExtend(cl.Now().Add(time.Minute)) // initial extend
+
+		shard := model.Shard{Domain: domain1, Type: model.Unit}
+		grant := model.NewGrant("grant1", shard, model.ActiveGrantState, cl.Now().Add(time.Minute), cl.Now())
+		coordinatorCon.Out <- model.NewAssign(grant)
+
+		cMsg := requirex.Element(t, coordinatorCon.In)
+		clientMsg, ok := cMsg.ClientMessage()
+		assert.True(t, ok)
+		revokeMsg, ok := clientMsg.Revoke()
+		assert.True(t, ok)
+		assert.Len(t, revokeMsg.Grants(), 1)
+		assert.Equal(t, revokeMsg.Grants()[0], grant)
+
+		done.Close()
+	})
+
 }
 
 type fakeCon[T any] struct {

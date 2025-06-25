@@ -19,6 +19,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -507,6 +508,43 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 	assert.Len(t, assign3.Grants(), 1)
 	assert.Equal(t, toRevoke.Shard().To, assign3.Grants()[0].Shard().To)
 	assert.Equal(t, toRevoke.Shard().From, assign3.Grants()[0].Shard().From)
+}
+
+func TestCoordinator_RelinquishGrant(t *testing.T) {
+	ctx := context.Background()
+	cl := mockclock.NewUnsynchronized()
+
+	domain, err := model.NewDomain(domainName, model.Global, cl.Now(), model.WithDomainConfig(
+		model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))))
+	require.NoError(t, err)
+
+	coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+
+	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+	in := make(chan model.ConsumerMessage, 1)
+	in <- model.NewRegister(w, serviceName, nil, nil)
+
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
+	require.NoError(t, err, "consumer failed to join coordinator")
+
+	snapshot := readFn(t, out, isClusterSnapshot)
+	assert.Len(t, snapshot.Assignments(), 0)
+
+	assign := readFn(t, out, isAssign)
+	require.Len(t, assign.Grants(), 1)
+
+	assign2 := readFn(t, out, isAssign)
+	require.Len(t, assign2.Grants(), 1)
+
+	change := readFn(t, out, isClusterChange)
+	assert.Len(t, change.Assign().Assignments(), 1)
+
+	msg := model.NewRevoke(assign.Grants()...)
+	in <- msg
+
+	revokeMsg := readFn(t, out, isRevoke)
+	require.Len(t, revokeMsg.Grants(), 1)
+	assert.Equal(t, revokeMsg.Grants()[0].State(), splitterpb.GrantState_REVOKED)
 }
 
 func TestCoordinator_CustomShards(t *testing.T) {

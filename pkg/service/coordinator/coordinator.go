@@ -817,6 +817,10 @@ func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSess
 		released, _ := msg.Released()
 		c.handleReleased(ctx, s, released)
 
+	case msg.IsRevoke():
+		revoke, _ := msg.Revoke()
+		c.handleRevoke(ctx, s, revoke)
+
 	default:
 		log.Errorf(ctx, "Internal: unexpected consumer message: %v", msg)
 	}
@@ -859,6 +863,16 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 	c.allocate(ctx, c.cl.Now(), false)
 
 	log.Infof(ctx, "Deregistered consumer %v with %v active grants", s, len(assigned.Active))
+}
+
+func (c *coordinator) handleRevoke(ctx context.Context, s *consumerSession, revoke model.RevokeMessage) {
+	log.Infof(ctx, "Received revoke %v from consumer %v", revoke.Grants(), s)
+
+	instanceId := s.consumer.instance.Instance().ID()
+	grants := map[model.InstanceID][]model.GrantID{
+		instanceId: slicex.Map(revoke.Grants(), model.Grant.ID),
+	}
+	c.revokeGrants(ctx, grants)
 }
 
 func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, released model.ReleasedMessage) {
@@ -1071,6 +1085,38 @@ func (c *coordinator) handleServiceRestartRequest(ctx context.Context) (*splitte
 	}, nil
 }
 
+func (c *coordinator) revokeGrants(ctx context.Context, grants map[model.InstanceID][]model.GrantID) {
+	now := c.cl.Now()
+	for cid, gs := range grants {
+		var toRevoke []Grant
+		gs := slicex.NewSet(gs...)
+		assigned := c.alloc.Assigned(cid)
+		for _, g := range assigned.Allocated {
+			if gs[g.ID] {
+				c.alloc.Release(g, now)
+				log.Infof(ctx, "Release allocated grant by request [worker=%v grant=%v]", cid, g.ID)
+			}
+		}
+		for _, g := range c.alloc.Assigned(cid).Active {
+			if gs[g.ID] {
+				toRevoke = append(toRevoke, g)
+			}
+		}
+
+		if r, ok := c.alloc.Revoke(cid, now, toRevoke...); ok && len(r) > 0 {
+			s := c.consumers[cid]
+			if c.mustSend(ctx, s, model.NewRevoke(slicex.Map(r, toGrant)...)) {
+				ids := slicex.Map(r, func(g Grant) string { return string(g.ID) })
+				log.Infof(ctx, "Revoked active grants by request [worker=%v grants=[%v]]", cid, strings.Join(ids, ", "))
+			} else {
+				log.Errorf(ctx, "Failed to send revoke message to consumer %v", cid)
+			}
+		}
+	}
+
+	c.allocate(ctx, now, false)
+}
+
 func (c *coordinator) handleRevokeGrantsRequest(ctx context.Context, grants map[model.InstanceID][]model.GrantID) (*splitterprivatepb.CoordinatorOperationResponse, error) {
 	log.Infof(ctx, "Received revoke request for %v. Revoking %v grants", c.info.Name(), len(grants))
 	ret := &splitterprivatepb.CoordinatorOperationResponse{
@@ -1083,35 +1129,7 @@ func (c *coordinator) handleRevokeGrantsRequest(ctx context.Context, grants map[
 	}
 
 	syncx.Txn0(ctx, c.txn, func() {
-		now := c.cl.Now()
-		for cid, gs := range grants {
-			var toRevoke []Grant
-			gs := slicex.NewSet(gs...)
-			assigned := c.alloc.Assigned(cid)
-			for _, g := range assigned.Allocated {
-				if gs[g.ID] {
-					c.alloc.Release(g, now)
-					log.Infof(ctx, "Released allocated grant by request [worker=%v grant=%v]", cid, g.ID)
-				}
-			}
-			for _, g := range c.alloc.Assigned(cid).Active {
-				if gs[g.ID] {
-					toRevoke = append(toRevoke, g)
-				}
-			}
-
-			if r, ok := c.alloc.Revoke(cid, now, toRevoke...); ok && len(r) > 0 {
-				s := c.consumers[cid]
-				if c.mustSend(ctx, s, model.NewRevoke(slicex.Map(r, toGrant)...)) {
-					ids := slicex.Map(r, func(g Grant) string { return string(g.ID) })
-					log.Infof(ctx, "Revoked active grants by request [worker=%v grants=[%v]]", cid, strings.Join(ids, ", "))
-				} else {
-					log.Errorf(ctx, "Failed to send revoke message to consumer %v", cid)
-				}
-			}
-		}
-
-		c.allocate(ctx, now, false)
+		c.revokeGrants(ctx, grants)
 	})
 	return ret, nil
 }

@@ -60,6 +60,10 @@ var (
 type Ownership interface {
 	// Active returns a quit channel to signal that the Grant has been activated.
 	Active() iox.RAsyncCloser
+	// RequestRevoke sends a request to initiate revoke process. The grant won't be immediately
+	// revoked, the caller should explicitly release the grant after some time after calling this method,
+	// regardless of the revoke message being sent successfully or not.
+	RequestRevoke()
 	// Revoked returns a quit channel to signal that the Grant has been revoked.
 	Revoked() iox.RAsyncCloser
 	// Expired returns a quit channel to signal that the Grant lease has expired.

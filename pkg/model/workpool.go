@@ -300,10 +300,22 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			gr.Handler = h
 			p.grants[g.ID()] = gr
 
+			// optional: wait for client to ask to revoke the grant
+			go func() {
+				select {
+				case <-h.ownership.revokeRequested.Closed(): // client requested to revoke the grant:
+					syncx.Txn0(ctx, p.txn, func() {
+						p.releaseGrant(ctx, g.ID())
+					})
+				case <-h.Closed():
+					return
+				}
+			}()
+
 			// Wait on client Load
 			go func() {
 				select {
-				case <-h.own.loader.loaded().Closed():
+				case <-h.ownership.loader.loaded().Closed():
 					syncx.Txn0(ctx, p.txn, func() {
 						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == AllocatedGrantState {
 							grant.Grant = grant.ToState(LoadedGrantState)
@@ -320,7 +332,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			// Wait on client Unload
 			go func() {
 				select {
-				case <-h.own.unloader.unloaded().Closed(): // client closed ownership.Unloader.Unload()
+				case <-h.ownership.unloader.unloaded().Closed(): // client closed ownership.Unloader.Unload()
 					syncx.Txn0(ctx, p.txn, func() {
 						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == RevokedGrantState {
 							grant.Grant = grant.ToState(UnloadedGrantState)
@@ -403,9 +415,9 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 
 		switch update.State() {
 		case LoadedGrantState:
-			g.Handler.own.unloader.load() // Notify client that grant was loaded
+			g.Handler.ownership.unloader.load() // Notify client that grant was loaded
 		case UnloadedGrantState:
-			g.Handler.own.loader.unload() // Notify client that grant was unloaded
+			g.Handler.ownership.loader.unload() // Notify client that grant was unloaded
 		default:
 			log.Warnf(ctx, "Received grant update with unexpected state: %v", update)
 		}
@@ -423,8 +435,8 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 }
 
 func (p *WorkPool) activateGrant(ctx context.Context, grant *grant, active Grant) {
-	grant.Grant = active         // Overwrite allocated grant with active grant
-	grant.Handler.own.activate() // Signal consumer that grant is activated
+	grant.Grant = active               // Overwrite allocated grant with active grant
+	grant.Handler.ownership.activate() // Signal consumer that grant is activated
 
 	log.Infof(ctx, "Promoted grant to active: %v", active)
 }
@@ -439,8 +451,8 @@ func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*clockx
 	}
 	grant.Lease = leases[ttl]
 	grant.LeaseState = LeaseRevoked
-	grant.Grant = revoked      // Overwrite activated grant with revoked grant
-	grant.Handler.own.revoke() // Signal consumer that grant is revoked
+	grant.Grant = revoked            // Overwrite activated grant with revoked grant
+	grant.Handler.ownership.revoke() // Signal consumer that grant is revoked
 
 	// (2) Revoke async. If the Revoke unexpectedly arrives before Assign, the lease still expires.
 
@@ -531,6 +543,23 @@ func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
 	}
 
 	log.Infof(ctx, "WorkPool %v removed grant %v", p.self, grant)
+}
+
+func (p *WorkPool) releaseGrant(ctx context.Context, gid GrantID) {
+	g, ok := p.grants[gid]
+	if !ok {
+		return // ok: no longer present
+	}
+
+	if g.LeaseState == LeaseActive {
+		// Consumer tries to notify the coordinator to revoke the grant, the message is not guaranteed to be delivered.
+		// Range must also release a grant after some period of time so that it's eventually revoked.
+		if p.trySend(ctx, NewRevoke(g.Grant)) {
+			log.Infof(ctx, "Workpool %v requested to release grant %v", p.self, g)
+		} else {
+			log.Warnf(ctx, "Workpool %v failed to request to release grant %v", p.self, g)
+		}
+	}
 }
 
 func (p *WorkPool) emitMetrics(ctx context.Context) {

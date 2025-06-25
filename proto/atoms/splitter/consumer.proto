@@ -52,7 +52,10 @@ message ClientMessage {
   }
 
   // Revoke gracefully revokes previously granted shard leases.
-  // The consumer should relinquish the shard leases instead of letting them expire for faster re-assignment.
+  // Revoke could be initiated by either server or consumer.
+  // - When consumer needs to restart, e.g. to perform complex re-initialization, it could request a grant to be revoked by sending Revoke message.
+  // - Upon receiving the Revoke message, the coordinator starts revoking the grant by sending Revoke message to consumer.
+  // - The consumer should relinquish the shard leases instead of letting them expire for faster re-assignment.
   message Revoke {
     repeated Grant grants = 1;
   }
