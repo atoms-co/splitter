@@ -117,7 +117,7 @@ func TestProcessor(t *testing.T) {
 		created := iox.NewAsyncCloser()
 		r := newFakeRange()
 
-		proc := model.NewProcessor(cl, domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard) *fakeRange {
+		proc := model.NewProcessor(cl, domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
 			defer created.Close()
 			return r
 		})
@@ -195,7 +195,7 @@ func TestProcessor(t *testing.T) {
 		pool := newFakePool()
 
 		r := newFakeRange()
-		proc := model.NewProcessor(cl, domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard) *fakeRange {
+		proc := model.NewProcessor(cl, domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
 			return r
 		})
 		proc.Init(domain.Service, pool)
@@ -229,7 +229,7 @@ func TestProcessor(t *testing.T) {
 		pool := newFakePool()
 
 		r := newFakeRange()
-		proc := model.NewProcessor(cl, domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard) *fakeRange {
+		proc := model.NewProcessor(cl, domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
 			return r
 		})
 		proc.Init(domain.Service, pool)

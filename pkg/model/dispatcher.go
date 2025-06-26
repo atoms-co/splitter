@@ -166,7 +166,7 @@ func (d *Dispatcher) String() string {
 	return fmt.Sprintf("%v/%v", d.service, d.id.ID())
 }
 
-type RangeFactory[V Range] func(ctx context.Context, grant GrantID, shard Shard) V
+type RangeFactory[V Range] func(ctx context.Context, grant GrantID, shard Shard, ownership Ownership) V
 type RangeFactoryEx[V Range] func(shard Shard) (RangeFactory[V], bool)
 
 // Range is a lifecycle interface to participate in graceful Grant state transitions, used by a
@@ -250,7 +250,7 @@ func (p *Processor[T, K, V]) handle(ctx context.Context, fn RangeFactory[V], gra
 	// (2) Create range and wait for initialization. Then signal loaded. Loaded is an owning state.
 	// We delay Range creation to after ALLOCATED_UNLOADED to simplify initialization.
 
-	r := fn(ctx, grant, shard)
+	r := fn(ctx, grant, shard, lease)
 	defer r.Close()
 
 	p.grants.Allocated(grant, shard, r)
