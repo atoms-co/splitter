@@ -2,10 +2,10 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
-import "splitter/proto/public_v1/model.proto";
-import "splitter/proto/public_v1/management.proto";
-import "splitter/proto/public_v1/placement.proto";
-import "splitter/proto/internal_v1/placement.proto";
+import "atoms/splitter/model.proto";
+import "atoms/splitter/management.proto";
+import "atoms/splitter/placement.proto";
+import "atoms/splitter/private/placement.proto";
 
 option go_package = "go.atoms.co/splitter/pb/private";
 

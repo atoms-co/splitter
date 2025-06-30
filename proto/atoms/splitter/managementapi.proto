@@ -2,8 +2,8 @@ syntax = "proto3";
 
 package atoms.splitter;
 
-import "splitter/proto/public_v1/model.proto";
-import "splitter/proto/public_v1/management.proto";
+import "atoms/splitter/model.proto";
+import "atoms/splitter/management.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";

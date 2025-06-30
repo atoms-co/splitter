@@ -3,7 +3,7 @@ syntax = "proto3";
 package atoms.splitter;
 
 import "google/protobuf/timestamp.proto";
-import "splitter/proto/public_v1/model.proto";
+import "atoms/splitter/model.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";

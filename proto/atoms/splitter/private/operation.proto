@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
-import "splitter/proto/internal_v1/state.proto";
-import "splitter/proto/public_v1/cluster.proto";
-import "splitter/proto/public_v1/model.proto";
+import "atoms/splitter/private/state.proto";
+import "atoms/splitter/cluster.proto";
+import "atoms/splitter/model.proto";
 
 option go_package = "go.atoms.co/splitter/pb/private";
 
