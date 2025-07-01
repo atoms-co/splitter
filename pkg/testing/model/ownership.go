@@ -112,3 +112,7 @@ func (o *Ownership) Expiration() time.Time {
 func (o *Ownership) RequestRevoke() {
 	o.revokeRequested.Close()
 }
+
+func (o *Ownership) RevokeRequested() iox.RAsyncCloser {
+	return o.revokeRequested
+}
