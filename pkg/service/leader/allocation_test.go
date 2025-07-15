@@ -1,6 +1,7 @@
 package leader_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -20,30 +21,41 @@ func TestHasRegionAffinity(t *testing.T) {
 	n2us := location.New("us", "n2")
 	n1eu := location.New("eu", "n1")
 	n3eu := location.New("eu", "n3")
+	n1ap := location.New("ap", "n1")
 	none := location.Location{}
+	var noneWork []location.Location
 
 	tests := []struct {
-		worker, work location.Location
-		expected     bool
+		worker   location.Location
+		work     []location.Location
+		expected bool
 	}{
-		{n1us, n1us, true},
-		{n1us, n2us, true},
-		{n2us, n1us, true},
+		{n1us, []location.Location{n1us}, true},
+		{n1us, []location.Location{n2us}, true},
+		{n2us, []location.Location{n1us}, true},
 
-		{n1us, n1eu, false},
-		{n1eu, n1us, false},
-		{n1us, n3eu, false},
+		{n1us, []location.Location{n1eu}, false},
+		{n1eu, []location.Location{n1us}, false},
+		{n1us, []location.Location{n3eu}, false},
 
-		{none, none, true},  // if the work has no region, no penalty ..
-		{n1us, none, true},  // .. even if the worker has one, ..
-		{none, n1us, false}, // .. but a region-less worker incurs it if the work has a region
+		{n1us, []location.Location{n1us, n1eu}, true},
+		{n1eu, []location.Location{n1us, n1eu}, true},
+
+		{n1ap, []location.Location{n1us, n1eu}, false},
+		{n1ap, []location.Location{n1us, n1eu}, false},
+
+		{none, noneWork, true},                   // if the work has no region, no penalty ..
+		{n1us, noneWork, true},                   // .. even if the worker has one, ..
+		{none, []location.Location{n1us}, false}, // .. but a region-less worker incurs it if the work has a region
 	}
 
 	for _, tt := range tests {
-		worker := leader.Worker{ID: "id", Data: model.NewInstance(location.NewInstance(tt.worker), "")}
-		work := leader.Work{Unit: model.QualifiedServiceName{Tenant: "t", Service: "s"}, Data: tt.work}
+		t.Run(fmt.Sprintf("worker: %v, work: %v | expects: %v", tt.worker, tt.work, tt.expected), func(t *testing.T) {
+			worker := leader.Worker{ID: "id", Data: model.NewInstance(location.NewInstance(tt.worker), "")}
+			work := leader.Work{Unit: model.QualifiedServiceName{Tenant: "t", Service: "s"}, Data: tt.work}
 
-		assertx.Equal(t, leader.HasRegionAffinity(worker, work), tt.expected)
+			assertx.Equal(t, leader.HasRegionAffinity(worker, work), tt.expected)
+		})
 	}
 }
 
@@ -94,30 +106,30 @@ func TestControl(t *testing.T) {
 		model.NewInstance(location.NewInstance(location.New("eastus2", "unknown")), ""),
 	)
 
-	_, ok := ctrl.TryPlace(w1, allocation.Work[model.QualifiedServiceName, location.Location]{Unit: s1.Name()})
+	_, ok := ctrl.TryPlace(w1, allocation.Work[model.QualifiedServiceName, []location.Location]{Unit: s1.Name()})
 	assert.False(t, ok)
 
-	_, ok = ctrl.TryPlace(w1, allocation.Work[model.QualifiedServiceName, location.Location]{Unit: s2.Name()})
+	_, ok = ctrl.TryPlace(w1, allocation.Work[model.QualifiedServiceName, []location.Location]{Unit: s2.Name()})
 	assert.False(t, ok)
 
-	_, ok = ctrl.TryPlace(w1, allocation.Work[model.QualifiedServiceName, location.Location]{Unit: s3.Name()})
+	_, ok = ctrl.TryPlace(w1, allocation.Work[model.QualifiedServiceName, []location.Location]{Unit: s3.Name()})
 	assert.True(t, ok)
 
-	_, ok = ctrl.TryPlace(w2, allocation.Work[model.QualifiedServiceName, location.Location]{Unit: s1.Name()})
+	_, ok = ctrl.TryPlace(w2, allocation.Work[model.QualifiedServiceName, []location.Location]{Unit: s1.Name()})
 	assert.True(t, ok)
 
-	_, ok = ctrl.TryPlace(w2, allocation.Work[model.QualifiedServiceName, location.Location]{Unit: s2.Name()})
+	_, ok = ctrl.TryPlace(w2, allocation.Work[model.QualifiedServiceName, []location.Location]{Unit: s2.Name()})
 	assert.False(t, ok)
 
-	_, ok = ctrl.TryPlace(w2, allocation.Work[model.QualifiedServiceName, location.Location]{Unit: s3.Name()})
+	_, ok = ctrl.TryPlace(w2, allocation.Work[model.QualifiedServiceName, []location.Location]{Unit: s3.Name()})
 	assert.False(t, ok)
 
-	_, ok = ctrl.TryPlace(w3, allocation.Work[model.QualifiedServiceName, location.Location]{Unit: s1.Name()})
+	_, ok = ctrl.TryPlace(w3, allocation.Work[model.QualifiedServiceName, []location.Location]{Unit: s1.Name()})
 	assert.True(t, ok)
 
-	_, ok = ctrl.TryPlace(w3, allocation.Work[model.QualifiedServiceName, location.Location]{Unit: s2.Name()})
+	_, ok = ctrl.TryPlace(w3, allocation.Work[model.QualifiedServiceName, []location.Location]{Unit: s2.Name()})
 	assert.True(t, ok)
 
-	_, ok = ctrl.TryPlace(w3, allocation.Work[model.QualifiedServiceName, location.Location]{Unit: s3.Name()})
+	_, ok = ctrl.TryPlace(w3, allocation.Work[model.QualifiedServiceName, []location.Location]{Unit: s3.Name()})
 	assert.False(t, ok)
 }

@@ -48,6 +48,11 @@ message Service {
       string consumer_region = 2;
     }
     repeated LocalityOverride overrides = 3;
+
+    // region preferences for coordinator. Overrides `region` config if provided. Optional.
+    repeated string regions = 4;
+
+    // TODO (grant.azure) 2025/07/11: UNIT/GLOBAL domain multi-region preferences
   }
   Config config = 2;
 

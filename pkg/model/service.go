@@ -11,6 +11,7 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
+	"go.atoms.co/lib/stringx"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 
@@ -148,6 +149,12 @@ func WithServiceRegion(region Region) ServiceConfigOption {
 	}
 }
 
+func WithServiceRegions(regions ...Region) ServiceConfigOption {
+	return func(cfg *splitterpb.Service_Config) {
+		cfg.Regions = slicex.Map(regions, stringx.ToString[Region])
+	}
+}
+
 func WithServiceDefaultShardingPolicy(policy ShardingPolicy) ServiceConfigOption {
 	return func(cfg *splitterpb.Service_Config) {
 		cfg.DefaultShardingPolicy = UnwrapShardingPolicy(policy)
@@ -203,6 +210,10 @@ func UnwrapServiceConfig(cfg ServiceConfig) *splitterpb.Service_Config {
 
 func (c ServiceConfig) Region() Region {
 	return Region(c.pb.GetRegion())
+}
+
+func (c ServiceConfig) Regions() []Region {
+	return slicex.Map(c.pb.GetRegions(), stringx.FromString[Region])
 }
 
 func (c ServiceConfig) DefaultShardingPolicy() ShardingPolicy {
