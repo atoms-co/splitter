@@ -6,6 +6,7 @@ import (
 
 	"google.golang.org/grpc/status"
 
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/slicex"
 )
@@ -23,6 +24,7 @@ const (
 
 	sourceKey        metrics.Key = "source"
 	sourceVersionKey metrics.Key = "source_version"
+	locationKey      metrics.Key = "location"
 )
 
 var (
@@ -76,16 +78,26 @@ func sourceVersionTag(v string) metrics.Tag {
 	return metrics.Tag{Key: sourceVersionKey, Value: v}
 }
 
-var (
-	numForwarded = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey)...)
-	numHandled   = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey)...)
-)
+func locationTag(l location.Location) metrics.Tag {
+	value := "unknown"
+	if l != (location.Location{}) {
+		value = l.String()
+	}
 
-func recordForwardedRequest(ctx context.Context, domain QualifiedDomainName, handler, result string) {
-	numForwarded.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler))...)
+	return metrics.Tag{Key: locationKey, Value: value}
 }
 
-func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, handler string, err error) {
+var (
+	numForwarded = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, locationKey)...)
+	numHandled   = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, locationKey)...)
+)
+
+func recordForwardedRequest(ctx context.Context, domain QualifiedDomainName, handler, result string, location location.Location) {
+	tags := slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler), locationTag(location))
+	numForwarded.Increment(ctx, 1, tags...)
+}
+
+func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, handler string, err error, location location.Location) {
 	var result string
 	if err == nil {
 		result = "ok"
@@ -96,5 +108,7 @@ func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, handl
 			result = "error"
 		}
 	}
-	numHandled.Increment(ctx, 1, slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler))...)
+
+	tags := slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler), locationTag(location))
+	numHandled.Increment(ctx, 1, tags...)
 }

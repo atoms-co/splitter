@@ -332,6 +332,10 @@ func (r *testGrantResolver) DomainKey(key model.QualifiedDomainKey) model.Qualif
 	return key
 }
 
+func (r *testGrantResolver) Location(key model.QualifiedDomainKey) (location.Location, bool) {
+	return location.Location{}, false
+}
+
 func handler(resp model.QualifiedDomainKey) func(r *fakeRange, ctx context.Context, key model.QualifiedDomainKey) (model.QualifiedDomainKey, error) {
 	return func(r *fakeRange, ctx context.Context, key model.QualifiedDomainKey) (model.QualifiedDomainKey, error) {
 		return resp, nil
@@ -388,4 +392,8 @@ func (r *testProxy) Cluster() (model.Cluster, bool) {
 
 func (r *testProxy) DomainKey(key model.QualifiedDomainKey) model.QualifiedDomainKey {
 	return key
+}
+
+func (r *testProxy) Location(key model.QualifiedDomainKey) (location.Location, bool) {
+	return r.Resolver.Location(key)
 }

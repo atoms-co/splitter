@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/backoffx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
@@ -113,6 +114,7 @@ type Resolver[T, K any] interface {
 	SimpleResolver[T, K]
 
 	DomainKey(key K) QualifiedDomainKey
+	Location(key K) (location.Location, bool)
 }
 
 // GRPCMethod is a function signature for invoking a method on a gPRC client, e.g. v1.FooServiceClient.Handle
@@ -137,14 +139,14 @@ func Invoke[T, K, A, B any](ctx context.Context, p Resolver[T, K], key K, fn GRP
 	if err != nil {
 		if errors.Is(err, ErrNoResolution) {
 			rt, err := local()
-			recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", err)
+			recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", err, location.Location{})
 			return rt, err
 		}
 		var b B
 		return b, err
 	}
 	rt, err := fn(t, ctx, a)
-	recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", err)
+	recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", err, location.Location{})
 	return rt, err
 }
 
@@ -184,27 +186,32 @@ func (r *resolver[T]) Resolve(ctx context.Context, key QualifiedDomainKey) (T, e
 	if c, ok := r.pool.Cluster(); ok {
 		if instance, _, ok := c.Lookup(key, r.states...); ok {
 			con, err := r.pool.Resolve(ctx, instance)
+			loc := instance.Location()
 			if err != nil {
 				if errors.Is(err, ErrNoResolution) {
-					recordForwardedRequest(ctx, key.Domain, "local", "ok")
+					recordForwardedRequest(ctx, key.Domain, "local", "ok", loc)
 				} else {
-					recordForwardedRequest(ctx, key.Domain, "remote", err.Error())
+					recordForwardedRequest(ctx, key.Domain, "remote", err.Error(), loc)
 				}
 				return zero, err
 			}
-			recordForwardedRequest(ctx, key.Domain, "remote", "ok")
+			recordForwardedRequest(ctx, key.Domain, "remote", "ok", loc)
 			return r.fn(con), nil
 		}
-		recordForwardedRequest(ctx, key.Domain, "unknown", "owner_not_found")
+		recordForwardedRequest(ctx, key.Domain, "unknown", "owner_not_found", location.Location{})
 		return zero, fmt.Errorf("no owner: %w", ErrNotOwned)
 	}
 
-	recordForwardedRequest(ctx, key.Domain, "unknown", "not_initialized")
+	recordForwardedRequest(ctx, key.Domain, "unknown", "not_initialized", location.Location{})
 	return zero, fmt.Errorf("not initialized: %w", ErrNotOwned)
 }
 
 func (r *resolver[T]) DomainKey(key QualifiedDomainKey) QualifiedDomainKey {
 	return key
+}
+
+func (r *resolver[T]) Location(key QualifiedDomainKey) (location.Location, bool) {
+	return r.pool.Location(key)
 }
 
 type domainResolver[T, K any] struct {
@@ -225,6 +232,10 @@ func (d *domainResolver[T, K]) DomainKey(key K) QualifiedDomainKey {
 	return d.fn(key)
 }
 
+func (d *domainResolver[T, K]) Location(key K) (location.Location, bool) {
+	return d.resolver.Location(d.fn(key))
+}
+
 // GrantResolver provides access to the local grant-owning V-typed values of a domain.
 // The K-typed keys are mapped to a DomainKey to determine grant ownership.
 type GrantResolver[K, V any] interface {
@@ -232,6 +243,7 @@ type GrantResolver[K, V any] interface {
 	Lookup(key K, grants ...GrantState) (V, bool)
 
 	DomainKey(key K) QualifiedDomainKey
+	Location(key K) (location.Location, bool)
 }
 
 // Proxy provides access to the grant-owning V-typed values of a domain, whether local or remote. It also
@@ -284,6 +296,11 @@ func (p *ProxyStub[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 	return p.proxy.DomainKey(key)
 }
 
+func (p *ProxyStub[T, K, V]) Location(key K) (location.Location, bool) {
+	<-p.initialized.Closed()
+	return p.proxy.Location(key)
+}
+
 // ErrorWrapper converts an error to another error. Usually a wrapper that converts
 // a logical error to a gRPC error or vice versa
 type ErrorWrapper func(err error) error
@@ -318,21 +335,24 @@ func HandleEx[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], ke
 
 	if r, ok := p.Lookup(key, ActiveGrantState); ok {
 		domain := p.DomainKey(key).Domain
-		recordForwardedRequest(ctx, domain, "local", "ok")
+		loc, _ := p.Location(key)
+		recordForwardedRequest(ctx, domain, "local", "ok", loc)
 		rt, err := local(r)
 		err = w(err)
-		recordHandledRequest(ctx, domain, "local", err)
+		recordHandledRequest(ctx, domain, "local", err, loc)
 		return rt, err
 	}
 
 	t, err := p.Resolve(ctx, key)
+	loc, _ := p.Location(key)
+
 	if err != nil {
 		var b B
 		if errors.Is(err, ErrNoResolution) {
 			if r, ok := p.Lookup(key); ok {
 				rt, err := local(r)
 				err = w(err)
-				recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", err)
+				recordHandledRequest(ctx, p.DomainKey(key).Domain, "local", err, loc)
 				return rt, err
 			}
 			err, _ := OwnershipErrorToGRPC(ErrNotOwned)
@@ -342,7 +362,7 @@ func HandleEx[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], ke
 	}
 
 	rt, err := fn(t, ctx, a)
-	recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", err)
+	recordHandledRequest(ctx, p.DomainKey(key).Domain, "remote", err, loc)
 	return rt, err
 }
 
@@ -372,14 +392,16 @@ func HandleLocal[K, V, REQ, RESP any](ctx context.Context, r GrantResolver[K, V]
 // that return logical error to convert logical errors to gRPC errors (expected by HandleLocal).
 func HandleLocalEx[K, V, REQ, RESP any](ctx context.Context, r GrantResolver[K, V], key K, req REQ, w ErrorWrapper, handler func(V, context.Context, REQ) (RESP, error)) (RESP, error) {
 	domain := r.DomainKey(key).Domain
+	loc, _ := r.Location(key)
+
 	if g, ok := r.Lookup(key); ok {
 		rt, err := handler(g, ctx, req)
 		err = w(err)
-		recordHandledRequest(ctx, domain, "local", err)
+		recordHandledRequest(ctx, domain, "local", err, loc)
 		return rt, err
 	}
 	var resp RESP
 	err, _ := OwnershipErrorToGRPC(ErrNotOwned)
-	recordHandledRequest(ctx, domain, "local", err)
+	recordHandledRequest(ctx, domain, "local", err, loc)
 	return resp, err
 }

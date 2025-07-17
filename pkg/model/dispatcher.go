@@ -329,3 +329,7 @@ func (p *Processor[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 	sdk := p.fn(key)
 	return QualifiedDomainKey{Domain: QualifiedDomainName{Service: p.service, Domain: sdk.Domain}, Key: sdk.Key}
 }
+
+func (p *Processor[T, K, V]) Location(key K) (location.Location, bool) {
+	return p.resolver.Location(key)
+}

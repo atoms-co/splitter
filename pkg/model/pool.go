@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc"
 
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
 )
@@ -184,6 +185,7 @@ func DialNonBlocking(opts ...grpc.DialOption) DialFn[grpc.ClientConnInterface] {
 type ConnectionPool interface {
 	SimpleResolver[grpc.ClientConnInterface, Consumer]
 	Cluster() (Cluster, bool)
+	Location(key QualifiedDomainKey) (location.Location, bool)
 }
 
 type pool struct {
@@ -211,6 +213,15 @@ func (p *pool) Cluster() (Cluster, bool) {
 	defer p.mu.RUnlock()
 
 	return p.cluster, p.cluster != nil
+}
+
+func (p *pool) Location(key QualifiedDomainKey) (location.Location, bool) {
+	if c, ok := p.Cluster(); ok {
+		if consumer, _, ok := c.Lookup(key); ok {
+			return consumer.Location(), true
+		}
+	}
+	return location.Location{}, false
 }
 
 func (p *pool) process(ctx context.Context, clusters <-chan Cluster) {

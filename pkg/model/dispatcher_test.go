@@ -320,6 +320,15 @@ func (f *fakePool) Cluster() (model.Cluster, bool) {
 	return f.Current, f.Current != nil
 }
 
+func (f *fakePool) Location(key model.QualifiedDomainKey) (location.Location, bool) {
+	if c, ok := f.Cluster(); ok {
+		if consumer, _, ok := c.Lookup(key); ok {
+			return consumer.Location(), true
+		}
+	}
+	return location.Location{}, false
+}
+
 // filter is a simple DispatchFilter for checking shards.
 type filter func(shard model.Shard) bool
 
