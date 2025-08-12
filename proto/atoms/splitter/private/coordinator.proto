@@ -5,6 +5,7 @@ package atoms.splitter.private;
 import "atoms/splitter/consumer.proto";
 import "atoms/splitter/model.proto";
 import "atoms/splitter/private/operation.proto";
+import "atoms/splitter/private/observer.proto";
 import "atoms/splitter/lib/service/session/session.proto";
 
 option go_package = "go.atoms.co/splitter/pb/private";
@@ -62,4 +63,7 @@ service CoordinatorService {
 
   // Handle sends a request to the coordinator. It returns a matching response. Mainly for Operations
   rpc Handle (CoordinatorHandleRequest) returns (CoordinatorHandleResponse);
+
+  // Observe establishes a bi-directional connection between a proxy and a coordinator. Handles forwarded observer requests.
+  rpc Observe (stream ObserverClientMessage) returns (stream ObserverServerMessage);
 }
