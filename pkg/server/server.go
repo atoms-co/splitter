@@ -137,7 +137,7 @@ func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 	splitterpb.RegisterPlacementServiceServer(gs, frontend.NewPlacementService(placement))
 	splitterprivatepb.RegisterPlacementManagementServiceServer(gs, placement)
 	splitterprivatepb.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.worker, s.resolver, s.manager, s.manager))
-	splitterprivatepb.RegisterObserverServiceServer(gs, frontend.NewObserverService(s.cl, s.worker))
+	splitterprivatepb.RegisterObserverServiceServer(gs, frontend.NewObserverService(s.cl, s.worker, s.resolver))
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
