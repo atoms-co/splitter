@@ -123,7 +123,7 @@ func (m ObserverServerMessage) IsCluster() bool {
 	return m.pb.GetCluster() != nil
 }
 
-func (m ObserverServerMessage) Cluster() (model.ClusterMessage, bool) {
+func (m ObserverServerMessage) ClusterMessage() (model.ClusterMessage, bool) {
 	if c := m.pb.GetCluster(); c != nil {
 		return model.WrapClusterMessage(c), true
 	}

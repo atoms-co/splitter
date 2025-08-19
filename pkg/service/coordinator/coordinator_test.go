@@ -891,7 +891,7 @@ func isClusterChange(msg model.ConsumerMessage) (model.ClusterChange, bool) {
 
 func isObserverClusterSnapshot(msg core.ObserverServerMessage) (model.ClusterSnapshot, bool) {
 	if msg.IsCluster() {
-		c, _ := msg.Cluster()
+		c, _ := msg.ClusterMessage()
 		return c.Snapshot()
 	}
 	return model.ClusterSnapshot{}, false
@@ -899,7 +899,7 @@ func isObserverClusterSnapshot(msg core.ObserverServerMessage) (model.ClusterSna
 
 func isObserverClusterChange(msg core.ObserverServerMessage) (model.ClusterChange, bool) {
 	if msg.IsCluster() {
-		c, _ := msg.Cluster()
+		c, _ := msg.ClusterMessage()
 		return c.Change()
 	}
 	return model.ClusterChange{}, false

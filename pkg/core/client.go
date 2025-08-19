@@ -274,7 +274,7 @@ type ObserverClient interface {
 }
 
 type observerPool struct {
-	cluster model.Cluster
+	cluster *model.ClusterMap
 	updates chan model.ClusterMessage
 	mu      sync.RWMutex
 }
@@ -282,7 +282,7 @@ type observerPool struct {
 func (p *observerPool) Cluster() (model.Cluster, bool) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return p.cluster, p.cluster != nil
+	return p.cluster, len(p.cluster.Consumers()) != 0
 }
 
 type observerClient struct {
@@ -299,6 +299,7 @@ func NewObserverClient(cc *grpc.ClientConn) ObserverClient {
 
 func (c *observerClient) Observe(ctx context.Context, observer Observer, service model.QualifiedServiceName) (model.ClusterProvider, <-chan model.ClusterMessage, iox.AsyncCloser) {
 	pool := &observerPool{
+		cluster: model.NewClusterMap(model.NewClusterID(observer.Instance(), c.cl.Now()), nil),
 		updates: make(chan model.ClusterMessage, 10),
 	}
 	quit := iox.NewAsyncCloser()
@@ -315,6 +316,8 @@ func (c *observerClient) observe(ctx context.Context, observer Observer, service
 	wctx, _ := contextx.WithQuitCancel(ctx, quit.Closed())
 	iox.WithCancel(ctx, quit)
 
+	registration := NewObserverRegisterMessage(observer, service)
+
 	for !quit.IsClosed() {
 		sess, establish, out := session.NewClient(wctx, c.cl, observer.Instance())
 		sessCtx, _ := contextx.WithQuitCancel(wctx, sess.Closed())
@@ -328,15 +331,13 @@ func (c *observerClient) observe(ctx context.Context, observer Observer, service
 				return WrapObserverServerMessage(pb), true
 			})
 
-			registration := NewObserverRegisterMessage(observer, service)
 			resp := make(chan ObserverClientMessage, 1)
 			resp <- registration
 			close(resp)
 
 			go func() {
-				err := c.processClusterUpdates(ctx, ch, pool)
-				if err != nil {
-					log.Warnf(ctx, "Cluster update processing failed: %v", err)
+				if err := c.processClusterUpdates(ctx, ch, pool); err != nil {
+					log.Errorf(ctx, "Failed to process cluster updates: %v", err)
 					sess.Close()
 				}
 			}()
@@ -362,9 +363,8 @@ func (c *observerClient) observe(ctx context.Context, observer Observer, service
 }
 
 func (c *observerClient) processClusterUpdates(ctx context.Context, messages <-chan ObserverServerMessage, pool *observerPool) error {
-	var currentCluster *model.ClusterMap
 	for msg := range messages {
-		if cluster, ok := msg.Cluster(); ok {
+		if cluster, ok := msg.ClusterMessage(); ok {
 			select {
 			case pool.updates <- cluster:
 			case <-ctx.Done():
@@ -374,16 +374,14 @@ func (c *observerClient) processClusterUpdates(ctx context.Context, messages <-c
 				pool.updates <- cluster
 			}
 
-			var err error
-			currentCluster, err = model.UpdateClusterMap(ctx, currentCluster, cluster)
+			pool.mu.Lock()
+			defer pool.mu.Unlock()
+			updatedCluster, err := model.UpdateClusterMap(ctx, pool.cluster, cluster)
 			if err != nil {
-				log.Errorf(ctx, "Failed to update cluster: %v, disconnecting", err)
+				log.Errorf(ctx, "Failed to update cluster: %v", err)
 				return err
 			}
-
-			pool.mu.Lock()
-			pool.cluster = currentCluster
-			pool.mu.Unlock()
+			pool.cluster = updatedCluster
 		}
 	}
 	return nil
