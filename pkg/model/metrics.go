@@ -24,7 +24,8 @@ const (
 
 	sourceKey        metrics.Key = "source"
 	sourceVersionKey metrics.Key = "source_version"
-	locationKey      metrics.Key = "location"
+	handlerRegionKey metrics.Key = "handler_region"
+	handlerNodeKey   metrics.Key = "handler_node"
 )
 
 var (
@@ -78,22 +79,29 @@ func sourceVersionTag(v string) metrics.Tag {
 	return metrics.Tag{Key: sourceVersionKey, Value: v}
 }
 
-func locationTag(l location.Location) metrics.Tag {
+func handlerRegionTag(region location.Region) metrics.Tag {
 	value := "unknown"
-	if l != (location.Location{}) {
-		value = l.String()
+	if region != "" {
+		value = string(region)
 	}
+	return metrics.Tag{Key: handlerRegionKey, Value: value}
+}
 
-	return metrics.Tag{Key: locationKey, Value: value}
+func handlerNodeTag(node location.Node) metrics.Tag {
+	value := "unknown"
+	if node != "" {
+		value = string(node)
+	}
+	return metrics.Tag{Key: handlerNodeKey, Value: value}
 }
 
 var (
-	numForwarded = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, locationKey)...)
-	numHandled   = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, locationKey)...)
+	numForwarded = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, handlerRegionKey, handlerNodeKey)...)
+	numHandled   = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, handlerRegionKey, handlerNodeKey)...)
 )
 
 func recordForwardedRequest(ctx context.Context, domain QualifiedDomainName, handler, result string, location location.Location) {
-	tags := slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler), locationTag(location))
+	tags := slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler), handlerRegionTag(location.Region), handlerNodeTag(location.Node))
 	numForwarded.Increment(ctx, 1, tags...)
 }
 
@@ -109,6 +117,6 @@ func recordHandledRequest(ctx context.Context, domain QualifiedDomainName, handl
 		}
 	}
 
-	tags := slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler), locationTag(location))
+	tags := slicex.CopyAppend(qualifiedDomainTags(domain), resultTag(result), handlerTag(handler), handlerRegionTag(location.Region), handlerNodeTag(location.Node))
 	numHandled.Increment(ctx, 1, tags...)
 }
