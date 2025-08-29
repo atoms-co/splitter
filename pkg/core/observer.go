@@ -21,16 +21,17 @@ func NewObserverClientMessage(m session.Message) ObserverClientMessage {
 	})
 }
 
-// NewObserverRegisterMessage is a factory method that creates new observer registration messages.
-func NewObserverRegisterMessage(observer model.Instance, service model.QualifiedServiceName) ObserverClientMessage {
-	register := &splitterprivatepb.ObserverClientMessage_Register{
+func NewObserverRegisterMessage(observer model.Instance, service model.QualifiedServiceName) ObserverRegisterMessage {
+	return WrapObserverRegisterMessage(&splitterprivatepb.ObserverClientMessage_Register{
 		Observer: model.UnwrapInstance(observer),
 		Service:  service.ToProto(),
-	}
+	})
+}
 
+func NewObserverRegisterRequest(registerMsg ObserverRegisterMessage) ObserverClientMessage {
 	return WrapObserverClientMessage(&splitterprivatepb.ObserverClientMessage{
 		Msg: &splitterprivatepb.ObserverClientMessage_Register_{
-			Register: register,
+			Register: UnwrapObserverRegisterMessage(registerMsg),
 		},
 	})
 }

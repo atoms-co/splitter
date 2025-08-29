@@ -270,7 +270,7 @@ func (c *client) RestoreFromSnapshot(ctx context.Context, snapshot Snapshot) (Sn
 //	}
 type ObserverClient interface {
 	// Observe starts observing the cluster state for the specified service.
-	Observe(ctx context.Context, observer Observer, service model.QualifiedServiceName) (model.ClusterProvider, <-chan model.ClusterMessage, iox.AsyncCloser)
+	Observe(ctx context.Context, observer Observer, service model.QualifiedServiceName) (model.ClusterProvider, <-chan model.ClusterMessage, iox.RAsyncCloser)
 }
 
 type observerPool struct {
@@ -297,12 +297,12 @@ func NewObserverClient(cc *grpc.ClientConn) ObserverClient {
 	}
 }
 
-func (c *observerClient) Observe(ctx context.Context, observer Observer, service model.QualifiedServiceName) (model.ClusterProvider, <-chan model.ClusterMessage, iox.AsyncCloser) {
+func (c *observerClient) Observe(ctx context.Context, observer Observer, service model.QualifiedServiceName) (model.ClusterProvider, <-chan model.ClusterMessage, iox.RAsyncCloser) {
 	pool := &observerPool{
 		cluster: model.NewClusterMap(model.NewClusterID(observer.Instance(), c.cl.Now()), nil),
-		updates: make(chan model.ClusterMessage, 10),
+		updates: make(chan model.ClusterMessage, 100),
 	}
-	quit := iox.NewAsyncCloser()
+	quit := iox.WithQuit(ctx.Done(), iox.NewAsyncCloser())
 
 	log.Infof(ctx, "Starting observer %v for service %v", observer.Instance(), service)
 
@@ -313,46 +313,22 @@ func (c *observerClient) Observe(ctx context.Context, observer Observer, service
 
 func (c *observerClient) observe(ctx context.Context, observer Observer, service model.QualifiedServiceName, pool *observerPool, quit iox.AsyncCloser) {
 	defer close(pool.updates)
-	wctx, _ := contextx.WithQuitCancel(ctx, quit.Closed())
-	iox.WithCancel(ctx, quit)
-
-	registration := NewObserverRegisterMessage(observer, service)
 
 	for !quit.IsClosed() {
-		sess, establish, out := session.NewClient(wctx, c.cl, observer.Instance())
-		sessCtx, _ := contextx.WithQuitCancel(wctx, sess.Closed())
-
-		err := grpcx.Connect(sessCtx, c.observer.Observe, func(ctx context.Context, in <-chan *splitterprivatepb.ObserverServerMessage) (<-chan *splitterprivatepb.ObserverClientMessage, error) {
-			ch := chanx.MapIf(in, func(pb *splitterprivatepb.ObserverServerMessage) (ObserverServerMessage, bool) {
-				if pb.GetSession() != nil {
-					sess.Observe(ctx, session.WrapMessage(pb.GetSession()))
-					return ObserverServerMessage{}, false
-				}
-				return WrapObserverServerMessage(pb), true
-			})
-
-			resp := make(chan ObserverClientMessage, 1)
-			resp <- registration
-			close(resp)
+		c.connect(ctx, observer, service, func(ctx context.Context, in <-chan model.ClusterMessage) (<-chan ObserverRegisterMessage, error) {
+			register := make(chan ObserverRegisterMessage, 1)
+			register <- NewObserverRegisterMessage(observer, service)
 
 			go func() {
-				if err := c.processClusterUpdates(ctx, ch, pool); err != nil {
-					log.Errorf(ctx, "Failed to process cluster updates: %v", err)
-					sess.Close()
+				defer close(register)
+				err := c.processClusterUpdates(ctx, in, pool)
+				if err != nil {
+					log.Errorf(ctx, "Failed to process cluster updates: %v. Reconnecting", err)
 				}
 			}()
 
-			joined := session.Connect(sess, establish, chanx.Map(resp, UnwrapObserverClientMessage), out, func(m session.Message) *splitterprivatepb.ObserverClientMessage {
-				return UnwrapObserverClientMessage(NewObserverClientMessage(m))
-			})
-			return joined, nil
+			return register, nil
 		})
-
-		sess.Close()
-
-		if err != nil {
-			log.Infof(wctx, "Observer %v disconnected: %v", observer.Instance(), err)
-		}
 
 		if quit.IsClosed() {
 			return
@@ -362,27 +338,65 @@ func (c *observerClient) observe(ctx context.Context, observer Observer, service
 	}
 }
 
-func (c *observerClient) processClusterUpdates(ctx context.Context, messages <-chan ObserverServerMessage, pool *observerPool) error {
-	for msg := range messages {
-		if cluster, ok := msg.ClusterMessage(); ok {
+func (c *observerClient) connect(ctx context.Context, observer Observer, service model.QualifiedServiceName, handler grpcx.Handler[model.ClusterMessage, ObserverRegisterMessage]) {
+	sess, establish, out := session.NewClient(ctx, c.cl, observer.Instance())
+	defer sess.Close()
+	sessCtx, _ := contextx.WithQuitCancel(ctx, sess.Closed())
+
+	log.Debugf(ctx, "Connecting to observer for service %v", service)
+
+	err := grpcx.Connect(sessCtx, c.observer.Observe, func(ctx context.Context, in <-chan *splitterprivatepb.ObserverServerMessage) (<-chan *splitterprivatepb.ObserverClientMessage, error) {
+		ch := chanx.MapIf(in, func(msg *splitterprivatepb.ObserverServerMessage) (model.ClusterMessage, bool) {
+			if msg.GetSession() != nil {
+				sess.Observe(ctx, session.WrapMessage(msg.GetSession()))
+				return model.ClusterMessage{}, false
+			}
+			return model.WrapClusterMessage(msg.GetCluster()), true
+		})
+
+		resp, err := handler(ctx, ch)
+		if err != nil {
+			return nil, model.ToGRPCError(err)
+		}
+
+		joined := session.Connect(sess, establish, chanx.Map(resp, NewObserverRegisterRequest), out, NewObserverClientMessage)
+		return chanx.Map(joined, UnwrapObserverClientMessage), nil
+	})
+	if err != nil {
+		log.Infof(ctx, "Observer %v for service %v disconnected: %v", observer.ID(), service, err)
+	}
+}
+
+func (c *observerClient) processClusterUpdates(ctx context.Context, messages <-chan model.ClusterMessage, pool *observerPool) error {
+	for {
+		select {
+		case msg, ok := <-messages:
+			if !ok {
+				return nil
+			}
+
 			select {
-			case pool.updates <- cluster:
+			case pool.updates <- msg:
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
+				// TODO: do not discard messages, there could be incremental changes to the cluster. Instead, send
+				// snapshot if full
 				chanx.Clear(pool.updates)
-				pool.updates <- cluster
+				pool.updates <- msg
 			}
 
 			pool.mu.Lock()
-			defer pool.mu.Unlock()
-			updatedCluster, err := model.UpdateClusterMap(ctx, pool.cluster, cluster)
+			updatedCluster, err := model.UpdateClusterMap(ctx, pool.cluster, msg)
 			if err != nil {
+				pool.mu.Unlock()
 				log.Errorf(ctx, "Failed to update cluster: %v", err)
 				return err
 			}
 			pool.cluster = updatedCluster
+			pool.mu.Unlock()
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
-	return nil
 }

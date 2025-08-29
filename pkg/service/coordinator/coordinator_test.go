@@ -708,7 +708,8 @@ func TestObserverConnection(t *testing.T) {
 	in := make(chan core.ObserverClientMessage, 10)
 	sid := session.NewID()
 
-	in <- core.NewObserverRegisterMessage(observerInstance, serviceName)
+	registerMsg := core.NewObserverRegisterMessage(observerInstance, serviceName)
+	in <- core.NewObserverRegisterRequest(registerMsg)
 
 	out, err := coord.Observe(ctx, sid, observer, in)
 	require.NoError(t, err)
@@ -741,7 +742,8 @@ func TestObserverReceivesClusterUpdates(t *testing.T) {
 	in := make(chan core.ObserverClientMessage, 10)
 	sid := session.NewID()
 
-	in <- core.NewObserverRegisterMessage(observerInstance, serviceName)
+	registerMsg := core.NewObserverRegisterMessage(observerInstance, serviceName)
+	in <- core.NewObserverRegisterRequest(registerMsg)
 	out, err := coord.Observe(ctx, sid, observer, in)
 	require.NoError(t, err)
 
@@ -791,7 +793,8 @@ func TestMultipleObservers(t *testing.T) {
 		observers[i].in = make(chan core.ObserverClientMessage, 10)
 		sid := session.NewID()
 
-		observers[i].in <- core.NewObserverRegisterMessage(observers[i].instance, serviceName)
+		registerMsg := core.NewObserverRegisterMessage(observers[i].instance, serviceName)
+		observers[i].in <- core.NewObserverRegisterRequest(registerMsg)
 
 		out, err := coord.Observe(ctx, sid, observers[i].location, observers[i].in)
 		require.NoError(t, err)
