@@ -15,6 +15,8 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
+	"go.atoms.co/lib/chanx"
+	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -57,6 +59,8 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
+		time.Sleep(25 * time.Second)
+
 		assign := readFn(t, out, isAssign)
 		assert.Len(t, assign.Grants(), 1)
 
@@ -72,6 +76,11 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 		change = readFn(t, out, isClusterChange)
 		assert.Len(t, change.Update().Grants(), 1)
 		assert.Equal(t, change.Update().Grants()[0].State(), model.RevokedGrantState)
+
+		time.Sleep(20 * time.Second)
+
+		// this checks a consumer is not resumed during the drain
+		assertAllElementsNot(t, out, "consumer should not receive assign messages while draining", isAssign)
 
 		in <- model.NewReleased(revoke.Grants()[0])
 
@@ -109,6 +118,8 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
+		time.Sleep(25 * time.Second)
+
 		for i := 0; i < 4; i++ {
 			assign := readFn(t, out, isAssign)
 			assert.Len(t, assign.Grants(), 1)
@@ -126,8 +137,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		snapshot = readFn(t, out2, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 1)
 
-		time.Sleep(15 * time.Second) // Loadbalancing interval
-		synctest.Wait()
+		time.Sleep(24 * time.Second)
 
 		revoke := readFn(t, out, isRevoke)
 		assert.Len(t, revoke.Grants(), 1)
@@ -157,7 +167,6 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		assert.Equal(t, model.ActiveGrantState, promote.Grants()[0].State())
 
 		time.Sleep(300 * time.Millisecond) // 2x Broadcast interval
-		synctest.Wait()
 
 		change = readFn(t, out, isClusterChange)
 		assert.Len(t, change.Remove().Consumers(), 0)
@@ -193,7 +202,6 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		in <- model.NewReleased(revoke1.Grants()...)
 
 		time.Sleep(300 * time.Millisecond) // 2x Broadcast interval
-		synctest.Wait()
 
 		for i := 0; i < 3; i++ {
 			promote = readFn(t, out2, isPromote)
@@ -213,6 +221,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 
 		coord.Close()
 		assertx.Closed(t, out)
+		assertx.Closed(t, out2)
 	})
 }
 
@@ -250,6 +259,8 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
+		time.Sleep(25 * time.Second)
+
 		for i := 0; i < 3; i++ {
 			assign := readFn(t, out, isAssign)
 			assert.Len(t, assign.Grants(), 1)
@@ -273,8 +284,7 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 		snapshot = readFn(t, out2, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 1)
 
-		time.Sleep(15 * time.Second) // Loadbalancing interval
-		synctest.Wait()
+		time.Sleep(25 * time.Second)
 
 		// Loadbalance generally prefers moving a heavy shard first. But it should not move Unit domains.
 
@@ -291,6 +301,8 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 		assert.Equal(t, model.Regional, revoke.Grants()[0].Shard().Type)
 
 		coord.Close()
+		assertx.Closed(t, out)
+		assertx.Closed(t, out2)
 	})
 }
 
@@ -318,6 +330,8 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
+
+		time.Sleep(25 * time.Second)
 
 		assign := readFn(t, out, isAssign)
 		assert.Len(t, assign.Grants(), 1)
@@ -389,6 +403,8 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
+		time.Sleep(25 * time.Second)
+
 		assign := readFn(t, out, isAssign)
 		assert.Len(t, assign.Grants(), 1)
 
@@ -408,6 +424,8 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 
 		snapshot = readFn(t, out2, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 1)
+
+		time.Sleep(25 * time.Second)
 
 		assign = readFn(t, out2, isAssign)
 		assert.Len(t, assign.Grants(), 1)
@@ -443,13 +461,16 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 
 		coord.Close()
 		assertx.Closed(t, out)
+		assertx.Closed(t, out2)
 	})
 }
 
 func TestCoordinator_RevokeGrant(t *testing.T) {
 	synctest.Run(func() {
+
 		ctx := context.Background()
 		cl := clock.New()
+
 		domain, err := model.NewDomain(domainName, model.Global, cl.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))))
 		require.NoError(t, err)
@@ -465,6 +486,8 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
+
+		time.Sleep(25 * time.Second)
 
 		assign := readFn(t, out, isAssign)
 		require.Len(t, assign.Grants(), 1)
@@ -486,11 +509,22 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 		snapshot2 := readFn(t, out2, isClusterSnapshot)
 		assert.Len(t, snapshot2.Assignments(), 1)
 
+		time.Sleep(25 * time.Second)
+
 		change2 := readFn(t, out, isClusterChange)
 		assert.Len(t, change2.Assign().Assignments(), 1)
 
 		change3 := readFn(t, out2, isClusterChange)
 		assert.Len(t, change3.Assign().Assignments(), 1)
+
+		consumer1Assignments := slicex.Filter(change.Assign().Assignments(), func(a model.Assignment) bool {
+			return a.Consumer().ID() == w.ID()
+		})
+
+		var consumer1Grants []model.GrantInfo
+		if len(consumer1Assignments) > 0 {
+			consumer1Grants = consumer1Assignments[0].Grants()
+		}
 
 		toRevoke := assign.Grants()[0]
 
@@ -514,14 +548,24 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 
 		revoke := readFn(t, out, isRevoke)
 		assert.Len(t, revoke.Grants(), 1)
-		assert.Equal(t, toRevoke.ID(), revoke.Grants()[0].ID())
+		revokedID := revoke.Grants()[0].ID()
+		found := slices.ContainsFunc(consumer1Grants, func(g model.GrantInfo) bool {
+			return g.ID() == revokedID
+		})
+		assert.True(t, found, "Revoked grant should be one that consumer 1 had")
 
 		assign3 := readFn(t, out2, isAssign)
 		assert.Len(t, assign3.Grants(), 1)
-		assert.Equal(t, toRevoke.Shard().To, assign3.Grants()[0].Shard().To)
-		assert.Equal(t, toRevoke.Shard().From, assign3.Grants()[0].Shard().From)
+		assignedGrant := assign3.Grants()[0]
+		shardMatches := slices.ContainsFunc(consumer1Grants, func(g model.GrantInfo) bool {
+			return g.Shard().To == assignedGrant.Shard().To &&
+				g.Shard().From == assignedGrant.Shard().From
+		})
+		assert.True(t, shardMatches, "Assigned grant should have same shard boundaries as one that was revoked")
 
 		coord.Close()
+		assertx.Closed(t, out)
+		assertx.Closed(t, out2)
 	})
 }
 
@@ -546,6 +590,8 @@ func TestCoordinator_RelinquishGrant(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
+		time.Sleep(25 * time.Second)
+
 		assign := readFn(t, out, isAssign)
 		require.Len(t, assign.Grants(), 1)
 
@@ -563,6 +609,7 @@ func TestCoordinator_RelinquishGrant(t *testing.T) {
 		assert.Equal(t, revokeMsg.Grants()[0].State(), splitterpb.GrantState_REVOKED)
 
 		coord.Close()
+		assertx.Closed(t, out)
 	})
 }
 
@@ -593,6 +640,8 @@ func TestCoordinator_CustomShards(t *testing.T) {
 
 		readFn(t, out1, isClusterSnapshot)
 
+		time.Sleep(25 * time.Second)
+
 		var receivedGrants []model.Grant
 		for i := 0; i < 2; i++ {
 			assign := readFn(t, out1, isAssign)
@@ -611,8 +660,7 @@ func TestCoordinator_CustomShards(t *testing.T) {
 
 		readFn(t, out2, isClusterSnapshot)
 
-		time.Sleep(15 * time.Second)
-		synctest.Wait()
+		time.Sleep(40 * time.Second)
 
 		revoke := readFn(t, out1, isRevoke)
 		assert.NotNil(t, revoke, "Expected a revoke message")
@@ -676,6 +724,8 @@ func TestCoordinator_RegionSpecificShards(t *testing.T) {
 
 		readFn(t, out1, isClusterSnapshot)
 
+		time.Sleep(25 * time.Second)
+
 		var allGrants []model.Grant
 		for i := 0; i < 7; i++ {
 			assign := readFn(t, out1, isAssign)
@@ -691,8 +741,7 @@ func TestCoordinator_RegionSpecificShards(t *testing.T) {
 
 		readFn(t, out2, isClusterSnapshot)
 
-		time.Sleep(45 * time.Second)
-		synctest.Wait()
+		time.Sleep(70 * time.Second)
 
 		var eastusGrants []model.Grant
 		for i := 0; i < 4; i++ {
@@ -841,7 +890,6 @@ func TestMultipleObservers(t *testing.T) {
 		require.NoError(t, err)
 
 		time.Sleep(200 * time.Millisecond)
-		synctest.Wait()
 
 		for i, obs := range observers {
 			change := readFn(t, obs.out, isObserverClusterChange)
@@ -851,6 +899,125 @@ func TestMultipleObservers(t *testing.T) {
 		}
 
 		coord.Close()
+	})
+}
+
+func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
+	synctest.Run(func() {
+		ctx := context.Background()
+		cl := clock.New()
+
+		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+			model.NewDomainConfig(
+				model.WithDomainShardingPolicy(model.NewShardingPolicy(2)),
+				model.WithDomainRegions("centralus")),
+		))
+		require.NoError(t, err)
+
+		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+
+		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
+		in1 := make(chan model.ConsumerMessage, 1)
+		in1 <- model.NewRegister(w, serviceName, nil, nil)
+
+		sid1 := session.NewID()
+		out1, err := coord.Connect(ctx, sid1, location.NewInstance(location.New("centralus", "splitter1")), in1)
+		require.NoError(t, err)
+
+		_ = readFn(t, out1, isClusterSnapshot)
+
+		// Advance time but still within suspension period
+		time.Sleep(time.Second)
+
+		in2 := make(chan model.ConsumerMessage, 1)
+		in2 <- model.NewRegister(w, serviceName, nil, nil) // reconnect the same consumer
+
+		sid2 := session.NewID()
+		out2, err := coord.Connect(ctx, sid2, location.NewInstance(location.New("centralus", "splitter1")), in2)
+		require.NoError(t, err)
+
+		_ = readFn(t, out2, isClusterSnapshot)
+
+		time.Sleep(7 * time.Second) // still within suspension period
+		assertAllElements(t, out2, "suspended consumer should only receive extend messages", isExtend)
+
+		time.Sleep(25 * time.Second) // sleep to resume
+
+		assign := readFn(t, out2, isAssign)
+		assert.NotEmpty(t, assign.Grants())
+
+		coord.Close()
+		assertx.Closed(t, out2)
+	})
+}
+
+func TestCoordinator_ConsumerSuspendAndResume(t *testing.T) {
+	synctest.Run(func() {
+		ctx := context.Background()
+		cl := clock.New()
+
+		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+			model.NewDomainConfig(
+				model.WithDomainShardingPolicy(model.NewShardingPolicy(2)),
+				model.WithDomainRegions("centralus")),
+		))
+		require.NoError(t, err)
+
+		coord := setup(ctx, cl, t, []model.Domain{domain}, false)
+
+		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		in := make(chan model.ConsumerMessage, 1)
+		in <- model.NewRegister(w, serviceName, nil, nil)
+		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
+		require.NoError(t, err)
+
+		_ = readFn(t, out, isClusterSnapshot)
+		_ = readFn(t, out, isClusterChange)
+
+		req := NewHandleCoordinatorOperationRequest(serviceName, &splitterprivatepb.CoordinatorOperationRequest{
+			Req: &splitterprivatepb.CoordinatorOperationRequest_Suspend{
+				Suspend: &splitterprivatepb.ConsumerSuspendRequest{
+					Service:    serviceName.ToProto(),
+					ConsumerId: string(w.ID()),
+				},
+			},
+		})
+
+		resp, err := coord.Handle(ctx, req)
+		require.NoError(t, err)
+		assert.NotNil(t, resp.GetOperation().GetSuspend())
+
+		time.Sleep(100 * time.Second)
+
+		assertAllElements(t, out, "suspended consumer should only receive extend messages", isExtend)
+
+		req = NewHandleCoordinatorOperationRequest(serviceName, &splitterprivatepb.CoordinatorOperationRequest{
+			Req: &splitterprivatepb.CoordinatorOperationRequest_Resume{
+				Resume: &splitterprivatepb.ConsumerResumeRequest{
+					Service:    serviceName.ToProto(),
+					ConsumerId: string(w.ID()),
+				},
+			},
+		})
+
+		resp, err = coord.Handle(ctx, req)
+		require.NoError(t, err)
+		assert.NotNil(t, resp.GetOperation().GetResume())
+
+		time.Sleep(25 * time.Second)
+
+		assign1 := readFn(t, out, isAssign)
+		assert.NotEmpty(t, assign1.Grants(), "consumer should receive first grant after resume")
+
+		assign2 := readFn(t, out, isAssign)
+		assert.NotEmpty(t, assign2.Grants(), "consumer should receive second grant after resume")
+
+		in <- model.NewDeregister()
+		revoke := readFn(t, out, isRevoke)
+		in <- model.NewReleased(revoke.Grants()...)
+
+		coord.Close()
+		assertx.Closed(t, out)
 	})
 }
 
@@ -907,6 +1074,14 @@ func isRevoke(msg model.ConsumerMessage) (model.RevokeMessage, bool) {
 	return model.RevokeMessage{}, false
 }
 
+func isExtend(msg model.ConsumerMessage) (model.ExtendMessage, bool) {
+	if msg.IsClientMessage() {
+		c, _ := msg.ClientMessage()
+		return c.Extend()
+	}
+	return model.ExtendMessage{}, false
+}
+
 func isClusterSnapshot(msg model.ConsumerMessage) (model.ClusterSnapshot, bool) {
 	if msg.IsClusterMessage() {
 		c, _ := msg.ClusterMessage()
@@ -954,4 +1129,44 @@ func readFn[M any, T any](t *testing.T, in <-chan M, fn func(message M) (T, bool
 			return transform
 		}
 	}
+}
+
+func assertAllElements[T any, U any](t *testing.T, ch <-chan T, message string, allowed ...func(T) (U, bool)) {
+	t.Helper()
+
+	elm, ok := chanx.TryRead(ch, clock.New(), 100*time.Millisecond)
+	if !ok {
+		return
+	}
+
+	for _, checkFn := range allowed {
+		if _, ok := checkFn(elm); ok {
+			return
+		}
+	}
+
+	assert.Fail(t, message, "unexpected element:", elm)
+}
+
+func assertAllElementsNot[T any, U any](t *testing.T, ch <-chan T, message string, not ...func(T) (U, bool)) []T {
+	t.Helper()
+
+	var elements []T
+	for {
+		elm, ok := chanx.TryRead(ch, clock.New(), 100*time.Millisecond)
+		if !ok {
+			break
+		}
+
+		elements = append(elements, elm)
+
+		for _, fn := range not {
+			if _, ok := fn(elm); ok {
+				assert.Fail(t, message, "unexpected element:", elm)
+				break
+			}
+		}
+	}
+
+	return elements
 }

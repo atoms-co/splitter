@@ -69,6 +69,7 @@ type consumerSession struct {
 	draining   bool
 	connection sessionx.Connection[model.ConsumerMessage]
 	origin     location.Instance
+	suspended  bool
 }
 
 func (c *consumerSession) TrySend(ctx context.Context, message model.ConsumerMessage) bool {
