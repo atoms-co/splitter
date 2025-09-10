@@ -59,8 +59,6 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
-		time.Sleep(25 * time.Second)
-
 		assign := readFn(t, out, isAssign)
 		assert.Len(t, assign.Grants(), 1)
 
@@ -118,8 +116,6 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
-		time.Sleep(25 * time.Second)
-
 		for i := 0; i < 4; i++ {
 			assign := readFn(t, out, isAssign)
 			assert.Len(t, assign.Grants(), 1)
@@ -137,7 +133,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		snapshot = readFn(t, out2, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 1)
 
-		time.Sleep(24 * time.Second)
+		time.Sleep(15 * time.Second) // Loadbalancing interval
 
 		revoke := readFn(t, out, isRevoke)
 		assert.Len(t, revoke.Grants(), 1)
@@ -259,8 +255,6 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
-		time.Sleep(25 * time.Second)
-
 		for i := 0; i < 3; i++ {
 			assign := readFn(t, out, isAssign)
 			assert.Len(t, assign.Grants(), 1)
@@ -284,7 +278,7 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 		snapshot = readFn(t, out2, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 1)
 
-		time.Sleep(25 * time.Second)
+		time.Sleep(15 * time.Second) // Loadbalancing interval
 
 		// Loadbalance generally prefers moving a heavy shard first. But it should not move Unit domains.
 
@@ -330,8 +324,6 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
-
-		time.Sleep(25 * time.Second)
 
 		assign := readFn(t, out, isAssign)
 		assert.Len(t, assign.Grants(), 1)
@@ -403,8 +395,6 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
-		time.Sleep(25 * time.Second)
-
 		assign := readFn(t, out, isAssign)
 		assert.Len(t, assign.Grants(), 1)
 
@@ -475,7 +465,7 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 			model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))))
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, cl, t, []model.Domain{domain}, false)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -487,7 +477,7 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
-		time.Sleep(25 * time.Second)
+		time.Sleep(60 * time.Second)
 
 		assign := readFn(t, out, isAssign)
 		require.Len(t, assign.Grants(), 1)
@@ -590,8 +580,6 @@ func TestCoordinator_RelinquishGrant(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
-		time.Sleep(25 * time.Second)
-
 		assign := readFn(t, out, isAssign)
 		require.Len(t, assign.Grants(), 1)
 
@@ -639,8 +627,6 @@ func TestCoordinator_CustomShards(t *testing.T) {
 		require.NoError(t, err, "First consumer failed to connect")
 
 		readFn(t, out1, isClusterSnapshot)
-
-		time.Sleep(25 * time.Second)
 
 		var receivedGrants []model.Grant
 		for i := 0; i < 2; i++ {
@@ -723,8 +709,6 @@ func TestCoordinator_RegionSpecificShards(t *testing.T) {
 		require.NoError(t, err, "Consumer from centralus failed to connect")
 
 		readFn(t, out1, isClusterSnapshot)
-
-		time.Sleep(25 * time.Second)
 
 		var allGrants []model.Grant
 		for i := 0; i < 7; i++ {
@@ -914,7 +898,7 @@ func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
 		))
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, cl, t, []model.Domain{domain}, false)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		in1 := make(chan model.ConsumerMessage, 1)
@@ -941,7 +925,7 @@ func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
 		time.Sleep(7 * time.Second) // still within suspension period
 		assertAllElements(t, out2, "suspended consumer should only receive extend messages", isExtend)
 
-		time.Sleep(25 * time.Second) // sleep to resume
+		time.Sleep(40 * time.Second) // sleep to resume
 
 		assign := readFn(t, out2, isAssign)
 		assert.NotEmpty(t, assign.Grants())

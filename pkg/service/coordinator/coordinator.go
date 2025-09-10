@@ -380,7 +380,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, origin locati
 		}
 	}
 
-	if isNewConsumer && len(active) == 0 {
+	if isNewConsumer && len(active) == 0 && !c.fastActivation {
 		// suspending a new consumer so it's not allocated grants immediately
 		c.alloc.Suspend(consumer.instance.ID())
 	}
