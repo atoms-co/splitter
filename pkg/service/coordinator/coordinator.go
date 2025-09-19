@@ -36,8 +36,6 @@ const (
 	handleTimeout = 5 * time.Second
 	// leaseDuration is the duration of a consumer lease.
 	leaseDuration = 40 * time.Second
-	// newConsumerSuspendDuration is the duration we suspend a new consumer for to account for network unavailability during consumer startup.
-	newConsumerSuspendDuration = 15 * time.Second
 )
 
 var (
@@ -343,16 +341,11 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, origin locati
 		active = append(active, grant)
 	}
 
-	var isNewConsumer bool
 	if old, ok := c.consumers[consumer.ID()]; ok {
 		log.Infof(ctx, "Consumer %v re-connected (session=%v) with #grants: %d. Disconnecting stale session", consumer, sid, len(active))
 		c.disconnect(ctx, "reconnect", old)
-		if old.consumer.Joined().Add(newConsumerSuspendDuration).After(now) {
-			isNewConsumer = true // treat this reconnecting consumer as a new consumer if it didn't serve its suspension
-		}
 	} else {
 		log.Infof(ctx, "Consumer %v connected (session=%v) with #grants: %d", consumer, sid, len(active))
-		isNewConsumer = true
 	}
 
 	connection, out := sessionx.NewConnection[model.ConsumerMessage](c.cl, sid, consumer.Instance(), c, in, c.messages)
@@ -378,11 +371,6 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, origin locati
 		if len(assigned.Allocated) > 0 {
 			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Allocated, toGrant)...))
 		}
-	}
-
-	if isNewConsumer && len(active) == 0 && !c.fastActivation {
-		// suspending a new consumer so it's not allocated grants immediately
-		c.alloc.Suspend(consumer.instance.ID())
 	}
 
 	// Send full cluster to the consumer
@@ -629,10 +617,6 @@ steady:
 					continue
 				}
 				c.alloc.Extend(s.consumer.ID(), lease)
-				if worker, ok := c.alloc.Worker(s.consumer.ID()); ok && worker.State == allocation.Suspended && s.consumer.Joined().Add(newConsumerSuspendDuration).Before(now) && !s.draining && !s.suspended {
-					// resume a new consumer that was suspended on connection
-					c.alloc.Resume(s.consumer.ID())
-				}
 			}
 			c.disconnect(ctx, "unhealthy", unhealthy...)
 			c.allocate(ctx, now, true)
@@ -1187,7 +1171,7 @@ func (c *coordinator) handleConsumerSuspendRequest(ctx context.Context, id model
 		if _, ok := c.alloc.Suspend(s.consumer.ID()); !ok {
 			return model.Consumer{}, fmt.Errorf("failed to suspend consumer, %v", id)
 		}
-		c.consumers[id].suspended = true
+
 		log.Infof(ctx, "Suspended consumer: %v", s.consumer.Instance())
 		return s.consumer.instance, nil
 	})
@@ -1210,7 +1194,7 @@ func (c *coordinator) handleConsumerResumeRequest(ctx context.Context, id model.
 		if _, ok := c.alloc.Resume(s.consumer.ID()); !ok {
 			return model.Consumer{}, fmt.Errorf("failed to resume consumer, %v", id)
 		}
-		c.consumers[id].suspended = false
+
 		log.Infof(ctx, "resumed consumer: %v", s.consumer.Instance())
 		return s.consumer.instance, nil
 	})
