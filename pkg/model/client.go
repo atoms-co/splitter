@@ -349,7 +349,6 @@ func NewConsumerClient(cc *grpc.ClientConn) ConsumerClient {
 }
 
 type client struct {
-	cl         clock.Clock
 	consumer   splitterpb.ConsumerServiceClient
 	management splitterpb.ManagementServiceClient
 	placement  splitterpb.PlacementServiceClient
@@ -357,7 +356,6 @@ type client struct {
 
 func NewClient(cc *grpc.ClientConn) Client {
 	return &client{
-		cl:         clock.New(),
 		consumer:   splitterpb.NewConsumerServiceClient(cc),
 		management: splitterpb.NewManagementServiceClient(cc),
 		placement:  splitterpb.NewPlacementServiceClient(cc),
