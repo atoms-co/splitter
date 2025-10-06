@@ -422,6 +422,10 @@ func FromKey[T ~[16]byte](key Key) T {
 	return (T)(key)
 }
 
+func (k Key) Inc() Key {
+	return Key(uuidx.Inc(uuid.UUID(k)))
+}
+
 func (k Key) Less(o Key) bool {
 	return uuidx.Less(k, o)
 }

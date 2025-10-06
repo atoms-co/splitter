@@ -379,6 +379,124 @@ func makeDeleteDomainCmd() *cobra.Command {
 	return cmd
 }
 
+func makeAddCustomShardCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:          "add-custom-shard <tenant>/<service>/<domain> <key_name> <from_key>",
+		Short:        "Add custom shard to domain",
+		Args:         cobra.ExactArgs(3),
+		SilenceUsage: true,
+	}
+
+	region := cmd.Flags().String("region", "", "Region for the custom shard (required for regional domains)")
+	toUuid := cmd.Flags().String("to-key", "", "End Key for the shard range. Defaults to shard with 1 key")
+
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		name, ok := model.ParseQualifiedDomainNameStr(args[0])
+		if !ok {
+			return fmt.Errorf("invalid qualified domain name: %v", args[0])
+		}
+
+		keyName := args[1]
+
+		fromKey, err := model.ParseKey(args[2])
+		if err != nil {
+			return fmt.Errorf("invalid uuid: %v", err)
+		}
+
+		toKey := fromKey.Inc()
+
+		if *toUuid != "" {
+			toKey, err = model.ParseKey(*toUuid)
+			if err != nil {
+				return fmt.Errorf("invalid to-key: %v", err)
+			}
+		}
+
+		if !fromKey.Less(toKey) {
+			return fmt.Errorf("from_key must be less than to_key [from=%v, to=%v]", fromKey, toKey)
+		}
+
+		return withClient(func(ctx context.Context, client model.Client) error {
+			service, err := client.InfoService(ctx, name.Service)
+			if err != nil {
+				return err
+			}
+			domain, ok := service.Domain(name.Domain)
+			if !ok {
+				return fmt.Errorf("unknown domain: %v", name)
+			}
+
+			// (1) prepare new custom shard and named key
+
+			var namedKey model.NamedDomainKey
+			var customShard model.ShardingPolicyShard
+
+			switch domain.Type() {
+			case model.Global:
+				if *region != "" {
+					return fmt.Errorf("shardRegion should not be specified for global domains")
+				}
+				namedKey = model.NamedDomainKey{
+					Name: keyName,
+					Key: model.DomainKey{
+						Key: fromKey,
+					},
+				}
+				customShard = model.NewShardingPolicyShard(fromKey, toKey, "")
+			case model.Regional:
+				if *region == "" {
+					return fmt.Errorf("shardRegion is required for regional domains")
+				}
+				regions, _ := domain.Regions()
+				shardRegion := model.Region(*region)
+				if len(regions) > 0 && !slices.Contains(regions, shardRegion) {
+					return fmt.Errorf("invalid shardRegion %v, expected one of: %v", shardRegion, regions)
+				}
+				namedKey = model.NamedDomainKey{
+					Name: keyName,
+					Key: model.DomainKey{
+						Region: shardRegion,
+						Key:    fromKey,
+					},
+				}
+				customShard = model.NewShardingPolicyShard(fromKey, toKey, shardRegion)
+			case model.Unit:
+				return fmt.Errorf("cannot add custom shards to unit domains")
+			default:
+				return fmt.Errorf("unsupported domain type: %v", domain.Type())
+			}
+
+			for _, nk := range domain.Config().NamedDomainKeys() {
+				if namedKey.Name == nk.Name {
+					return fmt.Errorf("key name already exists: %v", keyName)
+				}
+			}
+
+			// (2) update domain
+
+			shards, err := domain.Config().ShardingPolicy().GetShardingPolicyShards()
+			if err != nil {
+				return fmt.Errorf("failed to get existing custom shards: %w", err)
+			}
+
+			updPolicy := model.UpdateShardingPolicy(domain.Config().ShardingPolicy(), model.WithShardingPolicyShards(append(shards, customShard)))
+			updCfg, err := model.UpdateDomainConfig(domain, model.WithDomainNamedKeys(append(domain.Config().NamedDomainKeys(), namedKey)...), model.WithDomainShardingPolicy(updPolicy))
+			if err != nil {
+				return err
+			}
+
+			updDomain, err := client.UpdateDomain(ctx, name, service.Info().Version(), model.WithUpdateDomainConfig(updCfg))
+			if err != nil {
+				return fmt.Errorf("update domain failed: %w", err)
+			}
+			printJson(model.UnwrapDomain(updDomain), true)
+			return nil
+		})
+	}
+
+	return cmd
+}
+
 func parseNamedDomainKeys(namedKeyStrs []string, domainType model.DomainType, allowedRegions []model.Region) ([]model.NamedDomainKey, error) {
 	var keys []model.NamedDomainKey
 	for _, name := range namedKeyStrs {
