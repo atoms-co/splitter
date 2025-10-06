@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -309,6 +310,9 @@ func WithDomainShardingPolicy(policy ShardingPolicy) DomainConfigOption {
 
 func WithDomainNamedKeys(named ...NamedDomainKey) DomainConfigOption {
 	return func(cfg *splitterpb.Domain_Config) {
+		sort.Slice(named, func(i, j int) bool {
+			return named[i].Name < named[j].Name
+		})
 		cfg.Named = slicex.Map(named, NamedDomainKey.ToProto)
 	}
 }

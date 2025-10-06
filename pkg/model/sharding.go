@@ -62,6 +62,9 @@ func validateShardingPolicyShards(shards []ShardingPolicyShard) error {
 
 func WithShardingPolicyShards(shards []ShardingPolicyShard) ShardingPolicyOption {
 	return func(policy *splitterpb.ShardingPolicy) {
+		sort.Slice(shards, func(i, j int) bool {
+			return shards[i].Less(shards[j])
+		})
 		policy.CustomShards = slicex.Map(shards, ShardingPolicyShard.ToProto)
 	}
 }
@@ -80,6 +83,16 @@ func (s ShardingPolicyShard) ToProto() *splitterpb.ShardingPolicy_Shard {
 		To:     s.To.String(),
 		Region: string(s.Region),
 	}
+}
+
+func (s ShardingPolicyShard) Less(other ShardingPolicyShard) bool {
+	if s.Region != other.Region {
+		return s.Region < other.Region
+	}
+	if s.From != other.From {
+		return s.From.Less(other.From)
+	}
+	return s.To.Less(other.To)
 }
 
 // ShardingPolicy represents a configurable shard policy for Splitter
@@ -111,8 +124,8 @@ func UnwrapShardingPolicy(policy ShardingPolicy) *splitterpb.ShardingPolicy {
 	return policy.pb
 }
 
-func (p ShardingPolicy) Shards() int {
-	return int(p.pb.GetShards())
+func (s ShardingPolicy) Shards() int {
+	return int(s.pb.GetShards())
 }
 
 func (s ShardingPolicy) HasShardingPolicyShards() bool {
