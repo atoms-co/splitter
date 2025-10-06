@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"google.golang.org/grpc"
-
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
@@ -18,8 +16,6 @@ import (
 // TODO(herohde) 8/23/2024: Dispatcher/Processor/Range are all somewhat prescriptive. We may want to
 // add options or alternatives: for example, non-standard grant state lookup, no connection pool, and
 // range creation on allocated may be desirable in some cases. Punt for now.
-
-const maxMessageSize = 64 * 1024 * 1024 // 64mb
 
 // DispatchFilter is a hook for grants, used by the Dispatcher. A list of filters is a chain. The first
 // filter in the chain that accepts a grant handles it.
@@ -108,7 +104,7 @@ func NewDispatcherEx(ctx context.Context, cl clock.Clock, client ConsumerClient,
 	if options.pool != nil {
 		ret.ConnectionPool = options.pool(ret.id, clusters)
 	} else {
-		ret.ConnectionPool = NewConnectionPool(ctx, cl, ret.id.ID(), clusters, grpcx.WithInsecure(), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(maxMessageSize), grpc.MaxCallSendMsgSize(maxMessageSize)))
+		ret.ConnectionPool = NewConnectionPool(ctx, cl, ret.id.ID(), clusters, grpcx.WithInsecure())
 	}
 
 	for _, h := range ret.chain {

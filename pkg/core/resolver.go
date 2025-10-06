@@ -27,7 +27,7 @@ type resolver struct {
 // connection to that instance. The resolver maintains a connection pool. Thread-safe.
 func NewServiceResolver(ctx context.Context, cl clock.Clock, self model.InstanceID, clusters <-chan *Cluster, opts ...grpc.DialOption) ServiceResolver {
 	r := &resolver{
-		pool: model.NewPeeredConnectionCache[grpc.ClientConnInterface](ctx, cl, self, model.DialNonBlocking(opts...)),
+		pool: model.NewPeeredConnectionCache[grpc.ClientConnInterface](ctx, cl, self, model.DialNonBlocking64(opts...)),
 	}
 	go r.process(ctx, clusters)
 

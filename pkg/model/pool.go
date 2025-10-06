@@ -173,10 +173,10 @@ func (p *PeeredConnectionCache[T]) dial(ctx context.Context, reason string, inst
 	return quit, cc, nil
 }
 
-// DialNonBlocking is a grpc DialFn.
-func DialNonBlocking(opts ...grpc.DialOption) DialFn[grpc.ClientConnInterface] {
+// DialNonBlocking64 is a grpc DialFn.
+func DialNonBlocking64(opts ...grpc.DialOption) DialFn[grpc.ClientConnInterface] {
 	return func(endpoint string) (io.Closer, grpc.ClientConnInterface, error) {
-		cc, err := grpcx.DialNonBlocking(context.Background(), endpoint, slices.Clone(opts)...)
+		cc, err := grpcx.DialNonBlocking64(context.Background(), endpoint, slices.Clone(opts)...)
 		return cc, cc, err
 	}
 }
@@ -197,7 +197,7 @@ type pool struct {
 
 func NewConnectionPool(ctx context.Context, cl clock.Clock, self InstanceID, clusters <-chan Cluster, opts ...grpc.DialOption) ConnectionPool {
 	p := &pool{
-		pool: NewPeeredConnectionCache[grpc.ClientConnInterface](ctx, cl, self, DialNonBlocking(opts...)),
+		pool: NewPeeredConnectionCache[grpc.ClientConnInterface](ctx, cl, self, DialNonBlocking64(opts...)),
 	}
 	go p.process(ctx, clusters)
 
