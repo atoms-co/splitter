@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
 
 	"go.atoms.co/lib/log"
 )
@@ -16,18 +15,4 @@ func startHealthCheck(ctx context.Context, port int) {
 	})
 	log.Infof(ctx, "Serving health check traffic on port %d", port)
 	log.Fatalf(ctx, "health listen and serve failed: %v", http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
-}
-
-func getInstance() string {
-	if ip := os.Getenv("POD_IP"); len(ip) > 0 {
-		return ip
-	}
-	return "localhost"
-}
-
-func getName() string {
-	if name := os.Getenv("POD_NAME"); len(name) > 0 {
-		return name
-	}
-	return "local"
 }

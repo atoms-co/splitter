@@ -48,7 +48,7 @@ func makeStartCommand() *cobra.Command {
 	splitterServer := cmd.PersistentFlags().String("splitter_server", "", "Server address used by Splitter")
 	splitterPort := cmd.PersistentFlags().Int("splitter_port", 50052, "Grpc server port for pod-to-pod traffic")
 
-	raftID := cmd.PersistentFlags().String("raft_id", getName(), "Node id used by Raft")
+	raftID := cmd.PersistentFlags().String("raft_id", string(locationx.New().Node), "Node id used by Raft")
 	raftServer := cmd.PersistentFlags().String("raft_server", "", "Server address used by Raft")
 	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "Tcp port for raft traffic")
 	raftFastBootstrap := cmd.PersistentFlags().Bool("raft_fast_bootstrap", false, "Fast Raft bootstrap for testing")
