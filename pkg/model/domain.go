@@ -426,8 +426,12 @@ func FromKey[T ~[16]byte](key Key) T {
 	return (T)(key)
 }
 
+// Inc returns the next key, saturating at MaxKey
 func (k Key) Inc() Key {
-	return Key(uuidx.Inc(uuid.UUID(k)))
+	if k == MaxKey {
+		return k
+	}
+	return uuidx.Inc(k)
 }
 
 func (k Key) Less(o Key) bool {
