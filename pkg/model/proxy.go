@@ -321,13 +321,13 @@ var NoOpErrorWrapper ErrorWrapper = func(err error) error {
 //	resp, err := splitter.Handle(ctx, proxy, key, v1.FooServiceClient.Info, req, func(v V) (*v1.InfoResponse, error) {
 //	    return v.Info(parsed, ...)
 //	})
-func Handle[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, local func(V) (B, error)) (B, error) {
+func Handle[K, T, A, B, V any](ctx context.Context, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, local func(V) (B, error)) (B, error) {
 	return HandleEx(ctx, p, key, fn, a, NoOpErrorWrapper, local)
 }
 
 // HandleEx is a version of Handle that can wrap error returned by the handler. Should be used for handlers
 // that return logical error to convert logical errors to gRPC errors (expected by Handle).
-func HandleEx[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, w ErrorWrapper, local func(V) (B, error)) (B, error) {
+func HandleEx[K, T, A, B, V any](ctx context.Context, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, w ErrorWrapper, local func(V) (B, error)) (B, error) {
 	// Check if a grant is present locally to guard against a stale cluster map.
 	// We have to be careful to not pick a non-owner based on resolution rules,
 	// so we look up using ACTIVE only. Otherwise, an UNLOADED local range will
@@ -367,7 +367,7 @@ func HandleEx[K, T, A, B any, V Range](ctx context.Context, p Proxy[T, K, V], ke
 }
 
 // HandleWithRetry is a shortcut to call Handle with RetryOwnership1.
-func HandleWithRetry[K, T, A, B any, V Range](ctx context.Context, timeout time.Duration, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, local func(V) (B, error)) (B, error) {
+func HandleWithRetry[K, T, A, B, V any](ctx context.Context, timeout time.Duration, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, local func(V) (B, error)) (B, error) {
 	return RetryOwnership1(ctx, timeout, func(ctx context.Context) (B, error) {
 		return Handle(ctx, p, key, fn, a, local)
 	})
@@ -375,7 +375,7 @@ func HandleWithRetry[K, T, A, B any, V Range](ctx context.Context, timeout time.
 
 // HandleWithRetryEx is a version of HandleWithRetry that can wrap error returned by the handler. Should be used for handlers
 // that return logical error to convert logical errors to gRPC errors (expected by HandleWithRetry).
-func HandleWithRetryEx[K, T, A, B any, V Range](ctx context.Context, timeout time.Duration, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, w ErrorWrapper, local func(V) (B, error)) (B, error) {
+func HandleWithRetryEx[K, T, A, B, V any](ctx context.Context, timeout time.Duration, p Proxy[T, K, V], key K, fn GRPCMethod[T, A, B], a A, w ErrorWrapper, local func(V) (B, error)) (B, error) {
 	return RetryOwnership1(ctx, timeout, func(ctx context.Context) (B, error) {
 		return HandleEx(ctx, p, key, fn, a, w, local)
 	})

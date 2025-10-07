@@ -329,3 +329,71 @@ func (p *Processor[T, K, V]) DomainKey(key K) QualifiedDomainKey {
 func (p *Processor[T, K, V]) Location(key K) (location.Location, bool) {
 	return p.resolver.Location(key)
 }
+
+// KeyFn translates an K-typed key to K0
+type KeyFn[K, K0 any] func(K) K0
+
+// ValueFn translates an V0-typed value to V, given the key as context. This more easily
+// enables re-typed values with smaller granilarity than Range.
+type ValueFn[K, V any, V0 Range] func(V0, K) V
+
+type adapter[T0, K0 any, V0 Range, T, K, V any] struct {
+	proxy       Proxy[T0, K0, V0]
+	key         KeyFn[K, K0]
+	value       ValueFn[K, V, V0]
+	resolver    Resolver[T, K]
+	initialized iox.AsyncCloser
+}
+
+// NewAdapter returns a re-typed Proxy for a given Processor. It enables alternative grpc service
+// signatures for existing domains. Thread-safe
+func NewAdapter[T0, K0 any, V0 Range, T, K, V any](p *Processor[T0, K0, V0], rfn RemoteFn[T], key KeyFn[K, K0], value ValueFn[K, V, V0]) Proxy[T, K, V] {
+	ret := &adapter[T0, K0, V0, T, K, V]{
+		proxy:       p,
+		key:         key,
+		value:       value,
+		initialized: iox.NewAsyncCloser(),
+	}
+
+	go func() {
+		// TODO(herohde) 10/6/2025: the adapter needs the late-bound ConnectionPool. Instead of grabbing
+		// it from a private field, we may want to either expose it in the Proxy interface or pass it in
+		// some other way (a la DispatchFilter). That would allow adapting any Proxy implementation.
+
+		<-p.initialized.Closed()
+
+		ret.resolver = NewDomainResolver(p.pool, rfn, func(k K) QualifiedDomainKey {
+			return p.DomainKey(ret.key(k))
+		})
+		ret.initialized.Close()
+	}()
+
+	return ret
+}
+
+func (a *adapter[T0, K0, V0, T, K, V]) Lookup(key K, grants ...GrantState) (V, bool) {
+	if v, ok := a.proxy.Lookup(a.key(key), grants...); ok {
+		return a.value(v, key), true
+	}
+	var zero V
+	return zero, false
+}
+
+func (a *adapter[T0, K0, V0, T, K, V]) Resolve(ctx context.Context, key K) (T, error) {
+	<-a.initialized.Closed()
+	return a.resolver.Resolve(ctx, key)
+}
+
+func (a *adapter[T0, K0, V0, T, K, V]) DomainKey(key K) QualifiedDomainKey {
+	<-a.initialized.Closed()
+	return a.resolver.DomainKey(key)
+}
+
+func (a *adapter[T0, K0, V0, T, K, V]) Location(key K) (location.Location, bool) {
+	<-a.initialized.Closed()
+	return a.resolver.Location(key)
+}
+
+func (a adapter[T0, K0, V0, T, K, V]) Cluster() (Cluster, bool) {
+	return a.proxy.Cluster()
+}
