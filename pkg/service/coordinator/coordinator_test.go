@@ -4,12 +4,12 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing/synctest"
 
 	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
