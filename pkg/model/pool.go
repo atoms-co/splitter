@@ -16,14 +16,19 @@ import (
 	"go.atoms.co/lib/net/grpcx"
 )
 
+const (
+	dialDelay = 19 * time.Second
+)
+
 // DialFn returns a separately-closable T connection. Must be non-blocking.
 type DialFn[T any] func(endpoint string) (io.Closer, T, error)
 
 type connection[T any] struct {
-	peer Instance
-	quit io.Closer
-	cc   T
-	ttl  time.Time // zero if indefinite
+	peer      Instance
+	quit      io.Closer
+	cc        T
+	ttl       time.Time // zero if indefinite
+	dialAfter time.Time // zero if already dialed
 }
 
 // PeeredConnectionCache is a pool of reusable connections of type T  to a dynamic set of peers. Connections to
@@ -61,11 +66,13 @@ func (p *PeeredConnectionCache[T]) Resolve(ctx context.Context, inst Instance) (
 
 	p.mu.RLock()
 	con, ok := p.peers[inst.ID()]
-	p.mu.RUnlock()
-
-	if ok {
-		return con.cc, nil
+	// Only return if connection is ready and not pending
+	if ok && con.dialAfter.IsZero() {
+		cc := con.cc
+		p.mu.RUnlock()
+		return cc, nil
 	}
+	p.mu.RUnlock()
 
 	// (2) Slow check. Dial under lock to prevent concurrent dial spike to the same ad-hoc peer.
 
@@ -73,14 +80,23 @@ func (p *PeeredConnectionCache[T]) Resolve(ctx context.Context, inst Instance) (
 	defer p.mu.Unlock()
 
 	if con, ok := p.peers[inst.ID()]; ok {
-		return con.cc, nil
+		if con.dialAfter.IsZero() {
+			return con.cc, nil
+		}
 	}
 
 	quit, cc, err := p.dial(ctx, "adhoc", inst)
 	if err != nil {
 		return zero, err
 	}
-	p.peers[inst.ID()] = connection[T]{peer: inst, quit: quit, cc: cc}
+
+	p.peers[inst.ID()] = connection[T]{
+		peer:      inst,
+		quit:      quit,
+		cc:        cc,
+		dialAfter: time.Time{}, // Adhoc connection is dialed
+		ttl:       time.Time{}, // Indefinite TTL for adhoc connections
+	}
 	return cc, nil
 }
 
@@ -99,16 +115,12 @@ func (p *PeeredConnectionCache[T]) Update(ctx context.Context, peers []Instance)
 			continue
 		}
 		if cur, ok := p.peers[id]; ok {
-			upd[id] = connection[T]{peer: inst, quit: cur.quit, cc: cur.cc} // promote to indefinite tll
+			upd[id] = connection[T]{peer: inst, quit: cur.quit, cc: cur.cc, dialAfter: cur.dialAfter} // promote to indefinite tll
 			continue
 		}
 
-		quit, cc, err := p.dial(ctx, "peer", inst)
-		if err != nil {
-			log.Errorf(ctx, "Internal: %v", err)
-			continue
-		}
-		upd[id] = connection[T]{peer: inst, quit: quit, cc: cc}
+		upd[id] = connection[T]{peer: inst, dialAfter: p.cl.Now().Add(dialDelay)}
+		log.Infof(ctx, "New peer %v will be dialed after %v", inst, upd[id].dialAfter)
 	}
 
 	// (2) Set TTL for inactive connections.
@@ -130,17 +142,39 @@ func (p *PeeredConnectionCache[T]) Update(ctx context.Context, peers []Instance)
 }
 
 func (p *PeeredConnectionCache[T]) process(ctx context.Context) {
-	ticker := p.cl.NewTicker(20 * time.Second)
+	ticker := p.cl.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
+			p.dialPending(ctx)
 			p.expire(ctx)
 
 		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+func (p *PeeredConnectionCache[T]) dialPending(ctx context.Context) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	now := p.cl.Now()
+
+	for id, con := range p.peers {
+		if con.dialAfter.IsZero() || now.Before(con.dialAfter) {
+			continue
+		}
+
+		quit, cc, err := p.dial(ctx, "peer", con.peer)
+		if err != nil {
+			log.Errorf(ctx, "Failed to dial peer %v: %v", con.peer, err)
+			continue
+		}
+
+		p.peers[id] = connection[T]{peer: con.peer, quit: quit, cc: cc, ttl: time.Time{}, dialAfter: time.Time{}}
 	}
 }
 
@@ -156,7 +190,9 @@ func (p *PeeredConnectionCache[T]) expire(ctx context.Context) {
 		}
 
 		log.Infof(ctx, "Closing connection to inactive peer: %v", con.peer)
-		_ = con.quit.Close()
+		if con.quit != nil {
+			_ = con.quit.Close()
+		}
 		delete(p.peers, id)
 	}
 }

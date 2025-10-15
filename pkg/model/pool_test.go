@@ -32,9 +32,15 @@ func TestPeeredConnectionCache(t *testing.T) {
 
 		assertx.Equal(t, dialer.count, 0)
 
-		// (1) Connections are eagerly created, but not self.
+		// (1) Connections are delayed, not immediately dialed (excluding self).
 
 		cache.Update(ctx, []model.Instance{self, foo, bar})
+
+		assertx.Equal(t, dialer.count, 0)
+
+		cl.Add(30 * time.Second)
+		time.Sleep(50 * time.Millisecond)
+		cl.Add(10 * time.Second)
 
 		assertx.Equal(t, dialer.count, 2)
 
@@ -62,6 +68,12 @@ func TestPeeredConnectionCache(t *testing.T) {
 		// (1) Peered connections live indefinitely
 
 		cache.Update(ctx, []model.Instance{foo})
+		assertx.Equal(t, dialer.count, 0)
+
+		cl.Add(30 * time.Second)
+		time.Sleep(50 * time.Millisecond)
+		cl.Add(10 * time.Second)
+
 		assertx.Equal(t, dialer.count, 1)
 
 		cl.Add(5 * time.Minute)
