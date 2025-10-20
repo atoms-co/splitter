@@ -394,6 +394,6 @@ func (a *adapter[T0, K0, V0, T, K, V]) Location(key K) (location.Location, bool)
 	return a.resolver.Location(key)
 }
 
-func (a adapter[T0, K0, V0, T, K, V]) Cluster() (Cluster, bool) {
+func (a *adapter[T0, K0, V0, T, K, V]) Cluster() (Cluster, bool) {
 	return a.proxy.Cluster()
 }
