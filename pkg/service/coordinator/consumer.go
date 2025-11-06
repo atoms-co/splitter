@@ -74,7 +74,8 @@ type consumerSession struct {
 
 func (c *consumerSession) TrySend(ctx context.Context, message model.ConsumerMessage) bool {
 	if c.connection.Send(ctx, message) {
-		log.Debugf(ctx, "Sent message to %v: %v", c.consumer.Instance(), message)
+		// TODO: Move to verbose logging
+		// log.Debugf(ctx, "Sent message to %v: %v", c.consumer.Instance(), message)
 		numMessages.Increment(ctx, 1, core.MessageTypeTag(message.Type()))
 		return true
 	}
