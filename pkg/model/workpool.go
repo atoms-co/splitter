@@ -37,12 +37,10 @@ type joinStatus struct {
 // WorkPool manages a pool of grants assigned by Splitter to the consumer and provides updated clusters. It maintains
 // WorkPool with the service, re-connecting on failures, and continues to manage assigned grants when disconnected.
 //
-// Life cycle is controlled by the context passed on creation; context cancellation triggers draining procedure.
-// `Drained()` can be used to detect when draining has stopped and the pool is being closed.
-// `Closed()` can be used to detect when draining has stopped and the pool is closed. The pool can close itself when
-// the lease is expired, and it wasn't renewed by the service for some reason.
+// Shutdown is initiated by calling Drain(). Closed() can be used to detect when draining has stopped and
+// the pool is closed.
 type WorkPool struct {
-	iox.AsyncCloser
+	iox.RAsyncCloser
 
 	cl      clock.Clock
 	self    Consumer
@@ -72,22 +70,22 @@ type WorkPool struct {
 func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler, opts ...ConsumerOption) (*WorkPool, <-chan Cluster) {
 	quit := iox.NewAsyncCloser()
 	p := &WorkPool{
-		AsyncCloser: quit,
-		cl:          cl,
-		self:        consumer,
-		service:     service,
-		domains:     domains,
-		joinFn:      joinFn,
-		handler:     handlerFn,
-		opts:        opts,
-		cluster:     NewClusterMap(NewClusterID(consumer.Instance(), cl.Now()), nil), // empty self-origin map
-		clusters:    make(chan Cluster, 1),
-		grants:      map[GrantID]*grant{},
-		shards:      map[Shard]GrantID{},
-		expire:      make(chan bool, 1),
-		inject:      make(chan func()),
-		quit:        quit,
-		drain:       iox.WithQuit(quit.Closed(), iox.NewAsyncCloser()),
+		RAsyncCloser: quit,
+		cl:           cl,
+		self:         consumer,
+		service:      service,
+		domains:      domains,
+		joinFn:       joinFn,
+		handler:      handlerFn,
+		opts:         opts,
+		cluster:      NewClusterMap(NewClusterID(consumer.Instance(), cl.Now()), nil), // empty self-origin map
+		clusters:     make(chan Cluster, 1),
+		grants:       map[GrantID]*grant{},
+		shards:       map[Shard]GrantID{},
+		expire:       make(chan bool, 1),
+		inject:       make(chan func()),
+		quit:         quit,
+		drain:        iox.WithQuit(quit.Closed(), iox.NewAsyncCloser()),
 	}
 
 	go p.join(context.Background())
@@ -97,7 +95,7 @@ func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName
 
 func (p *WorkPool) Drain(timeout time.Duration) {
 	p.drain.Close()
-	p.cl.AfterFunc(timeout, p.Close)
+	p.cl.AfterFunc(timeout, p.quit.Close)
 }
 
 // Drained returns a channel that is closed when the pool is drained.
@@ -180,7 +178,7 @@ func (p *WorkPool) lostCoordinator(ctx context.Context) {
 }
 
 func (p *WorkPool) process(ctx context.Context) {
-	defer p.Close()
+	defer p.quit.Close()
 
 	statsTimer := p.cl.NewTicker(statsDuration)
 	defer statsTimer.Stop()
