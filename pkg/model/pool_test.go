@@ -9,26 +9,25 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/lib/testing/mockclock"
+	"go.atoms.co/lib/testing/synctestx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
 )
 
 func TestPeeredConnectionCache(t *testing.T) {
-	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
-	cl.Set(time.Now())
-
 	self := model.NewInstance(location.NewInstance(location.New("us", "a")), "self")
 	foo := model.NewInstance(location.NewInstance(location.New("us", "a")), "foo")
 	bar := model.NewInstance(location.NewInstance(location.New("us", "b")), "bar")
 	baz := model.NewInstance(location.NewInstance(location.New("us", "c")), "baz")
 
-	t.Run("peered", func(t *testing.T) {
+	synctestx.Run(t, "peered", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		dialer := newFakeDialer()
-		cache := model.NewPeeredConnectionCache[int](ctx, cl, self.ID(), dialer.dial)
+		cache := model.NewPeeredConnectionCache[int](ctx, clock.New(), self.ID(), dialer.dial)
 
 		assertx.Equal(t, dialer.count, 0)
 
@@ -38,9 +37,7 @@ func TestPeeredConnectionCache(t *testing.T) {
 
 		assertx.Equal(t, dialer.count, 0)
 
-		cl.Add(30 * time.Second)
-		time.Sleep(50 * time.Millisecond)
-		cl.Add(10 * time.Second)
+		time.Sleep(40 * time.Second)
 
 		assertx.Equal(t, dialer.count, 2)
 
@@ -61,23 +58,22 @@ func TestPeeredConnectionCache(t *testing.T) {
 		assertx.Equal(t, dialer.count, 3)
 	})
 
-	t.Run("gc", func(t *testing.T) {
+	synctestx.Run(t, "gc", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		dialer := newFakeDialer()
-		cache := model.NewPeeredConnectionCache[int](ctx, cl, self.ID(), dialer.dial)
+		cache := model.NewPeeredConnectionCache[int](ctx, clock.New(), self.ID(), dialer.dial)
 
 		// (1) Peered connections live indefinitely
 
 		cache.Update(ctx, []model.Instance{foo})
 		assertx.Equal(t, dialer.count, 0)
 
-		cl.Add(30 * time.Second)
-		time.Sleep(50 * time.Millisecond)
-		cl.Add(10 * time.Second)
+		time.Sleep(40 * time.Second)
 
 		assertx.Equal(t, dialer.count, 1)
 
-		cl.Add(5 * time.Minute)
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(5 * time.Minute)
 
 		_, err := cache.Resolve(ctx, foo)
 		assert.NoError(t, err)
@@ -90,15 +86,13 @@ func TestPeeredConnectionCache(t *testing.T) {
 		cache.Update(ctx, []model.Instance{})
 		assertx.Equal(t, dialer.count, 1)
 
-		cl.Add(time.Minute)
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(time.Minute)
 
 		_, err = cache.Resolve(ctx, foo)
 		assert.NoError(t, err)
 		assertx.Equal(t, dialer.count, 1)
 
-		cl.Add(5 * time.Minute)
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(5 * time.Minute)
 
 		assert.True(t, dialer.con[foo.Endpoint()].IsClosed())
 
@@ -109,13 +103,15 @@ func TestPeeredConnectionCache(t *testing.T) {
 		assertx.Equal(t, dialer.count, 2)
 	})
 
-	t.Run("adhoc context", func(t *testing.T) {
+	synctestx.Run(t, "adhoc context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		dialer := newFakeDialer()
-		cache := model.NewPeeredConnectionCache[int](ctx, cl, self.ID(), dialer.dial)
+		cache := model.NewPeeredConnectionCache[int](ctx, clock.New(), self.ID(), dialer.dial)
 
 		assertx.Equal(t, dialer.count, 0)
 
-		wctx, cancel := context.WithCancel(ctx)
+		wctx, wcancel := context.WithCancel(ctx)
 
 		_, err := cache.Resolve(wctx, foo)
 		assert.NoError(t, err)
@@ -123,7 +119,7 @@ func TestPeeredConnectionCache(t *testing.T) {
 		assertx.Equal(t, dialer.count, 1)
 		assert.False(t, dialer.con[foo.Endpoint()].IsClosed())
 
-		cancel()
+		wcancel()
 
 		time.Sleep(50 * time.Millisecond)
 

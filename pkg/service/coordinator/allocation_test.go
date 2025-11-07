@@ -10,7 +10,6 @@ import (
 
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/allocation"
@@ -20,8 +19,6 @@ import (
 )
 
 func TestNamedShards(t *testing.T) {
-	cl := mockclock.NewUnsynchronized()
-
 	t1, err := model.NewTenant("tenant1", time.Time{})
 	require.NoError(t, err)
 
@@ -85,7 +82,7 @@ func TestNamedShards(t *testing.T) {
 		"worker1",
 		NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""),
-			cl.Now(),
+			time.Now(),
 			WithKeys(canaryKeys[0]),
 		),
 	)
@@ -94,7 +91,7 @@ func TestNamedShards(t *testing.T) {
 		"worker2",
 		NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("northcentralus", "unknown")), ""),
-			cl.Now(),
+			time.Now(),
 			WithKeys(canaryKeys[1]),
 		),
 	)
@@ -103,7 +100,7 @@ func TestNamedShards(t *testing.T) {
 		"worker3",
 		NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""),
-			cl.Now(),
+			time.Now(),
 		),
 	)
 
@@ -143,8 +140,6 @@ func TestNamedShards(t *testing.T) {
 }
 
 func TestDomainState(t *testing.T) {
-	cl := mockclock.NewUnsynchronized()
-
 	t1, err := model.NewTenant("tenant1", time.Time{})
 	require.NoError(t, err)
 
@@ -170,7 +165,7 @@ func TestDomainState(t *testing.T) {
 
 	w1 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker1",
-		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), time.Now()),
 	)
 
 	_, ok := ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
@@ -185,8 +180,6 @@ func TestDomainState(t *testing.T) {
 }
 
 func TestBannedWorkerRegion(t *testing.T) {
-	cl := mockclock.NewUnsynchronized()
-
 	t1, err := model.NewTenant("tenant1", time.Time{}, model.WithTenantOperational(
 		model.NewTenantOperational(model.WithTenantOperationalBannedRegions("centralus")),
 	))
@@ -219,22 +212,22 @@ func TestBannedWorkerRegion(t *testing.T) {
 
 	w1 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker1",
-		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), time.Now()),
 	)
 
 	w2 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker2",
-		NewConsumer(model.NewInstance(location.NewInstance(location.New("northcentralus", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("northcentralus", "unknown")), ""), time.Now()),
 	)
 
 	w3 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker3",
-		NewConsumer(model.NewInstance(location.NewInstance(location.New("eastus2", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("eastus2", "unknown")), ""), time.Now()),
 	)
 
 	w4 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker4",
-		NewConsumer(model.NewInstance(location.NewInstance(location.New("us-central1", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("us-central1", "unknown")), ""), time.Now()),
 	)
 
 	_, ok := ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
@@ -280,8 +273,6 @@ func TestBannedWorkerRegion(t *testing.T) {
 }
 
 func TestRegionAffinity(t *testing.T) {
-	cl := mockclock.NewUnsynchronized()
-
 	s1, err := model.NewService(model.QualifiedServiceName{Tenant: "tenant1", Service: "service1"}, time.Time{}, model.WithServiceConfig(
 		model.NewServiceConfig(model.WithLocalityOverrides(map[location.Region]location.Region{
 			"us-central1": "centralus",
@@ -294,7 +285,7 @@ func TestRegionAffinity(t *testing.T) {
 
 	w1 := allocation.NewWorker[location.InstanceID, *Consumer](
 		"worker1",
-		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), cl.Now()),
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), time.Now()),
 	)
 
 	penalty, ok := affinity.TryPlace(w1, allocation.Work[model.Shard, location.Location]{
@@ -331,8 +322,6 @@ func TestColocation(t *testing.T) {
 	bc := model.Shard{Domain: d2, Type: model.Global, From: model.Key(b), To: model.Key(c)}
 	ac := model.Shard{Domain: d2, Type: model.Global, From: model.Key(a), To: model.Key(c)}
 
-	cl := mockclock.NewUnsynchronized()
-
 	tests := []struct {
 		shard1, shard2 model.Shard
 		antiAffinity   bool
@@ -347,7 +336,7 @@ func TestColocation(t *testing.T) {
 		var dom1 model.Domain
 		var err error
 		if tt.antiAffinity {
-			dom1, err = model.NewDomain(d1, model.Global, cl.Now(), model.WithDomainConfig(
+			dom1, err = model.NewDomain(d1, model.Global, time.Now(), model.WithDomainConfig(
 				model.NewDomainConfig(
 					model.WithDomainShardingPolicy(model.NewShardingPolicy(1)),
 					model.WithDomainAntiAffinity(d2.Domain),
@@ -355,25 +344,25 @@ func TestColocation(t *testing.T) {
 			))
 			assert.NoError(t, err)
 		} else {
-			dom1, err = model.NewDomain(d1, model.Global, cl.Now(), model.WithDomainConfig(
+			dom1, err = model.NewDomain(d1, model.Global, time.Now(), model.WithDomainConfig(
 				model.NewDomainConfig(
 					model.WithDomainShardingPolicy(model.NewShardingPolicy(1)),
 				),
 			))
 			assert.NoError(t, err)
 		}
-		dom2, err := model.NewDomain(d2, model.Global, cl.Now(), model.WithDomainConfig(
+		dom2, err := model.NewDomain(d2, model.Global, time.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(
 				model.WithDomainShardingPolicy(model.NewShardingPolicy(1)),
 			),
 		))
 		assert.NoError(t, err)
 
-		service, err := model.NewService(serviceName, cl.Now())
+		service, err := model.NewService(serviceName, time.Now())
 		assert.NoError(t, err)
 
-		info := model.NewServiceInfoEx(model.NewServiceInfo(service, 1, cl.Now()), []model.Domain{dom1, dom2})
-		worker := allocation.NewWorker[model.ConsumerID, *Consumer]("worker-id", NewConsumer(prefab.Instance1, cl.Now()))
+		info := model.NewServiceInfoEx(model.NewServiceInfo(service, 1, time.Now()), []model.Domain{dom1, dom2})
+		worker := allocation.NewWorker[model.ConsumerID, *Consumer]("worker-id", NewConsumer(prefab.Instance1, time.Now()))
 		affinity := NewAntiAffinity(info)
 		load := affinity.Colocate(worker, map[model.Shard]Work{
 			tt.shard1: {Unit: tt.shard1},
@@ -385,8 +374,6 @@ func TestColocation(t *testing.T) {
 }
 
 func TestShardSplitting(t *testing.T) {
-	cl := mockclock.NewUnsynchronized()
-
 	tenant, err := model.NewTenant("tenant1", time.Time{})
 	require.NoError(t, err)
 
@@ -497,7 +484,7 @@ func TestShardSplitting(t *testing.T) {
 			name := model.QualifiedDomainName{Service: service.Name(), Domain: "test-domain"}
 			sp := model.NewShardingPolicy(2, model.WithShardingPolicyShards(tt.customShards))
 			opts := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp)))
-			domain, err := model.NewDomain(name, model.Global, cl.Now(), opts)
+			domain, err := model.NewDomain(name, model.Global, time.Now(), opts)
 			require.NoError(t, err)
 
 			actual := findShards(domain)
@@ -510,8 +497,6 @@ func TestShardSplitting(t *testing.T) {
 }
 
 func TestFindShardsForRegion(t *testing.T) {
-	cl := mockclock.NewUnsynchronized()
-
 	tenant, err := model.NewTenant("tenant1", time.Time{})
 	require.NoError(t, err)
 
@@ -721,7 +706,7 @@ func TestFindShardsForRegion(t *testing.T) {
 			name := model.QualifiedDomainName{Service: service.Name(), Domain: "test-domain"}
 			sp := model.NewShardingPolicy(tt.targetShards, model.WithShardingPolicyShards(tt.customShards))
 			opts := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp)))
-			domain, err := model.NewDomain(name, model.Regional, cl.Now(), opts)
+			domain, err := model.NewDomain(name, model.Regional, time.Now(), opts)
 			require.NoError(t, err)
 
 			for region, expectedShards := range tt.regionResults {

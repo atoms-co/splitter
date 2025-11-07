@@ -3,6 +3,7 @@ package leader_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -12,7 +13,6 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
@@ -35,10 +35,10 @@ var (
 
 func TestLeader_SingleWorker(t *testing.T) {
 	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
+	cl := clock.New()
 	loc := location.New("centralus", "splitter-0")
 
-	s, err := model.NewService(s1, cl.Now())
+	s, err := model.NewService(s1, time.Now())
 	require.NoError(t, err)
 
 	db := setup(t, ctx, cl, s)
@@ -68,10 +68,10 @@ func TestLeader_SingleWorker(t *testing.T) {
 
 func TestLeader_SingleWorkerReattach(t *testing.T) {
 	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
+	cl := clock.New()
 	loc := location.New("centralus", "splitter-0")
 
-	s, err := model.NewService(s1, cl.Now())
+	s, err := model.NewService(s1, time.Now())
 	require.NoError(t, err)
 
 	db := setup(t, ctx, cl, s)
@@ -82,7 +82,7 @@ func TestLeader_SingleWorkerReattach(t *testing.T) {
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 
 	in := make(chan leader.Message, 1)
-	in <- leader.NewRegister(w, core.NewGrant("foo", s.Name(), cl.Now().Add(20*time.Second), cl.Now()))
+	in <- leader.NewRegister(w, core.NewGrant("foo", s.Name(), time.Now().Add(20*time.Second), time.Now()))
 
 	out, err := l.Join(ctx, session.NewID(), in)
 	require.NoError(t, err, "worker failed to join leader")
@@ -100,78 +100,80 @@ func TestLeader_SingleWorkerReattach(t *testing.T) {
 }
 
 func TestLeader_MultipleWorker(t *testing.T) {
-	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
-	loc := location.New("centralus", "splitter-0")
+	synctest.Run(func() {
+		ctx := context.Background()
+		cl := clock.New()
+		loc := location.New("centralus", "splitter-0")
 
-	s1, err := model.NewService(s1, cl.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
-	require.NoError(t, err)
-	s2, err := model.NewService(s2, cl.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
-	require.NoError(t, err)
+		s1, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
+		require.NoError(t, err)
+		s2, err := model.NewService(s2, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
+		require.NoError(t, err)
 
-	db := setup(t, ctx, cl, s1, s2)
+		db := setup(t, ctx, cl, s1, s2)
 
-	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
-	<-l.Initialized().Closed()
+		l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
+		<-l.Initialized().Closed()
 
-	w1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		w1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 
-	in1 := make(chan leader.Message, 1)
-	in1 <- leader.NewRegister(w1)
+		in1 := make(chan leader.Message, 1)
+		in1 <- leader.NewRegister(w1)
 
-	// Worker 1 joins and receives both assignment
+		// Worker 1 joins and receives both assignment
 
-	out1, err := l.Join(ctx, session.NewID(), in1)
-	require.NoError(t, err, "worker 1 failed to join leader")
+		out1, err := l.Join(ctx, session.NewID(), in1)
+		require.NoError(t, err, "worker 1 failed to join leader")
 
-	readFn(t, out1, isAssign)
-	readFn(t, out1, isAssign)
+		readFn(t, out1, isAssign)
+		readFn(t, out1, isAssign)
 
-	w2 := model.NewInstance(location.NewInstance(location.New("northcentralus", "pod1")), "endpoint")
+		w2 := model.NewInstance(location.NewInstance(location.New("northcentralus", "pod1")), "endpoint")
 
-	in2 := make(chan leader.Message, 1)
-	in2 <- leader.NewRegister(w2)
+		in2 := make(chan leader.Message, 1)
+		in2 <- leader.NewRegister(w2)
 
-	// Worker 2 joins and receives an assignment after rebalance
+		// Worker 2 joins and receives an assignment after rebalance
 
-	out2, err := l.Join(ctx, session.NewID(), in2)
-	require.NoError(t, err, "worker 2 failed to join leader")
+		out2, err := l.Join(ctx, session.NewID(), in2)
+		require.NoError(t, err, "worker 2 failed to join leader")
 
-	cl.Add(10 * time.Second) // advance to rebalance
+		time.Sleep(10 * time.Second) // advance to rebalance
 
-	revoke := readFn(t, out1, isRevoke)
-	assert.Len(t, revoke.Grants(), 1)
-	assert.Equal(t, s2.Name(), revoke.Grants()[0].Service()) // Should revoke service with regional preference for w2
+		revoke := readFn(t, out1, isRevoke)
+		assert.Len(t, revoke.Grants(), 1)
+		assert.Equal(t, s2.Name(), revoke.Grants()[0].Service()) // Should revoke service with regional preference for w2
 
-	in1 <- leader.NewRelinquished(revoke.Grants()[0])
+		in1 <- leader.NewRelinquished(revoke.Grants()[0])
 
-	assign := readFn(t, out2, isAssign)
-	assert.Equal(t, s2.Name(), assign.Grant().Service())
+		assign := readFn(t, out2, isAssign)
+		assert.Equal(t, s2.Name(), assign.Grant().Service())
 
-	// Both Worker 1 and Worker 2 register and receive revokes
+		// Both Worker 1 and Worker 2 register and receive revokes
 
-	in1 <- leader.NewDeregister()
+		in1 <- leader.NewDeregister()
 
-	revoke = readFn(t, out1, isRevoke)
-	assert.Len(t, revoke.Grants(), 1)
+		revoke = readFn(t, out1, isRevoke)
+		assert.Len(t, revoke.Grants(), 1)
 
-	in2 <- leader.NewDeregister()
+		in2 <- leader.NewDeregister()
 
-	revoke = readFn(t, out2, isRevoke)
-	assert.Len(t, revoke.Grants(), 1)
+		revoke = readFn(t, out2, isRevoke)
+		assert.Len(t, revoke.Grants(), 1)
 
-	l.Close()
-	assertx.Closed(t, out1)
+		l.Close()
+		assertx.Closed(t, out1)
+	})
 }
 
 func TestLeader_Operations(t *testing.T) {
 	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
+	cl := clock.New()
 	loc := location.New("centralus", "splitter-0")
 
-	s1, err := model.NewService(s1, cl.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
+	s1, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
 	require.NoError(t, err)
-	s2, err := model.NewService(s2, cl.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
+	s2, err := model.NewService(s2, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
 	require.NoError(t, err)
 
 	db := setup(t, ctx, cl, s1, s2)
@@ -195,13 +197,13 @@ func setup(t *testing.T, ctx context.Context, cl clock.Clock, services ...model.
 	db := memory.New()
 
 	for _, service := range services {
-		tenant, err := model.NewTenant(service.Name().Tenant, cl.Now())
+		tenant, err := model.NewTenant(service.Name().Tenant, time.Now())
 		require.NoError(t, err)
 
 		// db updates
-		err = db.Update(ctx, core.NewTenantUpdate(model.NewTenantInfo(tenant, 1, cl.Now())))
+		err = db.Update(ctx, core.NewTenantUpdate(model.NewTenantInfo(tenant, 1, time.Now())))
 		require.NoError(t, err)
-		serviceInfo := model.NewServiceInfo(service, 1, cl.Now())
+		serviceInfo := model.NewServiceInfo(service, 1, time.Now())
 		err = db.Update(ctx, core.NewServiceUpdate(serviceInfo))
 	}
 	return db

@@ -7,16 +7,15 @@ import (
 
 	"google.golang.org/grpc"
 
+	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
 )
 
 func TestDispatcher(t *testing.T) {
 	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
 
 	loc := location.New("us", "n1")
 	endpoint := "endpoint"
@@ -30,7 +29,7 @@ func TestDispatcher(t *testing.T) {
 
 		// (1) Join passes information correctly.
 
-		dispatcher := model.NewDispatcher(wctx, cl, client, loc, endpoint, service, nil)
+		dispatcher := model.NewDispatcher(wctx, clock.New(), client, loc, endpoint, service, nil)
 		assertx.Equal(t, client.Service, service)
 		assertx.Equal(t, client.Consumer.Location(), loc)
 		assertx.Equal(t, client.Consumer.Endpoint(), endpoint)
@@ -58,7 +57,7 @@ func TestDispatcher(t *testing.T) {
 
 		var counter int
 
-		dispatcher := model.NewDispatcher(ctx, cl, client, loc, endpoint, service, []model.DispatchFilter{
+		dispatcher := model.NewDispatcher(ctx, clock.New(), client, loc, endpoint, service, []model.DispatchFilter{
 			filter(func(shard model.Shard) bool {
 				counter += 1
 				return shard.Domain.Domain == "a"
@@ -104,7 +103,6 @@ func TestDispatcher(t *testing.T) {
 
 func TestProcessor(t *testing.T) {
 	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
 
 	remoteFn := func(connInterface grpc.ClientConnInterface) int { return 0 }
 
@@ -117,7 +115,7 @@ func TestProcessor(t *testing.T) {
 		created := iox.NewAsyncCloser()
 		r := newFakeRange()
 
-		proc := model.NewProcessor(cl, domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
+		proc := model.NewProcessor(clock.New(), domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
 			defer created.Close()
 			return r
 		})
@@ -195,7 +193,7 @@ func TestProcessor(t *testing.T) {
 		pool := newFakePool()
 
 		r := newFakeRange()
-		proc := model.NewProcessor(cl, domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
+		proc := model.NewProcessor(clock.New(), domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
 			return r
 		})
 		proc.Init(domain.Service, pool)
@@ -229,7 +227,7 @@ func TestProcessor(t *testing.T) {
 		pool := newFakePool()
 
 		r := newFakeRange()
-		proc := model.NewProcessor(cl, domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
+		proc := model.NewProcessor(clock.New(), domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
 			return r
 		})
 		proc.Init(domain.Service, pool)

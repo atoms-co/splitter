@@ -3,10 +3,11 @@ package model_test
 import (
 	"context"
 	"testing"
+	"testing/synctest"
 	"time"
 
+	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/splitter/pkg/model"
 )
 
@@ -41,50 +42,46 @@ func TestRegionProvider(t *testing.T) {
 }
 
 func TestLiveRegionProvider(t *testing.T) {
-	ctx := context.Background()
+	synctest.Run(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 
-	cl := mockclock.NewUnsynchronized()
-	cl.Set(time.Now())
+		name, _ := model.ParseQualifiedPlacementNameStr("foo/bar")
+		initial := model.NewPlacementInfo(model.NewPlacement(name, model.NewDistribution("foo")), 1, time.Now())
 
-	name, _ := model.ParseQualifiedPlacementNameStr("foo/bar")
-	initial := model.NewPlacementInfo(model.NewPlacement(name, model.NewDistribution("foo")), 1, cl.Now())
+		ch := make(chan model.PlacementInfo, 10)
+		provider := model.NewLiveRegionProvider(ctx, clock.New(), initial, func() (model.PlacementInfo, error) {
+			return <-ch, nil
+		})
 
-	ch := make(chan model.PlacementInfo, 10)
-	provider := model.NewLiveRegionProvider(ctx, cl, initial, func() (model.PlacementInfo, error) {
-		return <-ch, nil
+		// (1) Initial
+
+		assertx.Equal(t, provider.Find(B), "foo")
+
+		time.Sleep(time.Minute)
+
+		// (2) Still initial
+
+		assertx.Equal(t, provider.Find(B), "foo")
+
+		ch <- initial
+		time.Sleep(5 * time.Minute)
+
+		// (3) No-op update. Still initial
+
+		assertx.Equal(t, provider.Find(B), "foo")
+
+		// (4) Placement change, but not yet picked up
+
+		ch <- model.NewPlacementInfo(model.NewPlacement(name, model.NewDistribution("bar")), 3, time.Now())
+		time.Sleep(time.Minute)
+
+		assertx.Equal(t, provider.Find(B), "foo")
+
+		// (5) Picked up on next ticker
+
+		time.Sleep(5 * time.Minute)
+
+		assertx.Equal(t, provider.Find(B), "bar")
 	})
-
-	// (1) Initial
-
-	assertx.Equal(t, provider.Find(B), "foo")
-
-	cl.Add(time.Minute)
-	time.Sleep(50 * time.Millisecond)
-
-	// (2) Still initial
-
-	assertx.Equal(t, provider.Find(B), "foo")
-
-	ch <- initial
-	cl.Add(5 * time.Minute)
-	time.Sleep(50 * time.Millisecond)
-
-	// (3) No-op update. Still initial
-
-	assertx.Equal(t, provider.Find(B), "foo")
-
-	// (4) Placement change, but not yet picked up
-
-	ch <- model.NewPlacementInfo(model.NewPlacement(name, model.NewDistribution("bar")), 3, cl.Now())
-	cl.Add(time.Minute)
-	time.Sleep(50 * time.Millisecond)
-
-	assertx.Equal(t, provider.Find(B), "foo")
-
-	// (5) Picked up on next ticker
-
-	cl.Add(5 * time.Minute)
-	time.Sleep(50 * time.Millisecond)
-
-	assertx.Equal(t, provider.Find(B), "bar")
 }
