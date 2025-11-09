@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"go.atoms.co/lib/log"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/splitter/pkg/allocation"
@@ -16,6 +18,16 @@ import (
 
 type ConsumerID = InstanceID
 type Consumer = Instance
+
+func NewConsumerContext(ctx context.Context, consumer Consumer) context.Context {
+	fields := []log.Field{
+		log.String("consumer_id", consumer.ID()),
+		log.String("consumer_region", consumer.Location().Region),
+		log.String("consumer_node", consumer.Location().Node),
+		log.String("consumer_name", consumer.Instance().Name()),
+	}
+	return log.NewContext(ctx, fields...)
+}
 
 type Shard struct {
 	Domain QualifiedDomainName

@@ -2,6 +2,8 @@ package model
 
 import (
 	"context"
+	"errors"
+	"io"
 	"sync"
 	"time"
 
@@ -88,29 +90,35 @@ func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName
 		drain:        iox.WithQuit(quit.Closed(), iox.NewAsyncCloser()),
 	}
 
-	go p.join(context.Background())
-	go p.process(context.Background())
+	ctx := NewConsumerContext(context.Background(), consumer)
+	go p.join(ctx)
+	go p.process(ctx)
 	return p, p.clusters
 }
 
 func (p *WorkPool) Drain(timeout time.Duration) {
+	ctx := NewConsumerContext(context.Background(), p.self)
+	log.Infof(ctx, "Draining WorkPool with timeout %v", timeout)
+	now := time.Now()
 	p.drain.Close()
-	p.cl.AfterFunc(timeout, p.quit.Close)
-}
-
-// Drained returns a channel that is closed when the pool is drained.
-func (p *WorkPool) Drained() <-chan struct{} {
-	return p.drain.Closed()
+	p.cl.AfterFunc(timeout, func() {
+		log.Infof(ctx, "WorkPool closed after draining for %v", time.Since(now))
+		p.quit.Close()
+	})
 }
 
 func (p *WorkPool) join(ctx context.Context) {
+	defer func() {
+		log.Infof(ctx, "Finishing WorkPool reconnection to the coordinator")
+	}()
+
 	wctx, _ := contextx.WithQuitCancel(ctx, p.Closed())
 
 	for !p.drain.IsClosed() {
 		// Not connected. Establish WorkPool with coordinator with blocking join call. The workpool is either
 		// connecting or connected while in the join call.
 
-		log.Infof(ctx, "WorkPool %v attempting to join coordinator", p.self)
+		log.Infof(ctx, "WorkPool attempting to join coordinator")
 
 		err := p.joinFn(wctx, p.self.Instance(), func(ctx context.Context, in <-chan ConsumerMessage) (<-chan ConsumerMessage, error) {
 			return syncx.Txn1(ctx, p.txn, func() (<-chan ConsumerMessage, error) {
@@ -118,7 +126,11 @@ func (p *WorkPool) join(ctx context.Context) {
 			})
 		})
 
-		log.Infof(ctx, "WorkPool %v disconnected from coordinator: %v", p.self, err)
+		if err != nil && !errors.Is(err, io.EOF) {
+			log.Infof(ctx, "WorkPool disconnected from coordinator: %v", err)
+		} else {
+			log.Infof(ctx, "WorkPool disconnected from coordinator")
+		}
 
 		syncx.Txn0(wctx, p.txn, func() {
 			p.lostCoordinator(ctx)
@@ -179,6 +191,9 @@ func (p *WorkPool) lostCoordinator(ctx context.Context) {
 
 func (p *WorkPool) process(ctx context.Context) {
 	defer p.quit.Close()
+	defer func() {
+		log.Infof(ctx, "Finishing WorkPool processing")
+	}()
 
 	statsTimer := p.cl.NewTicker(statsDuration)
 	defer statsTimer.Stop()
@@ -188,7 +203,7 @@ steady:
 		select {
 		case msg, ok := <-p.in:
 			if !ok {
-				log.Errorf(ctx, "Coordinator connection unexpectedly closed")
+				log.Warnf(ctx, "Coordinator connection unexpectedly closed")
 				p.lostCoordinator(ctx)
 				break
 			}
@@ -209,6 +224,7 @@ steady:
 			break steady
 
 		case <-p.Closed():
+			log.Infof(ctx, "Aborting WorkPool processing due to closure")
 			return
 		}
 	}
@@ -217,25 +233,45 @@ steady:
 	now := p.cl.Now()
 
 	if p.status == nil || !p.trySend(ctx, NewDeregister()) {
-		log.Errorf(ctx, "WorkPool %v draining while disconnected/stuck. Hard close", p.self)
-		return
+		log.Infof(ctx, "WorkPool is draining while disconnected/stuck")
 	}
 
+drain:
 	for {
 		select {
 		case msg, ok := <-p.in:
 			if !ok {
 				if len(p.grants) == 0 {
-					log.Infof(ctx, "Workpool %v drained after %v", p.self, p.cl.Since(now))
+					log.Infof(ctx, "Workpool drained after %v", p.cl.Since(now))
 					p.lostCoordinator(ctx)
 					return
 				}
-				log.Errorf(ctx, "Coordinator connection unexpectedly closed while draining. Hard close")
+				log.Warnf(ctx, "Coordinator connection unexpectedly closed while draining")
 				p.lostCoordinator(ctx)
-				return
+				break drain
 			}
 			p.handleMessage(ctx, msg)
 
+		case <-p.expire:
+			p.checkExpiration(ctx)
+
+		case fn := <-p.inject:
+			fn()
+
+		case <-p.Closed():
+			log.Infof(ctx, "Aborting WorkPool processing due to closure")
+			return
+		}
+	}
+
+	log.Infof(ctx, "Waiting for remainig #%v grants to expire", len(p.grants))
+
+	for {
+		if len(p.grants) == 0 {
+			break
+		}
+
+		select {
 		case <-p.expire:
 			p.checkExpiration(ctx)
 
@@ -280,8 +316,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 						log.Infof(ctx, "Re-activated stale grant: %v", old)
 						continue
 					}
-					log.Errorf(ctx, "Internal: unexpected assignment of grant in invalid state. "+
-						"Re-creating. Old grant: %v. New grant: %v", old, g)
+					log.Errorf(ctx, "Internal: unexpected assignment of grant in invalid state. Re-creating. Old grant: %v. New grant: %v", old, g)
 				} else {
 					log.Errorf(ctx, "Internal: unexpected re-grant of non-stale grant %v. Re-creating", old)
 				}
@@ -317,7 +352,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 					syncx.Txn0(ctx, p.txn, func() {
 						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == AllocatedGrantState {
 							grant.Grant = grant.ToState(LoadedGrantState)
-							log.Infof(ctx, "Informing the coordinator of Grant Load %v", grant.Grant)
+							log.Infof(ctx, "Informing the coordinator of grant load %v", grant.Grant)
 							p.mustSend(ctx, NewUpdate(grant.Grant))
 						}
 					})
@@ -334,7 +369,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 					syncx.Txn0(ctx, p.txn, func() {
 						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == RevokedGrantState {
 							grant.Grant = grant.ToState(UnloadedGrantState)
-							log.Infof(ctx, "Informing the coordinator of Grant Unload %v", grant.Grant)
+							log.Infof(ctx, "Informing the coordinator of grant unload %v", grant.Grant)
 							p.mustSend(ctx, NewUpdate(grant.Grant))
 						}
 					})
@@ -540,7 +575,7 @@ func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
 		delete(p.shards, grant.Grant.Shard()) // delete service tracking if not replaced by new grant
 	}
 
-	log.Infof(ctx, "WorkPool %v removed grant %v", p.self, grant)
+	log.Infof(ctx, "Removed grant %v", grant)
 }
 
 func (p *WorkPool) releaseGrant(ctx context.Context, gid GrantID) {
@@ -553,9 +588,9 @@ func (p *WorkPool) releaseGrant(ctx context.Context, gid GrantID) {
 		// Consumer tries to notify the coordinator to revoke the grant, the message is not guaranteed to be delivered.
 		// Range must also release a grant after some period of time so that it's eventually revoked.
 		if p.trySend(ctx, NewRevoke(g.Grant)) {
-			log.Infof(ctx, "Workpool %v requested to release grant %v", p.self, g)
+			log.Infof(ctx, "Requested to release grant %v", g)
 		} else {
-			log.Warnf(ctx, "Workpool %v failed to request to release grant %v", p.self, g)
+			log.Warnf(ctx, "Unabled to request to release grant %v", g)
 		}
 	}
 }
@@ -597,14 +632,15 @@ func (p *WorkPool) mustSend(ctx context.Context, msg ConsumerMessage) {
 		return // ok: disconnected
 	}
 
-	timer := p.cl.NewTimer(100 * time.Millisecond)
+	timeout := 100 * time.Millisecond
+	timer := p.cl.NewTimer(timeout)
 	defer timer.Stop()
 
 	select {
 	case p.out <- msg:
 		return
 	case <-timer.C:
-		log.Errorf(ctx, "Internal: coordinator WorkPool stuck. Disconnecting")
+		log.Warnf(ctx, "Unabled to send message to the coordinator in %v. Disconnecting", timeout)
 		p.lostCoordinator(ctx)
 	}
 }
