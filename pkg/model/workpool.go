@@ -101,10 +101,17 @@ func (p *WorkPool) Drain(timeout time.Duration) {
 	log.Infof(ctx, "Draining WorkPool with timeout %v", timeout)
 	now := time.Now()
 	p.drain.Close()
-	p.cl.AfterFunc(timeout, func() {
-		log.Infof(ctx, "WorkPool closed after draining for %v", time.Since(now))
-		p.quit.Close()
-	})
+	go func() {
+		timeoutTimer := p.cl.NewTimer(timeout)
+		defer timeoutTimer.Stop()
+		select {
+		case <-timeoutTimer.C:
+			log.Infof(ctx, "WorkPool closed forcefully after draining for %v", time.Since(now))
+			p.quit.Close()
+		case <-p.quit.Closed():
+			log.Infof(ctx, "WorkPool closed after draining for %v", time.Since(now))
+		}
+	}()
 }
 
 func (p *WorkPool) join(ctx context.Context) {
