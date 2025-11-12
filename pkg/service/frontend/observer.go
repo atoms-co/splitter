@@ -122,7 +122,7 @@ func (o *ObserverService) Observe(server splitterprivatepb.ObserverService_Obser
 }
 
 func (o *ObserverService) forwardRemote(ctx context.Context, observerSession *session.Server, service model.QualifiedServiceName, client splitterprivatepb.CoordinatorServiceClient, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error) {
-	coordinatorSession, establish, sessionOut := session.NewClient(ctx, o.cl, o.worker.Self())
+	coordinatorSession, establish, sessionOut := session.NewClient(ctx, o.worker.Self())
 	wctx, _ := contextx.WithQuitCancel(ctx, coordinatorSession.Closed())
 	iox.WhenClosed(coordinatorSession, observerSession)
 

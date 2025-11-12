@@ -28,7 +28,7 @@ func TestConnect(t *testing.T) {
 		main := make(chan message[int], 1)
 		main <- message[int]{payload: 1}
 
-		c, establish, liveness := session.NewClient(ctx, cl, loc)
+		c, establish, liveness := session.NewClient(ctx, loc)
 		out := session.Connect(c, establish, main, liveness, inject[int])
 
 		// (1) Establish -> payload -> Closed
@@ -51,7 +51,7 @@ func TestConnect(t *testing.T) {
 		main := make(chan message[int], 2)
 		main <- message[int]{payload: 1}
 
-		c, establish, liveness := session.NewClient(ctx, cl, loc)
+		c, establish, liveness := session.NewClient(ctx, loc)
 		out := session.Connect(c, establish, main, liveness, inject[int])
 
 		// (1) Establish -> payload -> Closed

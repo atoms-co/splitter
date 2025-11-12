@@ -29,7 +29,6 @@ var (
 // emit that separately to ensure it is last when merged with other messages.
 type Client struct {
 	iox.AsyncCloser
-	cl clock.Clock
 
 	sid    ID
 	self   location.Instance
@@ -61,11 +60,10 @@ func WithClientHeartbeatDuration(duration time.Duration) ClientOption {
 	}
 }
 
-func NewClient(ctx context.Context, cl clock.Clock, self location.Instance, options ...ClientOption) (*Client, Message, <-chan Message) {
+func NewClient(ctx context.Context, self location.Instance, options ...ClientOption) (*Client, Message, <-chan Message) {
 	out := make(chan Message, clientBufChanSize)
 	c := &Client{
 		AsyncCloser:       iox.NewAsyncCloser(),
-		cl:                cl,
 		sid:               NewID(),
 		self:              self,
 		in:                make(chan Message, clientBufChanSize),
@@ -102,10 +100,10 @@ func (c *Client) process(ctx context.Context) {
 	defer c.Close()
 	defer close(c.out)
 
-	heartbeat := c.cl.NewTicker(c.heartbeatDuration)
+	heartbeat := time.NewTicker(c.heartbeatDuration)
 	defer heartbeat.Stop()
 
-	expiration := clockx.NewTimer(c.cl, c.keepAliveTimeout)
+	expiration := clockx.NewTimer(clock.New(), c.keepAliveTimeout)
 	defer expiration.Stop()
 
 	for !c.IsClosed() {
@@ -117,11 +115,11 @@ func (c *Client) process(ctx context.Context) {
 			case msg.IsEstablished():
 				established, _ := msg.Established()
 				c.server = established.Server
-				expiration.Reset(c.cl.Until(established.Ttl))
+				expiration.Reset(time.Until(established.Ttl))
 
 			case msg.IsHeartbeatAck():
 				ttl, _ := msg.HeartbeatAck()
-				expiration.Reset(c.cl.Until(ttl))
+				expiration.Reset(time.Until(ttl))
 
 			case msg.IsClosed():
 				return
@@ -135,7 +133,7 @@ func (c *Client) process(ctx context.Context) {
 			return
 
 		case <-heartbeat.C:
-			c.send(ctx, NewHeartbeatMessage(c.cl.Now()))
+			c.send(ctx, NewHeartbeatMessage(time.Now()))
 
 		case <-c.Closed():
 			return
@@ -146,7 +144,7 @@ func (c *Client) process(ctx context.Context) {
 }
 
 func (c *Client) send(ctx context.Context, msg Message) {
-	stuck := c.cl.NewTimer(c.keepAliveTimeout)
+	stuck := time.NewTimer(c.keepAliveTimeout)
 	defer stuck.Stop()
 
 	select {

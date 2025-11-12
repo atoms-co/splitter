@@ -101,7 +101,7 @@ func (c *consumer) Self() location.Instance {
 
 func (c *consumer) forwardRemote(ctx context.Context, consumerSession *session.Server, client splitterprivatepb.CoordinatorServiceClient, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
 	// Create a client session with the coordinator instance
-	coordinatorSession, establish, sessionOut := session.NewClient(ctx, c.cl, c.self)
+	coordinatorSession, establish, sessionOut := session.NewClient(ctx, c.self)
 	wctx, _ := contextx.WithQuitCancel(ctx, coordinatorSession.Closed()) // cancel context if session closes
 	iox.WhenClosed(coordinatorSession, consumerSession)
 

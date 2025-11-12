@@ -304,7 +304,7 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 	log.Infof(ctx, "Starting consumer %v to service %v using client with version %v", consumer, service, ClientVersion)
 
 	joinFn := func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
-		sess, establish, out := session.NewClient(ctx, c.cl, self)
+		sess, establish, out := session.NewClient(ctx, self)
 		defer sess.Close()
 		wctx, _ := contextx.WithQuitCancel(ctx, sess.Closed()) // cancel context if session client closes
 

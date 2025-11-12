@@ -339,7 +339,7 @@ func (c *observerClient) observe(ctx context.Context, observer Observer, service
 }
 
 func (c *observerClient) connect(ctx context.Context, observer Observer, service model.QualifiedServiceName, handler grpcx.Handler[model.ClusterMessage, ObserverRegisterMessage]) {
-	sess, establish, out := session.NewClient(ctx, c.cl, observer.Instance())
+	sess, establish, out := session.NewClient(ctx, observer.Instance())
 	defer sess.Close()
 	sessCtx, _ := contextx.WithQuitCancel(ctx, sess.Closed())
 

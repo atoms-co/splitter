@@ -77,7 +77,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 			})
 		}
 
-		sess, establish, out := session.NewClient(ctx, cl, self)
+		sess, establish, out := session.NewClient(ctx, self)
 		defer sess.Close()
 		wctx, _ := contextx.WithQuitCancel(ctx, sess.Closed()) // cancel context if session client closes
 
