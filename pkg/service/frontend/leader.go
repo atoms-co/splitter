@@ -52,7 +52,7 @@ func (l *LeaderService) Join(server splitterprivatepb.LeaderService_JoinServer) 
 
 		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, l.self)
 
-		sess, out, established := session.NewServer(ctx, l.cl, l.self, establish)
+		sess, out, established := session.NewServer(ctx, l.self, establish)
 		iox.WhenClosed(sess, quit)
 
 		ch := chanx.MapIf(in, func(pb *splitterprivatepb.JoinMessage) (leader.Message, bool) {

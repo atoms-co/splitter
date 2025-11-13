@@ -53,7 +53,7 @@ func (c *CoordinatorService) Connect(server splitterprivatepb.CoordinatorService
 
 		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, c.worker.Self())
 
-		sess, out, established := session.NewServer(ctx, c.cl, c.worker.Self(), establish)
+		sess, out, established := session.NewServer(ctx, c.worker.Self(), establish)
 		iox.WhenClosed(sess, quit)
 
 		ch := chanx.MapIf(in, func(pb *splitterprivatepb.ConnectMessage) (model.ConsumerMessage, bool) {
@@ -112,7 +112,7 @@ func (c *CoordinatorService) Observe(server splitterprivatepb.CoordinatorService
 
 		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, c.worker.Self())
 
-		sess, sessionOut, established := session.NewServer(ctx, c.cl, c.worker.Self(), establish)
+		sess, sessionOut, established := session.NewServer(ctx, c.worker.Self(), establish)
 		iox.WhenClosed(sess, quit)
 
 		observerIn := chanx.MapIf(in, func(pb *splitterprivatepb.ObserverClientMessage) (core.ObserverClientMessage, bool) {

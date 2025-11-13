@@ -54,7 +54,7 @@ func (o *ObserverService) Observe(server splitterprivatepb.ObserverService_Obser
 
 		log.Infof(ctx, "Received observer establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, o.worker.Self())
 
-		sess, sessionOut, established := session.NewServer(ctx, o.cl, o.worker.Self(), establish)
+		sess, sessionOut, established := session.NewServer(ctx, o.worker.Self(), establish)
 		iox.WhenClosed(sess, quit)
 
 		observerIn := chanx.MapIf(in, func(pb *splitterprivatepb.ObserverClientMessage) (core.ObserverClientMessage, bool) {

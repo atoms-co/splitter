@@ -33,7 +33,6 @@ var (
 // stream. Users must emit that separately to ensure it is last when merged with other messages.
 type Server struct {
 	iox.AsyncCloser
-	cl clock.Clock
 
 	sid    ID
 	self   location.Instance
@@ -59,11 +58,10 @@ func WithServerKeepAliveTimeout(timeout time.Duration) ServerOption {
 // NewServer creates and initializes a new server-side session. The session uses the given Establish
 // for initialization and returns a corresponding Established message which must be sent to the client.
 // Returns the Server, a channel with outgoing messages and the Established message to be sent to the client.
-func NewServer(ctx context.Context, cl clock.Clock, self location.Instance, establish Establish, options ...ServerOption) (*Server, <-chan Message, Message) {
+func NewServer(ctx context.Context, self location.Instance, establish Establish, options ...ServerOption) (*Server, <-chan Message, Message) {
 	out := make(chan Message, serverBufChanSize)
 	s := &Server{
 		AsyncCloser:      iox.NewAsyncCloser(),
-		cl:               cl,
 		sid:              establish.ID,
 		self:             self,
 		client:           establish.Client,
@@ -76,7 +74,7 @@ func NewServer(ctx context.Context, cl clock.Clock, self location.Instance, esta
 		opt(s)
 	}
 
-	expiration := s.cl.Now().Add(s.keepAliveTimeout)
+	expiration := time.Now().Add(s.keepAliveTimeout)
 	established := NewEstablishedMessage(expiration, s.self)
 
 	go s.process(ctx, expiration)
@@ -104,7 +102,7 @@ func (s *Server) process(ctx context.Context, ttl time.Time) {
 	defer s.Close()
 	defer close(s.out)
 
-	expiration := clockx.NewTimer(s.cl, s.cl.Until(ttl))
+	expiration := clockx.NewTimer(clock.New(), time.Until(ttl))
 	defer expiration.Stop()
 
 	for {
@@ -117,10 +115,10 @@ func (s *Server) process(ctx context.Context, ttl time.Time) {
 
 			case msg.IsHeartbeat():
 				now, _ := msg.Heartbeat()
-				serverHeartbeatLag.Observe(ctx, s.cl.Now().Sub(now))
-				expirationTime := s.cl.Now().Add(s.keepAliveTimeout)
+				serverHeartbeatLag.Observe(ctx, time.Now().Sub(now))
+				expirationTime := time.Now().Add(s.keepAliveTimeout)
 				s.send(ctx, NewHeartbeakAckMessage(expirationTime))
-				expiration.Reset(s.cl.Until(expirationTime))
+				expiration.Reset(time.Until(expirationTime))
 
 			case msg.IsClosed():
 				return
@@ -142,7 +140,7 @@ func (s *Server) process(ctx context.Context, ttl time.Time) {
 }
 
 func (s *Server) send(ctx context.Context, msg Message) {
-	stuck := s.cl.NewTimer(s.keepAliveTimeout)
+	stuck := time.NewTimer(s.keepAliveTimeout)
 	defer stuck.Stop()
 
 	select {

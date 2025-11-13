@@ -66,7 +66,7 @@ func (s *ConsumerService) Join(server splitterpb.ConsumerService_JoinServer) err
 
 		log.Infof(ctx, "Received establish for sid %v, (client: %v -> self: %v)", establish.ID, establish.Client, s.consumer.Self())
 
-		consumerSession, sessionOut, established := session.NewServer(ctx, s.cl, s.consumer.Self(), establish)
+		consumerSession, sessionOut, established := session.NewServer(ctx, s.consumer.Self(), establish)
 		iox.WhenClosed(consumerSession, quit)
 
 		consumerIn := chanx.MapIf(in, func(pb *splitterpb.JoinMessage) (model.ConsumerMessage, bool) {

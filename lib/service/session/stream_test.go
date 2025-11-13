@@ -79,15 +79,13 @@ func TestConnect(t *testing.T) {
 
 func TestReceive(t *testing.T) {
 	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
-	cl.Set(time.Now())
 
 	t.Run("main", func(t *testing.T) {
 		main := make(chan message[int], 1)
 
 		msg := session.NewEstablishMessage("sid", client)
 		establish, _ := msg.Establish()
-		s, liveness, msg := session.NewServer(ctx, cl, instance, establish)
+		s, liveness, msg := session.NewServer(ctx, instance, establish)
 		defer s.Close()
 
 		// Established -> payload -> Closed
@@ -114,7 +112,7 @@ func TestReceive(t *testing.T) {
 
 		msg := session.NewEstablishMessage("sid", client)
 		establish, _ := msg.Establish()
-		s, liveness, msg := session.NewServer(ctx, cl, instance, establish)
+		s, liveness, msg := session.NewServer(ctx, instance, establish)
 		defer s.Close()
 
 		out := session.Receive(s, main, liveness, inject[int])
