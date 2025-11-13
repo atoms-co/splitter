@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -18,14 +17,12 @@ import (
 )
 
 type LeaderService struct {
-	cl    clock.Clock
 	self  location.Instance
 	proxy leader.Proxy
 }
 
-func NewLeaderService(cl clock.Clock, loc location.Location, proxy leader.Proxy) *LeaderService {
+func NewLeaderService(loc location.Location, proxy leader.Proxy) *LeaderService {
 	return &LeaderService{
-		cl:    cl,
 		self:  location.NewNamedInstance("leaderProxy", loc), // TODO(jhhurwitz): 08/15/24 Should the leader.Proxy expose self?
 		proxy: proxy,
 	}
@@ -39,7 +36,7 @@ func (l *LeaderService) Join(server splitterprivatepb.LeaderService_JoinServer) 
 
 	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *splitterprivatepb.JoinMessage) (<-chan *splitterprivatepb.JoinMessage, error) {
 		// Read session initialization message
-		establish, err := session.ReadEstablish(l.cl, in, func(m *splitterprivatepb.JoinMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(in, func(m *splitterprivatepb.JoinMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
 				return session.WrapMessage(m.GetSession()), true
 			}

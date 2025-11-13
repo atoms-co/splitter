@@ -20,14 +20,12 @@ import (
 )
 
 type ObserverService struct {
-	cl       clock.Clock
 	worker   worker.Worker
 	resolver core.ServiceResolver
 }
 
-func NewObserverService(cl clock.Clock, w worker.Worker, resolver core.ServiceResolver) *ObserverService {
+func NewObserverService(w worker.Worker, resolver core.ServiceResolver) *ObserverService {
 	return &ObserverService{
-		cl:       cl,
 		worker:   w,
 		resolver: resolver,
 	}
@@ -40,7 +38,7 @@ func (o *ObserverService) Observe(server splitterprivatepb.ObserverService_Obser
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed())
 
 	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *splitterprivatepb.ObserverClientMessage) (<-chan *splitterprivatepb.ObserverServerMessage, error) {
-		establish, err := session.ReadEstablish(o.cl, in, func(m *splitterprivatepb.ObserverClientMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(in, func(m *splitterprivatepb.ObserverClientMessage) (session.Message, bool) {
 			wrapped := core.WrapObserverClientMessage(m)
 			if s, ok := wrapped.Session(); ok {
 				return s, true
@@ -72,7 +70,7 @@ func (o *ObserverService) Observe(server splitterprivatepb.ObserverService_Obser
 			return nil, fmt.Errorf("send failed: %w", model.ErrInvalid)
 		}
 
-		msg, ok := chanx.TryRead(observerIn, o.cl, 20*time.Second)
+		msg, ok := chanx.TryRead(observerIn, clock.New(), 20*time.Second)
 		if !ok {
 			log.Errorf(ctx, "No registration message received")
 			return nil, fmt.Errorf("no registration message received: %w", model.ErrInvalid)

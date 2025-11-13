@@ -132,12 +132,12 @@ func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 	placement := frontend.NewInternalPlacementService(s.manager, s.manager)
 
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
-	splitterpb.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.cl, s.consumer, s.worker))
+	splitterpb.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.consumer, s.worker))
 	splitterpb.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.manager, s.manager))
 	splitterpb.RegisterPlacementServiceServer(gs, frontend.NewPlacementService(placement))
 	splitterprivatepb.RegisterPlacementManagementServiceServer(gs, placement)
 	splitterprivatepb.RegisterOperationServiceServer(gs, frontend.NewOperationService(s.cluster, s.worker, s.resolver, s.manager, s.manager))
-	splitterprivatepb.RegisterObserverServiceServer(gs, frontend.NewObserverService(s.cl, s.worker, s.resolver))
+	splitterprivatepb.RegisterObserverServiceServer(gs, frontend.NewObserverService(s.worker, s.resolver))
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -168,8 +168,8 @@ func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 // ServeInternal starts the internal grpc server on the given port. Blocking.
 func (s *Server) ServeInternal(ctx context.Context, listeners ...net.Listener) error {
 	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
-	splitterprivatepb.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.cl, s.loc, s.manager))
-	splitterprivatepb.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.cl, s.worker))
+	splitterprivatepb.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.loc, s.manager))
+	splitterprivatepb.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.worker))
 	splitterprivatepb.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cluster))
 
 	var wg sync.WaitGroup

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
@@ -20,13 +19,11 @@ import (
 
 // CoordinatorService is a grpc frontend for the internal coordinator api.
 type CoordinatorService struct {
-	cl     clock.Clock
 	worker worker.Worker
 }
 
-func NewCoordinatorService(cl clock.Clock, w worker.Worker) *CoordinatorService {
+func NewCoordinatorService(w worker.Worker) *CoordinatorService {
 	c := CoordinatorService{
-		cl:     cl,
 		worker: w,
 	}
 	return &c
@@ -40,7 +37,7 @@ func (c *CoordinatorService) Connect(server splitterprivatepb.CoordinatorService
 
 	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *splitterprivatepb.ConnectMessage) (<-chan *splitterprivatepb.ConnectMessage, error) {
 		// Read session initialization message
-		establish, err := session.ReadEstablish(c.cl, in, func(m *splitterprivatepb.ConnectMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(in, func(m *splitterprivatepb.ConnectMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
 				return session.WrapMessage(m.GetSession()), true
 			}
@@ -98,7 +95,7 @@ func (c *CoordinatorService) Observe(server splitterprivatepb.CoordinatorService
 	wctx, _ := contextx.WithQuitCancel(server.Context(), quit.Closed())
 
 	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *splitterprivatepb.ObserverClientMessage) (<-chan *splitterprivatepb.ObserverServerMessage, error) {
-		establish, err := session.ReadEstablish(c.cl, in, func(m *splitterprivatepb.ObserverClientMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(in, func(m *splitterprivatepb.ObserverClientMessage) (session.Message, bool) {
 			wrapped := core.WrapObserverClientMessage(m)
 			if sess, ok := wrapped.Session(); ok {
 				return sess, true

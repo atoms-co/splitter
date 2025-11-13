@@ -7,7 +7,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
@@ -24,14 +23,12 @@ import (
 // By using this service a client joins the work distribution process during which it receives
 // assigned grants and, separately, grants assigned to all consumers.
 type ConsumerService struct {
-	cl       clock.Clock
 	consumer consumer.Consumer
 	worker   worker.Worker
 }
 
-func NewConsumerService(cl clock.Clock, c consumer.Consumer, w worker.Worker) *ConsumerService {
+func NewConsumerService(c consumer.Consumer, w worker.Worker) *ConsumerService {
 	return &ConsumerService{
-		cl:       cl,
 		consumer: c,
 		worker:   w,
 	}
@@ -53,7 +50,7 @@ func (s *ConsumerService) Join(server splitterpb.ConsumerService_JoinServer) err
 
 	err := grpcx.Receive(wctx, server, func(ctx context.Context, in <-chan *splitterpb.JoinMessage) (<-chan *splitterpb.JoinMessage, error) {
 		// Read session initialization message
-		establish, err := session.ReadEstablish(s.cl, in, func(m *splitterpb.JoinMessage) (session.Message, bool) {
+		establish, err := session.ReadEstablish(in, func(m *splitterpb.JoinMessage) (session.Message, bool) {
 			if m.GetSession() != nil {
 				return session.WrapMessage(m.GetSession()), true
 			}
