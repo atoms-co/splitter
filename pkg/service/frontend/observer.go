@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
@@ -70,7 +69,7 @@ func (o *ObserverService) Observe(server splitterprivatepb.ObserverService_Obser
 			return nil, fmt.Errorf("send failed: %w", model.ErrInvalid)
 		}
 
-		msg, ok := chanx.TryRead(observerIn, clock.New(), 20*time.Second)
+		msg, ok := chanx.TryRead(observerIn, 20*time.Second)
 		if !ok {
 			log.Errorf(ctx, "No registration message received")
 			return nil, fmt.Errorf("no registration message received: %w", model.ErrInvalid)

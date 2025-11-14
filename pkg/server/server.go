@@ -114,7 +114,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 	w, clusters := worker.New(cl, loc, endpoint, joinFn, factoryFn)
 	resolver := core.NewServiceResolver(ctx, cl, w.Self().ID(), clusters, grpcx.WithInsecure())
 
-	c := consumer.New(cl, loc, w, resolver)
+	c := consumer.New(loc, w, resolver)
 
 	return &Server{
 		cl:       cl,

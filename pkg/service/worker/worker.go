@@ -114,7 +114,7 @@ func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, 
 }
 
 func (w *worker) Connect(ctx context.Context, sid session.ID, consumer location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	msg, ok := chanx.TryRead(in, w.cl, 20*time.Second)
+	msg, ok := chanx.TryRead(in, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No registration message received: %v", msg)
 		return nil, fmt.Errorf("no registration message received %v: %w", msg, model.ErrInvalid)
@@ -156,7 +156,7 @@ func (w *worker) Handle(ctx context.Context, req coordinator.HandleRequest) (*sp
 }
 
 func (w *worker) Observe(ctx context.Context, sid session.ID, observer location.Instance, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error) {
-	msg, ok := chanx.TryRead(in, w.cl, 20*time.Second)
+	msg, ok := chanx.TryRead(in, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No observer registration message received: %v", msg)
 		return nil, fmt.Errorf("no observer registration message received %v: %w", msg, model.ErrInvalid)

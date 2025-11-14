@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -35,16 +34,14 @@ type Consumer interface {
 type consumer struct {
 	iox.AsyncCloser
 
-	cl       clock.Clock
 	self     location.Instance
 	worker   worker.Worker
 	resolver core.ServiceResolver
 }
 
-func New(cl clock.Clock, loc location.Location, w worker.Worker, resolver core.ServiceResolver) Consumer {
+func New(loc location.Location, w worker.Worker, resolver core.ServiceResolver) Consumer {
 	c := &consumer{
 		AsyncCloser: iox.NewAsyncCloser(),
-		cl:          cl,
 		self:        location.NewNamedInstance("consumer", loc),
 		worker:      w,
 		resolver:    resolver,
@@ -54,7 +51,7 @@ func New(cl clock.Clock, loc location.Location, w worker.Worker, resolver core.S
 }
 
 func (c *consumer) Join(ctx context.Context, session *session.Server, sid session.ID, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	msg, ok := chanx.TryRead(in, c.cl, 20*time.Second)
+	msg, ok := chanx.TryRead(in, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No registration message received")
 		return nil, fmt.Errorf("no registration message received: %w", model.ErrInvalid)

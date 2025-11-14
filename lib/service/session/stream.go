@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/chanx"
 )
 
@@ -38,7 +37,7 @@ func ReadEstablish[T any](in <-chan T, extract func(T) (Message, bool)) (Establi
 // to initialize a session on the server side.
 func ReadEstablishWithTimeout[T any](in <-chan T, extract func(T) (Message, bool), establishTimeout time.Duration) (Establish, error) {
 	// Read first message
-	first, ok := chanx.TryRead(in, clock.New(), establishTimeout)
+	first, ok := chanx.TryRead(in, establishTimeout)
 	if !ok {
 		return Establish{}, fmt.Errorf("no first session message")
 	}

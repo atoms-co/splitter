@@ -167,7 +167,7 @@ func (c *coordinator) Initialized() iox.RAsyncCloser {
 }
 
 func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
-	msg, ok := chanx.TryRead(in, c.cl, 20*time.Second)
+	msg, ok := chanx.TryRead(in, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No registration message received: %v", msg)
 		return nil, fmt.Errorf("no registration message received %v: %w", msg, model.ErrInvalid)
@@ -219,7 +219,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin locati
 }
 
 func (c *coordinator) Observe(ctx context.Context, sid session.ID, origin location.Instance, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error) {
-	msg, ok := chanx.TryRead(in, c.cl, handleTimeout)
+	msg, ok := chanx.TryRead(in, handleTimeout)
 	if !ok {
 		log.Errorf(ctx, "No observer registration message received")
 		return nil, fmt.Errorf("no observer registration message received: %w", model.ErrInvalid)
