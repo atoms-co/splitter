@@ -7,7 +7,6 @@ import (
 
 	"google.golang.org/grpc"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
@@ -286,20 +285,18 @@ func (p *observerPool) Cluster() (model.Cluster, bool) {
 }
 
 type observerClient struct {
-	cl       clock.Clock
 	observer splitterprivatepb.ObserverServiceClient
 }
 
 func NewObserverClient(cc *grpc.ClientConn) ObserverClient {
 	return &observerClient{
-		cl:       clock.New(),
 		observer: splitterprivatepb.NewObserverServiceClient(cc),
 	}
 }
 
 func (c *observerClient) Observe(ctx context.Context, observer Observer, service model.QualifiedServiceName) (model.ClusterProvider, <-chan model.ClusterMessage, iox.RAsyncCloser) {
 	pool := &observerPool{
-		cluster: model.NewClusterMap(model.NewClusterID(observer.Instance(), c.cl.Now()), nil),
+		cluster: model.NewClusterMap(model.NewClusterID(observer.Instance(), time.Now()), nil),
 		updates: make(chan model.ClusterMessage, 100),
 	}
 	quit := iox.WithQuit(ctx.Done(), iox.NewAsyncCloser())
@@ -334,7 +331,7 @@ func (c *observerClient) observe(ctx context.Context, observer Observer, service
 			return
 		}
 
-		c.cl.Sleep(time.Second + randx.Duration(time.Second))
+		time.Sleep(time.Second + randx.Duration(time.Second))
 	}
 }
 
