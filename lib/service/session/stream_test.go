@@ -12,15 +12,11 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/lib/testing/mockclock"
 	"go.atoms.co/lib/testing/requirex"
 )
 
 func TestConnect(t *testing.T) {
 	ctx := context.Background()
-	cl := mockclock.NewUnsynchronized()
-	cl.Set(time.Now())
-
 	loc := location.NewInstance(location.New("us-west2", "unknown"))
 
 	t.Run("main", func(t *testing.T) {

@@ -4,11 +4,9 @@ import (
 	"context"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
 )
 
@@ -103,7 +101,7 @@ func (c *Client) process(ctx context.Context) {
 	heartbeat := time.NewTicker(c.heartbeatDuration)
 	defer heartbeat.Stop()
 
-	expiration := clockx.NewTimer(clock.New(), c.keepAliveTimeout)
+	expiration := time.NewTimer(c.keepAliveTimeout)
 	defer expiration.Stop()
 
 	for !c.IsClosed() {

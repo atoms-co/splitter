@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/iox"
 )
 
@@ -102,7 +100,7 @@ func (s *Server) process(ctx context.Context, ttl time.Time) {
 	defer s.Close()
 	defer close(s.out)
 
-	expiration := clockx.NewTimer(clock.New(), time.Until(ttl))
+	expiration := time.NewTimer(time.Until(ttl))
 	defer expiration.Stop()
 
 	for {
