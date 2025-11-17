@@ -1,8 +1,7 @@
 package model
 
 import (
-	"github.com/golang/protobuf/proto"
-
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
 	splitterpb "go.atoms.co/splitter/pb"
 )
@@ -34,7 +33,7 @@ func UpdateTenantOperational(tenant Tenant, opts ...TenantOperationalOption) (Te
 	if pb == nil {
 		pb = &splitterpb.Tenant_Operational{}
 	}
-	pb = proto.Clone(pb).(*splitterpb.Tenant_Operational)
+	pb = protox.Clone(pb)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -59,7 +58,7 @@ func (t TenantOperational) BannedRegions() []Region {
 }
 
 func (t TenantOperational) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 type ServiceOperationalOption func(*splitterpb.Service_Operational)
@@ -101,7 +100,7 @@ func UpdateServiceOperational(service Service, opts ...ServiceOperationalOption)
 	if pb == nil {
 		pb = &splitterpb.Service_Operational{}
 	}
-	pb = proto.Clone(pb).(*splitterpb.Service_Operational)
+	pb = protox.Clone(pb)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -130,7 +129,7 @@ func (t ServiceOperational) DisableLoadBalance() bool {
 }
 
 func (t ServiceOperational) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 type DomainOperationalOption func(*splitterpb.Domain_Operational)
@@ -166,7 +165,7 @@ func UpdateDomainOperational(domain Domain, opts ...DomainOperationalOption) (Do
 	if pb == nil {
 		pb = &splitterpb.Domain_Operational{}
 	}
-	pb = proto.Clone(pb).(*splitterpb.Domain_Operational)
+	pb = protox.Clone(pb)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -191,7 +190,7 @@ func (t DomainOperational) BannedRegions() []Region {
 }
 
 func (t DomainOperational) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 func (t DomainOperational) Locked() bool { return t.pb.GetLocked() }

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/container"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
@@ -272,7 +272,7 @@ func NewInternalPlacementConfig(target, current BlockDistribution, speed int) In
 }
 
 func (t InternalPlacementConfig) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 type UpdateInternalPlacementOption func(placement *splitterprivatepb.InternalPlacement)
@@ -303,7 +303,7 @@ func NewInternalPlacement(name model.QualifiedPlacementName, config InternalPlac
 }
 
 func UpdateInternalPlacement(p InternalPlacement, opts ...UpdateInternalPlacementOption) InternalPlacement {
-	pb := proto.Clone(p.pb).(*splitterprivatepb.InternalPlacement)
+	pb := protox.Clone(p.pb)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -360,11 +360,11 @@ func (t InternalPlacement) ToPlacement() model.Placement {
 }
 
 func (t InternalPlacement) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 func (t InternalPlacement) Equals(o InternalPlacement) bool {
-	return proto.Equal(t.pb, o.pb)
+	return protox.Equal(t.pb, o.pb)
 }
 
 type InternalPlacementInfo struct {
@@ -408,11 +408,11 @@ func (t InternalPlacementInfo) ToPlacementInfo() model.PlacementInfo {
 }
 
 func (t InternalPlacementInfo) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 func (t InternalPlacementInfo) Equals(o InternalPlacementInfo) bool {
-	return proto.Equal(t.pb, o.pb)
+	return protox.Equal(t.pb, o.pb)
 }
 
 // Divide returns a/b * (uuid.Max+1), i.e, the UUID of the a'th of b partitions.

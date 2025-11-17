@@ -1,9 +1,8 @@
 package core
 
 import (
-	"github.com/golang/protobuf/proto"
-
 	"go.atoms.co/splitter/lib/service/session"
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/splitter/pkg/model"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
@@ -63,7 +62,7 @@ func (m ObserverClientMessage) Session() (session.Message, bool) {
 }
 
 func (m ObserverClientMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type ObserverRegisterMessage struct {
@@ -87,7 +86,7 @@ func (m ObserverRegisterMessage) Service() (model.QualifiedServiceName, error) {
 }
 
 func (m ObserverRegisterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type ObserverServerMessage struct {
@@ -132,5 +131,5 @@ func (m ObserverServerMessage) ClusterMessage() (model.ClusterMessage, bool) {
 }
 
 func (m ObserverServerMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }

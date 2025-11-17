@@ -5,10 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
@@ -43,7 +43,7 @@ func MustParseQualifiedServiceNameStr(name string) QualifiedServiceName {
 
 func ParseQualifiedServiceName(pb *splitterpb.QualifiedServiceName) (QualifiedServiceName, error) {
 	if pb.GetTenant() == "" || pb.GetService() == "" {
-		return QualifiedServiceName{}, fmt.Errorf("invalid service name: %v", proto.MarshalTextString(pb))
+		return QualifiedServiceName{}, fmt.Errorf("invalid service name: %v", protox.MarshalTextString(pb))
 	}
 	return QualifiedServiceName{
 		Tenant:  TenantName(pb.GetTenant()),
@@ -97,7 +97,7 @@ func ParseService(pb *splitterpb.Service) (Service, error) {
 	if err := validateService(pb); err != nil {
 		return Service{}, fmt.Errorf("invalid service: %w", err)
 	}
-	return Service{pb: proto.Clone(pb).(*splitterpb.Service)}, nil
+	return Service{pb: protox.Clone(pb)}, nil
 }
 
 func validateService(pb *splitterpb.Service) error {
@@ -105,7 +105,7 @@ func validateService(pb *splitterpb.Service) error {
 }
 
 func UpdateService(service Service, opts ...ServiceOption) (Service, error) {
-	upd := proto.Clone(service.pb).(*splitterpb.Service)
+	upd := protox.Clone(service.pb)
 	for _, fn := range opts {
 		fn(upd)
 	}
@@ -134,11 +134,11 @@ func (t Service) Config() ServiceConfig {
 }
 
 func (t Service) Equals(t1 Service) bool {
-	return proto.Equal(t.pb, t1.pb)
+	return protox.Equal(t.pb, t1.pb)
 }
 
 func (t Service) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 type ServiceConfigOption func(cfg *splitterpb.Service_Config)
@@ -190,7 +190,7 @@ func UpdateServiceConfig(service Service, opts ...ServiceConfigOption) (ServiceC
 	if pb == nil {
 		pb = &splitterpb.Service_Config{}
 	}
-	pb = proto.Clone(pb).(*splitterpb.Service_Config)
+	pb = protox.Clone(pb)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -227,7 +227,7 @@ func (c ServiceConfig) Overrides() map[location.Region]location.Region {
 }
 
 func (c ServiceConfig) Equals(c1 ServiceConfig) bool {
-	return proto.Equal(c.pb, c1.pb)
+	return protox.Equal(c.pb, c1.pb)
 }
 
 // ServiceInfo captures the full service information.
@@ -268,7 +268,7 @@ func (t ServiceInfo) Timestamp() time.Time {
 }
 
 func (t ServiceInfo) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 // ServiceInfoEx captures the full service information and associated Domains.
@@ -315,9 +315,9 @@ func (t ServiceInfoEx) Domain(name DomainName) (Domain, bool) {
 }
 
 func (t ServiceInfoEx) Equals(o ServiceInfoEx) bool {
-	return proto.Equal(t.pb, o.pb)
+	return protox.Equal(t.pb, o.pb)
 }
 
 func (t ServiceInfoEx) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }

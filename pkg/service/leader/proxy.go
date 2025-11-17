@@ -3,9 +3,8 @@ package leader
 import (
 	"context"
 
-	"github.com/golang/protobuf/proto"
-
 	"go.atoms.co/splitter/lib/service/session"
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/splitter/pkg/model"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
@@ -122,7 +121,7 @@ func (m HandleRequest) MessageType() string {
 }
 
 func (m HandleRequest) String() string {
-	return proto.CompactTextString(m.Proto)
+	return protox.CompactTextString(m.Proto)
 }
 
 func NewHandleTenantResponse(req *splitterprivatepb.TenantResponse) *splitterprivatepb.LeaderHandleResponse {

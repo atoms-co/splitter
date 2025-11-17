@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
 	splitterpb "go.atoms.co/splitter/pb"
@@ -48,7 +48,7 @@ func MustParseQualifiedDomainNameStr(name string) QualifiedDomainName {
 
 func ParseQualifiedDomainName(pb *splitterpb.QualifiedDomainName) (QualifiedDomainName, error) {
 	if pb.GetName() == "" {
-		return QualifiedDomainName{}, fmt.Errorf("invalid domain name: %v", proto.MarshalTextString(pb))
+		return QualifiedDomainName{}, fmt.Errorf("invalid domain name: %v", protox.MarshalTextString(pb))
 	}
 	service, err := ParseQualifiedServiceName(pb.GetService())
 	if err != nil {
@@ -139,7 +139,7 @@ func ParseDomain(pb *splitterpb.Domain) (Domain, error) {
 	if err := validateDomain(pb); err != nil {
 		return Domain{}, fmt.Errorf("invalid domain: %w", err)
 	}
-	return Domain{pb: proto.Clone(pb).(*splitterpb.Domain)}, nil
+	return Domain{pb: protox.Clone(pb)}, nil
 }
 
 func validateDomain(pb *splitterpb.Domain) error {
@@ -230,7 +230,7 @@ func validateUnitConfig(config *splitterpb.Domain_Config) error {
 }
 
 func UpdateDomain(domain Domain, opts ...DomainOption) (Domain, error) {
-	upd := proto.Clone(domain.pb).(*splitterpb.Domain)
+	upd := protox.Clone(domain.pb)
 	for _, fn := range opts {
 		fn(upd)
 	}
@@ -279,11 +279,11 @@ func (t Domain) Operational() DomainOperational {
 }
 
 func (t Domain) Equals(t1 Domain) bool {
-	return proto.Equal(t.pb, t1.pb)
+	return protox.Equal(t.pb, t1.pb)
 }
 
 func (t Domain) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 type DomainConfigOption func(cfg *splitterpb.Domain_Config)
@@ -343,7 +343,7 @@ func UpdateDomainConfig(domain Domain, opts ...DomainConfigOption) (DomainConfig
 	if pb == nil {
 		pb = &splitterpb.Domain_Config{}
 	}
-	pb = proto.Clone(pb).(*splitterpb.Domain_Config)
+	pb = protox.Clone(pb)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -385,11 +385,11 @@ func (c DomainConfig) NamedDomainKeys() []NamedDomainKey {
 }
 
 func (c DomainConfig) Equals(o DomainConfig) bool {
-	return proto.Equal(c.pb, o.pb)
+	return protox.Equal(c.pb, o.pb)
 }
 
 func (c DomainConfig) String() string {
-	return proto.MarshalTextString(c.pb)
+	return protox.MarshalTextString(c.pb)
 }
 
 // Key is a UUID key for a domain or placement.

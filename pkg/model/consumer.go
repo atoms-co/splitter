@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
@@ -56,7 +56,7 @@ func NewShards(domain QualifiedDomainName, dtype DomainType, r Region, n int) []
 
 func ParseShard(pb *splitterpb.Shard) (Shard, error) {
 	if pb.GetDomain() == nil {
-		return Shard{}, fmt.Errorf("missing domain: %v", proto.MarshalTextString(pb))
+		return Shard{}, fmt.Errorf("missing domain: %v", protox.MarshalTextString(pb))
 	}
 	domain, err := ParseQualifiedDomainName(pb.GetDomain())
 	if err != nil {
@@ -71,11 +71,11 @@ func ParseShard(pb *splitterpb.Shard) (Shard, error) {
 	case Global:
 		to, err := ParseKey(pb.GetTo())
 		if err != nil {
-			return Shard{}, fmt.Errorf("invalid to: %v", proto.MarshalTextString(pb))
+			return Shard{}, fmt.Errorf("invalid to: %v", protox.MarshalTextString(pb))
 		}
 		from, err := ParseKey(pb.GetFrom())
 		if err != nil {
-			return Shard{}, fmt.Errorf("invalid from: %v", proto.MarshalTextString(pb))
+			return Shard{}, fmt.Errorf("invalid from: %v", protox.MarshalTextString(pb))
 		}
 		return Shard{
 			Domain: domain,
@@ -86,11 +86,11 @@ func ParseShard(pb *splitterpb.Shard) (Shard, error) {
 	case Regional:
 		to, err := ParseKey(pb.GetTo())
 		if err != nil {
-			return Shard{}, fmt.Errorf("invalid to: %v", proto.MarshalTextString(pb))
+			return Shard{}, fmt.Errorf("invalid to: %v", protox.MarshalTextString(pb))
 		}
 		from, err := ParseKey(pb.GetFrom())
 		if err != nil {
-			return Shard{}, fmt.Errorf("invalid from: %v", proto.MarshalTextString(pb))
+			return Shard{}, fmt.Errorf("invalid from: %v", protox.MarshalTextString(pb))
 		}
 		return Shard{
 			Domain: domain,
@@ -314,7 +314,7 @@ func (g GrantInfo) State() GrantState {
 }
 
 func (g GrantInfo) Equals(o GrantInfo) bool {
-	return proto.Equal(g.pb, o.pb)
+	return protox.Equal(g.pb, o.pb)
 }
 
 func (g GrantInfo) String() string {

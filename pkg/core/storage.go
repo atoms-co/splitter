@@ -1,8 +1,7 @@
 package core
 
 import (
-	"github.com/golang/protobuf/proto"
-
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/model"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
@@ -33,7 +32,7 @@ func (s Snapshot) Tenants() []State {
 }
 
 func (s Snapshot) String() string {
-	return proto.MarshalTextString(s.pb)
+	return protox.MarshalTextString(s.pb)
 }
 
 // State is the complete state of a single tenant.
@@ -70,7 +69,7 @@ func (s State) Placements() []InternalPlacementInfo {
 }
 
 func (s State) String() string {
-	return proto.MarshalTextString(s.pb)
+	return protox.MarshalTextString(s.pb)
 }
 
 // Update is an incremental update to a single tenant. Updates to multiple aspects can be made
@@ -220,7 +219,7 @@ func (s Update) PlacementsRemoved() []model.QualifiedPlacementName {
 }
 
 func (s Update) String() string {
-	return proto.MarshalTextString(s.pb)
+	return protox.MarshalTextString(s.pb)
 }
 
 // Delete removes an entire tenant.
@@ -246,7 +245,7 @@ func (s Delete) Tenant() model.TenantName {
 }
 
 func (s Delete) String() string {
-	return proto.MarshalTextString(s.pb)
+	return protox.MarshalTextString(s.pb)
 }
 
 // Restore restores the FSM to a snapshot.

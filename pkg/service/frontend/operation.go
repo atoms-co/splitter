@@ -3,10 +3,10 @@ package frontend
 import (
 	"context"
 
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/core"
@@ -38,7 +38,7 @@ func NewOperationService(c cluster.Cluster, w worker.Worker, serviceResolver cor
 func (o *OperationService) CoordinatorInfo(ctx context.Context, request *splitterprivatepb.CoordinatorInfoRequest) (*splitterprivatepb.CoordinatorInfoResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", protox.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
@@ -59,7 +59,7 @@ func (o *OperationService) CoordinatorInfo(ctx context.Context, request *splitte
 func (o *OperationService) CoordinatorRestart(ctx context.Context, request *splitterprivatepb.CoordinatorRestartRequest) (*splitterprivatepb.CoordinatorRestartResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", protox.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
@@ -80,7 +80,7 @@ func (o *OperationService) CoordinatorRestart(ctx context.Context, request *spli
 func (o *OperationService) CoordinatorClusterSync(ctx context.Context, request *splitterprivatepb.CoordinatorClusterSyncRequest) (*splitterprivatepb.CoordinatorClusterSyncResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", protox.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
@@ -101,7 +101,7 @@ func (o *OperationService) CoordinatorClusterSync(ctx context.Context, request *
 func (o *OperationService) ConsumerSuspend(ctx context.Context, request *splitterprivatepb.ConsumerSuspendRequest) (*splitterprivatepb.ConsumerSuspendResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", protox.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
@@ -122,7 +122,7 @@ func (o *OperationService) ConsumerSuspend(ctx context.Context, request *splitte
 func (o *OperationService) ConsumerResume(ctx context.Context, request *splitterprivatepb.ConsumerResumeRequest) (*splitterprivatepb.ConsumerResumeResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", protox.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
@@ -143,7 +143,7 @@ func (o *OperationService) ConsumerResume(ctx context.Context, request *splitter
 func (o *OperationService) ConsumerDrain(ctx context.Context, request *splitterprivatepb.ConsumerDrainRequest) (*splitterprivatepb.ConsumerDrainResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", protox.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,
@@ -164,7 +164,7 @@ func (o *OperationService) ConsumerDrain(ctx context.Context, request *splitterp
 func (o *OperationService) CoordinatorRevokeGrants(ctx context.Context, request *splitterprivatepb.CoordinatorRevokeGrantsRequest) (*splitterprivatepb.CoordinatorRevokeGrantsResponse, error) {
 	name, err := model.ParseQualifiedServiceName(request.GetService())
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", proto.CompactTextString(request.GetService()), err)
+		return nil, status.Errorf(codes.InvalidArgument, "invalid service name, %v: %v", protox.CompactTextString(request.GetService()), err)
 	}
 
 	req := coordinator.NewHandleCoordinatorOperationRequest(name,

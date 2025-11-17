@@ -6,9 +6,9 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
@@ -109,7 +109,7 @@ func NewShardingPolicy(shards int, opts ...ShardingPolicyOption) ShardingPolicy 
 }
 
 func UpdateShardingPolicy(policy ShardingPolicy, opts ...ShardingPolicyOption) ShardingPolicy {
-	pb := proto.Clone(UnwrapShardingPolicy(policy)).(*splitterpb.ShardingPolicy)
+	pb := protox.Clone(UnwrapShardingPolicy(policy))
 	for _, fn := range opts {
 		fn(pb)
 	}

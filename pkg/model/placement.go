@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
 	splitterpb "go.atoms.co/splitter/pb"
 )
@@ -57,7 +57,7 @@ func (d Distribution) Splits() []DistributionSplit {
 }
 
 func (d Distribution) String() string {
-	return proto.MarshalTextString(d.pb)
+	return protox.MarshalTextString(d.pb)
 }
 
 type PlacementName string
@@ -88,7 +88,7 @@ func MustParseQualifiedPlacementNameStr(name string) QualifiedPlacementName {
 
 func ParseQualifiedPlacementName(pb *splitterpb.QualifiedPlacementName) (QualifiedPlacementName, error) {
 	if pb.GetTenant() == "" || pb.GetName() == "" {
-		return QualifiedPlacementName{}, fmt.Errorf("invalid placement name: %v", proto.MarshalTextString(pb))
+		return QualifiedPlacementName{}, fmt.Errorf("invalid placement name: %v", protox.MarshalTextString(pb))
 	}
 	return QualifiedPlacementName{
 		Tenant:    TenantName(pb.GetTenant()),
@@ -174,5 +174,5 @@ func (t PlacementInfo) Timestamp() time.Time {
 }
 
 func (t PlacementInfo) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }

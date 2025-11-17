@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
 
 	"atoms.co/lib-go/pkg/clock"
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/storage"
@@ -99,9 +99,9 @@ func (s *Storage) Restore(ctx context.Context, res core.Restore) error {
 }
 
 func (s *Storage) apply(ctx context.Context, mutation *splitterprivatepb.Mutation) error {
-	buf, err := proto.Marshal(mutation)
+	buf, err := protox.Marshal(mutation)
 	if err != nil {
-		log.Errorf(context.Background(), "Failed to marshal raft mutation: %v", proto.MarshalTextString(mutation), err)
+		log.Errorf(context.Background(), "Failed to marshal raft mutation %v: %v", protox.MarshalTextString(mutation), err)
 		return err
 	}
 
@@ -112,7 +112,7 @@ func (s *Storage) apply(ctx context.Context, mutation *splitterprivatepb.Mutatio
 
 	resp := s.raft.Apply(buf, s.cl.Until(deadline))
 	if err := resp.Error(); err != nil {
-		log.Errorf(context.Background(), "Failed to apply raft mutation %v: %v", proto.MarshalTextString(mutation), err)
+		log.Errorf(context.Background(), "Failed to apply raft mutation %v: %v", protox.MarshalTextString(mutation), err)
 		return err
 	}
 	return nil

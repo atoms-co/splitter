@@ -3,11 +3,11 @@ package leader
 import (
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -210,7 +210,7 @@ func (m Message) ClusterMessage() (ClusterMessage, bool) {
 }
 
 func (m Message) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type WorkerMessage struct {
@@ -323,7 +323,7 @@ func (m WorkerMessage) Relinquished() (RelinquishedMessage, bool) {
 }
 
 func (m WorkerMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type RegisterMessage struct {
@@ -339,7 +339,7 @@ func (m RegisterMessage) Active() []core.Grant {
 }
 
 func (m RegisterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type DeregisterMessage struct {
@@ -347,7 +347,7 @@ type DeregisterMessage struct {
 }
 
 func (m DeregisterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type LeaseUpdateMessage struct {
@@ -359,7 +359,7 @@ func (m LeaseUpdateMessage) Ttl() time.Time {
 }
 
 func (m LeaseUpdateMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type AssignMessage struct {
@@ -375,7 +375,7 @@ func (m AssignMessage) State() core.State {
 }
 
 func (m AssignMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type UpdateMessage struct {
@@ -391,7 +391,7 @@ func (m UpdateMessage) State() core.Update {
 }
 
 func (m UpdateMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type RevokeMessage struct {
@@ -403,7 +403,7 @@ func (m RevokeMessage) Grants() []core.Grant {
 }
 
 func (m RevokeMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type RelinquishedMessage struct {
@@ -415,7 +415,7 @@ func (m RelinquishedMessage) Grants() []core.Grant {
 }
 
 func (m RelinquishedMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type ClusterMessage struct {
@@ -489,7 +489,7 @@ func (m ClusterMessage) Timestamp() time.Time {
 }
 
 func (m ClusterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type ClusterSnapshotMessage struct {

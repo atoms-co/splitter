@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"go.atoms.co/lib/encoding/protox"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 
@@ -47,7 +47,7 @@ func ParseTenant(pb *splitterpb.Tenant) (Tenant, error) {
 	if err := validateTenant(pb); err != nil {
 		return Tenant{}, fmt.Errorf("invalid tenant: %w", err)
 	}
-	return Tenant{pb: proto.Clone(pb).(*splitterpb.Tenant)}, nil
+	return Tenant{pb: protox.Clone(pb)}, nil
 }
 
 func validateTenant(pb *splitterpb.Tenant) error {
@@ -55,7 +55,7 @@ func validateTenant(pb *splitterpb.Tenant) error {
 }
 
 func UpdateTenant(tenant Tenant, opts ...TenantOption) (Tenant, error) {
-	upd := proto.Clone(tenant.pb).(*splitterpb.Tenant)
+	upd := protox.Clone(tenant.pb)
 	for _, fn := range opts {
 		fn(upd)
 	}
@@ -83,11 +83,11 @@ func (t Tenant) Config() TenantConfig {
 }
 
 func (t Tenant) Equals(t1 Tenant) bool {
-	return proto.Equal(t.pb, t1.pb)
+	return protox.Equal(t.pb, t1.pb)
 }
 
 func (t Tenant) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }
 
 type TenantConfigOption func(cfg *splitterpb.Tenant_Config)
@@ -110,7 +110,7 @@ func UpdateTenantConfig(tenant Tenant, opts ...TenantConfigOption) (TenantConfig
 	if pb == nil {
 		pb = &splitterpb.Tenant_Config{}
 	}
-	pb = proto.Clone(pb).(*splitterpb.Tenant_Config)
+	pb = protox.Clone(pb)
 	for _, fn := range opts {
 		fn(pb)
 	}
@@ -129,11 +129,11 @@ func UnwrapTenantConfig(cfg TenantConfig) *splitterpb.Tenant_Config {
 }
 
 func (c TenantConfig) Equals(o TenantConfig) bool {
-	return proto.Equal(c.pb, o.pb)
+	return protox.Equal(c.pb, o.pb)
 }
 
 func (c TenantConfig) String() string {
-	return proto.MarshalTextString(c.pb)
+	return protox.MarshalTextString(c.pb)
 }
 
 // TenantInfo captures the full tenant information.
@@ -174,5 +174,5 @@ func (t TenantInfo) Timestamp() time.Time {
 }
 
 func (t TenantInfo) String() string {
-	return proto.MarshalTextString(t.pb)
+	return protox.MarshalTextString(t.pb)
 }

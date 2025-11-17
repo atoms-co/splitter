@@ -5,12 +5,11 @@ import (
 	"io"
 	"sync"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/hashicorp/raft"
 
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/protox"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
@@ -66,7 +65,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 	case pb.GetUpdate() != nil:
 		err := f.db.Update(core.WrapUpdate(pb.GetUpdate()), false)
 		if err != nil {
-			log.Errorf(context.Background(), "Internal: invalid raft update %v @%v: %v: %v", l.Index, l.AppendedAt, proto.MarshalTextString(pb), err)
+			log.Errorf(context.Background(), "Internal: invalid raft update %v @%v: %v: %v", l.Index, l.AppendedAt, protox.MarshalTextString(pb), err)
 		}
 
 		recordAction("apply/update", err)
@@ -75,7 +74,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 	case pb.GetDelete() != nil:
 		err := f.db.Delete(core.WrapDelete(pb.GetDelete()))
 		if err != nil {
-			log.Errorf(context.Background(), "Internal: invalid raft delete %v @%v: %v: %v", l.Index, l.AppendedAt, proto.MarshalTextString(pb), err)
+			log.Errorf(context.Background(), "Internal: invalid raft delete %v @%v: %v: %v", l.Index, l.AppendedAt, protox.MarshalTextString(pb), err)
 		}
 
 		recordAction("apply/delete", err)
@@ -88,7 +87,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		return nil
 
 	default:
-		log.Errorf(context.Background(), "Internal: unknown raft mutation %v @%v: %v", l.Index, l.AppendedAt, proto.MarshalTextString(pb))
+		log.Errorf(context.Background(), "Internal: unknown raft mutation %v @%v: %v", l.Index, l.AppendedAt, protox.MarshalTextString(pb))
 
 		recordAction("apply/unknown", model.ErrInvalid)
 		return nil
@@ -147,12 +146,12 @@ func (f *fsmSnapshot) persist(sink raft.SnapshotSink) error {
 		return err
 	}
 
-	log.Infof(context.Background(), "Persisted raft snapshot on sink %v: %v", sink.ID())
+	log.Infof(context.Background(), "Persisted raft snapshot on sink %v", sink.ID())
 	return nil
 }
 
 func (f *fsmSnapshot) tryPersist(sink raft.SnapshotSink) error {
-	buf, err := proto.Marshal(core.UnwrapSnapshot(f.data))
+	buf, err := protox.Marshal(core.UnwrapSnapshot(f.data))
 	if err != nil {
 		return err
 	}

@@ -3,11 +3,11 @@ package model
 import (
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
 	splitterpb "go.atoms.co/splitter/pb"
 )
@@ -260,7 +260,7 @@ func (m ConsumerMessage) ClusterMessage() (ClusterMessage, bool) {
 }
 
 func (m ConsumerMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type ClientMessage struct {
@@ -400,7 +400,7 @@ func (m ClientMessage) Notify() (NotifyMessage, bool) {
 }
 
 func (m ClientMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type RegisterMessage struct {
@@ -470,7 +470,7 @@ func (m RegisterMessage) Options() Options {
 }
 
 func (m RegisterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type DeregisterMessage struct {
@@ -486,7 +486,7 @@ func UnwrapDeregisterMessage(m DeregisterMessage) *splitterpb.ClientMessage_Dere
 }
 
 func (m DeregisterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type ExtendMessage struct {
@@ -570,7 +570,7 @@ func (m ReleasedMessage) Grants() []Grant {
 }
 
 func (m ReleasedMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type UpdateMessage struct {
@@ -590,7 +590,7 @@ func (m UpdateMessage) Grant() Grant {
 }
 
 func (m UpdateMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type NotifyMessage struct {
@@ -614,7 +614,7 @@ func (m NotifyMessage) Target() Grant {
 }
 
 func (m NotifyMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type ClusterMessage struct {
@@ -675,7 +675,7 @@ func (m ClusterMessage) Timestamp() time.Time {
 }
 
 func (m ClusterMessage) String() string {
-	return proto.MarshalTextString(m.pb)
+	return protox.MarshalTextString(m.pb)
 }
 
 type Assignment struct {
@@ -708,7 +708,7 @@ func (a Assignment) Grants() []GrantInfo {
 }
 
 func (a Assignment) String() string {
-	return proto.MarshalTextString(a.pb)
+	return protox.MarshalTextString(a.pb)
 }
 
 type ClusterSnapshot struct {
@@ -737,7 +737,7 @@ func (s ClusterSnapshot) Shards() ([]Shard, error) {
 }
 
 func (s ClusterSnapshot) String() string {
-	return proto.MarshalTextString(s.pb)
+	return protox.MarshalTextString(s.pb)
 }
 
 type ClusterChange struct {
@@ -779,7 +779,7 @@ func (c ClusterChange) HasShards() bool {
 }
 
 func (c ClusterChange) String() string {
-	return proto.MarshalTextString(c.pb)
+	return protox.MarshalTextString(c.pb)
 }
 
 type ClusterAssign struct {
@@ -799,7 +799,7 @@ func (a ClusterAssign) Assignments() []Assignment {
 }
 
 func (a ClusterAssign) String() string {
-	return proto.MarshalTextString(a.pb)
+	return protox.MarshalTextString(a.pb)
 }
 
 type ClusterUpdate struct {
@@ -819,7 +819,7 @@ func (u ClusterUpdate) Grants() []GrantInfo {
 }
 
 func (u ClusterUpdate) String() string {
-	return proto.MarshalTextString(u.pb)
+	return protox.MarshalTextString(u.pb)
 }
 
 type ClusterUnassign struct {
@@ -839,7 +839,7 @@ func (u ClusterUnassign) Grants() []GrantID {
 }
 
 func (u ClusterUnassign) String() string {
-	return proto.MarshalTextString(u.pb)
+	return protox.MarshalTextString(u.pb)
 }
 
 type ClusterRemove struct {
@@ -859,7 +859,7 @@ func (d ClusterRemove) Consumers() []ConsumerID {
 }
 
 func (d ClusterRemove) String() string {
-	return proto.MarshalTextString(d.pb)
+	return protox.MarshalTextString(d.pb)
 }
 
 type ClusterShards struct {
