@@ -11,8 +11,8 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/timex"
 	"go.atoms.co/lib/chanx"
-	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
@@ -44,7 +44,6 @@ type joinStatus struct {
 type WorkPool struct {
 	iox.RAsyncCloser
 
-	cl      clock.Clock
 	self    Consumer
 	service QualifiedServiceName
 	domains []QualifiedDomainName
@@ -61,7 +60,7 @@ type WorkPool struct {
 
 	grants map[GrantID]*grant
 	shards map[Shard]GrantID
-	lease  *clockx.Timer
+	lease  *timex.Timer
 	expire chan bool
 
 	inject chan func()
@@ -69,18 +68,17 @@ type WorkPool struct {
 	drain  iox.AsyncCloser
 }
 
-func NewWorkPool(cl clock.Clock, consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler, opts ...ConsumerOption) (*WorkPool, <-chan Cluster) {
+func NewWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler, opts ...ConsumerOption) (*WorkPool, <-chan Cluster) {
 	quit := iox.NewAsyncCloser()
 	p := &WorkPool{
 		RAsyncCloser: quit,
-		cl:           cl,
 		self:         consumer,
 		service:      service,
 		domains:      domains,
 		joinFn:       joinFn,
 		handler:      handlerFn,
 		opts:         opts,
-		cluster:      NewClusterMap(NewClusterID(consumer.Instance(), cl.Now()), nil), // empty self-origin map
+		cluster:      NewClusterMap(NewClusterID(consumer.Instance(), time.Now()), nil), // empty self-origin map
 		clusters:     make(chan Cluster, 1),
 		grants:       map[GrantID]*grant{},
 		shards:       map[Shard]GrantID{},
@@ -102,7 +100,7 @@ func (p *WorkPool) Drain(timeout time.Duration) {
 	now := time.Now()
 	p.drain.Close()
 	go func() {
-		timeoutTimer := p.cl.NewTimer(timeout)
+		timeoutTimer := time.NewTimer(timeout)
 		defer timeoutTimer.Stop()
 		select {
 		case <-timeoutTimer.C:
@@ -143,7 +141,7 @@ func (p *WorkPool) join(ctx context.Context) {
 			p.lostCoordinator(ctx)
 		})
 
-		p.cl.Sleep(time.Second + randx.Duration(time.Second)) // short random backoff on disconnect
+		time.Sleep(time.Second + randx.Duration(time.Second)) // short random backoff on disconnect
 	}
 }
 
@@ -162,7 +160,7 @@ func (p *WorkPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessag
 	p.in = in
 	p.out = out
 	p.status = &joinStatus{
-		connected: p.cl.Now(),
+		connected: time.Now(),
 	}
 	p.lease = nil
 
@@ -174,7 +172,7 @@ func (p *WorkPool) lostCoordinator(ctx context.Context) {
 		return // ok: already disconnected
 	}
 
-	log.Infof(ctx, "Lost connection to coordinator, connected=%v, #grants=%v", p.cl.Since(p.status.connected), len(p.grants))
+	log.Infof(ctx, "Lost connection to coordinator, connected=%v, #grants=%v", time.Since(p.status.connected), len(p.grants))
 
 	close(p.out)
 
@@ -182,7 +180,7 @@ func (p *WorkPool) lostCoordinator(ctx context.Context) {
 	p.out = make(chan ConsumerMessage)
 	p.status = nil
 	p.lease = nil
-	leases := map[time.Time]*clockx.Timer{}
+	leases := map[time.Time]*timex.Timer{}
 
 	for _, g := range p.grants {
 		if g.LeaseState != LeaseRevoked {
@@ -202,7 +200,7 @@ func (p *WorkPool) process(ctx context.Context) {
 		log.Infof(ctx, "Finishing WorkPool processing")
 	}()
 
-	statsTimer := p.cl.NewTicker(statsDuration)
+	statsTimer := time.NewTicker(statsDuration)
 	defer statsTimer.Stop()
 
 steady:
@@ -237,7 +235,7 @@ steady:
 	}
 
 	log.Infof(ctx, "WorkPool %v draining, joined=%v, #grants=%v", p.self, p.status != nil, len(p.grants))
-	now := p.cl.Now()
+	now := time.Now()
 
 	if p.status == nil || !p.trySend(ctx, NewDeregister()) {
 		log.Infof(ctx, "WorkPool is draining while disconnected/stuck")
@@ -249,7 +247,7 @@ drain:
 		case msg, ok := <-p.in:
 			if !ok {
 				if len(p.grants) == 0 {
-					log.Infof(ctx, "Workpool drained after %v", p.cl.Since(now))
+					log.Infof(ctx, "Workpool drained after %v", time.Since(now))
 					p.lostCoordinator(ctx)
 					return
 				}
@@ -336,7 +334,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				LeaseState: LeaseActive,
 				Lease:      p.lease,
 			}
-			h := newHandler(ctx, p.cl, g, gr.Expiration, newLoader(), newUnloader(), p.handler)
+			h := newHandler(ctx, clock.New(), g, gr.Expiration, newLoader(), newUnloader(), p.handler)
 			gr.Handler = h
 			p.grants[g.ID()] = gr
 
@@ -430,7 +428,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 	case msg.IsRevoke():
 		revoke, _ := msg.Revoke()
 		grants := revoke.Grants()
-		leases := map[time.Time]*clockx.Timer{}
+		leases := map[time.Time]*timex.Timer{}
 
 		for _, g := range grants {
 			grant, ok := p.grants[g.ID()]
@@ -466,9 +464,9 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 		extend, _ := msg.Extend()
 
 		if p.lease == nil {
-			p.lease = clockx.AfterFunc(p.cl, p.cl.Until(extend.Lease()), p.emitExpirationCheck)
+			p.lease = timex.AfterFunc(time.Until(extend.Lease()), p.emitExpirationCheck)
 		}
-		p.lease.Reset(p.cl.Until(extend.Lease()))
+		p.lease.Reset(time.Until(extend.Lease()))
 	default:
 		log.Errorf(ctx, "Unexpected coordinator message: %v", msg)
 	}
@@ -481,13 +479,13 @@ func (p *WorkPool) activateGrant(ctx context.Context, grant *grant, active Grant
 	log.Infof(ctx, "Promoted grant to active: %v", active)
 }
 
-func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*clockx.Timer, grant *grant, revoked Grant) {
+func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*timex.Timer, grant *grant, revoked Grant) {
 	// (1) Create lease that expires at the passed grant expiration. The workpool lease no longer includes this grant.
 	// We share the leases to not get a flood of identical expiration checks.
 
 	ttl := revoked.Lease()
 	if _, ok := leases[ttl]; !ok {
-		leases[ttl] = clockx.AfterFunc(p.cl, p.cl.Until(ttl), p.emitExpirationCheck)
+		leases[ttl] = timex.AfterFunc(time.Until(ttl), p.emitExpirationCheck)
 	}
 	grant.Lease = leases[ttl]
 	grant.LeaseState = LeaseRevoked
@@ -498,7 +496,7 @@ func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*clockx
 
 	log.Infof(ctx, "Revoking grant %v, ttl=%v", revoked, ttl)
 
-	grant.Handler.Drain(p.cl.Until(ttl))
+	grant.Handler.Drain(time.Until(ttl))
 }
 
 func (p *WorkPool) updateStaleGrant(ctx context.Context, old *grant, newGrant Grant) bool {
@@ -559,7 +557,7 @@ func (p *WorkPool) emitExpirationCheck() {
 func (p *WorkPool) checkExpiration(ctx context.Context) {
 	// Possible grant expiration
 
-	now := p.cl.Now()
+	now := time.Now()
 	for gid, g := range p.grants {
 		if g.Expiration().Before(now) {
 			p.removeGrant(ctx, gid)
@@ -574,7 +572,7 @@ func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
 	}
 	grant.Handler.Close()
 
-	if grant.LeaseState != LeaseStale && p.cl.Now().Before(grant.Expiration()) {
+	if grant.LeaseState != LeaseStale && time.Now().Before(grant.Expiration()) {
 		p.mustSend(ctx, NewReleased(grant.Grant))
 	}
 	delete(p.grants, gid)
@@ -640,7 +638,7 @@ func (p *WorkPool) mustSend(ctx context.Context, msg ConsumerMessage) {
 	}
 
 	timeout := 100 * time.Millisecond
-	timer := p.cl.NewTimer(timeout)
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
 	select {

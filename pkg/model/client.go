@@ -7,7 +7,6 @@ import (
 
 	"google.golang.org/grpc"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -294,7 +293,6 @@ type ConsumerClient interface {
 }
 
 type consumerClient struct {
-	cl       clock.Clock
 	consumer splitterpb.ConsumerServiceClient
 }
 
@@ -326,14 +324,14 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 			return chanx.Map(joined, UnwrapJoinMessage), nil
 		})
 	}
-	pool, clusters := NewWorkPool(c.cl, consumer, service, nil, joinFn, handler, opts...)
+	pool, clusters := NewWorkPool(consumer, service, nil, joinFn, handler, opts...)
 
 	go func() {
 		defer quit.Close()
 		<-ctx.Done()
 
 		pool.Drain(1 * time.Minute)
-		now := c.cl.Now()
+		now := time.Now()
 		<-pool.Closed()
 		log.Infof(ctx, "Closed work pool in %v", time.Since(now))
 	}()
@@ -343,7 +341,6 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 
 func NewConsumerClient(cc *grpc.ClientConn) ConsumerClient {
 	return &consumerClient{
-		cl:       clock.New(),
 		consumer: splitterpb.NewConsumerServiceClient(cc),
 	}
 }

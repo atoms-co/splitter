@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"atoms.co/lib-go/pkg/clock"
-	"go.atoms.co/lib/clockx"
+	"go.atoms.co/lib/timex"
 	"go.atoms.co/lib/iox"
 )
 
@@ -26,25 +26,25 @@ const (
 // grant holds a grant and its metadata and bookkeeping.
 type grant struct {
 	Grant      Grant // holds original lease
-	Lease      *clockx.Timer
+	Lease      *timex.Timer
 	LeaseState LeaseState
 	Handler    *handler
 }
 
 func (g *grant) Expiration() time.Time {
-	return g.Lease.Ttl()
+	return g.Lease.TTL()
 }
 
 func (g *grant) ToState(state GrantState) Grant {
-	return NewGrant(g.Grant.ID(), g.Grant.Shard(), state, g.Lease.Ttl(), g.Grant.Assigned())
+	return NewGrant(g.Grant.ID(), g.Grant.Shard(), state, g.Lease.TTL(), g.Grant.Assigned())
 }
 
 func (g *grant) ToUpdated() Grant {
-	return NewGrant(g.Grant.ID(), g.Grant.Shard(), g.Grant.State(), g.Lease.Ttl(), g.Grant.Assigned())
+	return NewGrant(g.Grant.ID(), g.Grant.Shard(), g.Grant.State(), g.Lease.TTL(), g.Grant.Assigned())
 }
 
 func (g *grant) String() string {
-	return fmt.Sprintf("grant=%v, lease_state=%v, ttl=%v", g.Grant, g.LeaseState, g.Lease.Ttl().Unix())
+	return fmt.Sprintf("grant=%v, lease_state=%v, ttl=%v", g.Grant, g.LeaseState, g.Lease.TTL().Unix())
 }
 
 type handler struct {
