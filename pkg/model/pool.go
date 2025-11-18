@@ -10,7 +10,6 @@ import (
 
 	"google.golang.org/grpc"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
@@ -36,7 +35,6 @@ type connection[T any] struct {
 // for 2 min, its connection is closed. This delay support temporary partial peer lists. Supports ad-hoc
 // connection created by considering them peers. Thread-safe.
 type PeeredConnectionCache[T any] struct {
-	cl   clock.Clock
 	self InstanceID
 	fn   DialFn[T]
 
@@ -44,9 +42,8 @@ type PeeredConnectionCache[T any] struct {
 	mu    sync.RWMutex
 }
 
-func NewPeeredConnectionCache[T any](ctx context.Context, cl clock.Clock, self InstanceID, fn DialFn[T]) *PeeredConnectionCache[T] {
+func NewPeeredConnectionCache[T any](ctx context.Context, self InstanceID, fn DialFn[T]) *PeeredConnectionCache[T] {
 	ret := &PeeredConnectionCache[T]{
-		cl:    cl,
 		self:  self,
 		fn:    fn,
 		peers: map[InstanceID]connection[T]{},
@@ -119,7 +116,7 @@ func (p *PeeredConnectionCache[T]) Update(ctx context.Context, peers []Instance)
 			continue
 		}
 
-		upd[id] = connection[T]{peer: inst, dialAfter: p.cl.Now().Add(dialDelay)}
+		upd[id] = connection[T]{peer: inst, dialAfter: time.Now().Add(dialDelay)}
 		log.Infof(ctx, "New peer %v will be dialed after %v", inst, upd[id].dialAfter)
 	}
 
@@ -131,7 +128,7 @@ func (p *PeeredConnectionCache[T]) Update(ctx context.Context, peers []Instance)
 		}
 
 		if con.ttl.IsZero() {
-			con.ttl = p.cl.Now().Add(2 * time.Minute)
+			con.ttl = time.Now().Add(2 * time.Minute)
 		}
 		upd[id] = con
 	}
@@ -142,7 +139,7 @@ func (p *PeeredConnectionCache[T]) Update(ctx context.Context, peers []Instance)
 }
 
 func (p *PeeredConnectionCache[T]) process(ctx context.Context) {
-	ticker := p.cl.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -161,7 +158,7 @@ func (p *PeeredConnectionCache[T]) dialPending(ctx context.Context) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	now := p.cl.Now()
+	now := time.Now()
 
 	for id, con := range p.peers {
 		if con.dialAfter.IsZero() || now.Before(con.dialAfter) {
@@ -182,7 +179,7 @@ func (p *PeeredConnectionCache[T]) expire(ctx context.Context) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	now := p.cl.Now()
+	now := time.Now()
 
 	for id, con := range p.peers {
 		if con.ttl.IsZero() || now.Before(con.ttl) {
@@ -231,9 +228,9 @@ type pool struct {
 	mu      sync.RWMutex
 }
 
-func NewConnectionPool(ctx context.Context, cl clock.Clock, self InstanceID, clusters <-chan Cluster, opts ...grpc.DialOption) ConnectionPool {
+func NewConnectionPool(ctx context.Context, self InstanceID, clusters <-chan Cluster, opts ...grpc.DialOption) ConnectionPool {
 	p := &pool{
-		pool: NewPeeredConnectionCache[grpc.ClientConnInterface](ctx, cl, self, DialNonBlocking64(opts...)),
+		pool: NewPeeredConnectionCache[grpc.ClientConnInterface](ctx, self, DialNonBlocking64(opts...)),
 	}
 	go p.process(ctx, clusters)
 

@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/synctestx"
@@ -27,7 +26,7 @@ func TestPeeredConnectionCache(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		dialer := newFakeDialer()
-		cache := model.NewPeeredConnectionCache[int](ctx, clock.New(), self.ID(), dialer.dial)
+		cache := model.NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
 
 		assertx.Equal(t, dialer.count, 0)
 
@@ -62,7 +61,7 @@ func TestPeeredConnectionCache(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		dialer := newFakeDialer()
-		cache := model.NewPeeredConnectionCache[int](ctx, clock.New(), self.ID(), dialer.dial)
+		cache := model.NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
 
 		// (1) Peered connections live indefinitely
 
@@ -107,7 +106,7 @@ func TestPeeredConnectionCache(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		dialer := newFakeDialer()
-		cache := model.NewPeeredConnectionCache[int](ctx, clock.New(), self.ID(), dialer.dial)
+		cache := model.NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
 
 		assertx.Equal(t, dialer.count, 0)
 

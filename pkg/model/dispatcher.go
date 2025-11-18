@@ -104,7 +104,7 @@ func NewDispatcherEx(ctx context.Context, cl clock.Clock, client ConsumerClient,
 	if options.pool != nil {
 		ret.ConnectionPool = options.pool(ret.id, clusters)
 	} else {
-		ret.ConnectionPool = NewConnectionPool(ctx, cl, ret.id.ID(), clusters, grpcx.WithInsecure())
+		ret.ConnectionPool = NewConnectionPool(ctx, ret.id.ID(), clusters, grpcx.WithInsecure())
 	}
 
 	for _, h := range ret.chain {
