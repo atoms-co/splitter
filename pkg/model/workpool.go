@@ -550,7 +550,13 @@ func (p *WorkPool) emitExpirationCheck() {
 	case <-p.expire:
 	default:
 	}
-	p.expire <- true
+
+	// Not giving up on drain as the Workpool checks expiration and removes expired grant during
+	// draining.
+	select {
+	case p.expire <- true:
+	case <-p.Closed():
+	}
 }
 
 func (p *WorkPool) checkExpiration(ctx context.Context) {
