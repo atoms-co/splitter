@@ -6,7 +6,6 @@ import (
 	"testing/synctest"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/splitter/pkg/model"
 )
@@ -50,7 +49,7 @@ func TestLiveRegionProvider(t *testing.T) {
 		initial := model.NewPlacementInfo(model.NewPlacement(name, model.NewDistribution("foo")), 1, time.Now())
 
 		ch := make(chan model.PlacementInfo, 10)
-		provider := model.NewLiveRegionProvider(ctx, clock.New(), initial, func() (model.PlacementInfo, error) {
+		provider := model.NewLiveRegionProvider(ctx, initial, func() (model.PlacementInfo, error) {
 			return <-ch, nil
 		})
 

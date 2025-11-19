@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
@@ -334,7 +333,7 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				LeaseState: LeaseActive,
 				Lease:      p.lease,
 			}
-			h := newHandler(ctx, clock.New(), g, gr.Expiration, newLoader(), newUnloader(), p.handler)
+			h := newHandler(ctx, g, gr.Expiration, newLoader(), newUnloader(), p.handler)
 			gr.Handler = h
 			p.grants[g.ID()] = gr
 

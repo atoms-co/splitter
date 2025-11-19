@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/backoffx"
@@ -44,7 +43,6 @@ func (r *regionProvider) Find(key Key) Region {
 type UpdatePlacementFn func() (PlacementInfo, error)
 
 type liveProvider struct {
-	cl    clock.Clock
 	fn    UpdatePlacementFn
 	value PlacementInfo
 
@@ -53,9 +51,8 @@ type liveProvider struct {
 }
 
 // NewLiveRegionProvider returns a periodically updated region provider with the given initial value.
-func NewLiveRegionProvider(ctx context.Context, cl clock.Clock, initial PlacementInfo, fn UpdatePlacementFn) RegionProvider {
+func NewLiveRegionProvider(ctx context.Context, initial PlacementInfo, fn UpdatePlacementFn) RegionProvider {
 	ret := &liveProvider{
-		cl:       cl,
 		fn:       fn,
 		value:    initial,
 		provider: NewRegionProvider(initial.Placement().Current()),
@@ -75,21 +72,21 @@ func (p *liveProvider) Find(key Key) Region {
 }
 
 func (p *liveProvider) process(ctx context.Context) {
-	ticker := p.cl.NewTicker(4*time.Minute + randx.Duration(time.Minute))
+	ticker := time.NewTicker(4*time.Minute + randx.Duration(time.Minute))
 	defer ticker.Stop()
 
-	updated := p.cl.Now()
+	updated := time.Now()
 	for {
 		select {
 		case <-ticker.C:
-			b := backoffx.NewLimited(10*time.Second, backoffx.WithClock(p.cl), backoffx.WithMaxRetries(3))
+			b := backoffx.NewLimited(10*time.Second, backoffx.WithMaxRetries(3))
 
 			upd, err := backoffx.Retry1(b, p.fn)
 			if err != nil {
-				log.Warnf(ctx, "Failed to refresh placement %v:v%v, staleness=%v: %v", p.value.Placement().Name(), p.value.Version(), p.cl.Since(updated), err)
+				log.Warnf(ctx, "Failed to refresh placement %v:v%v, staleness=%v: %v", p.value.Placement().Name(), p.value.Version(), time.Since(updated), err)
 				break
 			}
-			updated = p.cl.Now()
+			updated = time.Now()
 
 			if upd.Version() <= p.value.Version() {
 				break // no change

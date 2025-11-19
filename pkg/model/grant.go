@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/timex"
 	"go.atoms.co/lib/iox"
 )
@@ -50,15 +49,13 @@ func (g *grant) String() string {
 type handler struct {
 	iox.AsyncCloser
 
-	cl        clock.Clock
 	ownership *ownership
 }
 
-func newHandler(ctx context.Context, cl clock.Clock, grant Grant, expiration func() time.Time, loader *loader, unloader *unloader, handlerFn Handler) *handler {
+func newHandler(ctx context.Context, grant Grant, expiration func() time.Time, loader *loader, unloader *unloader, handlerFn Handler) *handler {
 	h := &handler{
 		AsyncCloser: iox.NewAsyncCloser(),
-		cl:          cl,
-		ownership:   newOwnership(cl, grant.State(), expiration, loader, unloader),
+		ownership:   newOwnership(grant.State(), expiration, loader, unloader),
 	}
 
 	hctx, cancel := context.WithCancel(ctx)
@@ -83,11 +80,10 @@ func (h *handler) Ownership() Ownership {
 }
 
 func (h *handler) Drain(timeout time.Duration) {
-	h.cl.AfterFunc(timeout, h.Close)
+	time.AfterFunc(timeout, h.Close)
 }
 
 type ownership struct {
-	cl              clock.Clock
 	active          iox.AsyncCloser
 	revokeRequested iox.AsyncCloser
 	revoked         iox.AsyncCloser
@@ -97,9 +93,8 @@ type ownership struct {
 	expiration      func() time.Time
 }
 
-func newOwnership(cl clock.Clock, state GrantState, expiration func() time.Time, loader *loader, unloader *unloader) *ownership {
+func newOwnership(state GrantState, expiration func() time.Time, loader *loader, unloader *unloader) *ownership {
 	ret := &ownership{
-		cl:              cl,
 		active:          iox.NewAsyncCloser(),
 		revokeRequested: iox.NewAsyncCloser(),
 		revoked:         iox.NewAsyncCloser(),
@@ -117,7 +112,7 @@ func newOwnership(cl clock.Clock, state GrantState, expiration func() time.Time,
 		ret.revoked.Close()
 	}
 	// If past expiration preload expiration signal
-	if cl.Now().After(expiration()) {
+	if time.Now().After(expiration()) {
 		ret.expired.Close()
 	}
 
