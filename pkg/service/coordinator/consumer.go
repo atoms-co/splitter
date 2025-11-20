@@ -70,12 +70,14 @@ type consumerSession struct {
 	connection sessionx.Connection[model.ConsumerMessage]
 	origin     location.Instance
 	suspended  bool // prevents auto-resume when explicitly suspended via coordinator operations
+	verbose    bool
 }
 
 func (c *consumerSession) TrySend(ctx context.Context, message model.ConsumerMessage) bool {
 	if c.connection.Send(ctx, message) {
-		// TODO: Move to verbose logging
-		// log.Debugf(ctx, "Sent message to %v: %v", c.consumer.Instance(), message)
+		if c.verbose {
+			log.Debugf(ctx, "Sent message to %v: %v", c.consumer.Instance(), message)
+		}
 		numMessages.Increment(ctx, 1, core.MessageTypeTag(message.Type()))
 		return true
 	}

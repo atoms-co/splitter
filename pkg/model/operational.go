@@ -83,6 +83,12 @@ func WithServiceOperationalDisableLoadBalance(disable bool) ServiceOperationalOp
 	}
 }
 
+func WithServiceOperationalVerboseLogging(verbose bool) ServiceOperationalOption {
+	return func(t *splitterpb.Service_Operational) {
+		t.VerboseLogging = verbose
+	}
+}
+
 type ServiceOperational struct {
 	pb *splitterpb.Service_Operational
 }
@@ -126,6 +132,10 @@ func (t ServiceOperational) BannedRegions() []Region {
 
 func (t ServiceOperational) DisableLoadBalance() bool {
 	return t.pb.GetDisableLoadBalance()
+}
+
+func (t ServiceOperational) VerboseLogging() bool {
+	return t.pb.GetVerboseLogging()
 }
 
 func (t ServiceOperational) String() string {

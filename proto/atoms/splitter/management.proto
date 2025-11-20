@@ -65,6 +65,8 @@ message Service {
     // (such as changing the Domain State from ACTIVE to SUSPENDED).
     // Has precedence over the Domain Operational locked setting.
     bool locked = 3;
+    // Enable verbose logging for cluster messages
+    bool verbose_logging = 4;
   }
   // Operational controls on Service (manually controlled)
   Operational operational = 4;

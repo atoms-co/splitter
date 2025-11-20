@@ -132,6 +132,7 @@ func makeUpdateServiceCmd() *cobra.Command {
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
 	locked := cmd.Flags().Bool("locked", false, "locked operational state")
 	disableLB := cmd.Flags().Bool("disable-load-balance", true, "disable load balance")
+	verboseLogging := cmd.Flags().Bool("verbose-logging", false, "enable verbose logging for cluster messages")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := model.ParseQualifiedServiceNameStr(args[0])
@@ -171,6 +172,9 @@ func makeUpdateServiceCmd() *cobra.Command {
 		}
 		if cmd.Flag("disable-load-balance").Changed {
 			opOpts = append(opOpts, model.WithServiceOperationalDisableLoadBalance(*disableLB))
+		}
+		if cmd.Flag("verbose-logging").Changed {
+			opOpts = append(opOpts, model.WithServiceOperationalVerboseLogging(*verboseLogging))
 		}
 
 		if len(cfgOpts) == 0 && len(opOpts) == 0 {

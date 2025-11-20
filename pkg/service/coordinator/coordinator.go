@@ -623,8 +623,11 @@ steady:
 			now := c.cl.Now()
 			lease := now.Add(leaseDuration)
 
+			verbose := c.info.Service().Operational().VerboseLogging()
+
 			var unhealthy []*consumerSession
 			for _, s := range c.consumers {
+				s.verbose = verbose
 				if !s.connection.Send(ctx, model.NewExtend(lease)) {
 					unhealthy = append(unhealthy, s)
 					continue
