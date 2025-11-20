@@ -136,7 +136,7 @@ func makeStartCommand() *cobra.Command {
 		if *raftFastBootstrap {
 			opts = append(opts, cluster.WithFastBootstrap())
 		}
-		c, directives := cluster.New(cl, raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, ldb, sdb, trans, *raftJoinPeers, *splitterPort, opts...)
+		c, directives := cluster.New(raft.ServerID(*raftID), raft.ServerAddress(*raftServer), r, ldb, sdb, trans, *raftJoinPeers, *splitterPort, opts...)
 
 		var lopts []leader.Option
 		if *fastActivation {

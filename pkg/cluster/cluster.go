@@ -11,7 +11,6 @@ import (
 	"github.com/hashicorp/raft"
 	boltdb "github.com/hashicorp/raft-boltdb/v2"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/chanx"
@@ -58,7 +57,6 @@ type Cluster interface {
 type cluster struct {
 	iox.AsyncCloser
 
-	cl       clock.Clock
 	id       raft.ServerID
 	addr     raft.ServerAddress
 	raft     *raft.Raft
@@ -77,10 +75,9 @@ type cluster struct {
 	notified     map[raft.ServerID]raft.ServerAddress
 }
 
-func New(cl clock.Clock, id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, ldb, sdb *boltdb.BoltStore, trans *raft.NetworkTransport, peers []string, port int, opts ...Option) (Cluster, <-chan leader.Directive) {
+func New(id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, ldb, sdb *boltdb.BoltStore, trans *raft.NetworkTransport, peers []string, port int, opts ...Option) (Cluster, <-chan leader.Directive) {
 	c := &cluster{
 		AsyncCloser: iox.NewAsyncCloser(),
-		cl:          cl,
 		id:          id,
 		addr:        addr,
 		raft:        r,
@@ -208,17 +205,17 @@ func (c *cluster) Info(ctx context.Context) map[string]string {
 
 func (c *cluster) Drain(timeout time.Duration) {
 	c.drain.Close()
-	c.cl.AfterFunc(timeout, c.Close)
+	time.AfterFunc(timeout, c.Close)
 }
 
 func (c *cluster) init(ctx context.Context, observeCh chan raft.Observation) {
 	defer c.Close()
 	defer close(observeCh) // closes c.leaderCh
 
-	notifyTicker := c.cl.NewTicker(notifyInterval)
+	notifyTicker := time.NewTicker(notifyInterval)
 	defer notifyTicker.Stop()
 
-	notifyCutoff := c.cl.Now()
+	notifyCutoff := time.Now()
 	if !c.fastBootstrap {
 		notifyCutoff = notifyCutoff.Add(jitter(notifyInterval))
 	}
@@ -234,7 +231,7 @@ notifyLoop:
 			c.notifyPeers(ctx, notifyCutoff)
 		case <-c.leaderCh:
 			break notifyLoop // stop notifying after leader is elected
-		case <-c.cl.After(bootstrapTimeout):
+		case <-time.After(bootstrapTimeout):
 			if err := c.shutdownRaft(ctx); err != nil {
 				log.Errorf(ctx, "Failed to shutdown raft: %v", err)
 			}
@@ -255,7 +252,7 @@ notifyLoop:
 }
 
 func (c *cluster) notifyPeers(ctx context.Context, notifyCutoff time.Time) {
-	if c.cl.Now().Before(notifyCutoff) {
+	if time.Now().Before(notifyCutoff) {
 		return
 	}
 	for _, endpoint := range c.peers {
@@ -290,7 +287,7 @@ func (c *cluster) hasLeader() bool {
 }
 
 func (c *cluster) process(ctx context.Context) {
-	stats := c.cl.NewTicker(statsInterval)
+	stats := time.NewTicker(statsInterval)
 	defer stats.Stop()
 
 	for {
@@ -316,7 +313,7 @@ func (c *cluster) recordMetrics(ctx context.Context) {
 	numAppliedIndex.Set(ctx, float64(c.raft.AppliedIndex()), core.RaftServerIdTag(c.id))
 	numLastIndex.Set(ctx, float64(c.raft.LastIndex()), core.RaftServerIdTag(c.id))
 	if c.raft.State() == raft.Follower {
-		numLastContact.Set(ctx, c.cl.Since(c.raft.LastContact()).Seconds(), core.RaftServerIdTag(c.id))
+		numLastContact.Set(ctx, time.Since(c.raft.LastContact()).Seconds(), core.RaftServerIdTag(c.id))
 	} else {
 		numLastContact.Reset(ctx, core.RaftServerIdTag(c.id))
 	}
