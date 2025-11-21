@@ -3,7 +3,7 @@ package worker
 import (
 	"fmt"
 
-	"go.atoms.co/lib/clockx"
+	"go.atoms.co/lib/timex"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 )
@@ -25,15 +25,15 @@ const (
 type Grant struct {
 	Grant       core.Grant // holds original lease
 	State       LeaseState
-	Lease       *clockx.Timer
+	Lease       *timex.Timer
 	Coordinator coordinator.Coordinator
 	Updates     chan<- core.Update
 }
 
 func (g *Grant) ToUpdated() core.Grant {
-	return core.NewGrant(g.Grant.ID(), g.Grant.Service(), g.Lease.Ttl(), g.Grant.Assigned())
+	return core.NewGrant(g.Grant.ID(), g.Grant.Service(), g.Lease.TTL(), g.Grant.Assigned())
 }
 
 func (g *Grant) String() string {
-	return fmt.Sprintf("grant=%v, lease_state=%v, ttl=%v, coordinator=%v", g.Grant, g.State, g.Lease.Ttl().Unix(), g.Coordinator)
+	return fmt.Sprintf("grant=%v, lease_state=%v, ttl=%v, coordinator=%v", g.Grant, g.State, g.Lease.TTL().Unix(), g.Coordinator)
 }

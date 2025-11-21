@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
@@ -53,7 +52,7 @@ func TestWorker(t *testing.T) {
 			coordinators <- c
 			return c
 		}
-		w, _ := worker.New(clock.New(), location.New("centralus", "pod1"), "endpoint", joinFn, coordFactory)
+		w, _ := worker.New(location.New("centralus", "pod1"), "endpoint", joinFn, coordFactory)
 		defer w.Drain(time.Second)
 
 		<-leaderCon.Connected.Closed()

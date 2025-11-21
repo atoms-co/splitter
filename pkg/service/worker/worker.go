@@ -6,13 +6,12 @@ import (
 	"sync"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/timex"
 	"go.atoms.co/lib/chanx"
-	"go.atoms.co/lib/clockx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/iox"
@@ -68,7 +67,6 @@ type Worker interface {
 type worker struct {
 	iox.AsyncCloser
 
-	cl      clock.Clock
 	self    model.Instance
 	joinFn  JoinFn
 	factory CoordinatorFactory
@@ -82,7 +80,7 @@ type worker struct {
 
 	grants   map[core.GrantID]*Grant
 	services map[model.QualifiedServiceName]core.GrantID
-	lease    *clockx.Timer
+	lease    *timex.Timer
 
 	expire chan bool
 	inject chan func()
@@ -90,11 +88,10 @@ type worker struct {
 	drain iox.AsyncCloser
 }
 
-func New(cl clock.Clock, loc location.Location, endpoint string, joinFn JoinFn, factory CoordinatorFactory) (Worker, <-chan *core.Cluster) {
+func New(loc location.Location, endpoint string, joinFn JoinFn, factory CoordinatorFactory) (Worker, <-chan *core.Cluster) {
 	quit := iox.NewAsyncCloser()
 	w := &worker{
 		AsyncCloser: quit,
-		cl:          cl,
 		self:        model.NewInstance(location.NewNamedInstance("worker", loc), endpoint),
 		joinFn:      joinFn,
 		factory:     factory,
@@ -199,7 +196,7 @@ func (w *worker) Self() location.Instance {
 
 func (w *worker) Drain(timeout time.Duration) {
 	w.drain.Close()
-	w.cl.AfterFunc(timeout, w.Close)
+	time.AfterFunc(timeout, w.Close)
 }
 
 func (w *worker) join(ctx context.Context) {
@@ -222,7 +219,7 @@ func (w *worker) join(ctx context.Context) {
 			w.lostLeader(ctx)
 		})
 
-		w.cl.Sleep(time.Second + randx.Duration(time.Second)) // short random backoff on disconnect
+		time.Sleep(time.Second + randx.Duration(time.Second)) // short random backoff on disconnect
 	}
 }
 
@@ -241,7 +238,7 @@ func (w *worker) joinLeader(ctx context.Context, in <-chan leader.Message) (<-ch
 	w.in = in
 	w.out = out
 	w.status = &joinStatus{
-		connected: w.cl.Now(),
+		connected: time.Now(),
 	}
 	w.lease = nil
 
@@ -253,7 +250,7 @@ func (w *worker) lostLeader(ctx context.Context) {
 		return // ok: already disconnected
 	}
 
-	log.Infof(ctx, "Lost connection to leader, connected=%v, #grants=%v", w.cl.Since(w.status.connected), len(w.grants))
+	log.Infof(ctx, "Lost connection to leader, connected=%v, #grants=%v", time.Since(w.status.connected), len(w.grants))
 
 	close(w.out)
 
@@ -273,7 +270,7 @@ func (w *worker) process(ctx context.Context) {
 	defer w.Close()
 	defer w.resetMetrics(ctx)
 
-	statsTimer := w.cl.NewTicker(statsDuration)
+	statsTimer := time.NewTicker(statsDuration)
 	defer statsTimer.Stop()
 
 steady:
@@ -307,7 +304,7 @@ steady:
 	}
 
 	log.Infof(ctx, "Worker %v draining, joined=%v, #grants=%v", w.self, w.status != nil, len(w.grants))
-	now := w.cl.Now()
+	now := time.Now()
 
 	if w.status == nil || !w.trySend(ctx, leader.NewDeregister()) {
 		log.Errorf(ctx, "Worker %v draining while disconnected/stuck. Hard close", w.self)
@@ -319,7 +316,7 @@ steady:
 		case msg, ok := <-w.in:
 			if !ok {
 				if len(w.grants) == 0 {
-					log.Infof(ctx, "Worker %v drained after %v", w.self, w.cl.Since(now))
+					log.Infof(ctx, "Worker %v drained after %v", w.self, time.Since(now))
 					w.lostLeader(ctx)
 					return
 				}
@@ -406,7 +403,7 @@ func (w *worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 
 		revoke, _ := msg.Revoke()
 		grants := revoke.Grants()
-		leases := map[time.Time]*clockx.Timer{}
+		leases := map[time.Time]*timex.Timer{}
 
 		log.Infof(ctx, "Received revoke %v", grants)
 
@@ -421,9 +418,9 @@ func (w *worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 			// (1) Create lease that expires at the current TTL. The worker lease no longer includes this grant.
 			// We share the leases to not get a flood of identical expiration checks.
 
-			ttl := grant.Lease.Ttl()
+			ttl := grant.Lease.TTL()
 			if _, ok := leases[ttl]; !ok {
-				leases[ttl] = clockx.AfterFunc(w.cl, w.cl.Until(ttl), w.emitExpirationCheck)
+				leases[ttl] = timex.AfterFunc(time.Until(ttl), w.emitExpirationCheck)
 			}
 			grant.State = LeaseRevoked
 			grant.Lease = leases[ttl]
@@ -432,16 +429,16 @@ func (w *worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 
 			log.Infof(ctx, "Revoking grant %v, ttl=%v", g, ttl)
 
-			grant.Coordinator.Drain(w.cl.Until(ttl))
+			grant.Coordinator.Drain(time.Until(ttl))
 		}
 
 	case msg.IsLeaseUpdate():
 		lease, _ := msg.LeaseUpdate()
 
 		if w.lease == nil {
-			w.lease = clockx.AfterFunc(w.cl, w.cl.Until(lease.Ttl()), w.emitExpirationCheck)
+			w.lease = timex.AfterFunc(time.Until(lease.Ttl()), w.emitExpirationCheck)
 		}
-		w.lease.Reset(w.cl.Until(lease.Ttl()))
+		w.lease.Reset(time.Until(lease.Ttl()))
 
 	case msg.IsUpdate():
 		update, _ := msg.Update()
@@ -528,9 +525,9 @@ func (w *worker) emitExpirationCheck() {
 func (w *worker) checkExpiration(ctx context.Context) {
 	// Possible grant expiration
 
-	now := w.cl.Now()
+	now := time.Now()
 	for gid, g := range w.grants {
-		if g.Lease.Ttl().Before(now) {
+		if g.Lease.TTL().Before(now) {
 			w.removeGrant(ctx, gid)
 		}
 	}
@@ -543,7 +540,7 @@ func (w *worker) removeGrant(ctx context.Context, gid core.GrantID) {
 	}
 	grant.Coordinator.Close()
 
-	if grant.State != LeaseStale && w.cl.Now().Before(grant.Lease.Ttl()) {
+	if grant.State != LeaseStale && time.Now().Before(grant.Lease.TTL()) {
 		w.mustSend(ctx, leader.NewRelinquished(grant.Grant))
 	}
 
@@ -592,7 +589,7 @@ func (w *worker) mustSend(ctx context.Context, msg leader.Message) {
 		return // ok: disconnected
 	}
 
-	timer := w.cl.NewTimer(100 * time.Millisecond)
+	timer := time.NewTimer(100 * time.Millisecond)
 	defer timer.Stop()
 
 	select {
