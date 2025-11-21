@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"go.atoms.co/splitter/lib/service/location/pb"
+	locationpb "go.atoms.co/splitter/lib/service/location/pb"
 )
 
 // InstanceID identifies a component instance. It is transient and bound in-memory
@@ -15,7 +15,7 @@ type InstanceID string
 
 // Instance represents a component instance in a pure, serializable form. Mainly for debugging. Immutable.
 type Instance struct {
-	pb *location_v1.Instance
+	pb *locationpb.Instance
 }
 
 // InstanceOption represents an option for a new Instance
@@ -29,7 +29,7 @@ func WithName(name string) InstanceOption {
 }
 
 func NewInstance(loc Location, opts ...InstanceOption) Instance {
-	ret := Instance{pb: &location_v1.Instance{
+	ret := Instance{pb: &locationpb.Instance{
 		Id:       uuid.NewString(),
 		Location: loc.ToProto(),
 		Created:  timestamppb.New(time.Now()),
@@ -44,11 +44,11 @@ func NewNamedInstance(name string, loc Location, opts ...InstanceOption) Instanc
 	return NewInstance(loc, append(opts, WithName(name))...)
 }
 
-func WrapInstance(pb *location_v1.Instance) Instance {
+func WrapInstance(pb *locationpb.Instance) Instance {
 	return Instance{pb: pb}
 }
 
-func UnwrapInstance(m Instance) *location_v1.Instance {
+func UnwrapInstance(m Instance) *locationpb.Instance {
 	return m.pb
 }
 

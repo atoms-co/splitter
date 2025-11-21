@@ -3,7 +3,7 @@ package location
 import (
 	"fmt"
 
-	"go.atoms.co/splitter/lib/service/location/pb"
+	locationpb "go.atoms.co/splitter/lib/service/location/pb"
 )
 
 // Region represents a persistence-layer region for affinity.
@@ -25,15 +25,15 @@ func New(region Region, node Node) Location {
 	}
 }
 
-func Parse(pb *location_v1.Location) Location {
+func Parse(pb *locationpb.Location) Location {
 	return Location{
 		Region: Region(pb.GetRegion()),
 		Node:   Node(pb.GetNode()),
 	}
 }
 
-func (l Location) ToProto() *location_v1.Location {
-	return &location_v1.Location{
+func (l Location) ToProto() *locationpb.Location {
+	return &locationpb.Location{
 		Region: string(l.Region),
 		Node:   string(l.Node),
 	}

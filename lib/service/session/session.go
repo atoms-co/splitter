@@ -8,7 +8,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session/pb"
+	sessionpb "go.atoms.co/splitter/lib/service/session/pb"
 )
 
 // ClientID identifies a live session client instance. It is transient and bound in-memory
@@ -23,13 +23,13 @@ func NewID() ID {
 
 // Message is a session message. Immutable.
 type Message struct {
-	pb *session_v1.Message
+	pb *sessionpb.Message
 }
 
 func NewEstablishMessage(sid ID, client location.Instance) Message {
-	return WrapMessage(&session_v1.Message{
-		Request: &session_v1.Message_Establish_{
-			Establish: &session_v1.Message_Establish{
+	return WrapMessage(&sessionpb.Message{
+		Request: &sessionpb.Message_Establish_{
+			Establish: &sessionpb.Message_Establish{
 				Client: location.UnwrapInstance(client),
 				Id:     string(sid),
 			},
@@ -38,9 +38,9 @@ func NewEstablishMessage(sid ID, client location.Instance) Message {
 }
 
 func NewEstablishedMessage(ttl time.Time, server location.Instance) Message {
-	return WrapMessage(&session_v1.Message{
-		Request: &session_v1.Message_Established_{
-			Established: &session_v1.Message_Established{
+	return WrapMessage(&sessionpb.Message{
+		Request: &sessionpb.Message_Established_{
+			Established: &sessionpb.Message_Established{
 				Ttl:    timestamppb.New(ttl),
 				Server: location.UnwrapInstance(server),
 			},
@@ -49,9 +49,9 @@ func NewEstablishedMessage(ttl time.Time, server location.Instance) Message {
 }
 
 func NewHeartbeatMessage(now time.Time) Message {
-	return WrapMessage(&session_v1.Message{
-		Request: &session_v1.Message_Heartbeat_{
-			Heartbeat: &session_v1.Message_Heartbeat{
+	return WrapMessage(&sessionpb.Message{
+		Request: &sessionpb.Message_Heartbeat_{
+			Heartbeat: &sessionpb.Message_Heartbeat{
 				Now: timestamppb.New(now),
 			},
 		},
@@ -59,9 +59,9 @@ func NewHeartbeatMessage(now time.Time) Message {
 }
 
 func NewHeartbeakAckMessage(ttl time.Time) Message {
-	return WrapMessage(&session_v1.Message{
-		Request: &session_v1.Message_Ack{
-			Ack: &session_v1.Message_HeartbeatAck{
+	return WrapMessage(&sessionpb.Message{
+		Request: &sessionpb.Message_Ack{
+			Ack: &sessionpb.Message_HeartbeatAck{
 				Ttl: timestamppb.New(ttl),
 			},
 		},
@@ -69,18 +69,18 @@ func NewHeartbeakAckMessage(ttl time.Time) Message {
 }
 
 func NewClosedMessage() Message {
-	return WrapMessage(&session_v1.Message{
-		Request: &session_v1.Message_Closed_{
-			Closed: &session_v1.Message_Closed{},
+	return WrapMessage(&sessionpb.Message{
+		Request: &sessionpb.Message_Closed_{
+			Closed: &sessionpb.Message_Closed{},
 		},
 	})
 }
 
-func WrapMessage(pb *session_v1.Message) Message {
+func WrapMessage(pb *sessionpb.Message) Message {
 	return Message{pb: pb}
 }
 
-func UnwrapMessage(m Message) *session_v1.Message {
+func UnwrapMessage(m Message) *sessionpb.Message {
 	return m.pb
 }
 
