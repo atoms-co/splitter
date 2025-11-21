@@ -7,11 +7,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/uuidx"
-	"go.atoms.co/splitter/lib/service/location/pb"
 	"go.atoms.co/splitter/pkg/model"
 	splitterpb "go.atoms.co/splitter/pb"
 )
@@ -24,11 +22,7 @@ var (
 )
 
 func NewInstance(region location.Region, node location.Node, id model.InstanceID, ts time.Time) model.Instance {
-	instance := location.WrapInstance(&location_v1.Instance{
-		Id:       string(id),
-		Location: location.New(region, node).ToProto(),
-		Created:  timestamppb.New(ts),
-	})
+	instance := location.NewInstance(location.New(region, node), location.WithInstanceID(id), location.WithInstanceCreatedAt(ts))
 	return model.NewInstance(instance, fmt.Sprintf("%v:50051", node))
 }
 

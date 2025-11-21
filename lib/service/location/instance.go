@@ -28,6 +28,18 @@ func WithName(name string) InstanceOption {
 	}
 }
 
+func WithInstanceID(id InstanceID) InstanceOption {
+	return func(instance Instance) {
+		instance.pb.Id = string(id)
+	}
+}
+
+func WithInstanceCreatedAt(ts time.Time) InstanceOption {
+	return func(instance Instance) {
+		instance.pb.Created = timestamppb.New(ts)
+	}
+}
+
 func NewInstance(loc Location, opts ...InstanceOption) Instance {
 	ret := Instance{pb: &locationpb.Instance{
 		Id:       uuid.NewString(),
