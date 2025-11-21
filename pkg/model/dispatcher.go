@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/contextx"
@@ -67,7 +66,6 @@ func WithDispatcherConnectionPoolFn(fn DispatcherConnectionPoolFn) DispatcherOpt
 // de-registers on context cancellation (or Drain) and is closed on its completion.
 type Dispatcher struct {
 	ConnectionPool
-	cl      clock.Clock
 	id      Instance
 	service QualifiedServiceName
 	chain   []DispatchFilter
@@ -75,13 +73,12 @@ type Dispatcher struct {
 	initialized, drain, closed iox.AsyncCloser
 }
 
-func NewDispatcher(ctx context.Context, cl clock.Clock, client ConsumerClient, loc location.Location, endpoint string, service QualifiedServiceName, chain []DispatchFilter, opts ...ConsumerOption) *Dispatcher {
-	return NewDispatcherEx(ctx, cl, client, loc, endpoint, service, chain, WithDispatcherConsumerOptions(opts...))
+func NewDispatcher(ctx context.Context, client ConsumerClient, loc location.Location, endpoint string, service QualifiedServiceName, chain []DispatchFilter, opts ...ConsumerOption) *Dispatcher {
+	return NewDispatcherEx(ctx, client, loc, endpoint, service, chain, WithDispatcherConsumerOptions(opts...))
 }
 
-func NewDispatcherEx(ctx context.Context, cl clock.Clock, client ConsumerClient, loc location.Location, endpoint string, service QualifiedServiceName, chain []DispatchFilter, opts ...DispatcherOption) *Dispatcher {
+func NewDispatcherEx(ctx context.Context, client ConsumerClient, loc location.Location, endpoint string, service QualifiedServiceName, chain []DispatchFilter, opts ...DispatcherOption) *Dispatcher {
 	ret := &Dispatcher{
-		cl:          cl,
 		id:          NewInstance(location.NewInstance(loc), endpoint),
 		service:     service,
 		chain:       chain,
@@ -118,7 +115,7 @@ func NewDispatcherEx(ctx context.Context, cl clock.Clock, client ConsumerClient,
 func (d *Dispatcher) handle(ctx context.Context, grant GrantID, shard Shard, lease Ownership) {
 	<-d.initialized.Closed()
 
-	now := d.cl.Now()
+	now := time.Now()
 	log.Debugf(ctx, "Received grant %v:%v", grant, shard)
 
 	if contextx.IsCancelled(ctx) || lease.Expired().IsClosed() {
@@ -127,7 +124,7 @@ func (d *Dispatcher) handle(ctx context.Context, grant GrantID, shard Shard, lea
 	}
 	for _, h := range d.chain {
 		if h.TryHandle(ctx, grant, shard, lease) {
-			log.Debugf(ctx, "Relinquished grant %v:%v after %v, expired=%v", grant, shard, d.cl.Since(now), lease.Expired().IsClosed())
+			log.Debugf(ctx, "Relinquished grant %v:%v after %v, expired=%v", grant, shard, time.Since(now), lease.Expired().IsClosed())
 			return
 		}
 	}
@@ -147,7 +144,7 @@ func (d *Dispatcher) Service() QualifiedServiceName {
 
 func (d *Dispatcher) Drain(timeout time.Duration) {
 	d.drain.Close()
-	d.cl.AfterFunc(timeout, d.closed.Close)
+	time.AfterFunc(timeout, d.closed.Close)
 }
 
 func (d *Dispatcher) IsClosed() bool {
@@ -180,7 +177,6 @@ type Range interface {
 // Processor manages Ranges for one or more domains on single node, acting as a Proxy. A Range is created for
 // each given grant. The Processor handles the interaction between Grant states and Range.
 type Processor[T, K any, V Range] struct {
-	cl      clock.Clock
 	service QualifiedServiceName
 	rfn     RemoteFn[T]
 	fn      func(K) ServiceDomainKey
@@ -194,19 +190,18 @@ type Processor[T, K any, V Range] struct {
 }
 
 // NewProcessor creates a Processor for a single domain.
-func NewProcessor[T, K any, V Range](cl clock.Clock, domain DomainName, rfn RemoteFn[T], fn func(K) DomainKey, factory RangeFactory[V]) *Processor[T, K, V] {
+func NewProcessor[T, K any, V Range](domain DomainName, rfn RemoteFn[T], fn func(K) DomainKey, factory RangeFactory[V]) *Processor[T, K, V] {
 	sfn := func(k K) ServiceDomainKey {
 		return ServiceDomainKey{Domain: domain, Key: fn(k)}
 	}
-	return NewProcessorEx(cl, rfn, sfn, func(shard Shard) (RangeFactory[V], bool) {
+	return NewProcessorEx(rfn, sfn, func(shard Shard) (RangeFactory[V], bool) {
 		return factory, shard.Domain.Domain == domain
 	})
 }
 
 // NewProcessorEx creates a Processor for multiple, dynamically determined domains.
-func NewProcessorEx[T, K any, V Range](cl clock.Clock, rfn RemoteFn[T], fn func(K) ServiceDomainKey, factory RangeFactoryEx[V]) *Processor[T, K, V] {
+func NewProcessorEx[T, K any, V Range](rfn RemoteFn[T], fn func(K) ServiceDomainKey, factory RangeFactoryEx[V]) *Processor[T, K, V] {
 	return &Processor[T, K, V]{
-		cl:          cl,
 		rfn:         rfn,
 		fn:          fn,
 		factory:     factory,
@@ -276,12 +271,12 @@ func (p *Processor[T, K, V]) handle(ctx context.Context, fn RangeFactory[V], gra
 
 	unloader, err := WaitForRevoke(wctx, lease)
 	if err != nil {
-		log.Errorf(ctx, "Grant %v:%v expired or range closed, lease=%v: %v", grant, shard, lease.Expiration().Sub(p.cl.Now()), err)
+		log.Errorf(ctx, "Grant %v:%v expired or range closed, lease=%v: %v", grant, shard, lease.Expiration().Sub(time.Now()), err)
 		return
 	}
 	p.grants.Revoke(grant, shard, r)
 
-	timeout := lease.Expiration().Sub(p.cl.Now())
+	timeout := lease.Expiration().Sub(time.Now())
 	log.Infof(ctx, "Grant %v:%v revoked, lease=%v.", grant, shard, timeout)
 
 	unloaded := r.Drain(ctx, timeout)
