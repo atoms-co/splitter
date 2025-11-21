@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -114,7 +113,6 @@ func WithRefreshDelay(delay time.Duration) Option {
 type coordinator struct {
 	iox.AsyncCloser
 
-	cl   clock.Clock
 	self location.Instance
 
 	// options
@@ -138,10 +136,9 @@ type coordinator struct {
 	drain, initialized iox.AsyncCloser
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, service model.QualifiedServiceName, state core.State, updates <-chan core.Update, opts ...Option) Coordinator {
+func New(ctx context.Context, loc location.Location, service model.QualifiedServiceName, state core.State, updates <-chan core.Update, opts ...Option) Coordinator {
 	c := &coordinator{
 		AsyncCloser:  iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
-		cl:           cl,
 		self:         location.NewNamedInstance("coordinator", loc),
 		refreshDelay: leaseDuration,
 		name:         service,
@@ -200,7 +197,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin locati
 		if len(s.consumer.Keys()) > 0 {
 			c.refresh(ctx, 0)
 		}
-		c.allocate(ctx, c.cl.Now(), false) // Allocate to assign work post connection
+		c.allocate(ctx, time.Now(), false) // Allocate to assign work post connection
 
 		go func() {
 			defer cancel()
@@ -272,7 +269,7 @@ func (c *coordinator) Self() location.Instance {
 
 func (c *coordinator) Drain(timeout time.Duration) {
 	c.drain.Close()
-	c.cl.AfterFunc(timeout, c.Close)
+	time.AfterFunc(timeout, c.Close)
 }
 
 func (c *coordinator) String() string {
@@ -328,7 +325,7 @@ func (c *coordinator) handleOperationRequest(ctx context.Context, op *splitterpr
 }
 
 func (c *coordinator) connect(ctx context.Context, sid session.ID, origin location.Instance, register model.RegisterMessage, limit int, keys []model.QualifiedDomainKey, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
-	now := c.cl.Now()
+	now := time.Now()
 
 	consumer := NewConsumer(register.Consumer(), now, WithKeys(keys...))
 
@@ -356,7 +353,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, origin locati
 		isNewConsumer = true
 	}
 
-	connection, out := sessionx.NewConnection[model.ConsumerMessage](c.cl, sid, consumer.Instance(), c, in, c.messages)
+	connection, out := sessionx.NewConnection[model.ConsumerMessage](sid, consumer.Instance(), c, in, c.messages)
 	s := &consumerSession{
 		consumer:   consumer,
 		connection: connection,
@@ -452,7 +449,7 @@ func (c *coordinator) disconnect(ctx context.Context, reason string, consumers .
 }
 
 func (c *coordinator) observe(ctx context.Context, sid session.ID, origin location.Instance, register core.ObserverRegisterMessage) (*observerSession, <-chan core.ObserverServerMessage) {
-	now := c.cl.Now()
+	now := time.Now()
 
 	service, _ := register.Service()
 	observer := newObserver(register.Observer(), service, now)
@@ -468,7 +465,6 @@ func (c *coordinator) observe(ctx context.Context, sid session.ID, origin locati
 
 	s := &observerSession{
 		AsyncCloser: iox.NewAsyncCloser(),
-		cl:          c.cl,
 		observer:    observer,
 		sid:         sid,
 		out:         out,
@@ -500,7 +496,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	defer c.drain.Close()
 	defer c.initialized.Close()
 
-	start := c.cl.Now()
+	start := time.Now()
 
 	c.cache.Restore(core.NewSnapshot(state))
 
@@ -523,7 +519,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 		delay = 0
 	}
 
-	now := c.cl.Now()
+	now := time.Now()
 	c.alloc = newAllocation(c.self.ID(), tenant, info, c.cache.Placements(c.name.Tenant), now.Add(delay))
 	c.noLb = c.findUnitDomains()
 	c.cluster = model.NewClusterMap(model.NewClusterID(c.self, now), c.alloc.Units())
@@ -551,10 +547,10 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 func (c *coordinator) process(ctx context.Context, updates <-chan core.Update) {
 	defer c.resetMetrics(ctx)
 
-	ticker := c.cl.NewTicker(10*time.Second + randx.Duration(time.Second))
+	ticker := time.NewTicker(10*time.Second + randx.Duration(time.Second))
 	defer ticker.Stop()
 
-	cluster := c.cl.NewTicker(100*time.Millisecond + randx.Duration(50*time.Millisecond))
+	cluster := time.NewTicker(100*time.Millisecond + randx.Duration(50*time.Millisecond))
 	defer cluster.Stop()
 
 	var broadcast bool
@@ -564,7 +560,7 @@ steady:
 		select {
 		case msg := <-c.messages:
 
-			now := c.cl.Now()
+			now := time.Now()
 
 			s, ok := c.consumers[msg.Instance.ID()]
 			if !ok || msg.Sid != s.connection.Sid() {
@@ -580,7 +576,7 @@ steady:
 		case upd := <-updates:
 			// (1) Refresh allocation, (2) allocate, (3) broadcast cluster change
 
-			now := c.cl.Now()
+			now := time.Now()
 
 			if err := c.cache.Update(upd, false); err != nil {
 				log.Errorf(ctx, "Internal: invalid state update %v", err)
@@ -604,7 +600,7 @@ steady:
 			oldShards := c.alloc.Units()
 
 			c.refresh(ctx, c.refreshDelay)
-			c.allocate(ctx, c.cl.Now(), false)
+			c.allocate(ctx, time.Now(), false)
 
 			newShards := c.alloc.Units()
 			var bopts []broadcastOption
@@ -620,7 +616,7 @@ steady:
 			// (1) Send lease updates, (2) disconnect unhealthy consumers, (3) allocate
 			// (4) broadcast cluster changes (5) emit metrics
 
-			now := c.cl.Now()
+			now := time.Now()
 			lease := now.Add(leaseDuration)
 
 			verbose := c.info.Service().Operational().VerboseLogging()
@@ -647,7 +643,7 @@ steady:
 		case <-cluster.C:
 			// (1) Broadcast cluster changes
 
-			now := c.cl.Now()
+			now := time.Now()
 
 			if broadcast {
 				c.broadcast(ctx)
@@ -671,7 +667,7 @@ steady:
 }
 
 func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
-	now := c.cl.Now()
+	now := time.Now()
 
 	// Check if using named keys
 	var isKeys bool
@@ -711,7 +707,7 @@ func (c *coordinator) shouldResumeSuspended(s *consumerSession, now time.Time) b
 }
 
 func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance bool) {
-	defer c.recordActionLatency(ctx, "allocate", c.cl.Now()) // uses actual current time (vs _now_ param) for latency recording
+	defer c.recordActionLatency(ctx, "allocate", time.Now()) // uses actual current time (vs _now_ param) for latency recording
 
 	// (1) Expire, Allocate and LoadBalance. If any worker cannot handle the update
 	// they are disconnected. If an assignment fails, the grant is immediately released.
@@ -762,7 +758,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 }
 
 func (c *coordinator) loadBalance(ctx context.Context, now time.Time) (allocation.Move[model.Shard, model.ConsumerID], allocation.AdjustedLoad, bool) {
-	defer c.recordActionLatency(ctx, "loadbalance", c.cl.Now()) // uses actual current time (vs _now_ param) for latency recording
+	defer c.recordActionLatency(ctx, "loadbalance", time.Now()) // uses actual current time (vs _now_ param) for latency recording
 
 	// TODO(jump.c) 8/30/2024: Besides unit domains, load balancing should not move shards that have been recently assigned
 	return c.alloc.LoadBalance(now, c.noLb)
@@ -862,7 +858,7 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 	// (2) Revoke all active grants. The coordinator sends out new assignments only on Active grants,
 	// so Allocated grants can just be released. Revoked assignments are already in progress.
 
-	now := c.cl.Now()
+	now := time.Now()
 
 	assigned := c.alloc.Assigned(s.consumer.ID())
 	for _, g := range assigned.Allocated {
@@ -885,7 +881,7 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 	}
 
 	// (4) Allocate unassigned grants
-	c.allocate(ctx, c.cl.Now(), false)
+	c.allocate(ctx, time.Now(), false)
 
 	log.Infof(ctx, "Deregistered consumer %v with %v active grants", s, len(assigned.Active))
 }
@@ -903,7 +899,7 @@ func (c *coordinator) handleRevoke(ctx context.Context, s *consumerSession, revo
 func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, released model.ReleasedMessage) {
 	log.Infof(ctx, "Received released %v from consumer %v", released, s)
 
-	now := c.cl.Now()
+	now := time.Now()
 
 	// (1) Release relinquished grants. Check deregister status
 
@@ -981,7 +977,7 @@ func withSendingShards(shards []model.Shard) broadcastOption {
 }
 
 func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
-	defer c.recordActionLatency(ctx, "broadcast", c.cl.Now())
+	defer c.recordActionLatency(ctx, "broadcast", time.Now())
 
 	var opts broadcastOpts
 	for _, opt := range bopts {
@@ -1052,7 +1048,7 @@ func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
 		copts = append(copts, model.WithClusterChangeShards(opts.shards...))
 	}
 
-	change := model.NewClusterChange(c.cluster.ID().Next(c.cl.Now()), assigned, updated, unassigned, removed, copts...)
+	change := model.NewClusterChange(c.cluster.ID().Next(time.Now()), assigned, updated, unassigned, removed, copts...)
 	upd, err := model.UpdateClusterMap(ctx, c.cluster, change)
 	if err != nil {
 		log.Errorf(ctx, "Internal: failed to update cluster map: %v", err)
@@ -1111,7 +1107,7 @@ func (c *coordinator) handleServiceRestartRequest(ctx context.Context) (*splitte
 }
 
 func (c *coordinator) revokeGrants(ctx context.Context, grants map[model.InstanceID][]model.GrantID) {
-	now := c.cl.Now()
+	now := time.Now()
 	for cid, gs := range grants {
 		var toRevoke []Grant
 		gs := slicex.NewSet(gs...)
@@ -1240,7 +1236,7 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 			return model.Consumer{}, fmt.Errorf("consumer not found, %v: %w", id, model.ErrNotFound)
 		}
 
-		now := c.cl.Now()
+		now := time.Now()
 
 		// Revoke assigned grants and release allocated grants
 		assigned := c.alloc.Assigned(s.consumer.ID())
@@ -1298,7 +1294,7 @@ func (c *coordinator) mustSendToObserver(ctx context.Context, s *observerSession
 }
 
 func (c *coordinator) emitMetrics(ctx context.Context) {
-	defer c.recordActionLatency(ctx, "metrics", c.cl.Now())
+	defer c.recordActionLatency(ctx, "metrics", time.Now())
 
 	c.resetMetrics(ctx)
 
@@ -1459,5 +1455,5 @@ func (c *coordinator) recordAction(ctx context.Context, action, result string) {
 }
 
 func (c *coordinator) recordActionLatency(ctx context.Context, action string, now time.Time) {
-	numActionLatency.Observe(ctx, c.cl.Since(now), slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.ActionTag(action))...)
+	numActionLatency.Observe(ctx, time.Since(now), slicex.CopyAppend(core.QualifiedServiceTags(c.name), core.ActionTag(action))...)
 }

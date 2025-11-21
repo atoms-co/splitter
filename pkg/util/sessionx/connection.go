@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/iox"
@@ -26,7 +25,6 @@ type Connection[T any] interface {
 type connection[T any] struct {
 	iox.AsyncCloser
 
-	cl       clock.Clock
 	sid      session.ID
 	instance model.Instance
 	out      chan<- T
@@ -40,13 +38,12 @@ type Message[T any] struct {
 	Msg      T
 }
 
-func NewConnection[T any](cl clock.Clock, sid session.ID, instance model.Instance, closer iox.AsyncCloser, in <-chan T, messages chan<- *Message[T]) (Connection[T], <-chan T) {
+func NewConnection[T any](sid session.ID, instance model.Instance, closer iox.AsyncCloser, in <-chan T, messages chan<- *Message[T]) (Connection[T], <-chan T) {
 	out := make(chan T, 100)
 	con := &connection[T]{
 		AsyncCloser: iox.WithQuit(closer.Closed(), iox.NewAsyncCloser()),
 		sid:         sid,
 		instance:    instance,
-		cl:          cl,
 		out:         out,
 	}
 	go con.forward(in, messages)
@@ -58,7 +55,7 @@ func (c *connection[T]) Send(ctx context.Context, msg T) bool {
 		return false
 	}
 
-	timer := c.cl.NewTimer(5 * time.Second)
+	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
 	select {

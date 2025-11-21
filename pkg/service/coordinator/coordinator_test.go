@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
@@ -41,12 +40,11 @@ var (
 func TestCoordinator_SingleConsumer(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Unit, cl.Now())
+		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, true)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -90,9 +88,8 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 func TestCoordinator_TwoConsumers(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(
 				model.WithDomainShardingPolicy(
 					model.NewShardingPolicy(4)),
@@ -100,7 +97,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, true)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -224,9 +221,8 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(
 				model.WithDomainShardingPolicy(
 					model.NewShardingPolicy(1)),
@@ -234,14 +230,14 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		unit, err := model.NewDomain(domainName2, model.Unit, cl.Now())
+		unit, err := model.NewDomain(domainName2, model.Unit, time.Now())
 		require.NoError(t, err)
-		unit2, err := model.NewDomain(domainName3, model.Unit, cl.Now())
+		unit2, err := model.NewDomain(domainName3, model.Unit, time.Now())
 		require.NoError(t, err)
 
 		// (1) Setup 1 regional domain "domain1" and 2 unit "domain1" + "domain2". 1 shard each.
 
-		coord := setup(ctx, cl, t, []model.Domain{domain, unit, unit2}, true)
+		coord := setup(ctx, t, []model.Domain{domain, unit, unit2}, true)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -303,9 +299,8 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(
 				model.WithDomainShardingPolicy(model.NewShardingPolicy(4)),
 				model.WithDomainRegions("centralus"),
@@ -313,7 +308,7 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 		))
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, true)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -351,7 +346,6 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
 		names := []model.NamedDomainKey{
 			{
@@ -370,7 +364,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 			},
 		}
 
-		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(
 				model.WithDomainShardingPolicy(model.NewShardingPolicy(4)),
 				model.WithDomainRegions("centralus", "northcentralus"),
@@ -379,7 +373,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 		))
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, true)
 
 		// Worker 1 joins for key "test"
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
@@ -459,13 +453,12 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 	synctest.Run(func() {
 
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Global, cl.Now(), model.WithDomainConfig(
+		domain, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))))
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, false)
+		coord := setup(ctx, t, []model.Domain{domain}, false)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -562,13 +555,12 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 func TestCoordinator_RelinquishGrant(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Global, cl.Now(), model.WithDomainConfig(
+		domain, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))))
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, true)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -604,7 +596,6 @@ func TestCoordinator_RelinquishGrant(t *testing.T) {
 func TestCoordinator_CustomShards(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
 		initialShards := []model.ShardingPolicyShard{
 			model.NewShardingPolicyShard(model.MustParseKey("00000000-0000-0000-0000-000000000000"), model.MustParseKey("80000000-0000-0000-0000-000000000000"), ""),
@@ -613,11 +604,11 @@ func TestCoordinator_CustomShards(t *testing.T) {
 
 		sp := model.NewShardingPolicy(2, model.WithShardingPolicyShards(initialShards))
 		opts := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp), model.WithDomainRegions("centralus")))
-		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), opts)
+		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), opts)
 
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, true)
 
 		consumer1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		in1 := make(chan model.ConsumerMessage, 1)
@@ -673,7 +664,6 @@ func TestCoordinator_CustomShards(t *testing.T) {
 func TestCoordinator_RegionSpecificShards(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
 		customShards := []model.ShardingPolicyShard{
 			model.NewShardingPolicyShard(model.MustParseKey("00000000-0000-0000-0000-000000000000"), model.MustParseKey("10000000-0000-0000-0000-000000000000"), "centralus"),
@@ -682,11 +672,11 @@ func TestCoordinator_RegionSpecificShards(t *testing.T) {
 
 		sp := model.NewShardingPolicy(2, model.WithShardingPolicyShards(customShards))
 		opts := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp), model.WithDomainRegions("centralus", "eastus")))
-		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), opts)
+		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), opts)
 
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, true)
 
 		expectedRegionResults := map[model.Region][]uuidx.Range{
 			"centralus": {
@@ -755,9 +745,8 @@ func matchesRange(grants []model.Grant, ranges []uuidx.Range, region string) boo
 func TestObserverConnection(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		coord := setup(ctx, cl, t, []model.Domain{}, true)
+		coord := setup(ctx, t, []model.Domain{}, true)
 
 		observer := location.NewNamedInstance("observer-1", location.New("us-west-2", "fubar-xyz123"))
 		observerInstance := model.NewInstance(observer, "foo")
@@ -787,12 +776,11 @@ func TestObserverConnection(t *testing.T) {
 func TestObserverReceivesClusterUpdates(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Unit, cl.Now())
+		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, true)
 
 		observer := location.NewInstance(location.New("us-west-2", "fubar-xyz123"))
 		observerInstance := model.NewInstance(observer, "foo")
@@ -833,12 +821,11 @@ func TestObserverReceivesClusterUpdates(t *testing.T) {
 func TestMultipleObservers(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Unit, cl.Now())
+		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, true)
 
 		observers := make([]struct {
 			location location.Instance
@@ -889,16 +876,15 @@ func TestMultipleObservers(t *testing.T) {
 func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(
 				model.WithDomainShardingPolicy(model.NewShardingPolicy(2)),
 				model.WithDomainRegions("centralus")),
 		))
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, false)
+		coord := setup(ctx, t, []model.Domain{domain}, false)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		in1 := make(chan model.ConsumerMessage, 1)
@@ -941,16 +927,15 @@ func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
 func TestCoordinator_ConsumerSuspendAndResume(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 
-		domain, err := model.NewDomain(domainName, model.Regional, cl.Now(), model.WithDomainConfig(
+		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
 			model.NewDomainConfig(
 				model.WithDomainShardingPolicy(model.NewShardingPolicy(2)),
 				model.WithDomainRegions("centralus")),
 		))
 		require.NoError(t, err)
 
-		coord := setup(ctx, cl, t, []model.Domain{domain}, false)
+		coord := setup(ctx, t, []model.Domain{domain}, false)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -1011,20 +996,20 @@ func TestCoordinator_ConsumerSuspendAndResume(t *testing.T) {
 	})
 }
 
-func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Domain, withFastActivation bool) Coordinator {
+func setup(ctx context.Context, t *testing.T, domains []model.Domain, withFastActivation bool) Coordinator {
 	t.Helper()
 
 	loc := location.New("centralus", "splitter-0")
 
-	tenant, err := model.NewTenant(tenant1, cl.Now())
+	tenant, err := model.NewTenant(tenant1, time.Now())
 	require.NoError(t, err)
 
-	service, err := model.NewService(serviceName, cl.Now())
+	service, err := model.NewService(serviceName, time.Now())
 	require.NoError(t, err)
 
 	state := core.NewState(
-		model.NewTenantInfo(tenant, 1, cl.Now()),
-		[]model.ServiceInfoEx{model.NewServiceInfoEx(model.NewServiceInfo(service, 1, cl.Now()), domains)},
+		model.NewTenantInfo(tenant, 1, time.Now()),
+		[]model.ServiceInfoEx{model.NewServiceInfoEx(model.NewServiceInfo(service, 1, time.Now()), domains)},
 		nil, // TODO(jhhurwitz): 12/13/23 Test placements when implemented
 	)
 
@@ -1034,7 +1019,7 @@ func setup(ctx context.Context, cl clock.Clock, t *testing.T, domains []model.Do
 	if withFastActivation {
 		cOpts = append(cOpts, WithFastActivation())
 	}
-	c := New(ctx, cl, loc, serviceName, state, updates, cOpts...)
+	c := New(ctx, loc, serviceName, state, updates, cOpts...)
 	<-c.Initialized().Closed()
 
 	return c

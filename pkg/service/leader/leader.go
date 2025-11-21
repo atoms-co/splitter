@@ -453,7 +453,7 @@ func (l *leader) connect(ctx context.Context, now time.Time, sid session.ID, reg
 	}
 
 	// TODO(jhhurwitz): 12/06/23: Custom size
-	connection, out := sessionx.NewConnection[Message](l.cl, sid, worker, l, in, l.messages)
+	connection, out := sessionx.NewConnection[Message](sid, worker, l, in, l.messages)
 	w := &workerSession{
 		instance:   worker,
 		connection: connection,

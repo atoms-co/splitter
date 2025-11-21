@@ -108,7 +108,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 		if opt.refreshDelay != nil {
 			copts = append(copts, coordinator.WithRefreshDelay(*opt.refreshDelay))
 		}
-		return coordinator.New(ctx, cl, loc, service, state, updates, copts...)
+		return coordinator.New(ctx, loc, service, state, updates, copts...)
 	}
 
 	w, clusters := worker.New(cl, loc, endpoint, joinFn, factoryFn)

@@ -6,7 +6,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -52,7 +51,6 @@ func (o *observer) String() string {
 type observerSession struct {
 	iox.AsyncCloser
 
-	cl       clock.Clock
 	observer observer
 	sid      session.ID
 	out      chan<- core.ObserverServerMessage
@@ -65,7 +63,7 @@ func (o *observerSession) TrySend(ctx context.Context, message core.ObserverServ
 		return false
 	}
 
-	timer := o.cl.NewTimer(5 * time.Second)
+	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
 
 	select {
