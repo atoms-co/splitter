@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/splitter/pkg/model"
@@ -15,21 +14,19 @@ import (
 // LocalManager is a leader manager that always uses local leader. Useful for testing.
 type LocalManager struct {
 	iox.AsyncCloser
-	cl    clock.Clock
 	local leader.Proxy
 }
 
-func NewLocalManager(cl clock.Clock, local leader.Proxy) *LocalManager {
+func NewLocalManager(local leader.Proxy) *LocalManager {
 	ret := &LocalManager{
 		AsyncCloser: iox.NewAsyncCloser(),
-		cl:          cl,
 		local:       local,
 	}
 	return ret
 }
 
 func (m *LocalManager) Drain(timeout time.Duration) {
-	m.cl.AfterFunc(timeout, m.Close)
+	time.AfterFunc(timeout, m.Close)
 }
 
 func (m *LocalManager) Resolve(ctx context.Context, key model.DomainKey) (splitterprivatepb.LeaderServiceClient, error) {

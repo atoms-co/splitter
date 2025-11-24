@@ -13,7 +13,6 @@ import (
 	boltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/spf13/cobra"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/encoding/yamlx"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/log/hclog"
@@ -56,7 +55,6 @@ func makeStartCommand() *cobra.Command {
 
 	cmd.Run = func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
-		cl := clock.New()
 
 		// (1) Initialize
 
@@ -147,7 +145,7 @@ func makeStartCommand() *cobra.Command {
 			return ret, ret
 		})
 
-		s := server.New(ctx, cl, loc, *splitterServer, c, manager, server.WithFastActivation(*fastActivation))
+		s := server.New(ctx, loc, *splitterServer, c, manager, server.WithFastActivation(*fastActivation))
 
 		// (4) Start server and await termination
 
@@ -204,7 +202,7 @@ func makeStartCommand() *cobra.Command {
 
 		log.Infof(ctx, "Shutting down. Exiting in 20s.")
 
-		cl.AfterFunc(20*time.Second, func() {
+		time.AfterFunc(20*time.Second, func() {
 			log.Exitf(ctx, "Exited forcefully")
 		})
 

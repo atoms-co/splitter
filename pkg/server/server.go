@@ -10,7 +10,6 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -53,7 +52,6 @@ func WithAllocationRefreshDelay(delay time.Duration) Option {
 
 // Server holds all service components.
 type Server struct {
-	cl  clock.Clock
 	loc location.Location
 
 	cluster  cluster.Cluster
@@ -63,7 +61,7 @@ type Server struct {
 	resolver core.ServiceResolver
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint string, cluster cluster.Cluster, manager leader.Manager, opts ...Option) *Server {
+func New(ctx context.Context, loc location.Location, endpoint string, cluster cluster.Cluster, manager leader.Manager, opts ...Option) *Server {
 	var opt options
 	for _, fn := range opts {
 		fn(&opt)
@@ -117,7 +115,6 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, endpoint st
 	c := consumer.New(loc, w, resolver)
 
 	return &Server{
-		cl:       cl,
 		loc:      loc,
 		cluster:  cluster,
 		worker:   w,
