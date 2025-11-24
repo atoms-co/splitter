@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/testing/assertx"
@@ -35,15 +34,14 @@ var (
 
 func TestLeader_SingleWorker(t *testing.T) {
 	ctx := context.Background()
-	cl := clock.New()
 	loc := location.New("centralus", "splitter-0")
 
 	s, err := model.NewService(s1, time.Now())
 	require.NoError(t, err)
 
-	db := setup(t, ctx, cl, s)
+	db := setup(t, ctx, s)
 
-	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
+	l := leader.New(ctx, loc, db, leader.WithFastActivation())
 	<-l.Initialized().Closed()
 
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
@@ -68,15 +66,14 @@ func TestLeader_SingleWorker(t *testing.T) {
 
 func TestLeader_SingleWorkerReattach(t *testing.T) {
 	ctx := context.Background()
-	cl := clock.New()
 	loc := location.New("centralus", "splitter-0")
 
 	s, err := model.NewService(s1, time.Now())
 	require.NoError(t, err)
 
-	db := setup(t, ctx, cl, s)
+	db := setup(t, ctx, s)
 
-	l := leader.New(ctx, cl, loc, db /* no need for fast activation as regrant can occur before activation */)
+	l := leader.New(ctx, loc, db /* no need for fast activation as regrant can occur before activation */)
 	<-l.Initialized().Closed()
 
 	w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
@@ -102,7 +99,6 @@ func TestLeader_SingleWorkerReattach(t *testing.T) {
 func TestLeader_MultipleWorker(t *testing.T) {
 	synctest.Run(func() {
 		ctx := context.Background()
-		cl := clock.New()
 		loc := location.New("centralus", "splitter-0")
 
 		s1, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
@@ -110,9 +106,9 @@ func TestLeader_MultipleWorker(t *testing.T) {
 		s2, err := model.NewService(s2, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
 		require.NoError(t, err)
 
-		db := setup(t, ctx, cl, s1, s2)
+		db := setup(t, ctx, s1, s2)
 
-		l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
+		l := leader.New(ctx, loc, db, leader.WithFastActivation())
 		<-l.Initialized().Closed()
 
 		w1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
@@ -168,7 +164,6 @@ func TestLeader_MultipleWorker(t *testing.T) {
 
 func TestLeader_Operations(t *testing.T) {
 	ctx := context.Background()
-	cl := clock.New()
 	loc := location.New("centralus", "splitter-0")
 
 	s1, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
@@ -176,9 +171,9 @@ func TestLeader_Operations(t *testing.T) {
 	s2, err := model.NewService(s2, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
 	require.NoError(t, err)
 
-	db := setup(t, ctx, cl, s1, s2)
+	db := setup(t, ctx, s1, s2)
 
-	l := leader.New(ctx, cl, loc, db, leader.WithFastActivation())
+	l := leader.New(ctx, loc, db, leader.WithFastActivation())
 	<-l.Initialized().Closed()
 
 	resp, err := l.Handle(ctx, leader.NewHandleOperationRequest(&splitterprivatepb.OperationRequest{
@@ -193,7 +188,7 @@ func TestLeader_Operations(t *testing.T) {
 	assert.Len(t, snap.GetSnapshot().GetTenants(), 2)
 }
 
-func setup(t *testing.T, ctx context.Context, cl clock.Clock, services ...model.Service) storage.Storage {
+func setup(t *testing.T, ctx context.Context, services ...model.Service) storage.Storage {
 	db := memory.New()
 
 	for _, service := range services {

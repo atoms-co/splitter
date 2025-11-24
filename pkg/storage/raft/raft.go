@@ -7,7 +7,6 @@ import (
 
 	"github.com/hashicorp/raft"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/splitter/pkg/core"
@@ -29,16 +28,13 @@ const (
 
 // Storage provides raft-based Storage. It can be used on the raft leader only.
 type Storage struct {
-	cl clock.Clock
-
 	raftID raft.ServerID
 	raft   *raft.Raft
 	fsm    *FSM
 }
 
-func New(cl clock.Clock, raftID raft.ServerID, raft *raft.Raft, fsm *FSM) *Storage {
+func New(raftID raft.ServerID, raft *raft.Raft, fsm *FSM) *Storage {
 	s := &Storage{
-		cl:     cl,
 		raftID: raftID,
 		raft:   raft,
 		fsm:    fsm,
@@ -107,10 +103,10 @@ func (s *Storage) apply(ctx context.Context, mutation *splitterprivatepb.Mutatio
 
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		deadline = s.cl.Now().Add(applyDeadline)
+		deadline = time.Now().Add(applyDeadline)
 	}
 
-	resp := s.raft.Apply(buf, s.cl.Until(deadline))
+	resp := s.raft.Apply(buf, time.Until(deadline))
 	if err := resp.Error(); err != nil {
 		log.Errorf(context.Background(), "Failed to apply raft mutation %v: %v", protox.MarshalTextString(mutation), err)
 		return err

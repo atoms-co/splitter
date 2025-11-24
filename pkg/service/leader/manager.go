@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/contextx"
@@ -60,7 +59,6 @@ type Manager interface {
 type ResolvingManager struct {
 	iox.AsyncCloser
 
-	cl      clock.Clock
 	factory Factory
 
 	remote splitterprivatepb.LeaderServiceClient // nil if local
@@ -71,11 +69,10 @@ type ResolvingManager struct {
 	drain iox.AsyncCloser
 }
 
-func NewManager(cl clock.Clock, in <-chan Directive, factory Factory) *ResolvingManager {
+func NewManager(in <-chan Directive, factory Factory) *ResolvingManager {
 	quit := iox.NewAsyncCloser()
 	ret := &ResolvingManager{
 		AsyncCloser: quit,
-		cl:          cl,
 		factory:     factory,
 		drain:       iox.WithQuit(quit.Closed(), iox.NewAsyncCloser()),
 	}
@@ -86,7 +83,7 @@ func NewManager(cl clock.Clock, in <-chan Directive, factory Factory) *Resolving
 
 func (m *ResolvingManager) Drain(timeout time.Duration) {
 	m.drain.Close()
-	m.cl.AfterFunc(timeout, m.Close)
+	time.AfterFunc(timeout, m.Close)
 }
 
 func (m *ResolvingManager) Resolve(ctx context.Context, key model.DomainKey) (splitterprivatepb.LeaderServiceClient, error) {
@@ -159,7 +156,7 @@ steady:
 
 	// Gives time to reassign Coordinators to other nodes
 	if isLeader {
-		m.cl.Sleep(leaderDrainTime)
+		time.Sleep(leaderDrainTime)
 	}
 }
 
@@ -189,7 +186,7 @@ func (m *ResolvingManager) lead(ctx context.Context, halt iox.AsyncCloser, id st
 		}
 
 		log.Errorf(ctx, "Leader %v closed unexpectedly", l)
-		m.cl.Sleep(time.Second)
+		time.Sleep(time.Second)
 	}
 }
 

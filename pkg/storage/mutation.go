@@ -2,8 +2,8 @@ package storage
 
 import (
 	"fmt"
+	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 )
@@ -49,13 +49,11 @@ type Writer struct {
 	Domains    Domains
 	Placements Placements
 
-	cl clock.Clock
 	db *Cache
 }
 
-func NewWriter(cl clock.Clock, snapshot core.Snapshot) *Writer {
+func NewWriter(snapshot core.Snapshot) *Writer {
 	ret := &Writer{
-		cl: cl,
 		db: NewCache(),
 	}
 	ret.Tenants = (*tenants)(ret)
@@ -101,7 +99,7 @@ func (t *tenants) Delete(name model.TenantName) (core.Delete, error) {
 }
 
 func (t *tenants) update(tenant model.Tenant, version model.Version) (core.Update, model.TenantInfo, error) {
-	info := model.NewTenantInfo(tenant, version, t.cl.Now())
+	info := model.NewTenantInfo(tenant, version, time.Now())
 	upd := core.NewTenantUpdate(info)
 	return upd, info, t.db.Update(upd, true)
 }
@@ -115,7 +113,7 @@ func (s *services) Create(service model.Service) (core.Update, model.ServiceInfo
 	if _, ok := s.db.Service(service.Name()); ok {
 		return core.Update{}, model.ServiceInfo{}, fmt.Errorf("service %v exists: %w", service.Name(), model.ErrAlreadyExists)
 	}
-	info := model.NewServiceInfo(service, 1, s.cl.Now())
+	info := model.NewServiceInfo(service, 1, time.Now())
 	upd := core.NewServiceUpdate(info)
 
 	return upd, info, s.db.Update(upd, true)
@@ -129,7 +127,7 @@ func (s *services) Update(service model.Service, guard model.Version) (core.Upda
 	if cur.Info().Version() != guard {
 		return core.Update{}, model.ServiceInfo{}, model.ErrVersionMismatch
 	}
-	info := model.NewServiceInfo(service, guard+1, s.cl.Now())
+	info := model.NewServiceInfo(service, guard+1, time.Now())
 	upd := core.NewServiceUpdate(info)
 
 	return upd, info, s.db.Update(upd, true)
@@ -154,7 +152,7 @@ func (d *domains) Create(domain model.Domain) (core.Update, model.Domain, error)
 	if _, ok := d.db.Domain(domain.Name()); ok {
 		return core.Update{}, model.Domain{}, fmt.Errorf("domain %v exists: %w", domain.Name(), model.ErrAlreadyExists)
 	}
-	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, d.cl.Now())
+	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, time.Now())
 	upd := core.NewDomainUpdate(info, domain)
 
 	return upd, domain, d.db.Update(upd, true)
@@ -171,7 +169,7 @@ func (d *domains) Update(domain model.Domain, guard model.Version) (core.Update,
 	if service.Info().Version() != guard {
 		return core.Update{}, model.Domain{}, model.ErrVersionMismatch
 	}
-	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, d.cl.Now())
+	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, time.Now())
 	upd := core.NewDomainUpdate(info, domain)
 
 	return upd, domain, d.db.Update(upd, true)
@@ -185,7 +183,7 @@ func (d *domains) Delete(name model.QualifiedDomainName) (core.Update, error) {
 	if _, ok := d.db.Domain(name); !ok {
 		return core.Update{}, fmt.Errorf("domain %v not found: %w", name, model.ErrNotFound)
 	}
-	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, d.cl.Now())
+	info := model.NewServiceInfo(service.Info().Service(), service.Info().Version()+1, time.Now())
 	upd := core.NewDomainRemoval(info, name)
 
 	return upd, d.db.Update(upd, true)
@@ -223,7 +221,7 @@ func (p *placements) Delete(name model.QualifiedPlacementName) (core.Update, err
 }
 
 func (p *placements) update(placement core.InternalPlacement, version model.Version) (core.Update, core.InternalPlacementInfo, error) {
-	info := core.NewInternalPlacementInfo(placement, version, p.cl.Now())
+	info := core.NewInternalPlacementInfo(placement, version, time.Now())
 	upd := core.NewPlacementUpdate(info)
 	return upd, info, p.db.Update(upd, true)
 }

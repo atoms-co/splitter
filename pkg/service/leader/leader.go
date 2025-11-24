@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
@@ -70,7 +69,6 @@ type Leader interface {
 type leader struct {
 	iox.AsyncCloser
 
-	cl   clock.Clock
 	self location.Instance
 
 	// options
@@ -92,12 +90,11 @@ type leader struct {
 	initialized, drain iox.AsyncCloser
 }
 
-func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.Storage, opts ...Option) Leader {
-	writer, upd, del, res := NewWriter(cl, db)
+func New(ctx context.Context, loc location.Location, db storage.Storage, opts ...Option) Leader {
+	writer, upd, del, res := NewWriter(db)
 
 	l := &leader{
 		AsyncCloser: iox.NewAsyncCloser(),
-		cl:          cl,
 		self:        location.NewInstance(loc, location.WithName("leader")),
 		writer:      writer,
 		cache:       storage.NewCache(),
@@ -114,7 +111,7 @@ func New(ctx context.Context, cl clock.Clock, loc location.Location, db storage.
 		opt(l)
 	}
 
-	go l.init(context.Background(), cl.Now())
+	go l.init(context.Background(), time.Now())
 
 	return l
 }
@@ -138,7 +135,7 @@ func (l *leader) Join(ctx context.Context, sid session.ID, in <-chan Message) (<
 	return syncx.Txn1(ctx, l.txn, func() (<-chan Message, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), l.Closed())
 
-		now := l.cl.Now()
+		now := time.Now()
 		s, out := l.connect(wctx, now, sid, register, in)
 		l.allocate(ctx, now, false) // Allocate to assign work post connection
 
@@ -228,10 +225,10 @@ func (l *leader) init(ctx context.Context, now time.Time) {
 func (l *leader) process(ctx context.Context) {
 	defer l.resetMetrics(ctx)
 
-	ticker := l.cl.NewTicker(4*time.Second + randx.Duration(time.Second))
+	ticker := time.NewTicker(4*time.Second + randx.Duration(time.Second))
 	defer ticker.Stop()
 
-	slow := l.cl.NewTicker(time.Minute + randx.Duration(10*time.Second))
+	slow := time.NewTicker(time.Minute + randx.Duration(10*time.Second))
 	defer slow.Stop()
 
 steady:
@@ -248,7 +245,7 @@ steady:
 		case <-ticker.C:
 			// Regularly send out lease updates to healthy workers, disconnect unhealthy ones.
 
-			now := l.cl.Now()
+			now := time.Now()
 			lease := now.Add(leaseDuration)
 
 			var unhealthy []*workerSession
@@ -273,7 +270,7 @@ steady:
 		case <-slow.C:
 			// Move placements by N blocks every 5 minutes, if needed.
 
-			now := l.cl.Now()
+			now := time.Now()
 			cutoff := now.Add(-5 * time.Minute)
 
 			for _, t := range l.cache.Tenants() {
@@ -290,7 +287,7 @@ steady:
 
 					moved := core.MoveBlockDistribution(current, target, n)
 					cfg := core.NewInternalPlacementConfig(target, moved, n)
-					upd := core.NewInternalPlacement(placement.Name(), cfg, l.cl.Now())
+					upd := core.NewInternalPlacement(placement.Name(), cfg, time.Now())
 
 					if err := l.writer.UpdatePlacementAsync(ctx, upd, info.Version()); err != nil {
 						log.Errorf(ctx, "Failed to move dynamic region placement %v: %v", placement.Name(), err)
@@ -315,7 +312,7 @@ steady:
 
 			l.refresh(ctx)
 			l.update(ctx, upd)
-			l.allocate(ctx, l.cl.Now(), false)
+			l.allocate(ctx, time.Now(), false)
 
 		case del := <-l.del:
 			// Tenant deletion. Remove impacted services. No need for allocation.
@@ -334,7 +331,7 @@ steady:
 
 			l.disconnect(ctx, "state reset", mapx.Values(l.workers)...)
 			l.refresh(ctx)
-			l.allocate(ctx, l.cl.Now(), false)
+			l.allocate(ctx, time.Now(), false)
 
 		case <-l.drain.Closed():
 			break steady
@@ -385,7 +382,7 @@ func (l *leader) handleDeregister(ctx context.Context, w *workerSession, deregis
 	// (2) Revoke all active grants. The leader sends out new assignments only on Active grants,
 	// so Allocated grants can just be released. Revoked assignments are already in progress.
 
-	now := l.cl.Now()
+	now := time.Now()
 
 	assigned := l.alloc.Assigned(w.instance.ID())
 	for _, g := range assigned.Allocated {
@@ -412,7 +409,7 @@ func (l *leader) handleDeregister(ctx context.Context, w *workerSession, deregis
 }
 
 func (l *leader) handleRelinquished(ctx context.Context, w *workerSession, relinquished RelinquishedMessage) {
-	now := l.cl.Now()
+	now := time.Now()
 	log.Infof(ctx, "Received relinquished %v from worker %v", relinquished, w)
 
 	// (1) Release relinquished grants. Check deregister status
@@ -460,7 +457,7 @@ func (l *leader) connect(ctx context.Context, now time.Time, sid session.ID, reg
 	}
 	l.workers[worker.ID()] = w
 
-	lease := l.cl.Now().Add(leaseDuration)
+	lease := time.Now().Add(leaseDuration)
 	w.TrySend(ctx, NewLeaseUpdate(lease)) // grants will be covered under this lease
 	w.TrySend(ctx, NewClusterSnapshot(l.cluster.ID(), l.cluster.Assignments()))
 
@@ -491,7 +488,7 @@ func (l *leader) disconnect(ctx context.Context, reason string, workers ...*work
 		log.Infof(ctx, "Disconnecting worker (reason: %v): %v", reason, w)
 		recordAction(ctx, "disconnect", "ok")
 
-		now := l.cl.Now()
+		now := time.Now()
 
 		if l.alloc.Detach(w.instance.ID()) {
 			assigned := l.alloc.Assigned(w.instance.ID())
@@ -509,7 +506,7 @@ func (l *leader) disconnect(ctx context.Context, reason string, workers ...*work
 
 // refresh updates the allocation with the services in the latest snapshot.
 func (l *leader) refresh(ctx context.Context) {
-	now := l.cl.Now()
+	now := time.Now()
 
 	// (1) Update work in allocation and revoke invalid grants. There is no mutations possible for service
 	// names, so no need to delay newly created grants.

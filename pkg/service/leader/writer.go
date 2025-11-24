@@ -3,8 +3,8 @@ package leader
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"atoms.co/lib-go/pkg/clock"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/workqueue"
@@ -23,8 +23,6 @@ const (
 
 // Writer validates and serializes updates to storage. Not thread-safe.
 type Writer struct {
-	cl clock.Clock
-
 	db     storage.Storage
 	writer *storage.Writer
 	cache  *storage.Cache       // pre-commit cache
@@ -37,13 +35,12 @@ type Writer struct {
 	quit iox.AsyncCloser
 }
 
-func NewWriter(cl clock.Clock, db storage.Storage) (*Writer, <-chan core.Update, <-chan core.Delete, <-chan core.Restore) {
+func NewWriter(db storage.Storage) (*Writer, <-chan core.Update, <-chan core.Delete, <-chan core.Restore) {
 	upd := make(chan core.Update)
 	del := make(chan core.Delete)
 	res := make(chan core.Restore)
 
 	ret := &Writer{
-		cl:    cl,
 		db:    db,
 		cache: storage.NewCache(),
 		pool:  workqueue.New(1, pendingApplyCapacity),
@@ -61,7 +58,7 @@ func (w *Writer) Init(ctx context.Context) (core.Snapshot, error) {
 	if err != nil {
 		return core.Snapshot{}, err
 	}
-	w.writer = storage.NewWriter(w.cl, snapshot)
+	w.writer = storage.NewWriter(snapshot)
 	w.cache.Restore(snapshot)
 
 	return snapshot, nil
@@ -154,7 +151,7 @@ func (w *Writer) handleNewTenantRequest(ctx context.Context, req *splitterpb.New
 	if cfg := req.GetConfig(); cfg != nil {
 		opts = append(opts, model.WithTenantConfig(model.WrapTenantConfig(cfg)))
 	}
-	tenant, err := model.NewTenant(name, w.cl.Now(), opts...)
+	tenant, err := model.NewTenant(name, time.Now(), opts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -252,7 +249,7 @@ func (w *Writer) handleNewServiceRequest(ctx context.Context, req *splitterpb.Ne
 	if cfg := req.GetConfig(); cfg != nil {
 		opts = append(opts, model.WithServiceConfig(model.WrapServiceConfig(cfg)))
 	}
-	service, err := model.NewService(name, w.cl.Now(), opts...)
+	service, err := model.NewService(name, time.Now(), opts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -359,7 +356,7 @@ func (w *Writer) handleNewDomainRequest(ctx context.Context, req *splitterpb.New
 	if req.GetState() != 0 {
 		opts = append(opts, model.WithDomainState(req.GetState()))
 	}
-	domain, err := model.NewDomain(name, req.GetType(), w.cl.Now(), opts...)
+	domain, err := model.NewDomain(name, req.GetType(), time.Now(), opts...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -467,7 +464,7 @@ func (w *Writer) handleNewPlacementRequest(ctx context.Context, req *splitterpri
 	if err != nil {
 		return nil, nil, err
 	}
-	placement := core.NewInternalPlacement(name, cfg, w.cl.Now())
+	placement := core.NewInternalPlacement(name, cfg, time.Now())
 
 	upd, info, err := w.writer.Placements.Create(placement)
 	if err != nil {

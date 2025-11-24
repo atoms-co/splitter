@@ -130,7 +130,7 @@ func makeStartCommand() *cobra.Command {
 
 		// (3) Initialize Server components and Server
 
-		storage := raftstorage.New(cl, raft.ServerID(*raftID), r, fsm)
+		storage := raftstorage.New(raft.ServerID(*raftID), r, fsm)
 
 		var opts []cluster.Option
 		if *raftFastBootstrap {
@@ -142,8 +142,8 @@ func makeStartCommand() *cobra.Command {
 		if *fastActivation {
 			lopts = append(lopts, leader.WithFastActivation())
 		}
-		manager := leader.NewManager(cl, directives, func(ctx context.Context) (iox.AsyncCloser, leader.Proxy) {
-			ret := leader.New(ctx, cl, loc, storage, lopts...)
+		manager := leader.NewManager(directives, func(ctx context.Context) (iox.AsyncCloser, leader.Proxy) {
+			ret := leader.New(ctx, loc, storage, lopts...)
 			return ret, ret
 		})
 
