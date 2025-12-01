@@ -13,10 +13,10 @@ import (
 	boltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/spf13/cobra"
 
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/encoding/yamlx"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/log/hclog"
-	"go.atoms.co/lib/service/locationx"
 	"go.atoms.co/lib/service/metricsx"
 	"go.atoms.co/lib/service/pprofx"
 	"go.atoms.co/lib/tracing"
@@ -47,7 +47,7 @@ func makeStartCommand() *cobra.Command {
 	splitterServer := cmd.PersistentFlags().String("splitter_server", "", "Server address used by Splitter")
 	splitterPort := cmd.PersistentFlags().Int("splitter_port", 50052, "Grpc server port for pod-to-pod traffic")
 
-	raftID := cmd.PersistentFlags().String("raft_id", string(locationx.New().Node), "Node id used by Raft")
+	raftID := cmd.PersistentFlags().String("raft_id", string(location.NewFromEnv().Node), "Node id used by Raft")
 	raftServer := cmd.PersistentFlags().String("raft_server", "", "Server address used by Raft")
 	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "Tcp port for raft traffic")
 	raftFastBootstrap := cmd.PersistentFlags().Bool("raft_fast_bootstrap", false, "Fast Raft bootstrap for testing")
@@ -66,7 +66,7 @@ func makeStartCommand() *cobra.Command {
 
 		go pprofx.Start(ctx)
 
-		loc := locationx.New()
+		loc := location.NewFromEnv()
 
 		cfg, err := yamlx.UnmarshalFromFile[conf](*configPath)
 		if err != nil {

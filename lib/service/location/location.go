@@ -2,6 +2,7 @@ package location
 
 import (
 	"fmt"
+	"os"
 
 	locationpb "go.atoms.co/splitter/lib/service/location/pb"
 )
@@ -25,6 +26,14 @@ func New(region Region, node Node) Location {
 	}
 }
 
+// NewFromEnv creates a Location from APP_REGION and HOSTNAME environment variables, if present. May be overridden
+// by flags. Defaults to "global" region with "localhost".
+func NewFromEnv() Location {
+	region := readEnv("APP_REGION", "global")
+	node := readEnv("HOSTNAME", "localhost")
+	return New(Region(region), Node(node))
+}
+
 func Parse(pb *locationpb.Location) Location {
 	return Location{
 		Region: Region(pb.GetRegion()),
@@ -41,4 +50,11 @@ func (l Location) ToProto() *locationpb.Location {
 
 func (l Location) String() string {
 	return fmt.Sprintf("%v/%v", l.Region, l.Node)
+}
+
+func readEnv(name, def string) string {
+	if v := os.Getenv(name); len(v) > 0 {
+		return v
+	}
+	return def
 }
