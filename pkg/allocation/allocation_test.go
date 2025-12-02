@@ -533,6 +533,48 @@ func TestAllocation(t *testing.T) {
 		assert.Len(t, alloc2.Assigned(eu.ID).Active, 0)
 	})
 
+	synctestx.Run(t, "update/preserves-grant-modifier", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "a", Load: 10, Data: us},
+			{Unit: "b", Load: 10, Data: us},
+		}
+
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", nil, nil, work, time.Now())
+
+		lease := time.Now().Add(time.Minute)
+		now := time.Now()
+		w1 := allocation.Worker[string, location.Location]{ID: "w1", Data: us}
+		w2 := allocation.Worker[string, location.Location]{ID: "w2", Data: us}
+
+		activeGrant := allocation.NewGrant[string, string]("test:1", allocation.Active, allocation.Loaded, "a", "w1", now, lease)
+		_, ok := alloc.Attach(w1, allocation.NoCapacityLimit, lease, activeGrant)
+		require.True(t, ok)
+
+		allocatedGrant := allocation.NewGrant[string, string]("test:2", allocation.Allocated, allocation.Loaded, "b", "w2", now, lease)
+		revokedGrant := allocation.NewGrant[string, string]("test:3", allocation.Revoked, allocation.None, "b", "w1", now, lease)
+		_, ok = alloc.Attach(w2, allocation.NoCapacityLimit, lease, allocatedGrant, revokedGrant)
+		require.True(t, ok)
+
+		assignments1 := alloc.Assigned("w1")
+		require.Len(t, assignments1.Active, 1)
+		require.Equal(t, allocation.Loaded, assignments1.Active[0].Mod)
+
+		assignments2 := alloc.Assigned("w2")
+		require.Len(t, assignments2.Allocated, 1)
+		require.Equal(t, allocation.Loaded, assignments2.Allocated[0].Mod)
+
+		alloc2, rejects := allocation.Update(alloc, nil, nil, work, time.Now())
+		require.Len(t, rejects, 0)
+
+		assignments1After := alloc2.Assigned("w1")
+		require.Len(t, assignments1After.Active, 1)
+		require.Equal(t, allocation.Loaded, assignments1After.Active[0].Mod, "Active grant Mod should be preserved")
+
+		assignments2After := alloc2.Assigned("w2")
+		require.Len(t, assignments2After.Allocated, 1)
+		require.Equal(t, allocation.Loaded, assignments2After.Allocated[0].Mod, "Allocated grant Mod should be preserved")
+	})
+
 	synctestx.Run(t, "load-balance/base-case-two-workers", func(t *testing.T) {
 		work := []allocation.Work[string, location.Location]{
 			{Unit: "1", Load: 10, Data: us},

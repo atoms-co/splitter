@@ -244,6 +244,7 @@ func (a *Allocation[T, W, K, V]) tryAssign(w *worker[T, W, K, V], g Grant[T, K])
 				work:     a.work[g.Unit],
 				grant:    g.ID,
 				state:    g.State,
+				mod:      g.Mod,
 				assigned: g.Assigned,
 			}
 
