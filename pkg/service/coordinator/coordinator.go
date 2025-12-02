@@ -1051,8 +1051,10 @@ func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
 	change := model.NewClusterChange(c.cluster.ID().Next(time.Now()), assigned, updated, unassigned, removed, copts...)
 	upd, err := model.UpdateClusterMap(ctx, c.cluster, change)
 	if err != nil {
-		log.Errorf(ctx, "Internal: failed to update cluster map: %v", err)
-		// TODO (styurin, 7/30/2024): Start drain and exit
+		log.Errorf(ctx, "Internal: failed to update cluster map: %v. Draining the coordinator.", err)
+		c.recordAction(ctx, "update-cluster-map", "failed")
+		c.Drain(20 * time.Second)
+		return
 	}
 
 	c.cluster = upd
