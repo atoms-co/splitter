@@ -173,7 +173,7 @@ message WorkerMessage {
   // Update updates an existing grant, usually with domain or placement changes.
   message Update {
     Grant grant = 1;
-    css.splitter.internal.v1.Update state = 2;
+    atoms.splitter.private.Update state = 2;
   }
 
   // Revoke gracefully revokes previously granted tenant leases. The worker should relinquish the coordinator
