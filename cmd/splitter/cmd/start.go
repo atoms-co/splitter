@@ -19,7 +19,6 @@ import (
 	"go.atoms.co/lib/log/hclog"
 	"go.atoms.co/lib/service/metricsx"
 	"go.atoms.co/lib/service/pprofx"
-	"go.atoms.co/lib/tracing"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/iox"
 	"go.atoms.co/lib/signalx"
@@ -59,10 +58,6 @@ func makeStartCommand() *cobra.Command {
 		// (1) Initialize
 
 		metricsx.Init(ctx, "splitter")
-		err := tracing.RegisterExporter("")
-		if err != nil {
-			log.Warnf(ctx, "Failed to register tracer: %v", err)
-		}
 
 		go pprofx.Start(ctx)
 
