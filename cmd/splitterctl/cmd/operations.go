@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"go.atoms.co/lib/backoffx"
+	"go.atoms.co/lib/signalx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
 	"go.atoms.co/splitter/pkg/core"
@@ -155,100 +157,110 @@ func makeCoordinatorRevokeCmd() *cobra.Command {
 		}
 
 		return withInternalClient(func(ctx context.Context, client core.Client) error {
-			// (1) Disable load balance before retrieving snapshot if specified
+			// Disable load balance before retrieving snapshot if specified
 			resetLB := false
-
 			if disableLb && !dryRun {
 				wasDisabled, err := coerceLoadBalanceOperational(service, true)
 				if err != nil {
 					return err
 				}
 				resetLB = !wasDisabled
-			}
-
-			// (2) Retrieve snapshot and apply specified grant filters
-
-			_, snapshot, err := client.CoordinatorInfo(ctx, service)
-			if err != nil {
-				return fmt.Errorf("error getting coordinator info: %w", err)
-			}
-
-			var filtered []consumerGrant
-			for _, assignment := range snapshot.Assignments() {
-				c := assignment.Consumer()
-				region := c.Instance().Location().Region
-				if len(regionsFilter) > 0 && !slices.Contains(regionsFilter, region) {
-					continue
-				}
-				for _, g := range assignment.Grants() {
-					passedDomainFilter := len(domainsFilter) == 0 || slices.Contains(domainsFilter, g.Shard().Domain)
-					passedMisalignedFilter := !misalignedOnly || (g.Shard().Type == model.Regional && g.Shard().Region != region)
-					passedGrantFilter := len(grantIDFilter) == 0 || slices.Contains(grantIDFilter, g.ID())
-
-					if passedDomainFilter && passedMisalignedFilter && passedGrantFilter {
-						filtered = append(filtered, consumerGrant{
-							consumerId: c.ID(),
-							grantId:    g.ID(),
-							domain:     g.Shard().Domain,
-						})
-					}
-				}
-			}
-
-			fmt.Printf("Found %v grant(s)\n", len(filtered))
-
-			if dryRun {
-				for _, cg := range filtered {
-					fmt.Printf("Found: domain=%v, consumer=%v grant=%v\n", cg.domain, cg.consumerId, cg.grantId)
-				}
-				return nil
-			}
-
-			if len(filtered) == 0 {
 				if resetLB {
-					_, err := coerceLoadBalanceOperational(service, false)
-					return err
-				}
-				return nil
-			}
-
-			// (3) Begin Revoking Grants
-
-			batches := slices.Collect(slices.Chunk(filtered, grantsPerCycle))
-
-			for i, batch := range batches {
-				grants := map[model.ConsumerID][]model.GrantID{}
-				for _, cg := range batch {
-					grants[cg.consumerId] = append(grants[cg.consumerId], cg.grantId)
-				}
-
-				err := client.CoordinatorRevokeGrants(ctx, service, grants)
-				if err != nil {
-					err = fmt.Errorf("error revoking grants: %w", err)
-					break
-				}
-				for c, gs := range grants {
-					for _, g := range gs {
-						fmt.Printf("revoked consumer=%v grant=%v\n", c, g)
-					}
-				}
-				if i != len(batches)-1 {
-					time.Sleep(delayDuration)
+					sigCh := signalx.InterruptChan()
+					go func() {
+						if _, ok := <-sigCh; ok {
+							fmt.Println("\nCommand interrupted, re-enabling load balance...")
+							if _, err := coerceLoadBalanceOperational(service, false); err != nil {
+								fmt.Printf("failed to re-enable load balance: %v\n", err)
+							}
+							os.Exit(1)
+						}
+					}()
 				}
 			}
 
-			// (4) Restore load balance operational config
+			revokeErr := revokeGrants(ctx, client, service, regionsFilter, domainsFilter, grantIDFilter, misalignedOnly, dryRun, grantsPerCycle, delayDuration)
 
+			// Restore load balance operational config
 			if resetLB {
-				_, err2 := coerceLoadBalanceOperational(service, false)
-				err = errors.Join(err, err2)
+				if _, err := coerceLoadBalanceOperational(service, false); err != nil {
+					return errors.Join(revokeErr, fmt.Errorf("failed to re-enable load balance: %w", err))
+				}
 			}
-			return err
+
+			return revokeErr
 		})
 
 	}
 
 	return cmd
+}
+
+func revokeGrants(ctx context.Context, client core.Client, service model.QualifiedServiceName, regionsFilter []model.Region, domainsFilter []model.QualifiedDomainName, grantIDFilter []model.GrantID, misalignedOnly bool, dryRun bool, grantsPerCycle int, delayDuration time.Duration) error {
+	// Retrieve snapshot and apply specified grant filters
+	_, snapshot, err := client.CoordinatorInfo(ctx, service)
+	if err != nil {
+		return fmt.Errorf("error getting coordinator info: %w", err)
+	}
+
+	var filtered []consumerGrant
+	for _, assignment := range snapshot.Assignments() {
+		c := assignment.Consumer()
+		region := c.Instance().Location().Region
+		if len(regionsFilter) > 0 && !slices.Contains(regionsFilter, region) {
+			continue
+		}
+		for _, g := range assignment.Grants() {
+			passedDomainFilter := len(domainsFilter) == 0 || slices.Contains(domainsFilter, g.Shard().Domain)
+			passedMisalignedFilter := !misalignedOnly || (g.Shard().Type == model.Regional && g.Shard().Region != region)
+			passedGrantFilter := len(grantIDFilter) == 0 || slices.Contains(grantIDFilter, g.ID())
+
+			if passedDomainFilter && passedMisalignedFilter && passedGrantFilter {
+				filtered = append(filtered, consumerGrant{
+					consumerId: c.ID(),
+					grantId:    g.ID(),
+					domain:     g.Shard().Domain,
+				})
+			}
+		}
+	}
+
+	fmt.Printf("Found %v grant(s)\n", len(filtered))
+
+	if dryRun {
+		for _, cg := range filtered {
+			fmt.Printf("Found: domain=%v, consumer=%v grant=%v\n", cg.domain, cg.consumerId, cg.grantId)
+		}
+		return nil
+	}
+
+	if len(filtered) == 0 {
+		return nil
+	}
+
+	// Begin Revoking Grants
+	batches := slices.Collect(slices.Chunk(filtered, grantsPerCycle))
+
+	for i, batch := range batches {
+		grants := map[model.ConsumerID][]model.GrantID{}
+		for _, cg := range batch {
+			grants[cg.consumerId] = append(grants[cg.consumerId], cg.grantId)
+		}
+
+		if err := client.CoordinatorRevokeGrants(ctx, service, grants); err != nil {
+			return fmt.Errorf("error revoking grants: %w", err)
+		}
+		for c, gs := range grants {
+			for _, g := range gs {
+				fmt.Printf("revoked consumer=%v grant=%v\n", c, g)
+			}
+		}
+		if i != len(batches)-1 {
+			time.Sleep(delayDuration)
+		}
+	}
+
+	return nil
 }
 
 type consumerGrant struct {
