@@ -16,7 +16,6 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/encoding/yamlx"
 	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/log/hclog"
 	"go.atoms.co/lib/service/metricsx"
 	"go.atoms.co/lib/service/pprofx"
 	"go.atoms.co/lib/contextx"
@@ -26,6 +25,7 @@ import (
 	"go.atoms.co/splitter/pkg/server"
 	"go.atoms.co/splitter/pkg/service/leader"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
+	"go.atoms.co/splitter/pkg/util/hclog"
 )
 
 type conf struct{}
