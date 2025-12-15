@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,13 +24,13 @@ const (
 )
 
 type (
-	Allocation = allocation.Allocation[model.Shard, location.Location, model.ConsumerID, *Consumer]
-	Placement  = allocation.Placement[model.Shard, location.Location, model.ConsumerID, *Consumer]
-	Colocation = allocation.Colocation[model.Shard, location.Location, model.ConsumerID, *Consumer]
+	Allocation = allocation.Allocation[model.Shard, []location.Location, model.ConsumerID, *Consumer]
+	Placement  = allocation.Placement[model.Shard, []location.Location, model.ConsumerID, *Consumer]
+	Colocation = allocation.Colocation[model.Shard, []location.Location, model.ConsumerID, *Consumer]
 	Grant      = allocation.Grant[model.Shard, model.ConsumerID]
 	Worker     = allocation.Worker[model.ConsumerID, *Consumer]
 	WorkerInfo = allocation.WorkerInfo[model.ConsumerID, *Consumer]
-	Work       = allocation.Work[model.Shard, location.Location]
+	Work       = allocation.Work[model.Shard, []location.Location]
 	Assignment = allocation.Assignments[model.Shard, model.ConsumerID]
 )
 
@@ -164,12 +165,14 @@ func (r *RegionAffinity) ID() allocation.Rule {
 }
 
 func (r *RegionAffinity) TryPlace(worker Worker, work Work) (allocation.Load, bool) {
-	pref := work.Data.Region
+	prefs := slicex.Map(work.Data, func(l location.Location) location.Region {
+		if override, ok := r.Overrides[l.Region]; ok {
+			return override
+		}
+		return l.Region
+	})
 
-	if override, ok := r.Overrides[pref]; ok {
-		pref = override
-	}
-	if pref == "" || worker.Data.Instance().Location().Region == pref {
+	if len(prefs) == 0 || slices.Contains(prefs, worker.Data.Instance().Location().Region) {
 		return 0, true
 	}
 	return 20, true
@@ -249,17 +252,21 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 		return v.Name().Placement
 	})
 
+	defaultLocations := serviceDefaultLocations(state.Service().Config())
+
 	for _, domain := range state.Domains() {
 		switch domain.Type() {
 		case model.Unit:
-			region := state.Info().Service().Config().Region()
-
+			locations := toLocations(domain.Regions()...)
+			if len(locations) == 0 {
+				locations = defaultLocations
+			}
 			w := Work{
 				Unit: model.Shard{
 					Domain: domain.Name(),
 					Type:   model.Unit,
 				},
-				Data: location.Location{Region: region},
+				Data: locations,
 				Load: UnitShardLoad, // use higher load for unit domains
 			}
 			ret = append(ret, w)
@@ -290,15 +297,17 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),
 						},
-						Data: location.Location{Region: region},
+						Data: slicex.New(location.Location{Region: region}),
 						Load: ShardLoad,
 					}
 					ret = append(ret, w)
 				}
 
 			} else {
-				region := state.Info().Service().Config().Region()
-
+				locations := toLocations(domain.Regions()...)
+				if len(locations) == 0 {
+					locations = defaultLocations
+				}
 				for _, shard := range shards {
 					w := Work{
 						Unit: model.Shard{
@@ -307,7 +316,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),
 						},
-						Data: location.Location{Region: region},
+						Data: locations,
 						Load: ShardLoad,
 					}
 					ret = append(ret, w)
@@ -327,7 +336,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							From:   model.Key(shard.From()),
 							To:     model.Key(shard.To()),
 						},
-						Data: location.Location{Region: region},
+						Data: slicex.New(location.Location{Region: region}),
 						Load: ShardLoad,
 					})
 				}
@@ -477,4 +486,27 @@ func toGrantInfo(g Grant) model.GrantInfo {
 		Shard: g.Unit.ToProto(),
 		State: toGrantState(g.State, g.Mod),
 	})
+}
+
+func toLocations(regions ...model.Region) []location.Location {
+	return slicex.Map(regions, func(region model.Region) location.Location {
+		return location.Location{
+			Region: region,
+		}
+	})
+}
+
+func serviceDefaultLocations(sCfg model.ServiceConfig) []location.Location {
+	region := sCfg.Region()
+	regions := sCfg.Regions()
+
+	var locations []location.Location
+	if len(regions) > 0 {
+		for _, region := range regions {
+			locations = append(locations, location.Location{Region: region})
+		}
+	} else if region != "" {
+		locations = append(locations, location.Location{Region: region})
+	}
+	return locations
 }

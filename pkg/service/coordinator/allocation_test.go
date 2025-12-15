@@ -104,11 +104,11 @@ func TestNamedShards(t *testing.T) {
 		),
 	)
 
-	load, ok := ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: namedShards[0]})
+	load, ok := ctrl.TryPlace(w1, Work{Unit: namedShards[0]})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(0), load)
 
-	_, ok = ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w1, allocation.Work[model.Shard, []location.Location]{Unit: model.Shard{
 		Domain: d1.Name(),
 		Type:   model.Regional,
 		Region: "centralus",
@@ -117,11 +117,11 @@ func TestNamedShards(t *testing.T) {
 	}})
 	assert.False(t, ok)
 
-	load, ok = ctrl.TryPlace(w2, allocation.Work[model.Shard, location.Location]{Unit: namedShards[1]})
+	load, ok = ctrl.TryPlace(w2, Work{Unit: namedShards[1]})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(0), load)
 
-	_, ok = ctrl.TryPlace(w2, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w2, Work{Unit: model.Shard{
 		Domain: d2.Name(),
 		Type:   model.Regional,
 		Region: "northcentralus",
@@ -130,11 +130,11 @@ func TestNamedShards(t *testing.T) {
 	}})
 	assert.False(t, ok)
 
-	load, ok = ctrl.TryPlace(w3, allocation.Work[model.Shard, location.Location]{Unit: namedShards[0]})
+	load, ok = ctrl.TryPlace(w3, Work{Unit: namedShards[0]})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(20), load)
 
-	load, ok = ctrl.TryPlace(w3, allocation.Work[model.Shard, location.Location]{Unit: namedShards[1]})
+	load, ok = ctrl.TryPlace(w3, Work{Unit: namedShards[1]})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(20), load)
 }
@@ -168,12 +168,12 @@ func TestDomainState(t *testing.T) {
 		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), time.Now()),
 	)
 
-	_, ok := ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok := ctrl.TryPlace(w1, Work{Unit: model.Shard{
 		Domain: d1.Name(),
 	}})
 	assert.True(t, ok)
 
-	_, ok = ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w1, Work{Unit: model.Shard{
 		Domain: d2.Name(),
 	}})
 	assert.False(t, ok)
@@ -230,42 +230,42 @@ func TestBannedWorkerRegion(t *testing.T) {
 		NewConsumer(model.NewInstance(location.NewInstance(location.New("us-central1", "unknown")), ""), time.Now()),
 	)
 
-	_, ok := ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok := ctrl.TryPlace(w1, Work{Unit: model.Shard{
 		Domain: d1.Name(),
 	}})
 	assert.False(t, ok)
 
-	_, ok = ctrl.TryPlace(w1, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w1, Work{Unit: model.Shard{
 		Domain: d2.Name(),
 	}})
 	assert.False(t, ok)
 
-	_, ok = ctrl.TryPlace(w2, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w2, Work{Unit: model.Shard{
 		Domain: d1.Name(),
 	}})
 	assert.False(t, ok)
 
-	_, ok = ctrl.TryPlace(w2, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w2, Work{Unit: model.Shard{
 		Domain: d2.Name(),
 	}})
 	assert.False(t, ok)
 
-	_, ok = ctrl.TryPlace(w3, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w3, Work{Unit: model.Shard{
 		Domain: d1.Name(),
 	}})
 	assert.True(t, ok)
 
-	_, ok = ctrl.TryPlace(w3, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w3, Work{Unit: model.Shard{
 		Domain: d2.Name(),
 	}})
 	assert.False(t, ok)
 
-	_, ok = ctrl.TryPlace(w4, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w4, Work{Unit: model.Shard{
 		Domain: d1.Name(),
 	}})
 	assert.True(t, ok)
 
-	_, ok = ctrl.TryPlace(w4, allocation.Work[model.Shard, location.Location]{Unit: model.Shard{
+	_, ok = ctrl.TryPlace(w4, Work{Unit: model.Shard{
 		Domain: d2.Name(),
 	}})
 	assert.True(t, ok)
@@ -288,26 +288,123 @@ func TestRegionAffinity(t *testing.T) {
 		NewConsumer(model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""), time.Now()),
 	)
 
-	penalty, ok := affinity.TryPlace(w1, allocation.Work[model.Shard, location.Location]{
+	penalty, ok := affinity.TryPlace(w1, Work{
 		Unit: model.Shard{},
-		Data: location.New("centralus", ""),
+		Data: slicex.New(location.New("centralus", "")),
 	})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(0), penalty)
 
-	penalty, ok = affinity.TryPlace(w1, allocation.Work[model.Shard, location.Location]{
+	penalty, ok = affinity.TryPlace(w1, Work{
 		Unit: model.Shard{},
-		Data: location.New("us-central1", ""),
+		Data: slicex.New(location.New("us-central1", "")),
 	})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(0), penalty)
 
-	penalty, ok = affinity.TryPlace(w1, allocation.Work[model.Shard, location.Location]{
+	penalty, ok = affinity.TryPlace(w1, Work{
 		Unit: model.Shard{},
-		Data: location.New("northcentralus", ""),
+		Data: slicex.New(location.New("northcentralus", "")),
 	})
 	assert.True(t, ok)
 	assert.Equal(t, allocation.Load(20), penalty)
+}
+
+func TestMultiRegionAffinity(t *testing.T) {
+	s1, err := model.NewService(model.QualifiedServiceName{Tenant: "tenant1", Service: "service1"}, time.Time{}, model.WithServiceConfig(
+		model.NewServiceConfig()),
+	)
+	require.NoError(t, err)
+	affinity := NewRegionAffinity(model.NewServiceInfoEx(model.NewServiceInfo(s1, 1, time.Time{}), nil))
+
+	w1 := allocation.NewWorker[location.InstanceID, *Consumer](
+		"worker1",
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("region1", "unknown")), ""), time.Now()),
+	)
+
+	w2 := allocation.NewWorker[location.InstanceID, *Consumer](
+		"worker2",
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("region2", "unknown")), ""), time.Now()),
+	)
+
+	w3 := allocation.NewWorker[location.InstanceID, *Consumer](
+		"worker3",
+		NewConsumer(model.NewInstance(location.NewInstance(location.New("region3", "unknown")), ""), time.Now()),
+	)
+
+	noPrefWork := makeWork()
+	singlePrefWork := makeWork("region1")
+	multiPrefWork := makeWork("region1", "region2")
+
+	tests := []struct {
+		name     string
+		work     Work
+		worker   Worker
+		expected allocation.Load
+	}{
+		{
+			name:     "No region preference, w1 no penalty",
+			work:     noPrefWork,
+			worker:   w1,
+			expected: 0,
+		},
+		{
+			name:     "No region preference, w2 no penalty",
+			work:     noPrefWork,
+			worker:   w2,
+			expected: 0,
+		},
+		{
+			name:     "No region preference, w2 no penalty",
+			work:     noPrefWork,
+			worker:   w2,
+			expected: 0,
+		},
+		{
+			name:     "Region1 preference w1 no penalty",
+			worker:   w1,
+			work:     singlePrefWork,
+			expected: 0,
+		},
+		{
+			name:     "Region1 preference w2 penalized",
+			worker:   w2,
+			work:     singlePrefWork,
+			expected: 20,
+		},
+		{
+			name:     "Region1 preference w3 penalized",
+			worker:   w1,
+			work:     singlePrefWork,
+			expected: 0,
+		},
+		{
+			name:     "region1 and region2 preference w1 no penalty",
+			worker:   w1,
+			work:     multiPrefWork,
+			expected: 0,
+		},
+		{
+			name:     "region1 and region2 preference w2 no penalty",
+			worker:   w2,
+			work:     multiPrefWork,
+			expected: 0,
+		},
+		{
+			name:     "region1 and region2 preference w3 penalized",
+			worker:   w3,
+			work:     multiPrefWork,
+			expected: 20,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			load, ok := affinity.TryPlace(tt.worker, tt.work)
+			assert.True(t, ok)
+			assert.Equal(t, tt.expected, load)
+		})
+	}
 }
 
 func TestColocation(t *testing.T) {
@@ -732,4 +829,12 @@ func assertSameShards(t *testing.T, expected, actual []uuidx.Range) {
 
 func makeRange(from, to string) uuidx.Range {
 	return uuidx.MustNewRange(uuid.MustParse(from), uuid.MustParse(to))
+}
+
+func makeWork(regions ...model.Region) Work {
+	return Work{
+		Data: slicex.Map(regions, func(r model.Region) location.Location {
+			return location.Location{Region: r}
+		}),
+	}
 }

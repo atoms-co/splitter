@@ -37,7 +37,7 @@ message Service {
   QualifiedServiceName name = 1;
 
   message Config {
-    // Region preference for coordinator and UNIT/GLOBAL domains. Optional.
+    // Default region preference for coordinator and UNIT/GLOBAL domains. Deprecated, use service and domain regions instead.
     string region = 1;
     // Default sharding policy. Optional.
     ShardingPolicy default_sharding_policy = 2;
@@ -51,8 +51,6 @@ message Service {
 
     // region preferences for coordinator. Overrides `region` config if provided. Optional.
     repeated string regions = 4;
-
-    // TODO (grant.azure) 2025/07/11: UNIT/GLOBAL domain multi-region preferences
   }
   Config config = 2;
 
@@ -104,7 +102,7 @@ message Domain {
   message Config {
     // Dynamic placement name if GLOBAL. Optional.
     string placement = 1;
-    // List of regions if REGIONAL domain. An empty list is valid.
+    // List of regions if REGIONAL domain, region preferences if UNIT or non-placement GLOBAL domain. An empty list is valid.
     repeated string regions = 2;
 
     // Sharding policy if GLOBAL/REGIONAL.

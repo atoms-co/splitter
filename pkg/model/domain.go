@@ -259,11 +259,10 @@ func (t Domain) Config() DomainConfig {
 	return WrapDomainConfig(t.pb.GetConfig())
 }
 
-func (t Domain) Regions() ([]Region, bool) {
-	regions := slicex.Map(t.pb.GetConfig().GetRegions(), func(r string) Region {
+func (t Domain) Regions() []Region {
+	return slicex.Map(t.pb.GetConfig().GetRegions(), func(r string) Region {
 		return Region(r)
 	})
-	return regions, len(regions) > 0
 }
 
 func (t Domain) Type() DomainType {

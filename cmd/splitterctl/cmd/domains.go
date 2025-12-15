@@ -69,6 +69,7 @@ func makeNewUnitDomainCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 	state := cmd.Flags().String("state", "", "Domain state")
+	regions := cmd.Flags().StringSlice("regions", []string{}, "Region preference")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := model.ParseQualifiedDomainNameStr(args[0])
@@ -86,7 +87,8 @@ func makeNewUnitDomainCmd() *cobra.Command {
 		}
 
 		return withClient(func(ctx context.Context, client model.Client) error {
-			domain, err := client.NewDomain(ctx, name, model.Unit, model.NewDomainConfig(), opts...)
+			r := model.WithDomainRegions(slicex.Map(*regions, stringx.FromString[model.Region])...)
+			domain, err := client.NewDomain(ctx, name, model.Unit, model.NewDomainConfig(r), opts...)
 			if err != nil {
 				return err
 			}
@@ -108,9 +110,11 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 
 	placement := cmd.Flags().String("placement", "", "Placement name")
 	shards := cmd.Flags().Int("shards", 4, "Target shards")
+	regions := cmd.Flags().StringSlice("regions", []string{}, "Region preferences")
 	affinity := cmd.Flags().StringSlice("anti-affinity", []string{}, "Anti affinity domains")
 	namedKeys := cmd.Flags().StringSlice("namedKeys", []string{}, "Named domain keys e.g. Ruff:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
 	state := cmd.Flags().String("state", "", "Domain state")
+	cmd.MarkFlagsMutuallyExclusive("regions", "placement")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := model.ParseQualifiedDomainNameStr(args[0])
@@ -137,6 +141,7 @@ func makeNewGlobalDomainCmd() *cobra.Command {
 				model.NewDomainConfig(
 					model.WithDomainPlacement(model.PlacementName(*placement)),
 					model.WithDomainShardingPolicy(model.NewShardingPolicy(*shards)),
+					model.WithDomainRegions(slicex.Map(*regions, stringx.FromString[model.Region])...),
 					model.WithDomainNamedKeys(keys...),
 					model.WithDomainAntiAffinity(slicex.Map(*affinity, func(t string) model.DomainName {
 						return model.DomainName(t)
@@ -229,6 +234,7 @@ func makeUpdateDomainCmd() *cobra.Command {
 	locked := cmd.Flags().Bool("locked", false, "Locked operational state")
 	shards := cmd.Flags().Int("shards", -1, "Shard count")
 	namedKeys := cmd.Flags().StringSlice("namedKeys", []string{}, "Named domain keys e.g. Ruff:centralus:b188ea31-f889-4ce5-9fc9-77fda8ab5c83")
+	regions := cmd.Flags().StringSlice("regions", []string{}, "Regions")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		name, ok := model.ParseQualifiedDomainNameStr(args[0])
@@ -262,7 +268,9 @@ func makeUpdateDomainCmd() *cobra.Command {
 			opOptions = append(opOptions, model.WithDomainOperationalLocked(*locked))
 		}
 
-		if len(opts) == 0 && len(opOptions) == 0 && len(sCfgOpts) == 0 {
+		regionsChanged := cmd.Flag("regions").Changed
+
+		if len(opts) == 0 && len(opOptions) == 0 && len(sCfgOpts) == 0 && !regionsChanged {
 			return nil // nothing to update
 		}
 
@@ -276,8 +284,15 @@ func makeUpdateDomainCmd() *cobra.Command {
 				return fmt.Errorf("unknown domain: %v", name)
 			}
 
+			if regionsChanged {
+				if _, ok = domain.Config().Placement(); ok {
+					return fmt.Errorf("cannot update regions on a placement domain: %v", name)
+				}
+				cfgOptions = append(cfgOptions, model.WithDomainRegions(slicex.Map(*regions, stringx.FromString[model.Region])...))
+			}
+
 			if len(*namedKeys) > 0 {
-				regions, _ := domain.Regions()
+				regions := domain.Regions()
 
 				keys, err := parseNamedDomainKeys(*namedKeys, domain.Type(), regions)
 				if err != nil {
@@ -447,7 +462,7 @@ func makeAddCustomShardCmd() *cobra.Command {
 				if *region == "" {
 					return fmt.Errorf("shardRegion is required for regional domains")
 				}
-				regions, _ := domain.Regions()
+				regions := domain.Regions()
 				shardRegion := model.Region(*region)
 				if len(regions) > 0 && !slices.Contains(regions, shardRegion) {
 					return fmt.Errorf("invalid shardRegion %v, expected one of: %v", shardRegion, regions)
