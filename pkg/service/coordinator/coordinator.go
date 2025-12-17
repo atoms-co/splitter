@@ -70,6 +70,7 @@ var (
 	numActions       = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Coordinator actions", slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey, core.ResultKey)...)
 	numExpired       = metrics.NewCounter("go.atoms.co/splitter/coordinator_expired_grants", "Coordinator expired grants", slicex.CopyAppend(core.QualifiedDomainKeys, core.ShardRegionKey)...)
 	numActionLatency = metrics.NewHistogram("go.atoms.co/splitter/coordinator_action_latency", "Coordinator action latency", nil, slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey)...)
+	grantsDuration   = metrics.NewHistogram("go.atoms.co/splitter/coordinator_grants_duration", "Coordinator grants duration", core.GrantDurationBucketOptions, core.QualifiedDomainKeys...)
 )
 
 // Coordinator handles consumer connection and work allocation.
@@ -699,6 +700,7 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	for _, g := range rejected {
 		c.mustSend(ctx, c.consumers[g.Worker], model.NewRevoke(toGrant(g)))
 	}
+	c.recordGrantsDuration(ctx, now, rejected)
 }
 
 func (c *coordinator) shouldResumeSuspended(s *consumerSession, now time.Time) bool {
@@ -871,6 +873,7 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 			c.disconnect(ctx, "stuck", s)
 			return
 		}
+		c.recordGrantsDuration(ctx, now, revoked)
 	}
 
 	// (3) If no grants, disconnect immediately. Otherwise, wait for last release or expiration.
@@ -1135,6 +1138,7 @@ func (c *coordinator) revokeGrants(ctx context.Context, grants map[model.Instanc
 				log.Errorf(ctx, "Failed to send revoke message to consumer %v", cid)
 			}
 		}
+		c.recordGrantsDuration(ctx, now, toRevoke)
 	}
 
 	c.allocate(ctx, now, false)
@@ -1252,6 +1256,7 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 				c.disconnect(ctx, "stuck", s)
 				return model.Consumer{}, fmt.Errorf("failed to revoke grants: %v", revoked)
 			}
+			c.recordGrantsDuration(ctx, now, revoked)
 		}
 
 		// Allocate unassigned grants
@@ -1293,6 +1298,12 @@ func (c *coordinator) mustSendToObserver(ctx context.Context, s *observerSession
 		return false
 	}
 	return true
+}
+
+func (c *coordinator) recordGrantsDuration(ctx context.Context, now time.Time, grants []Grant) {
+	for _, r := range grants {
+		grantsDuration.Observe(ctx, now.Sub(r.Assigned), core.QualifiedDomainTags(r.Unit.Domain)...)
+	}
 }
 
 func (c *coordinator) emitMetrics(ctx context.Context) {

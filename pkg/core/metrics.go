@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/raft"
 
@@ -28,9 +29,15 @@ const (
 )
 
 var (
-	QualifiedDomainKeys    = []metrics.Key{TenantKey, ServiceKey, DomainKey}
-	QualifiedServiceKeys   = []metrics.Key{TenantKey, ServiceKey}
-	QualifiedPlacementKeys = []metrics.Key{TenantKey, PlacementKey}
+	QualifiedDomainKeys        = []metrics.Key{TenantKey, ServiceKey, DomainKey}
+	QualifiedServiceKeys       = []metrics.Key{TenantKey, ServiceKey}
+	QualifiedPlacementKeys     = []metrics.Key{TenantKey, PlacementKey}
+	GrantDurationBucketOptions = &metrics.BucketOptions{
+		Start:       0,
+		End:         30 * 60 * 1000,
+		NumBuckets:  15,
+		LatencyUnit: time.Millisecond,
+	}
 )
 
 func QualifiedDomainTags(v model.QualifiedDomainName) []metrics.Tag {
