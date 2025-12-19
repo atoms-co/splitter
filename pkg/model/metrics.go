@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/grpc/status"
 
@@ -29,7 +30,13 @@ const (
 )
 
 var (
-	qualifiedDomainKeys = []metrics.Key{tenantKey, serviceKey, domainKey}
+	qualifiedDomainKeys        = []metrics.Key{tenantKey, serviceKey, domainKey}
+	GrantDurationBucketOptions = &metrics.BucketOptions{
+		Start:       0,
+		End:         30 * 60 * 1000,
+		NumBuckets:  15,
+		LatencyUnit: time.Millisecond,
+	}
 )
 
 func qualifiedDomainTags(v QualifiedDomainName) []metrics.Tag {

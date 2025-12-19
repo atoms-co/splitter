@@ -26,7 +26,8 @@ const (
 )
 
 var (
-	numGrants = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/client/workpool_grants", "Workpool grants", slicex.CopyAppend(qualifiedDomainKeys, sourceKey, sourceVersionKey, leaseStateKey)...))
+	numGrants      = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/client/workpool_grants", "Workpool grants", slicex.CopyAppend(qualifiedDomainKeys, sourceKey, sourceVersionKey, leaseStateKey)...))
+	grantsDuration = metrics.NewHistogram("go.atoms.co/splitter/client/workpool_grants_duration", "Workpool grants duration", GrantDurationBucketOptions, slicex.CopyAppend(qualifiedDomainKeys, sourceKey, sourceVersionKey, leaseStateKey)...)
 )
 
 type JoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error
@@ -584,6 +585,8 @@ func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
 	if p.shards[grant.Grant.Shard()] == gid {
 		delete(p.shards, grant.Grant.Shard()) // delete service tracking if not replaced by new grant
 	}
+
+	grantsDuration.Observe(ctx, time.Now().Sub(grant.Grant.Assigned()), slicex.CopyAppend(qualifiedDomainTags(grant.Grant.Shard().Domain), sourceTag(), sourceVersionTag(ClientVersion), leaseStateTag(grant.LeaseState))...)
 
 	log.Infof(ctx, "Removed grant %v", grant)
 }
