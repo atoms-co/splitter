@@ -31,7 +31,7 @@ const (
 
 var (
 	qualifiedDomainKeys        = []metrics.Key{tenantKey, serviceKey, domainKey}
-	GrantDurationBucketOptions = &metrics.BucketOptions{
+	grantDurationBucketOptions = &metrics.BucketOptions{
 		Start:       0,
 		End:         30 * 60 * 1000,
 		NumBuckets:  15,
