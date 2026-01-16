@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -183,7 +184,7 @@ func validRegionalConfig(config *splitterpb.Domain_Config) error {
 		}
 		if len(config.GetRegions()) > 0 {
 			r := named.GetKey().GetRegion()
-			if !slicex.ContainsT(config.GetRegions(), r) {
+			if !slices.Contains(config.GetRegions(), r) {
 				return fmt.Errorf("invalid region for named key, %v, allowed regions %v", r, config.GetRegions())
 			}
 		}
