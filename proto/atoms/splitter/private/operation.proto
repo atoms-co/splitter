@@ -2,11 +2,24 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
+import "google/protobuf/timestamp.proto";
 import "atoms/splitter/private/state.proto";
 import "atoms/splitter/cluster.proto";
 import "atoms/splitter/model.proto";
 
 option go_package = "go.atoms.co/splitter/pb/private";
+
+// InstanceInfo is a consumer Instance with additional info about join time and registration options
+message InstanceInfo {
+  // consumer is the consumer instance, with its location and creation time.
+  atoms.splitter.Instance consumer = 1;
+  // joined is the time when the Consumer joined the work allocation.
+  google.protobuf.Timestamp joined = 2;
+  // named_keys are the DomainKeyNames the instance specified on Registration
+  repeated atoms.splitter.DomainKeyName named_keys = 3;
+  // limit is the capacity limit that the instance specified on Registration
+  uint64 limit = 4;
+}
 
 message RaftInfoRequest {
 }
@@ -38,6 +51,7 @@ message CoordinatorInfoRequest {
 message CoordinatorInfoResponse {
   repeated atoms.splitter.Instance consumers = 1;
   atoms.splitter.ClusterMessage.Snapshot snapshot = 2;
+  repeated InstanceInfo infos = 3;
 }
 
 message CoordinatorRestartRequest {

@@ -3,12 +3,12 @@ package coordinator
 import (
 	"context"
 	"fmt"
-	"slices"
 	"time"
 
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/sessionx"
@@ -21,14 +21,21 @@ var (
 type Consumer struct {
 	instance model.Instance
 	joined   time.Time
-	keys     []model.QualifiedDomainKey
+	keys     []qualifiedDomainKeyWithName
+	limit    int
 }
 
 type NewConsumerOption func(*Consumer)
 
-func WithKeys(keys ...model.QualifiedDomainKey) NewConsumerOption {
+func withKeys(keys ...qualifiedDomainKeyWithName) NewConsumerOption {
 	return func(c *Consumer) {
 		c.keys = keys
+	}
+}
+
+func WithLimit(limit int) NewConsumerOption {
+	return func(c *Consumer) {
+		c.limit = limit
 	}
 }
 
@@ -53,7 +60,15 @@ func (c *Consumer) Region() model.Region {
 }
 
 func (c *Consumer) Keys() []model.QualifiedDomainKey {
-	return slices.Clone(c.keys)
+	return slicex.Map(c.keys, qualifiedDomainKeyWithName.Key)
+}
+
+func (c *Consumer) KeyNames() []model.DomainKeyName {
+	return slicex.Map(c.keys, qualifiedDomainKeyWithName.Name)
+}
+
+func (c *Consumer) Limit() int {
+	return c.limit
 }
 
 func (c *Consumer) Joined() time.Time {
@@ -91,4 +106,21 @@ func (c *consumerSession) ID() model.ConsumerID {
 
 func (c *consumerSession) String() string {
 	return fmt.Sprintf("%v[consumer=%v, origin=%v]", c.connection.Sid(), c.consumer, c.origin)
+}
+
+type qualifiedDomainKeyWithName struct {
+	key  model.QualifiedDomainKey
+	name model.DomainKeyName
+}
+
+func (k qualifiedDomainKeyWithName) Key() model.QualifiedDomainKey {
+	return k.key
+}
+
+func (k qualifiedDomainKeyWithName) Name() model.DomainKeyName {
+	return k.name
+}
+
+func (k qualifiedDomainKeyWithName) String() string {
+	return fmt.Sprintf("%v[%v]", k.key, k.name)
 }

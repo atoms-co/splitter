@@ -42,21 +42,25 @@ func TestNamedShards(t *testing.T) {
 		))
 	require.NoError(t, err)
 
-	canaryKeys := []model.QualifiedDomainKey{
-		model.MustParseQualifiedDomainKey(&splitterpb.QualifiedDomainKey{
-			Domain: d1.Name().ToProto(),
-			Key: &splitterpb.DomainKey{
-				Region: "centralus",
-				Key:    "b188ea31-f889-4ce5-9fc9-77fda8ab5c83",
-			},
-		}),
-		model.MustParseQualifiedDomainKey(&splitterpb.QualifiedDomainKey{
-			Domain: d2.Name().ToProto(),
-			Key: &splitterpb.DomainKey{
-				Region: "northcentralus",
-				Key:    "c5b6882b-3dee-4e21-874d-14824bc86c82",
-			},
-		}),
+	canaryKeys := []qualifiedDomainKeyWithName{
+		{
+			key: model.MustParseQualifiedDomainKey(&splitterpb.QualifiedDomainKey{
+				Domain: d1.Name().ToProto(),
+				Key: &splitterpb.DomainKey{
+					Region: "centralus",
+					Key:    "b188ea31-f889-4ce5-9fc9-77fda8ab5c83",
+				},
+			}),
+		},
+		{
+			key: model.MustParseQualifiedDomainKey(&splitterpb.QualifiedDomainKey{
+				Domain: d2.Name().ToProto(),
+				Key: &splitterpb.DomainKey{
+					Region: "northcentralus",
+					Key:    "c5b6882b-3dee-4e21-874d-14824bc86c82",
+				},
+			}),
+		},
 	}
 
 	namedShards := []model.Shard{
@@ -83,7 +87,7 @@ func TestNamedShards(t *testing.T) {
 		NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("centralus", "unknown")), ""),
 			time.Now(),
-			WithKeys(canaryKeys[0]),
+			withKeys(canaryKeys[0]),
 		),
 	)
 
@@ -92,7 +96,7 @@ func TestNamedShards(t *testing.T) {
 		NewConsumer(
 			model.NewInstance(location.NewInstance(location.New("northcentralus", "unknown")), ""),
 			time.Now(),
-			WithKeys(canaryKeys[1]),
+			withKeys(canaryKeys[1]),
 		),
 	)
 

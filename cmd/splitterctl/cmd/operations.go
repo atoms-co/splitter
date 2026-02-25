@@ -50,12 +50,12 @@ func makeCoordinatorInfoCmd() *cobra.Command {
 		}
 
 		return withInternalClient(func(ctx context.Context, client core.Client) error {
-			consumers, snapshot, err := client.CoordinatorInfo(ctx, name)
+			infos, snapshot, err := client.CoordinatorInfo(ctx, name)
 			if err != nil {
 				return err
 			}
-			for _, info := range consumers {
-				printJson(model.UnwrapInstance(info), false)
+			for _, info := range infos {
+				printJson(core.UnwrapConsumerInfo(info), false)
 			}
 			printJson(model.UnwrapClusterSnapshot(snapshot), false)
 			return nil

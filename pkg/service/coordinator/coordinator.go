@@ -181,7 +181,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin locati
 	return syncx.Txn1(ctx, c.txn, func() (<-chan model.ConsumerMessage, error) {
 		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
 
-		var keys []model.QualifiedDomainKey
+		var keys []qualifiedDomainKeyWithName
 		var err error
 
 		opts := register.Options()
@@ -325,10 +325,10 @@ func (c *coordinator) handleOperationRequest(ctx context.Context, op *splitterpr
 	}
 }
 
-func (c *coordinator) connect(ctx context.Context, sid session.ID, origin location.Instance, register model.RegisterMessage, limit int, keys []model.QualifiedDomainKey, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
+func (c *coordinator) connect(ctx context.Context, sid session.ID, origin location.Instance, register model.RegisterMessage, limit int, keys []qualifiedDomainKeyWithName, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
 	now := time.Now()
 
-	consumer := NewConsumer(register.Consumer(), now, WithKeys(keys...))
+	consumer := NewConsumer(register.Consumer(), now, WithLimit(limit), withKeys(keys...))
 
 	// Parse returning grants, active grants will be retained by the consumer
 	var active []Grant
@@ -393,28 +393,27 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, origin locati
 	return s, out
 }
 
-func (c *coordinator) findNamedKeys(named []model.DomainKeyName) ([]model.QualifiedDomainKey, error) {
-	var ret []model.QualifiedDomainKey
-
+func (c *coordinator) findNamedKeys(named []model.DomainKeyName) ([]qualifiedDomainKeyWithName, error) {
 	domains := mapx.New(c.info.Domains(), func(d model.Domain) model.DomainName {
 		return d.ShortName()
 	})
 
-	for _, name := range named {
+	return slicex.TryMap(named, func(name model.DomainKeyName) (qualifiedDomainKeyWithName, error) {
 		d, ok := domains[name.Domain]
 		if !ok {
-			return nil, fmt.Errorf("unknown domain: %v", name.Domain)
+			return qualifiedDomainKeyWithName{}, fmt.Errorf("unknown domain: %v", name.Domain)
 		}
 		first, ok := slicex.First(d.Config().NamedDomainKeys(), func(key model.NamedDomainKey) bool {
 			return key.Name == name.Name
 		})
 		if !ok {
-			return nil, fmt.Errorf("unknown named key: %v", name)
+			return qualifiedDomainKeyWithName{}, fmt.Errorf("unknown named key: %v", name)
 		}
-		ret = append(ret, model.QualifiedDomainKey{Domain: d.Name(), Key: first.Key})
-	}
-
-	return ret, nil
+		return qualifiedDomainKeyWithName{
+			key:  model.QualifiedDomainKey{Domain: d.Name(), Key: first.Key},
+			name: name,
+		}, nil
+	})
 }
 
 func (c *coordinator) findUnitDomains() map[model.Shard]bool {
@@ -1078,24 +1077,26 @@ func (c *coordinator) broadcast(ctx context.Context, bopts ...broadcastOption) {
 }
 
 func (c *coordinator) handleServiceInfoRequest(ctx context.Context) (*splitterprivatepb.CoordinatorOperationResponse, error) {
-	consumers, snapshot, err := syncx.Txn2(ctx, c.txn, func() ([]model.Consumer, model.ClusterSnapshot, error) {
-		consumers := mapx.MapValues(c.consumers, func(s *consumerSession) model.Consumer {
-			return s.consumer.Instance()
+	infos, snapshot, err := syncx.Txn2(ctx, c.txn, func() ([]core.ConsumerInfo, model.ClusterSnapshot, error) {
+		infos := mapx.MapValues(c.consumers, func(s *consumerSession) core.ConsumerInfo {
+			return core.NewConsumerInfo(s.consumer.Instance(), s.consumer.Joined(), s.consumer.KeyNames(), s.consumer.limit)
 		})
 		snapshot := model.WrapClusterSnapshot(&splitterpb.ClusterMessage_Snapshot{
 			Assignments: slicex.Map(c.cluster.Assignments(), model.UnwrapAssignment),
 			Origin:      location.UnwrapInstance(c.cluster.ID().Origin),
 		})
-		return consumers, snapshot, nil
+		return infos, snapshot, nil
 	})
 	if err != nil {
 		return nil, err
 	}
+	consumers := slicex.Map(infos, core.ConsumerInfo.Instance)
 	return &splitterprivatepb.CoordinatorOperationResponse{
 		Resp: &splitterprivatepb.CoordinatorOperationResponse_Info{
 			Info: &splitterprivatepb.CoordinatorInfoResponse{
 				Consumers: slicex.Map(consumers, model.UnwrapInstance),
 				Snapshot:  model.UnwrapClusterSnapshot(snapshot),
+				Infos:     slicex.Map(infos, core.UnwrapConsumerInfo),
 			},
 		},
 	}, nil

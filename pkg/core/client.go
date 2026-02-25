@@ -18,6 +18,7 @@ import (
 	"go.atoms.co/lib/stringx"
 	"go.atoms.co/splitter/pkg/model"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type Observer = model.Instance
@@ -44,7 +45,7 @@ type Client interface {
 	UpdatePlacement(ctx context.Context, name model.QualifiedPlacementName, guard model.Version, opts ...UpdatePlacementOption) (InternalPlacementInfo, error)
 	DeletePlacement(ctx context.Context, name model.QualifiedPlacementName) error
 
-	CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error)
+	CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]ConsumerInfo, model.ClusterSnapshot, error)
 	CoordinatorRestart(ctx context.Context, name model.QualifiedServiceName) error
 	CoordinatorRevokeGrants(ctx context.Context, service model.QualifiedServiceName, grants map[model.ConsumerID][]GrantID) error
 	CoordinatorClusterSync(ctx context.Context, name model.QualifiedServiceName) error
@@ -129,7 +130,7 @@ func (c *client) DeletePlacement(ctx context.Context, name model.QualifiedPlacem
 	return err
 }
 
-func (c *client) CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]model.Consumer, model.ClusterSnapshot, error) {
+func (c *client) CoordinatorInfo(ctx context.Context, service model.QualifiedServiceName) ([]ConsumerInfo, model.ClusterSnapshot, error) {
 	req := &splitterprivatepb.CoordinatorInfoRequest{
 		Service: service.ToProto(),
 	}
@@ -138,7 +139,15 @@ func (c *client) CoordinatorInfo(ctx context.Context, service model.QualifiedSer
 	if err != nil {
 		return nil, model.ClusterSnapshot{}, err
 	}
-	return slicex.Map(resp.GetConsumers(), model.WrapInstance), model.WrapClusterSnapshot(resp.GetSnapshot()), nil
+
+	ret := slicex.Map(resp.GetInfos(), WrapConsumerInfo)
+	if len(ret) == 0 {
+		ret = slicex.Map(resp.GetConsumers(), func(pb *splitterpb.Instance) ConsumerInfo {
+			return NewConsumerInfo(model.WrapInstance(pb), time.Time{}, nil, 0)
+		})
+	}
+
+	return ret, model.WrapClusterSnapshot(resp.GetSnapshot()), nil
 }
 
 func (c *client) CoordinatorRestart(ctx context.Context, service model.QualifiedServiceName) error {
