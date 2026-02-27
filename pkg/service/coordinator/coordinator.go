@@ -165,6 +165,7 @@ func (c *coordinator) Initialized() iox.RAsyncCloser {
 }
 
 func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
+	ctx = core.NewServiceContext(ctx, c.name)
 	msg, ok := chanx.TryRead(in, 20*time.Second)
 	if !ok {
 		log.Errorf(ctx, "No registration message received: %v", msg)
@@ -179,7 +180,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin locati
 	register, _ := clientMsg.Register()
 
 	return syncx.Txn1(ctx, c.txn, func() (<-chan model.ConsumerMessage, error) {
-		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
+		wctx, cancel := contextx.WithQuitCancel(core.NewServiceContext(context.Background(), c.name), c.Closed())
 
 		var keys []qualifiedDomainKeyWithName
 		var err error
@@ -217,6 +218,7 @@ func (c *coordinator) Connect(ctx context.Context, sid session.ID, origin locati
 }
 
 func (c *coordinator) Observe(ctx context.Context, sid session.ID, origin location.Instance, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error) {
+	ctx = core.NewServiceContext(ctx, c.name)
 	msg, ok := chanx.TryRead(in, handleTimeout)
 	if !ok {
 		log.Errorf(ctx, "No observer registration message received")
@@ -231,7 +233,7 @@ func (c *coordinator) Observe(ctx context.Context, sid session.ID, origin locati
 	register, _ := msg.Register()
 
 	return syncx.Txn1(ctx, c.txn, func() (<-chan core.ObserverServerMessage, error) {
-		wctx, cancel := contextx.WithQuitCancel(context.Background(), c.Closed())
+		wctx, cancel := contextx.WithQuitCancel(core.NewServiceContext(context.Background(), c.name), c.Closed())
 
 		s, out := c.observe(wctx, sid, origin, register)
 
@@ -253,7 +255,7 @@ func (c *coordinator) Observe(ctx context.Context, sid session.ID, origin locati
 }
 
 func (c *coordinator) Handle(ctx context.Context, req HandleRequest) (*splitterprivatepb.CoordinatorHandleResponse, error) {
-	wctx, cancel := context.WithTimeout(ctx, handleTimeout)
+	wctx, cancel := context.WithTimeout(core.NewServiceContext(ctx, c.name), handleTimeout)
 	defer cancel()
 
 	resp, err := c.handle(wctx, req)
