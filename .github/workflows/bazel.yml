@@ -1,0 +1,22 @@
+name: Bazel
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+
+  build-bazel:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+
+    - name: Build
+      run: bazel build //...
+
+    - name: Test
+      run: bazel test //...
+
+    - name: Update Go Protobufs
+      run: ./tools/update-go-protos.sh && git diff --exit-code
