@@ -70,7 +70,7 @@ var (
 	numActions       = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Coordinator actions", slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey, core.ResultKey)...)
 	numExpired       = metrics.NewCounter("go.atoms.co/splitter/coordinator_expired_grants", "Coordinator expired grants", slicex.CopyAppend(core.QualifiedDomainKeys, core.ShardRegionKey)...)
 	numActionLatency = metrics.NewHistogram("go.atoms.co/splitter/coordinator_action_latency", "Coordinator action latency", nil, slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey)...)
-	grantsDuration   = metrics.NewHistogram("go.atoms.co/splitter/coordinator_grants_duration", "Coordinator grants duration", core.GrantDurationBucketOptions, core.QualifiedDomainKeys...)
+	grantsDuration   = metrics.NewHistogram("go.atoms.co/splitter/coordinator_grant_duration", "Coordinator completed grants duration", core.GrantDurationBucketOptions, core.QualifiedDomainKeys...)
 )
 
 // Coordinator handles consumer connection and work allocation.
@@ -701,7 +701,6 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	for _, g := range rejected {
 		c.mustSend(ctx, c.consumers[g.Worker], model.NewRevoke(toGrant(g)))
 	}
-	c.recordGrantsDuration(ctx, now, rejected)
 }
 
 func (c *coordinator) shouldResumeSuspended(s *consumerSession, now time.Time) bool {
@@ -715,7 +714,8 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	// (1) Expire, Allocate and LoadBalance. If any worker cannot handle the update
 	// they are disconnected. If an assignment fails, the grant is immediately released.
 
-	promoted := c.alloc.Expire(now)
+	promoted, expired := c.alloc.Expire(now)
+	c.recordDeletedGrants(ctx, now, expired...)
 
 	// record expirations. In steady state, they should not happen.
 	for _, promote := range promoted {
@@ -777,14 +777,14 @@ func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant
 	for _, grant := range grants {
 		s, ok := c.consumers[grant.Worker]
 		if !ok {
-			c.alloc.Release(grant, now) // undo assignment
+			c.alloc.Release(grant, now) // undo assignment (no duration recording for new grants)
 			continue
 		}
 
 		if !s.TrySend(ctx, model.NewAssign(toGrant(grant))) {
 			log.Errorf(ctx, "Failed to send assignment for grant %v to consumer: %v. Disconnecting", grant, s)
 
-			c.alloc.Release(grant, now) // undo assignment. Safe because it was not sent
+			c.alloc.Release(grant, now) // undo assignment. Safe because it was not sent (no duration recording for new grants)
 			c.disconnect(ctx, "stuck", s)
 			c.recordAction(ctx, "assign", "failed")
 			continue
@@ -865,7 +865,9 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 
 	assigned := c.alloc.Assigned(s.consumer.ID())
 	for _, g := range assigned.Allocated {
-		c.alloc.Release(g, now) // no promotion
+		if released, ok, _, _ := c.alloc.Release(g, now); ok {
+			c.recordDeletedGrants(ctx, now, released)
+		}
 	}
 	if len(assigned.Active) > 0 {
 		revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
@@ -874,7 +876,6 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 			c.disconnect(ctx, "stuck", s)
 			return
 		}
-		c.recordGrantsDuration(ctx, now, revoked)
 	}
 
 	// (3) If no grants, disconnect immediately. Otherwise, wait for last release or expiration.
@@ -914,7 +915,11 @@ func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, re
 			log.Errorf(ctx, "Internal: invalid grant %v: %v", g, err)
 			continue
 		}
-		if promo, ok := c.alloc.Release(grant, now); ok {
+		r, isReleased, promo, isPromoted := c.alloc.Release(grant, now)
+		if isReleased {
+			c.recordDeletedGrants(ctx, now, r)
+		}
+		if isPromoted {
 			promoted = append(promoted, promo)
 		}
 	}
@@ -1122,7 +1127,9 @@ func (c *coordinator) revokeGrants(ctx context.Context, grants map[model.Instanc
 		assigned := c.alloc.Assigned(cid)
 		for _, g := range assigned.Allocated {
 			if gs[g.ID] {
-				c.alloc.Release(g, now)
+				if released, ok, _, _ := c.alloc.Release(g, now); ok {
+					c.recordDeletedGrants(ctx, now, released)
+				}
 				log.Infof(ctx, "Release allocated grant by request [worker=%v grant=%v]", cid, g.ID)
 			}
 		}
@@ -1141,7 +1148,6 @@ func (c *coordinator) revokeGrants(ctx context.Context, grants map[model.Instanc
 				log.Errorf(ctx, "Failed to send revoke message to consumer %v", cid)
 			}
 		}
-		c.recordGrantsDuration(ctx, now, toRevoke)
 	}
 
 	c.allocate(ctx, now, false)
@@ -1250,7 +1256,9 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 		// Revoke assigned grants and release allocated grants
 		assigned := c.alloc.Assigned(s.consumer.ID())
 		for _, g := range assigned.Allocated {
-			c.alloc.Release(g, now) // no promotion
+			if r, released, _, _ := c.alloc.Release(g, now); released {
+				c.recordDeletedGrants(ctx, now, r)
+			}
 		}
 		if len(assigned.Active) > 0 {
 			revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
@@ -1259,7 +1267,6 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 				c.disconnect(ctx, "stuck", s)
 				return model.Consumer{}, fmt.Errorf("failed to revoke grants: %v", revoked)
 			}
-			c.recordGrantsDuration(ctx, now, revoked)
 		}
 
 		// Allocate unassigned grants
@@ -1303,8 +1310,8 @@ func (c *coordinator) mustSendToObserver(ctx context.Context, s *observerSession
 	return true
 }
 
-func (c *coordinator) recordGrantsDuration(ctx context.Context, now time.Time, grants []Grant) {
-	for _, r := range grants {
+func (c *coordinator) recordDeletedGrants(ctx context.Context, now time.Time, deleted ...Grant) {
+	for _, r := range deleted {
 		grantsDuration.Observe(ctx, now.Sub(r.Assigned), core.QualifiedDomainTags(r.Unit.Domain)...)
 	}
 }

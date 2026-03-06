@@ -299,8 +299,9 @@ func TestAllocation(t *testing.T) {
 
 		time.Sleep(time.Second)
 
-		promo := alloc.Expire(time.Now())
+		promo, expired := alloc.Expire(time.Now())
 		assert.Len(t, promo, 0)
+		assert.Len(t, expired, 2) // grants "a" and "b" expire from detached worker us1
 		require.NoError(t, alloc.Check())
 
 		grants = alloc.Allocate(time.Now())
@@ -359,8 +360,9 @@ func TestAllocation(t *testing.T) {
 
 		// (3) Release and the new grant is promoted Active
 
-		promo, ok := alloc.Release(revoked[0], time.Now())
+		released, _, promo, ok := alloc.Release(revoked[0], time.Now())
 		assert.True(t, ok)
+		assertx.Equal(t, released.ID, revoked[0].ID)
 		assertx.Equal(t, promo.ID, grants[0].ID)
 		assertx.Equal(t, promo.Worker, us2.ID)
 		assertx.Equal(t, promo.Unit, grants[0].Unit)
@@ -406,8 +408,9 @@ func TestAllocation(t *testing.T) {
 
 		// Expire grants. Allocated grant should be promoted to active.
 
-		promoted := alloc.Expire(lease.Add(-time.Second))
+		promoted, expired := alloc.Expire(lease.Add(-time.Second))
 		require.Len(t, promoted, 1)
+		require.Len(t, expired, 0) // no expired grants (allocated got promoted)
 		requirex.Equal(t, promoted[0].ID, allocated.ID)
 		requirex.Equal(t, promoted[0].State, allocation.Active)
 
@@ -522,7 +525,7 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, rejects[0].Unit, "c")
 		require.NoError(t, alloc2.Check())
 
-		_, ok = alloc2.Release(rejects[0], time.Now()) // Release rejected grant
+		_, _, _, ok = alloc2.Release(rejects[0], time.Now()) // Release rejected grant
 		assert.False(t, ok)
 
 		grants = alloc2.Allocate(time.Now())
@@ -886,8 +889,9 @@ func TestAllocation(t *testing.T) {
 
 		// (3) Release and the allocated grant is promoted Active
 
-		promo, ok := alloc.Release(move.From, time.Now())
+		released, _, promo, ok := alloc.Release(move.From, time.Now())
 		assert.True(t, ok)
+		assertx.Equal(t, released.ID, move.From.ID)
 		assertx.Equal(t, promo.ID, move.To.ID)
 		assertx.Equal(t, promo.Worker, eu1.ID)
 		assertx.Equal(t, promo.Unit, "c")
@@ -1153,7 +1157,7 @@ func loadBalanceIterations(t *testing.T, alloc *allocation.Allocation[string, lo
 			return nil, false // stop before the expected iterations
 		}
 		// release to update grant state to active
-		if promo, ok := alloc.Release(move.From, now); ok {
+		if _, _, promo, ok := alloc.Release(move.From, now); ok {
 			require.Equal(t, promo.State, allocation.Active)
 		} else {
 			require.Fail(t, "failed to release %v", move.From)

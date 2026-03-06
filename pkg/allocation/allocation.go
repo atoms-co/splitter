@@ -370,18 +370,21 @@ func (a *Allocation[T, W, K, V]) revoke(w *worker[T, W, K, V], now time.Time, g 
 }
 
 // Release releases a grant in any state. If Revoked, it may complete a move with the returned grant promoting
-// the Allocated destination grant to Active. Returns false if no promotion or if grant is no longer valid.
-func (a *Allocation[T, W, K, V]) Release(grant Grant[T, K], now time.Time) (Grant[T, K], bool) {
+// the Allocated destination grant to Active. Returns the released grant (if found), the promoted grant (if any),
+// and whether a promotion occurred.
+func (a *Allocation[T, W, K, V]) Release(grant Grant[T, K], now time.Time) (released Grant[T, K], wasReleased bool, promoted Grant[T, K], hasPromotion bool) {
 	t := grant.Unit
 
 	if w, ok := a.workers[grant.Worker]; ok {
 		// Expected case
 		if g, ok := w.revoked[t]; ok && g.ID == grant.ID {
 			delete(w.revoked, t)
-			return a.tryPromote(t, now)
+			promoted, hasPromotion = a.tryPromote(t, now)
+			return g, true, promoted, hasPromotion
 		}
 		// Unexpected release of live grant, deliberate delay of assignment
 		if l, ok := w.live[t]; ok && l.grant == grant.ID {
+			released = w.ToGrant(l)
 			delete(w.live, t)
 			delete(a.live, t)
 
@@ -395,7 +398,7 @@ func (a *Allocation[T, W, K, V]) Release(grant Grant[T, K], now time.Time) (Gran
 			} else {
 				a.unassigned[t] = newUnassigned(l.state, w.info.Lease)
 			}
-			return Grant[T, K]{}, false
+			return released, true, Grant[T, K]{}, false
 		}
 	}
 	// Release of unassigned Grant, make eligible for activation immediately
@@ -403,7 +406,7 @@ func (a *Allocation[T, W, K, V]) Release(grant Grant[T, K], now time.Time) (Gran
 		a.unassigned[t] = newUnassigned(Active, now)
 	}
 
-	return Grant[T, K]{}, false
+	return Grant[T, K]{}, false, Grant[T, K]{}, false
 }
 
 // Extend extends the worker lease and thereby the expiration of any Active or Allocated grants.
@@ -471,18 +474,17 @@ func (a *Allocation[T, W, K, V]) Transition(grant Grant[T, K]) (K, Grant[T, K], 
 }
 
 // Expire expires any revoked and inactive grants and workers. If a Revoked grant or unassigned work expires,
-// it promotes the Allocated counterpart to Active. Returns promoted grants.
-func (a *Allocation[T, W, K, V]) Expire(now time.Time) []Grant[T, K] {
-	var ret []Grant[T, K]
-
+// it promotes the Allocated counterpart to Active. Returns promoted grants and expired grants.
+func (a *Allocation[T, W, K, V]) Expire(now time.Time) (promoted []Grant[T, K], expired []Grant[T, K]) {
 	for _, w := range a.workers {
 		for t, g := range w.revoked {
 			if now.Before(g.Expiration) {
 				continue // skip: not expired
 			}
 
+			expired = append(expired, g)
 			if promo, ok := a.tryPromote(g.Unit, now); ok {
-				ret = append(ret, promo)
+				promoted = append(promoted, promo)
 			}
 			delete(w.revoked, t)
 		}
@@ -495,7 +497,7 @@ func (a *Allocation[T, W, K, V]) Expire(now time.Time) []Grant[T, K] {
 
 		// Unassigned revoked work yields a promotion
 		if g, ok := a.tryPromote(t, now); ok {
-			ret = append(ret, g)
+			promoted = append(promoted, g)
 		}
 		delete(a.unassigned, t)
 	}
@@ -514,6 +516,7 @@ func (a *Allocation[T, W, K, V]) Expire(now time.Time) []Grant[T, K] {
 					continue
 				}
 
+				expired = append(expired, w.ToGrant(l))
 				delete(w.live, t)
 				delete(a.live, t)
 
@@ -531,7 +534,7 @@ func (a *Allocation[T, W, K, V]) Expire(now time.Time) []Grant[T, K] {
 		} // else: waiting for some revoked grants to expire
 	}
 
-	return ret
+	return promoted, expired
 }
 
 // tryPromote promotes corresponding Allocated grant of the given work unit. Returns the promotion grant

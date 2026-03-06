@@ -418,7 +418,7 @@ func (l *leader) handleRelinquished(ctx context.Context, w *workerSession, relin
 	for _, g := range relinquished.Grants() {
 		grant := fromGrant(w.instance.ID(), g)
 
-		if promo, ok := l.alloc.Release(grant, now); ok {
+		if _, _, promo, ok := l.alloc.Release(grant, now); ok {
 			promoted = append(promoted, promo)
 		}
 	}
@@ -546,7 +546,7 @@ func (l *leader) allocate(ctx context.Context, now time.Time, loadbalance bool) 
 	// they are disconnected. Allocated grants are ignored. If an assignment fails,
 	// the grant is immediately released.
 
-	promo := l.alloc.Expire(now)
+	promo, _ := l.alloc.Expire(now)
 	grants := l.alloc.Allocate(now)
 
 	// Assign grants before load balancing

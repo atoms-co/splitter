@@ -29,14 +29,26 @@ const (
 )
 
 var (
-	QualifiedDomainKeys        = []metrics.Key{TenantKey, ServiceKey, DomainKey}
-	QualifiedServiceKeys       = []metrics.Key{TenantKey, ServiceKey}
-	QualifiedPlacementKeys     = []metrics.Key{TenantKey, PlacementKey}
+	QualifiedDomainKeys    = []metrics.Key{TenantKey, ServiceKey, DomainKey}
+	QualifiedServiceKeys   = []metrics.Key{TenantKey, ServiceKey}
+	QualifiedPlacementKeys = []metrics.Key{TenantKey, PlacementKey}
+
 	GrantDurationBucketOptions = &metrics.BucketOptions{
-		Start:       0,
-		End:         30 * 60 * 1000,
-		NumBuckets:  15,
-		LatencyUnit: time.Millisecond,
+		DistributionType: metrics.UserDefined,
+		LatencyUnit:      time.Second,
+		UserDefinedBuckets: []float64{
+			1,
+			5,
+			60,
+			600,     // 10m
+			1800,    // 30m
+			3600,    // 1h
+			21_600,  // 6h
+			57_600,  // 12h
+			86_400,  // 24h
+			345_600, // 3d
+			604_800, // 1w
+		},
 	}
 )
 
