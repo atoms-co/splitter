@@ -235,7 +235,7 @@ func (c *coordinator) Observe(ctx context.Context, sid session.ID, origin locati
 	return syncx.Txn1(ctx, c.txn, func() (<-chan core.ObserverServerMessage, error) {
 		wctx, cancel := contextx.WithQuitCancel(core.NewServiceContext(context.Background(), c.name), c.Closed())
 
-		s, out := c.observe(wctx, sid, origin, register)
+		s, out := c.observe(wctx, sid, origin, register, in)
 
 		go func() {
 			defer cancel()
@@ -450,7 +450,7 @@ func (c *coordinator) disconnect(ctx context.Context, reason string, consumers .
 	}
 }
 
-func (c *coordinator) observe(ctx context.Context, sid session.ID, origin location.Instance, register core.ObserverRegisterMessage) (*observerSession, <-chan core.ObserverServerMessage) {
+func (c *coordinator) observe(ctx context.Context, sid session.ID, origin location.Instance, register core.ObserverRegisterMessage, in <-chan core.ObserverClientMessage) (*observerSession, <-chan core.ObserverServerMessage) {
 	now := time.Now()
 
 	service, _ := register.Service()
@@ -465,13 +465,7 @@ func (c *coordinator) observe(ctx context.Context, sid session.ID, origin locati
 
 	out := make(chan core.ObserverServerMessage, 100)
 
-	s := &observerSession{
-		AsyncCloser: iox.NewAsyncCloser(),
-		observer:    observer,
-		sid:         sid,
-		out:         out,
-		origin:      origin,
-	}
+	s := newObserverSession(sid, observer, out, origin, in)
 	c.observers[observer.ID()] = s
 
 	clusterSnapshot := model.NewClusterSnapshot(c.cluster.ID(), c.cluster.Assignments(), c.alloc.Units())

@@ -28,23 +28,23 @@ func newObserver(instance model.Instance, service model.QualifiedServiceName, jo
 	}
 }
 
-func (o *observer) ID() model.InstanceID {
+func (o observer) ID() model.InstanceID {
 	return o.instance.ID()
 }
 
-func (o *observer) Instance() model.Instance {
+func (o observer) Instance() model.Instance {
 	return o.instance
 }
 
-func (o *observer) Service() model.QualifiedServiceName {
+func (o observer) Service() model.QualifiedServiceName {
 	return o.service
 }
 
-func (o *observer) Joined() time.Time {
+func (o observer) Joined() time.Time {
 	return o.joined
 }
 
-func (o *observer) String() string {
+func (o observer) String() string {
 	return fmt.Sprintf("%v[service=%v, joined=%v]", o.instance, o.service, o.joined)
 }
 
@@ -56,6 +56,30 @@ type observerSession struct {
 	out      chan<- core.ObserverServerMessage
 	origin   location.Instance
 	closed   atomic.Bool
+}
+
+func newObserverSession(sid session.ID, observer observer, out chan<- core.ObserverServerMessage, origin location.Instance, in <-chan core.ObserverClientMessage) *observerSession {
+	s := &observerSession{
+		AsyncCloser: iox.NewAsyncCloser(),
+		observer:    observer,
+		sid:         sid,
+		out:         out,
+		origin:      origin,
+	}
+	go func() {
+		defer s.Close()
+		for {
+			select {
+			case _, ok := <-in:
+				if !ok {
+					return
+				}
+			case <-s.Closed():
+				return
+			}
+		}
+	}()
+	return s
 }
 
 func (o *observerSession) TrySend(ctx context.Context, message core.ObserverServerMessage) bool {
