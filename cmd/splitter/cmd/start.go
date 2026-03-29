@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/lib/encoding/yamlx"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/service/metricsx"
 	"go.atoms.co/lib/service/pprofx"
@@ -28,8 +27,6 @@ import (
 	"go.atoms.co/splitter/pkg/util/hclog"
 )
 
-type conf struct{}
-
 func makeStartCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "start",
@@ -37,7 +34,6 @@ func makeStartCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 	}
 
-	configPath := cmd.PersistentFlags().String("config_path", "/app_config/splitter.yaml", "Base config file")
 	dataPath := cmd.PersistentFlags().String("data_path", "/data", "Data path")
 	port := cmd.PersistentFlags().Int("port", 50051, "Grpc server port")
 	healthPort := cmd.PersistentFlags().Int("health_port", 8081, "Http port for health check traffic")
@@ -62,13 +58,6 @@ func makeStartCommand() *cobra.Command {
 		go pprofx.Start(ctx)
 
 		loc := location.NewFromEnv()
-
-		cfg, err := yamlx.UnmarshalFromFile[conf](*configPath)
-		if err != nil {
-			log.Exitf(ctx, "Failed to load configuration: %v", err)
-		}
-
-		_ = cfg
 
 		baseDir := filepath.Join(*dataPath, *raftID)
 		if _, err := os.Stat(baseDir); os.IsNotExist(err) {
