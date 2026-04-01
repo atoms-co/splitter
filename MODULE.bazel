@@ -1,0 +1,48 @@
+bazel_dep(name = "bazel_lib", version = "3.0.0")
+bazel_dep(name = "rules_go", version = "0.59.0")
+bazel_dep(name = "gazelle", version = "0.48.0")
+bazel_dep(name = "platforms", version = "1.0.0")
+bazel_dep(name = "protobuf", version = "34.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "rules_android", version = "0.7.1")
+bazel_dep(name = "rules_oci", version = "2.3.0")
+bazel_dep(name = "tar.bzl", version = "0.7.0")
+
+go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
+go_sdk.from_file(go_mod = "//:go.mod")
+
+go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
+go_deps.from_file(go_mod = "//:go.mod")
+use_repo(
+    go_deps,
+    "co_atoms_go_lib",
+    "co_atoms_go_slicex",
+    "com_github_golang_protobuf",
+    "com_github_google_uuid",
+    "com_github_hashicorp_go_hclog",
+    "com_github_hashicorp_raft",
+    "com_github_hashicorp_raft_boltdb_v2",
+    "com_github_jille_grpc_multi_resolver",
+    "com_github_spf13_cobra",
+    "com_github_stretchr_testify",
+    "in_gopkg_yaml_v3",
+    "org_golang_google_grpc",
+    "org_golang_google_protobuf",
+    "org_uber_go_multierr",
+)
+
+oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
+oci.pull(
+    name = "distroless_base",
+    digest = "sha256:ccaef5ee2f1850270d453fdf700a5392534f8d1a8ca2acda391fbb6a06b81c86",
+    image = "gcr.io/distroless/base",
+    platforms = [
+        "linux/amd64",
+        "linux/arm64",
+    ],
+)
+use_repo(
+    oci,
+    "distroless_base",
+    "distroless_base_linux_amd64",
+    "distroless_base_linux_arm64",
+)
