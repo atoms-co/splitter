@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "uuidx",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/util/uuidx",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@co_atoms_go_lib//uuidx",
+        "@com_github_google_uuid//:uuid",
+    ],
+)
+
+go_test(
+    name = "uuidx_test",
+    srcs = glob(["*_test.go"]),
+    deps = [
+        ":uuidx",
+        "@co_atoms_go_lib//testing/assertx",
+        "@co_atoms_go_lib//uuidx",
+        "@co_atoms_go_slicex//:slicex",
+        "@com_github_google_uuid//:uuid",
+    ],
+)

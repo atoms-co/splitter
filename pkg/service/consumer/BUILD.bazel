@@ -1,0 +1,25 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "consumer",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/service/consumer",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/service/location",
+        "//lib/service/session",
+        "//pkg/core",
+        "//pkg/model",
+        "//pkg/service/coordinator",
+        "//pkg/service/worker",
+        "//proto/atoms/splitter/private",
+        "@co_atoms_go_lib//chanx",
+        "@co_atoms_go_lib//contextx",
+        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_lib//log",
+        "@co_atoms_go_lib//net/grpcx",
+    ],
+)

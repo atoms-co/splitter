@@ -1,0 +1,18 @@
+load("@rules_go//go:def.bzl", "go_binary", "go_library")
+
+go_library(
+    name = "splitter_lib",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/cmd/splitter",
+    visibility = ["//visibility:private"],
+    deps = ["//cmd/splitter/cmd"],
+)
+
+go_binary(
+    name = "splitter",
+    embed = [":splitter_lib"],
+    visibility = ["//visibility:public"],
+)

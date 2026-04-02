@@ -1,0 +1,16 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "storage",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/storage",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/core",
+        "//pkg/model",
+        "@co_atoms_go_lib//mapx",
+    ],
+)

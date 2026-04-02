@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "hclog",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/util/hclog",
+    visibility = ["//visibility:public"],
+    deps = [
+        "@co_atoms_go_lib//log",
+        "@com_github_hashicorp_go_hclog//:go-hclog",
+    ],
+)

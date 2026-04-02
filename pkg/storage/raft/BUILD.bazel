@@ -1,0 +1,21 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "raft",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/storage/raft",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/core",
+        "//pkg/model",
+        "//pkg/storage",
+        "//proto/atoms/splitter/private",
+        "@co_atoms_go_lib//encoding/protox",
+        "@co_atoms_go_lib//log",
+        "@co_atoms_go_lib//metrics",
+        "@com_github_hashicorp_raft//:raft",
+    ],
+)

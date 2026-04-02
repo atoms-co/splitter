@@ -1,0 +1,15 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "memory",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/storage/memory",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/core",
+        "//pkg/storage",
+    ],
+)

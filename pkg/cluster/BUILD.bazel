@@ -1,0 +1,25 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "cluster",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/cluster",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//pkg/core",
+        "//pkg/model",
+        "//pkg/service/leader",
+        "//proto/atoms/splitter/private",
+        "@co_atoms_go_lib//chanx",
+        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_lib//log",
+        "@co_atoms_go_lib//metrics",
+        "@co_atoms_go_lib//net/grpcx",
+        "@co_atoms_go_lib//syncx",
+        "@com_github_hashicorp_raft//:raft",
+        "@com_github_hashicorp_raft_boltdb_v2//:raft-boltdb",
+    ],
+)

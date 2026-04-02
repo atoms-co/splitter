@@ -1,0 +1,27 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "cmd",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/cmd/splitterctl/cmd",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/service/location",
+        "//pkg/core",
+        "//pkg/model",
+        "@co_atoms_go_lib//backoffx",
+        "@co_atoms_go_lib//net/grpcx",
+        "@co_atoms_go_lib//signalx",
+        "@co_atoms_go_lib//statshandlerx",
+        "@co_atoms_go_lib//stringx",
+        "@co_atoms_go_slicex//:slicex",
+        "@com_github_jille_grpc_multi_resolver//:grpc-multi-resolver",
+        "@com_github_spf13_cobra//:cobra",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_protobuf//encoding/protojson",
+        "@org_golang_google_protobuf//proto",
+    ],
+)

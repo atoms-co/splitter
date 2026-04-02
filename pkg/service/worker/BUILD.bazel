@@ -1,0 +1,52 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "worker",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/service/worker",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/service/location",
+        "//lib/service/session",
+        "//pkg/core",
+        "//pkg/model",
+        "//pkg/service/coordinator",
+        "//pkg/service/leader",
+        "//proto/atoms/splitter/private",
+        "@co_atoms_go_lib//chanx",
+        "@co_atoms_go_lib//contextx",
+        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_lib//log",
+        "@co_atoms_go_lib//mapx",
+        "@co_atoms_go_lib//metrics",
+        "@co_atoms_go_lib//net/grpcx",
+        "@co_atoms_go_lib//randx",
+        "@co_atoms_go_lib//syncx",
+        "@co_atoms_go_lib//timex",
+        "@co_atoms_go_slicex//:slicex",
+    ],
+)
+
+go_test(
+    name = "worker_test",
+    srcs = glob(["*_test.go"]),
+    deps = [
+        ":worker",
+        "//lib/service/location",
+        "//lib/service/session",
+        "//pkg/core",
+        "//pkg/model",
+        "//pkg/service/coordinator",
+        "//pkg/service/leader",
+        "//proto/atoms/splitter/private",
+        "@co_atoms_go_lib//chanx",
+        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_lib//net/grpcx",
+        "@co_atoms_go_lib//testing/assertx",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

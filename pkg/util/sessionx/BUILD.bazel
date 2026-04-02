@@ -1,0 +1,17 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "sessionx",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/util/sessionx",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/service/session",
+        "//pkg/model",
+        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_lib//log",
+    ],
+)

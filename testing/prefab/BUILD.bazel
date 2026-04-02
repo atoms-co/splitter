@@ -1,0 +1,19 @@
+load("@rules_go//go:def.bzl", "go_library")
+
+go_library(
+    name = "prefab",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/testing/prefab",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/service/location",
+        "//pkg/model",
+        "//proto/atoms/splitter",
+        "@co_atoms_go_lib//uuidx",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_stretchr_testify//require",
+    ],
+)

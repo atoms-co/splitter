@@ -1,0 +1,54 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "leader",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/service/leader",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/service/location",
+        "//lib/service/session",
+        "//pkg/allocation",
+        "//pkg/core",
+        "//pkg/model",
+        "//pkg/storage",
+        "//pkg/util/sessionx",
+        "//proto/atoms/splitter",
+        "//proto/atoms/splitter/private",
+        "@co_atoms_go_lib//chanx",
+        "@co_atoms_go_lib//contextx",
+        "@co_atoms_go_lib//encoding/protox",
+        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_lib//log",
+        "@co_atoms_go_lib//mapx",
+        "@co_atoms_go_lib//metrics",
+        "@co_atoms_go_lib//net/grpcx",
+        "@co_atoms_go_lib//randx",
+        "@co_atoms_go_lib//syncx",
+        "@co_atoms_go_lib//workqueue",
+        "@co_atoms_go_slicex//:slicex",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
+)
+
+go_test(
+    name = "leader_test",
+    srcs = glob(["*_test.go"]),
+    deps = [
+        ":leader",
+        "//lib/service/location",
+        "//lib/service/session",
+        "//pkg/allocation",
+        "//pkg/core",
+        "//pkg/model",
+        "//pkg/storage",
+        "//pkg/storage/memory",
+        "//proto/atoms/splitter/private",
+        "@co_atoms_go_lib//testing/assertx",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)

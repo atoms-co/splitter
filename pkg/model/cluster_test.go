@@ -15,10 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/testing/prefab"
 )
@@ -30,7 +30,7 @@ var (
 )
 
 const (
-	testcasesPath = "../../testing/testcases/cluster"
+	testcasesPath = "testing/testcases/cluster"
 )
 
 func TestCluster(t *testing.T) {
@@ -62,7 +62,11 @@ func TestClusterWithTestCases(t *testing.T) {
 	p, err := os.Getwd()
 	require.NoError(t, err)
 
-	root := path.Join(p, testcasesPath)
+	tcpath := testcasesPath
+	if len(os.Getenv("BAZEL")) == 0 {
+		tcpath = fmt.Sprintf("../../%s", tcpath)
+	}
+	root := path.Join(p, tcpath)
 	err = filepath.WalkDir(root, func(path string, info os.DirEntry, err error) error {
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".yaml") {
 			content, err := os.ReadFile(path)

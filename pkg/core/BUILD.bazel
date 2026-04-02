@@ -1,0 +1,48 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "core",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/pkg/core",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//lib/service/location",
+        "//lib/service/session",
+        "//pkg/allocation",
+        "//pkg/model",
+        "//proto/atoms/splitter",
+        "//proto/atoms/splitter/private",
+        "@co_atoms_go_lib//chanx",
+        "@co_atoms_go_lib//container",
+        "@co_atoms_go_lib//contextx",
+        "@co_atoms_go_lib//encoding/protox",
+        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_lib//log",
+        "@co_atoms_go_lib//mapx",
+        "@co_atoms_go_lib//metrics",
+        "@co_atoms_go_lib//net/grpcx",
+        "@co_atoms_go_lib//randx",
+        "@co_atoms_go_lib//stringx",
+        "@co_atoms_go_lib//uuidx",
+        "@co_atoms_go_slicex//:slicex",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_hashicorp_raft//:raft",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_protobuf//types/known/timestamppb",
+    ],
+)
+
+go_test(
+    name = "core_test",
+    srcs = glob(["*_test.go"]),
+    deps = [
+        ":core",
+        "@co_atoms_go_lib//uuidx",
+        "@com_github_google_uuid//:uuid",
+        "@com_github_stretchr_testify//assert",
+        "@com_github_stretchr_testify//require",
+    ],
+)
