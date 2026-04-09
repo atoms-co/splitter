@@ -1,4 +1,5 @@
-# Splitter
+<img src=".github/logo.svg#gh-light-mode-only" alt="Splitter" width="300" />
+<img src=".github/logo_dark.svg#gh-dark-mode-only" alt="Splitter" width="300" />
 
 Splitter is a control-plane service for assigning work to connected clients.
 Its primary focus is coordination for stateful sharded services.
