@@ -17,7 +17,7 @@ go_proto_library(
     name = "session_go_proto",
     importpath = "go.atoms.co/splitter/lib/service/session/pb",
     proto = ":session_proto",
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
     deps = ["//proto/atoms/splitter/lib/service/location"],
 )
 

@@ -14,7 +14,7 @@ go_proto_library(
     name = "location_go_proto",
     importpath = "go.atoms.co/splitter/lib/service/location/pb",
     proto = ":location_proto",
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
 )
 
 go_library(
