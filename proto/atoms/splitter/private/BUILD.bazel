@@ -23,7 +23,7 @@ go_proto_library(
     ],
     importpath = "go.atoms.co/splitter/pb/private",
     proto = ":private_proto",
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
     deps = [
         "//proto/atoms/splitter",
         "//proto/atoms/splitter/lib/service/location",
