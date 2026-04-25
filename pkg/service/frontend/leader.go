@@ -43,7 +43,7 @@ func (l *LeaderService) Join(server splitterprivatepb.LeaderService_JoinServer) 
 			return session.Message{}, false
 		})
 		if err != nil {
-			log.Errorf(ctx, "Unabled to establish a session: %v", err)
+			log.Errorf(ctx, "Unable to establish a session: %v", err)
 			return nil, fmt.Errorf("%v: %w", err, model.ErrInvalid)
 		}
 

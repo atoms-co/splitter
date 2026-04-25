@@ -48,7 +48,7 @@ message QualifiedDomainKey {
 // DomainType represents the type of a domain.
 enum DomainType {
   INVALID = 0;
-  // Domain is a indivisible unit, useful for leader election. Key is not used.
+  // Domain is an indivisible unit, useful for leader election. Key is not used.
   UNIT = 1;
   // Domain is a global uuid range.
   GLOBAL = 2;
