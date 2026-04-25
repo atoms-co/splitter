@@ -33,7 +33,7 @@ func (u unassigned) String() string {
 	return fmt.Sprintf("%v@%v", u.state, u.activation.Unix())
 }
 
-// Allocation assigns work of type T to a changeable workers under various constraint and preference
+// Allocation assigns work of type T to changeable workers under various constraint and preference
 // rules. An allocation aim to minimize the adjusted total load of the work using a greedy algorithm.
 // It may find a local optimum. After minimizing penalties, it attempts to evenly distribute the domain
 // and total load.

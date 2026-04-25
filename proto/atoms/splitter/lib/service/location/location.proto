@@ -13,7 +13,7 @@ message Location {
   string node = 2;   // pod_name
 }
 
-// Instance identifies a component instance. The instance id must be globally unique and both id an the location
+// Instance identifies a component instance. The instance id must be globally unique and both id and the location
 // must be immutable for the lifetime of the instance. Useful for debugging.
 message Instance {
   string id = 1;

@@ -269,7 +269,7 @@ drain:
 		}
 	}
 
-	log.Infof(ctx, "Waiting for remainig #%v grants to expire", len(p.grants))
+	log.Infof(ctx, "Waiting for remaining #%v grants to expire", len(p.grants))
 
 	for {
 		if len(p.grants) == 0 {
@@ -603,7 +603,7 @@ func (p *WorkPool) releaseGrant(ctx context.Context, gid GrantID) {
 		if p.trySend(ctx, NewRevoke(g.Grant)) {
 			log.Infof(ctx, "Requested to release grant %v", g)
 		} else {
-			log.Warnf(ctx, "Unabled to request to release grant %v", g)
+			log.Warnf(ctx, "Unable to request to release grant %v", g)
 		}
 	}
 }
@@ -653,7 +653,7 @@ func (p *WorkPool) mustSend(ctx context.Context, msg ConsumerMessage) {
 	case p.out <- msg:
 		return
 	case <-timer.C:
-		log.Warnf(ctx, "Unabled to send message to the coordinator in %v. Disconnecting", timeout)
+		log.Warnf(ctx, "Unable to send message to the coordinator in %v. Disconnecting", timeout)
 		p.lostCoordinator(ctx)
 	}
 }

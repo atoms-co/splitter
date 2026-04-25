@@ -61,7 +61,7 @@ The key needs of the sharded model are handled as follows:
    This “routing logic as a library” approach is essential: it works for both batch
    and streaming applications, supports non-1:1 routing and leaves the service in control of the data path.
 
-The work in Spliiter is organized in domains. A domain represents single or multiple UUID spaces divided into shards.
+The work in Splitter is organized in domains. A domain represents single or multiple UUID spaces divided into shards.
 
 A shard is a half-open UUID range for a domain. This choice provides a number of advantages over discrete or
 custom shard spaces (e.g., integers or strings). UUIDs force a uniform distribution that naturally avoids hotspots,

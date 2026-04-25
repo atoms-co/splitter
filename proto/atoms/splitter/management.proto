@@ -91,7 +91,7 @@ message Domain {
   // state is the domain state. Different states change the way messages are sent to clients.
   enum State {
     UNKNOWN = 0;
-    // active permits work assignments to to be sent to all connected consumers. Default state.
+    // active permits work assignments to be sent to all connected consumers. Default state.
     ACTIVE = 1;
     // suspended prevents consumers from receiving new assignments on the domain.
     // Consumers can be connected to a suspended domain but will never receive updates.
