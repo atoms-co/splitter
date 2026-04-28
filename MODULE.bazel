@@ -19,6 +19,7 @@ go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
 use_repo(
     go_deps,
+    "co_atoms_go_iox",
     "co_atoms_go_lib",
     "co_atoms_go_slicex",
     "com_github_golang_protobuf",

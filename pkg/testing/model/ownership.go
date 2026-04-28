@@ -3,7 +3,7 @@ package model
 import (
 	"time"
 
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 	splitter "go.atoms.co/splitter/pkg/model"
 )
 

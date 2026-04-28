@@ -7,14 +7,14 @@ import (
 
 	"google.golang.org/grpc"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/lib/iox"
 	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 
@@ -23,7 +23,7 @@ var (
 	ErrExpired = errors.New("grant expired")
 
 	// ClientVersion of the client library.
-	ClientVersion = "1.0.1"
+	ClientVersion = "1.1.0"
 )
 
 // Ownership holds information about the grant state and expiration, as well as signals for

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.atoms.co/lib/timex"
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 )
 
 // LeaseState represents the current state of a grant.

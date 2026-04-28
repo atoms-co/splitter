@@ -7,7 +7,7 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 )
 
 const (

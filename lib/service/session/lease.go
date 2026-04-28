@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 )
 
 // Lease represent a lease, i.e., time-limited ownership of some associated entity.

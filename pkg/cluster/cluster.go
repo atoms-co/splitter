@@ -15,7 +15,7 @@ import (
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"

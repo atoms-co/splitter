@@ -285,6 +285,8 @@ github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqri
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
+go.atoms.co/iox v1.0.0 h1:tSCyphSPh17TnjhZn5OaGScJcO5aac2acOjO9M76skE=
+go.atoms.co/iox v1.0.0/go.mod h1:2PpoGBhfToxA0U2UfXkDSskPMiUyQzKi9DZtANqolew=
 go.atoms.co/lib v1.0.1 h1:mvx2t/FzBe+o2613YtfMN1LgED16goaRRqhUDE5SM0I=
 go.atoms.co/lib v1.0.1/go.mod h1:z2tIaPspVz3j9lI0XfNGE8BpLhmpCIpGcg0k5RZ82Z4=
 go.atoms.co/slicex v1.0.1 h1:IRwavsWqcgL1fn2ylBa/+fJgWE7He28H5XQMi80wgnY=

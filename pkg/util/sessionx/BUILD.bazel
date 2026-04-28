@@ -11,7 +11,7 @@ go_library(
     deps = [
         "//lib/service/session",
         "//pkg/model",
-        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//log",
     ],
 )
