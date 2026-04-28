@@ -11,8 +11,8 @@ go_library(
     deps = [
         "//lib/service/location",
         "//proto/atoms/splitter/lib/service/session",
+        "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//chanx",
-        "@co_atoms_go_lib//iox",
         "@co_atoms_go_lib//log",
         "@co_atoms_go_lib//metrics",
         "@com_github_golang_protobuf//proto",

@@ -9,7 +9,7 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 )

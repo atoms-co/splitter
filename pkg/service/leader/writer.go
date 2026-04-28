@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/workqueue"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"

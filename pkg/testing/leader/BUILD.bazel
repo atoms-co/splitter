@@ -13,6 +13,6 @@ go_library(
         "//pkg/model",
         "//pkg/service/leader",
         "//proto/atoms/splitter/private",
-        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_iox//:iox",
     ],
 )

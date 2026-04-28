@@ -13,7 +13,7 @@ import (
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/backoffx"
 	"go.atoms.co/lib/contextx"
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 )
 
 var (

@@ -10,6 +10,6 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/model",
-        "@co_atoms_go_lib//iox",
+        "@co_atoms_go_iox//:iox",
     ],
 )

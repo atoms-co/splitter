@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"

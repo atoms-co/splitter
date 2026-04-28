@@ -57,6 +57,7 @@ require (
 	github.com/hashicorp/raft-boltdb/v2 v2.2.2
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
+	go.atoms.co/iox v1.0.0
 	go.atoms.co/lib v1.0.1
 	go.atoms.co/slicex v1.0.1
 	go.uber.org/multierr v1.11.0

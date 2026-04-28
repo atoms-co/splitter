@@ -18,7 +18,7 @@ import (
 	"go.atoms.co/lib/service/metricsx"
 	"go.atoms.co/lib/service/pprofx"
 	"go.atoms.co/lib/contextx"
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/server"

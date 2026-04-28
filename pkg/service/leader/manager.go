@@ -10,7 +10,7 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/lib/iox"
+	"go.atoms.co/iox"
 	"go.atoms.co/splitter/pkg/model"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
