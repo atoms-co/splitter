@@ -14,7 +14,7 @@ import (
 )
 
 func TestClient_Establish(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		def := location.NewInstance(location.New("us-west2", "unknown"))
@@ -30,7 +30,7 @@ func TestClient_Establish(t *testing.T) {
 }
 
 func TestClient_Heartbeat(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		def := location.NewInstance(location.New("us-west2", "pod1"))
@@ -52,7 +52,7 @@ func TestClient_Heartbeat(t *testing.T) {
 }
 
 func TestClient_HeartbeatWithOption(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		def := location.NewInstance(location.New("us-west2", "pod1"))
@@ -73,7 +73,7 @@ func TestClient_HeartbeatWithOption(t *testing.T) {
 }
 
 func TestClient_ExpirationPending(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		def := location.NewInstance(location.New("us-west2", "unknown"))
@@ -92,7 +92,7 @@ func TestClient_ExpirationPending(t *testing.T) {
 }
 
 func TestClient_ExpirationPendingWithOption(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		def := location.NewInstance(location.New("us-west2", "unknown"))
@@ -111,7 +111,7 @@ func TestClient_ExpirationPendingWithOption(t *testing.T) {
 }
 
 func TestClient_ExpirationEstablished(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		def := location.NewInstance(location.New("us-west2", "pod1"))
@@ -139,7 +139,7 @@ func TestClient_ExpirationEstablished(t *testing.T) {
 }
 
 func TestClient_ExpirationEstablishedWithOption(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		def := location.NewInstance(location.New("us-west2", "pod1"))

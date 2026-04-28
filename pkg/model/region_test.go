@@ -41,7 +41,7 @@ func TestRegionProvider(t *testing.T) {
 }
 
 func TestLiveRegionProvider(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 

@@ -8,12 +8,7 @@ bazel_dep(name = "rules_oci", version = "2.3.0")
 bazel_dep(name = "tar.bzl", version = "0.7.0")
 
 go_sdk = use_extension("@rules_go//go:extensions.bzl", "go_sdk")
-go_sdk.from_file(
-    experiments = [
-        "synctest",
-    ],
-    go_mod = "//:go.mod",
-)
+go_sdk.from_file(go_mod = "//:go.mod")
 
 go_deps = use_extension("@gazelle//:extensions.bzl", "go_deps")
 go_deps.from_file(go_mod = "//:go.mod")
@@ -38,9 +33,9 @@ use_repo(
 
 oci = use_extension("@rules_oci//oci:extensions.bzl", "oci")
 oci.pull(
-    name = "golang_1_24_12",
-    digest = "sha256:8b788ecf5fddb91cd04e532205d6411de68a08b510885bb8fb1c93f54c03f737",
-    image = "golang:1.24.9",
+    name = "golang_1_26_2",
+    digest = "sha256:b54cbf583d390341599d7bcbc062425c081105cc5ef6d170ced98ef9d047c716",
+    image = "golang:1.26.2",
     platforms = [
         "linux/amd64",
         "linux/arm64/v8",
@@ -48,7 +43,7 @@ oci.pull(
 )
 use_repo(
     oci,
-    "golang_1_24_12",
-    "golang_1_24_12_linux_amd64",
-    "golang_1_24_12_linux_arm64_v8",
+    "golang_1_26_2",
+    "golang_1_26_2_linux_amd64",
+    "golang_1_26_2_linux_arm64_v8",
 )

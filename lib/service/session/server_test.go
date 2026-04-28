@@ -40,7 +40,7 @@ func TestServer_Established(t *testing.T) {
 func TestServer_Heartbeat(t *testing.T) {
 	ctx := context.Background()
 
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		msg := session.NewEstablishMessage("sid", client)
 		establish, _ := msg.Establish()
 		server, out, _ := session.NewServer(ctx, instance, establish)
@@ -58,7 +58,7 @@ func TestServer_Heartbeat(t *testing.T) {
 func TestServer_HeartbeatWithOption(t *testing.T) {
 	ctx := context.Background()
 
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		msg := session.NewEstablishMessage("sid", client)
 		establish, _ := msg.Establish()
 		server, out, _ := session.NewServer(ctx, instance, establish, session.WithServerKeepAliveTimeout(30*time.Second))
@@ -76,7 +76,7 @@ func TestServer_HeartbeatWithOption(t *testing.T) {
 func TestServer_ExpirationPending(t *testing.T) {
 	ctx := context.Background()
 
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		msg := session.NewEstablishMessage("sid", client)
 		establish, _ := msg.Establish()
 		server, _, _ := session.NewServer(ctx, instance, establish)
@@ -93,7 +93,7 @@ func TestServer_ExpirationPending(t *testing.T) {
 func TestServer_ExpirationPendingWithOption(t *testing.T) {
 	ctx := context.Background()
 
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		msg := session.NewEstablishMessage("sid", client)
 		establish, _ := msg.Establish()
 		server, _, _ := session.NewServer(ctx, instance, establish, session.WithServerKeepAliveTimeout(30*time.Second))
@@ -110,7 +110,7 @@ func TestServer_ExpirationPendingWithOption(t *testing.T) {
 func TestServer_CloseOnSecondEstablish(t *testing.T) {
 	ctx := context.Background()
 
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		in := make(chan session.Message, 1)
 		in <- session.NewEstablishMessage("sid", client)
 		msg := session.NewEstablishMessage("sid", client)
@@ -126,7 +126,7 @@ func TestServer_CloseOnSecondEstablish(t *testing.T) {
 func TestServer_CloseOnClose(t *testing.T) {
 	ctx := context.Background()
 
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		msg := session.NewEstablishMessage("sid", client)
 		establish, _ := msg.Establish()
 		server, _, _ := session.NewServer(ctx, instance, establish)

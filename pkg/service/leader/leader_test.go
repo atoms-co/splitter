@@ -97,7 +97,7 @@ func TestLeader_SingleWorkerReattach(t *testing.T) {
 }
 
 func TestLeader_MultipleWorker(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 		loc := location.New("centralus", "splitter-0")
 

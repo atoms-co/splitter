@@ -287,8 +287,8 @@ github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9de
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 go.atoms.co/iox v1.0.0 h1:tSCyphSPh17TnjhZn5OaGScJcO5aac2acOjO9M76skE=
 go.atoms.co/iox v1.0.0/go.mod h1:2PpoGBhfToxA0U2UfXkDSskPMiUyQzKi9DZtANqolew=
-go.atoms.co/lib v1.0.1 h1:mvx2t/FzBe+o2613YtfMN1LgED16goaRRqhUDE5SM0I=
-go.atoms.co/lib v1.0.1/go.mod h1:z2tIaPspVz3j9lI0XfNGE8BpLhmpCIpGcg0k5RZ82Z4=
+go.atoms.co/lib v1.1.0 h1:y0ACxKzzG93r9BOHVBMbzzyL8U/laPA7mI2X5qKP7RU=
+go.atoms.co/lib v1.1.0/go.mod h1:z2tIaPspVz3j9lI0XfNGE8BpLhmpCIpGcg0k5RZ82Z4=
 go.atoms.co/slicex v1.0.1 h1:IRwavsWqcgL1fn2ylBa/+fJgWE7He28H5XQMi80wgnY=
 go.atoms.co/slicex v1.0.1/go.mod h1:le4qkj6I+WTrEXXtTRyKF+or6wI5wOL9NW3Atk/zr5E=
 go.etcd.io/bbolt v1.3.5 h1:XAzx9gjCb0Rxj7EoqcClPD1d5ZBxZJk0jbuoPHenBt0=

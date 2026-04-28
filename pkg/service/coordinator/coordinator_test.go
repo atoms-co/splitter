@@ -38,7 +38,7 @@ var (
 )
 
 func TestCoordinator_SingleConsumer(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
@@ -86,7 +86,7 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 }
 
 func TestCoordinator_TwoConsumers(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
@@ -219,7 +219,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 }
 
 func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
@@ -297,7 +297,7 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 }
 
 func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
@@ -344,7 +344,7 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 }
 
 func TestCoordinator_NamedKeyConsumers(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		names := []model.NamedDomainKey{
@@ -450,7 +450,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 }
 
 func TestCoordinator_RevokeGrant(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 
 		ctx := context.Background()
 
@@ -553,7 +553,7 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 }
 
 func TestCoordinator_RelinquishGrant(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		domain, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(
@@ -594,7 +594,7 @@ func TestCoordinator_RelinquishGrant(t *testing.T) {
 }
 
 func TestCoordinator_CustomShards(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		initialShards := []model.ShardingPolicyShard{
@@ -662,7 +662,7 @@ func TestCoordinator_CustomShards(t *testing.T) {
 }
 
 func TestCoordinator_RegionSpecificShards(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		customShards := []model.ShardingPolicyShard{
@@ -743,7 +743,7 @@ func matchesRange(grants []model.Grant, ranges []uuidx.Range, region string) boo
 }
 
 func TestObserverConnection(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		coord := setup(ctx, t, []model.Domain{}, true)
@@ -774,7 +774,7 @@ func TestObserverConnection(t *testing.T) {
 }
 
 func TestObserverReceivesClusterUpdates(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
@@ -819,7 +819,7 @@ func TestObserverReceivesClusterUpdates(t *testing.T) {
 }
 
 func TestMultipleObservers(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
@@ -874,7 +874,7 @@ func TestMultipleObservers(t *testing.T) {
 }
 
 func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(
@@ -925,7 +925,7 @@ func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
 }
 
 func TestCoordinator_ConsumerSuspendAndResume(t *testing.T) {
-	synctest.Run(func() {
+	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
 		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(

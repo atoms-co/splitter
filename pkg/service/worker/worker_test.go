@@ -29,8 +29,8 @@ var (
 )
 
 func TestWorker(t *testing.T) {
-	synctest.Run(func() {
-		ctx := context.Background()
+	synctest.Test(t, func(t *testing.T) {
+		ctx := t.Context()
 
 		leaderCon := newFakeCon[leader.Message]()
 		defer leaderCon.Close()
@@ -53,13 +53,15 @@ func TestWorker(t *testing.T) {
 			return c
 		}
 		w, _ := worker.New(location.New("centralus", "pod1"), "endpoint", joinFn, coordFactory)
-		defer w.Drain(time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
 
 		<-leaderCon.Connected.Closed()
 
 		// (1) Worker sends REGISTER
-
-		t.Run("register", func(t *testing.T) {
+		{
 			msg := assertx.Element(t, leaderCon.In)
 
 			// << register
@@ -73,11 +75,10 @@ func TestWorker(t *testing.T) {
 			// >> state (omitted) and lease
 
 			leaderCon.Out <- leader.NewLeaseUpdate(time.Now().Add(time.Minute))
-		})
+		}
 
 		// (2) Grant/Revoke
-
-		t.Run("grant", func(t *testing.T) {
+		{
 			// << grant from leader --> coordinator creation
 			grant := core.NewGrant("grant1", service1, time.Now().Add(time.Minute), time.Now())
 			leaderCon.Out <- leader.NewAssign(grant, core.State{})
@@ -105,11 +106,10 @@ func TestWorker(t *testing.T) {
 			upd := core.NewServiceUpdate(model.NewServiceInfo(service, 2, time.Now()))
 			leaderCon.Out <- leader.NewUpdate(grant2, upd)
 			assertx.Element(t, c.updates)
-		})
+		}
 
 		// (3) Worker disconnect and reconnect to Leader
-
-		t.Run("worker/disconnect", func(t *testing.T) {
+		{
 			// Shut down leader connection to force reconnect
 			oldLeaderCon := leaderCon
 			leaderCon = newFakeCon[leader.Message]()
@@ -125,11 +125,10 @@ func TestWorker(t *testing.T) {
 			register, ok := wMsg.Register()
 			assert.True(t, ok)
 			assert.Len(t, register.Active(), 1)
-		})
+		}
 
 		// (4) Consumer connects
-
-		t.Run("consumer/connect", func(t *testing.T) {
+		{
 			consumer := model.NewInstance(location.NewInstance(location.New("centralus", "node")), "endpoint")
 			in := chanx.NewFixed(model.NewRegister(consumer, service2, nil, nil))
 
@@ -139,7 +138,7 @@ func TestWorker(t *testing.T) {
 			in2 := chanx.NewFixed(model.NewRegister(consumer, service1, nil, nil))
 			_, err = w.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
 			assert.Error(t, err)
-		})
+		}
 	})
 
 }
