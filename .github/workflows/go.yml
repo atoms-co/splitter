@@ -18,10 +18,10 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v6
       with:
-        go-version: '1.24.12'
+        go-version: '1.26.2'
 
     - name: Build
-      run: GOEXPERIMENT=synctest go build -v ./...
+      run: go build -v ./...
 
     - name: Test
-      run: GOEXPERIMENT=synctest go test -v ./...
+      run: go test -v ./...
