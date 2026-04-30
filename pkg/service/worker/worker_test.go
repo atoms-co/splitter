@@ -29,74 +29,30 @@ var (
 )
 
 func TestWorker(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		ctx := t.Context()
+	// (1) Grant/Revoke
+	t.Run("grant", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			d := setupWorkerTestDeps(t)
+			defer d.close()
 
-		leaderCon := newFakeCon[leader.Message]()
-		defer leaderCon.Close()
-
-		coordinators := make(chan *fakeCoordinator)
-		var cleanUpCoords []*fakeCoordinator
-		defer func() {
-			for _, c := range cleanUpCoords {
-				c.Close()
-			}
-		}()
-
-		joinFn := func(ctx context.Context, self location.Instance, handler grpcx.Handler[leader.Message, leader.Message]) error {
-			return leaderCon.connect(ctx, handler)
-		}
-		coordFactory := func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator {
-			c := newFakeCoordinator(service, updates)
-			cleanUpCoords = append(cleanUpCoords, c)
-			coordinators <- c
-			return c
-		}
-		w, _ := worker.New(location.New("centralus", "pod1"), "endpoint", joinFn, coordFactory)
-		defer func() {
-			w.Drain(time.Second)
-			<-w.Closed()
-		}()
-
-		<-leaderCon.Connected.Closed()
-
-		// (1) Worker sends REGISTER
-		{
-			msg := assertx.Element(t, leaderCon.In)
-
-			// << register
-			wMsg, ok := msg.WorkerMessage()
-			assert.True(t, ok)
-
-			register, ok := wMsg.Register()
-			assert.True(t, ok)
-			assert.Len(t, register.Active(), 0)
-
-			// >> state (omitted) and lease
-
-			leaderCon.Out <- leader.NewLeaseUpdate(time.Now().Add(time.Minute))
-		}
-
-		// (2) Grant/Revoke
-		{
 			// << grant from leader --> coordinator creation
 			grant := core.NewGrant("grant1", service1, time.Now().Add(time.Minute), time.Now())
-			leaderCon.Out <- leader.NewAssign(grant, core.State{})
-			assertx.Element(t, coordinators)
+			d.leaderConn.Out <- leader.NewAssign(grant, core.State{})
+			assertx.Element(t, d.coordinatorChan)
 
 			// << grant2 from leader --> coordinator creation
 
 			grant2 := core.NewGrant("grant2", service2, time.Now().Add(time.Minute), time.Now())
-			leaderCon.Out <- leader.NewAssign(grant2, core.State{})
-			c := assertx.Element(t, coordinators)
+			d.leaderConn.Out <- leader.NewAssign(grant2, core.State{})
+			c := assertx.Element(t, d.coordinatorChan)
 
 			// << revoke grant1 from leader --> relinquish
 
-			leaderCon.Out <- leader.NewRevoke(grant)
+			d.leaderConn.Out <- leader.NewRevoke(grant)
 
 			// >> relinquished
 
-			msg := assertx.Element(t, leaderCon.In)
+			msg := assertx.Element(t, d.leaderConn.In)
 			wMsg, ok := msg.WorkerMessage()
 			assert.True(t, ok)
 			assert.True(t, wMsg.IsRelinquished())
@@ -104,43 +60,61 @@ func TestWorker(t *testing.T) {
 			// update
 			service, _ := model.NewService(service2, time.Now())
 			upd := core.NewServiceUpdate(model.NewServiceInfo(service, 2, time.Now()))
-			leaderCon.Out <- leader.NewUpdate(grant2, upd)
+			d.leaderConn.Out <- leader.NewUpdate(grant2, upd)
 			assertx.Element(t, c.updates)
-		}
+		})
+	})
 
-		// (3) Worker disconnect and reconnect to Leader
-		{
+	// (2) Worker disconnect and reconnect to Leader
+	t.Run("worker/disconnect", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			d := setupWorkerTestDeps(t)
+			defer d.close()
+
+			// << grant from leader --> coordinator creation
+			grant := core.NewGrant("grant1", service1, time.Now().Add(time.Minute), time.Now())
+			d.leaderConn.Out <- leader.NewAssign(grant, core.State{})
+			assertx.Element(t, d.coordinatorChan)
+
 			// Shut down leader connection to force reconnect
-			oldLeaderCon := leaderCon
-			leaderCon = newFakeCon[leader.Message]()
+			oldLeaderCon := d.leaderConn
+			d.leaderConn = newFakeCon[leader.Message]()
 			oldLeaderCon.Close()
 
-			time.Sleep(2 * time.Second) // Random backoff
+			<-d.leaderConn.Connected.Closed()
 
-			<-leaderCon.Connected.Closed()
-
-			msg := assertx.Element(t, leaderCon.In)
+			// Worker should still hold grant
+			msg := assertx.Element(t, d.leaderConn.In)
 			wMsg, ok := msg.WorkerMessage()
 			assert.True(t, ok)
 			register, ok := wMsg.Register()
 			assert.True(t, ok)
 			assert.Len(t, register.Active(), 1)
-		}
+		})
+	})
 
-		// (4) Consumer connects
-		{
+	// (3) Consumer connects
+	t.Run("consumer/connect", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			d := setupWorkerTestDeps(t)
+			defer d.close()
+
+			// << grant2 from leader --> coordinator creation
+			grant2 := core.NewGrant("grant2", service2, time.Now().Add(time.Minute), time.Now())
+			d.leaderConn.Out <- leader.NewAssign(grant2, core.State{})
+			assertx.Element(t, d.coordinatorChan)
+
 			consumer := model.NewInstance(location.NewInstance(location.New("centralus", "node")), "endpoint")
 			in := chanx.NewFixed(model.NewRegister(consumer, service2, nil, nil))
 
-			_, err := w.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
+			_, err := d.worker.Connect(d.ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), in)
 			require.NoError(t, err)
 
 			in2 := chanx.NewFixed(model.NewRegister(consumer, service1, nil, nil))
-			_, err = w.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
+			_, err = d.worker.Connect(d.ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), in2)
 			assert.Error(t, err)
-		}
+		})
 	})
-
 }
 
 type fakeCoordinator struct {
@@ -215,4 +189,65 @@ func (f *fakeCon[T]) connect(ctx context.Context, handler grpcx.Handler[T, T]) e
 	case <-ctx.Done():
 	}
 	return nil
+}
+
+type workerTestDeps struct {
+	t   *testing.T
+	ctx context.Context
+
+	leaderConn      *fakeCon[leader.Message]
+	coordinatorChan chan *fakeCoordinator
+	coordinators    []*fakeCoordinator
+	worker          worker.Worker
+}
+
+// setupWorkerTestDeps sets up dependencies and registers a worker for worker test.
+func setupWorkerTestDeps(t *testing.T) *workerTestDeps {
+	t.Helper()
+
+	d := &workerTestDeps{
+		t:               t,
+		ctx:             t.Context(),
+		leaderConn:      newFakeCon[leader.Message](),
+		coordinatorChan: make(chan *fakeCoordinator),
+	}
+
+	joinFn := func(ctx context.Context, self location.Instance, handler grpcx.Handler[leader.Message, leader.Message]) error {
+		return d.leaderConn.connect(ctx, handler)
+	}
+
+	coordFactory := func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator {
+		c := newFakeCoordinator(service, updates)
+		d.coordinators = append(d.coordinators, c)
+		d.coordinatorChan <- c
+		return c
+	}
+
+	d.worker, _ = worker.New(location.New("centralus", "pod1"), "endpoint", joinFn, coordFactory)
+	<-d.leaderConn.Connected.Closed()
+
+	msg := assertx.Element(t, d.leaderConn.In)
+
+	// << register
+	wMsg, ok := msg.WorkerMessage()
+	assert.True(t, ok)
+
+	register, ok := wMsg.Register()
+	assert.True(t, ok)
+	assert.Len(t, register.Active(), 0)
+
+	// >> state (omitted) and lease
+	d.leaderConn.Out <- leader.NewLeaseUpdate(time.Now().Add(time.Minute))
+	return d
+}
+
+func (d *workerTestDeps) close() {
+	for _, c := range d.coordinators {
+		c.Close()
+	}
+
+	d.worker.Drain(time.Second)
+	<-d.worker.Closed()
+
+	d.leaderConn.Close()
 }
