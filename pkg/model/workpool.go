@@ -141,7 +141,15 @@ func (p *WorkPool) join(ctx context.Context) {
 			p.lostCoordinator(ctx)
 		})
 
-		time.Sleep(time.Second + randx.Duration(time.Second)) // short random backoff on disconnect
+		backoff := time.Second + randx.Duration(time.Second) // short random backoff on disconnect if not draining
+		select {
+		case <-time.After(backoff):
+			break
+		case <-p.drain.Closed():
+			return
+		case <-wctx.Done():
+			return
+		}
 	}
 }
 

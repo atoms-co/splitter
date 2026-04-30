@@ -48,7 +48,11 @@ func TestWorkpool(t *testing.T) {
 				}
 			},
 		)
-		defer w.Drain(time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
+
 		<-coordinatorCon.Connected.Closed()
 
 		msg := assertx.Element(t, coordinatorCon.In)
@@ -91,7 +95,11 @@ func TestWorkpool(t *testing.T) {
 				}
 			},
 		)
-		defer w.Drain(time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
+
 		<-coordinatorCon.Connected.Closed()
 
 		assertx.Element(t, coordinatorCon.In)                              // register
@@ -143,7 +151,11 @@ func TestWorkpool(t *testing.T) {
 				}
 			},
 		)
-		defer w.Drain(time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
+
 		<-coordinatorCon.Connected.Closed()
 
 		assertx.Element(t, coordinatorCon.In)                              // register
@@ -197,7 +209,11 @@ func TestWorkpool(t *testing.T) {
 				}
 			},
 		)
-		defer w.Drain(time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
+
 		<-coordinatorCon.Connected.Closed()
 
 		assertx.Element(t, coordinatorCon.In)                              // register
@@ -263,7 +279,11 @@ func TestWorkpool(t *testing.T) {
 				}
 			},
 		)
-		defer w.Drain(time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
+
 		<-coordinatorCon.Connected.Closed()
 
 		assertx.Element(t, coordinatorCon.In)                              // register
@@ -332,7 +352,11 @@ func TestWorkpool(t *testing.T) {
 				}
 			},
 		)
-		defer w.Drain(time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
+
 		<-coordinatorCon.Connected.Closed()
 
 		assertx.Element(t, coordinatorCon.In)                              // register
@@ -395,7 +419,11 @@ func TestWorkpool(t *testing.T) {
 				done.Close()
 			},
 		)
-		defer w.Drain(time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
+
 		<-coordinatorCon.Connected.Closed()
 
 		requirex.Element(t, coordinatorCon.In)                             // register
@@ -430,7 +458,11 @@ func TestWorkpool(t *testing.T) {
 				done.Close()
 			},
 		)
-		defer w.Drain(time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
+
 		<-coordinatorCon.Connected.Closed()
 
 		requirex.Element(t, coordinatorCon.In)                             // register
@@ -472,7 +504,10 @@ func TestWorkpool(t *testing.T) {
 				}
 			},
 		)
-		defer w.Drain(10 * time.Second)
+		defer func() {
+			w.Drain(time.Second)
+			<-w.Closed()
+		}()
 
 		<-coordinatorCon.Connected.Closed()
 

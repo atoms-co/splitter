@@ -1,6 +1,6 @@
 module go.atoms.co/splitter
 
-go 1.24.12
+go 1.26.2
 
 require github.com/Jille/grpc-multi-resolver v1.3.0
 
@@ -58,7 +58,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	go.atoms.co/iox v1.0.0
-	go.atoms.co/lib v1.0.1
+	go.atoms.co/lib v1.1.0
 	go.atoms.co/slicex v1.0.1
 	go.uber.org/multierr v1.11.0
 	google.golang.org/grpc v1.70.0

@@ -219,7 +219,15 @@ func (w *worker) join(ctx context.Context) {
 			w.lostLeader(ctx)
 		})
 
-		time.Sleep(time.Second + randx.Duration(time.Second)) // short random backoff on disconnect
+		backoff := time.Second + randx.Duration(time.Second) // short random backoff on disconnect if not draining
+		select {
+		case <-time.After(backoff):
+			break
+		case <-w.drain.Closed():
+			return
+		case <-wctx.Done():
+			return
+		}
 	}
 }
 
