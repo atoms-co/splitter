@@ -996,6 +996,46 @@ func TestCoordinator_ConsumerSuspendAndResume(t *testing.T) {
 	})
 }
 
+func TestCoordinator_NoGrantsDeregisterRemovedImmediately(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		coord := setup(ctx, t, nil, true)
+
+		// Consumer A  will deregister with zero grants.
+		a := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
+		inA := make(chan model.ConsumerMessage, 1)
+		inA <- model.NewRegister(a, serviceName, nil, nil)
+		outA, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), inA)
+		require.NoError(t, err, "consumer A failed to join")
+
+		// Consumer B observer for cluster broadcasts.
+		b := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
+		inB := make(chan model.ConsumerMessage, 1)
+		inB <- model.NewRegister(b, serviceName, nil, nil)
+		outB, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), inB)
+		require.NoError(t, err, "consumer B failed to join")
+
+		readFn(t, outB, isClusterSnapshot)
+
+		// A deregisters with no grants.
+		inA <- model.NewDeregister()
+
+		change := readFn(t, outB, func(msg model.ConsumerMessage) (model.ClusterChange, bool) {
+			c, ok := isClusterChange(msg)
+			if !ok {
+				return c, false
+			}
+			return c, slices.Contains(c.Remove().Consumers(), a.ID())
+		})
+		assert.Contains(t, change.Remove().Consumers(), a.ID(), "A should be listed in Remove")
+
+		assertx.Closed(t, outA)
+		coord.Close()
+		assertx.Closed(t, outB)
+	})
+}
+
 func setup(ctx context.Context, t *testing.T, domains []model.Domain, withFastActivation bool) Coordinator {
 	t.Helper()
 
