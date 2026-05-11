@@ -876,6 +876,7 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 
 	if assigned.IsEmpty() {
 		c.disconnect(ctx, "no grant deregister", s) // no grants, safe to disconnect
+        c.alloc.Remove(s.consumer.ID())
 		return
 	}
 
