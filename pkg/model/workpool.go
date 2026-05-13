@@ -36,6 +36,12 @@ type joinStatus struct {
 	connected time.Time
 }
 
+type workPoolStats struct {
+	joined bool
+	shards int
+	grants int
+}
+
 // WorkPool manages a pool of grants assigned by Splitter to the consumer and provides updated clusters. It maintains
 // WorkPool with the service, re-connecting on failures, and continues to manage assigned grants when disconnected.
 //
@@ -54,6 +60,8 @@ type WorkPool struct {
 	status *joinStatus            // coordinator connectivity status
 	in     <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
 	out    chan<- ConsumerMessage // coordinator outgoing messages (empty and not closed, if disconnected)
+
+	stats workPoolStats
 
 	cluster  *ClusterMap
 	clusters chan Cluster
@@ -172,6 +180,8 @@ func (p *WorkPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessag
 	}
 	p.lease = nil
 
+    p.emitStatus(ctx)
+
 	return out, nil
 }
 
@@ -200,6 +210,8 @@ func (p *WorkPool) lostCoordinator(ctx context.Context) {
 			p.revokeGrant(ctx, leases, g, g.Grant.WithState(RevokedGrantState))
 		}
 	}
+
+	p.emitStatus(ctx)
 }
 
 func (p *WorkPool) process(ctx context.Context) {
@@ -230,7 +242,7 @@ steady:
 
 		case <-statsTimer.C:
 			// record metrics
-			log.Infof(ctx, "WorkPool %v, joined=%v, #shards=%v, #grants=%v", p.self, p.status != nil, len(p.shards), len(p.grants))
+			p.emitStatus(ctx)
 			p.emitMetrics(ctx)
 
 		case <-p.drain.Closed():
@@ -615,6 +627,16 @@ func (p *WorkPool) releaseGrant(ctx context.Context, gid GrantID) {
 		}
 	}
 }
+
+func (p *WorkPool) emitStatus(ctx context.Context) {
+	stats := workPoolStats{joined: p.status != nil, shards: len(p.shards), grants: len(p.grants)}
+	if stats == p.stats {
+		return
+	}
+	log.Infof(ctx, "WorkPool %v, joined=%v, #shards=%v, #grants=%v", p.self, stats.joined, stats.shards, stats.grants)
+	p.stats = stats
+}
+
 
 func (p *WorkPool) emitMetrics(ctx context.Context) {
 	p.resetMetrics(ctx)
