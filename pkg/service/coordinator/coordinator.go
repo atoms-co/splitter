@@ -960,8 +960,9 @@ func (c *coordinator) handleUpdate(ctx context.Context, s *consumerSession, upda
 
 	if !t.TrySend(ctx, model.NewNotify(update.Grant(), toGrant(transition))) {
 		log.Errorf(ctx, "Failed to send notify for grant %v for target %v on session %v. Disconnecting", g, transition, t)
-		c.disconnect(ctx, "stuck", s)
+		c.disconnect(ctx, "stuck", t)
 		c.recordAction(ctx, "notify", "failed")
+		return
 	}
 	c.recordAction(ctx, "notify", "ok")
 }
