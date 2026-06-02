@@ -3,8 +3,13 @@ package coordinator
 import (
 	"time"
 
+<<<<<<< HEAD:pkg/service/coordinator/tracking.go
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/p2quantile"
+=======
+	"atoms.co/infra/platform/wds2/pkg/model"
+	"atoms.co/infra/platform/wds2/pkg/util/p2quantile"
+>>>>>>> 9e9aec1eea9f ([wds2] Accept shard load request from consumer (#145187)):infra/platform/wds2/pkg/service/coordinator/tracking.go
 )
 
 const (
