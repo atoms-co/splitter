@@ -8,26 +8,26 @@ import (
 	"sync"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/metrics"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
-	"go.atoms.co/iox"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/mathx"
+	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/randx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
+	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -53,15 +53,6 @@ var (
 	)
 	numShards = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
-	)
-	domainLoad = metrics.NewTrackedGauge(
-		metrics.NewGauge("css.com/wds2/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
-	)
-	shardLoad = metrics.NewTrackedGauge(
-		metrics.NewGauge("css.com/wds2/coordinator_shard_load", "Shard load", core.QualifiedShardKeys...),
-	)
-	shardScore = metrics.NewTrackedGauge(
-		metrics.NewGauge("css.com/wds2/coordinator_shard_score", "Shard score", core.QualifiedShardKeys...),
 	)
 	domainLoad = metrics.NewTrackedGauge(
 		metrics.NewGauge("css.com/wds2/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
@@ -931,7 +922,7 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 
 	if assigned.IsEmpty() {
 		c.disconnect(ctx, "no grant deregister", s) // no grants, safe to disconnect
-        c.alloc.Remove(s.consumer.ID())
+		c.alloc.Remove(s.consumer.ID())
 		return
 	}
 

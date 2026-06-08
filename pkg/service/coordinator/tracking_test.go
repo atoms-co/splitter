@@ -5,8 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-
-	"atoms.co/infra/platform/wds2/pkg/model"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 func testStart() time.Time {

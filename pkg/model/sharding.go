@@ -25,11 +25,7 @@ func WithShards(shards int) ShardingPolicyOption {
 }
 
 func WithTrackLoad(track bool) ShardingPolicyOption {
-<<<<<<< HEAD:pkg/model/sharding.go
 	return func(policy *splitterpb.ShardingPolicy) {
-=======
-	return func(policy *wds2pb.ShardingPolicy) {
->>>>>>> 9e9aec1eea9f ([wds2] Accept shard load request from consumer (#145187)):infra/platform/wds2/pkg/model/sharding.go
 		policy.TrackLoad = track
 	}
 }

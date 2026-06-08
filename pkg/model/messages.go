@@ -171,19 +171,11 @@ func NewNotify(update, target Grant) ConsumerMessage {
 type Load int64
 
 func NewShardLoadMessage(loads []ShardLoad) ConsumerMessage {
-<<<<<<< HEAD:pkg/model/messages.go
 	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
 		Msg: &splitterpb.ClientMessage_Status_{
 			Status: &splitterpb.ClientMessage_Status{
 				Msg: &splitterpb.ClientMessage_Status_Load_{
 					Load: &splitterpb.ClientMessage_Status_Load{
-=======
-	return NewClientMessage(ClientMessage{pb: &wds2pb.ClientMessage{
-		Msg: &wds2pb.ClientMessage_Status_{
-			Status: &wds2pb.ClientMessage_Status{
-				Msg: &wds2pb.ClientMessage_Status_Load_{
-					Load: &wds2pb.ClientMessage_Status_Load{
->>>>>>> 9e9aec1eea9f ([wds2] Accept shard load request from consumer (#145187)):infra/platform/wds2/pkg/model/messages.go
 						Shards: slicex.Map(loads, UnwrapShardLoad),
 					},
 				},
@@ -655,66 +647,7 @@ func (m NotifyMessage) String() string {
 }
 
 type StatusMessage struct {
-<<<<<<< HEAD:pkg/model/messages.go
 	pb *splitterpb.ClientMessage_Status
-=======
-	pb *wds2pb.ClientMessage_Status
-}
-
-func (m StatusMessage) Load() StatusLoad {
-	return WrapStatusLoad(m.pb.GetLoad())
-}
-
-func (m StatusMessage) HasLoad() bool {
-	return m.pb.GetLoad() != nil
-}
-
-type StatusLoad struct {
-	pb *wds2pb.ClientMessage_Status_Load
-}
-
-func WrapStatusLoad(pb *wds2pb.ClientMessage_Status_Load) StatusLoad {
-	return StatusLoad{pb: pb}
-}
-
-func (m StatusLoad) Shards() []ShardLoad {
-	return slicex.Map(m.pb.GetShards(), WrapShardLoad)
-}
-
-type ShardLoad struct {
-	pb *wds2pb.ClientMessage_Status_Load_ShardLoad
-}
-
-func WrapShardLoad(pb *wds2pb.ClientMessage_Status_Load_ShardLoad) ShardLoad {
-	return ShardLoad{pb: pb}
-}
-
-func UnwrapShardLoad(m ShardLoad) *wds2pb.ClientMessage_Status_Load_ShardLoad {
-	return m.pb
-}
-
-func NewShardLoad(id GrantID, load Load) ShardLoad {
-	return ShardLoad{pb: &wds2pb.ClientMessage_Status_Load_ShardLoad{
-		Id:   string(id),
-		Load: int64(load),
-	}}
-}
-
-func (m ShardLoad) ID() GrantID {
-	return GrantID(m.pb.GetId())
-}
-
-func (m ShardLoad) Load() Load {
-	return Load(m.pb.GetLoad())
-}
-
-func (m ShardLoad) String() string {
-	return protox.MarshalTextString(m.pb)
-}
-
-type ClusterMessage struct {
-	pb *wds2pb.ClusterMessage
->>>>>>> 9e9aec1eea9f ([wds2] Accept shard load request from consumer (#145187)):infra/platform/wds2/pkg/model/messages.go
 }
 
 func (m StatusMessage) Load() StatusLoad {
