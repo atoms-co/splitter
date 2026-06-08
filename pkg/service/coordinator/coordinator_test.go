@@ -3,6 +3,7 @@ package coordinator
 import (
 	"context"
 	"slices"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -11,15 +12,16 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.atoms.co/lib/chanx"
+	"go.atoms.co/lib/testing/assertx"
+	"go.atoms.co/lib/uuidx"
+	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/slicex"
-	"go.atoms.co/lib/uuidx"
+	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -44,7 +46,7 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -97,7 +99,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -237,7 +239,7 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 
 		// (1) Setup 1 regional domain "domain1" and 2 unit "domain1" + "domain2". 1 shard each.
 
-		coord := setup(ctx, t, []model.Domain{domain, unit, unit2}, true)
+		coord := setup(ctx, t, []model.Domain{domain, unit, unit2}, WithFastActivation())
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -308,7 +310,7 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 		))
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -373,7 +375,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 		))
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		// Worker 1 joins for key "test"
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
@@ -458,7 +460,7 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 			model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))))
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, false)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -560,7 +562,7 @@ func TestCoordinator_RelinquishGrant(t *testing.T) {
 			model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))))
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -608,7 +610,7 @@ func TestCoordinator_CustomShards(t *testing.T) {
 
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		consumer1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		in1 := make(chan model.ConsumerMessage, 1)
@@ -676,7 +678,7 @@ func TestCoordinator_RegionSpecificShards(t *testing.T) {
 
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		expectedRegionResults := map[model.Region][]uuidx.Range{
 			"centralus": {
@@ -746,7 +748,7 @@ func TestObserverConnection(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
-		coord := setup(ctx, t, []model.Domain{}, true)
+		coord := setup(ctx, t, []model.Domain{}, WithFastActivation())
 
 		observer := location.NewNamedInstance("observer-1", location.New("us-west-2", "fubar-xyz123"))
 		observerInstance := model.NewInstance(observer, "foo")
@@ -780,7 +782,7 @@ func TestObserverReceivesClusterUpdates(t *testing.T) {
 		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		observer := location.NewInstance(location.New("us-west-2", "fubar-xyz123"))
 		observerInstance := model.NewInstance(observer, "foo")
@@ -825,7 +827,7 @@ func TestMultipleObservers(t *testing.T) {
 		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, true)
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
 
 		observers := make([]struct {
 			location location.Instance
@@ -884,7 +886,7 @@ func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
 		))
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, false)
+		coord := setup(ctx, t, []model.Domain{domain})
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		in1 := make(chan model.ConsumerMessage, 1)
@@ -935,7 +937,7 @@ func TestCoordinator_ConsumerSuspendAndResume(t *testing.T) {
 		))
 		require.NoError(t, err)
 
-		coord := setup(ctx, t, []model.Domain{domain}, false)
+		coord := setup(ctx, t, []model.Domain{domain})
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -1000,7 +1002,7 @@ func TestCoordinator_NoGrantsDeregisterRemovedImmediately(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
-		coord := setup(ctx, t, nil, true)
+		coord := setup(ctx, t, nil, WithFastActivation())
 
 		// Consumer A  will deregister with zero grants.
 		a := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
@@ -1036,7 +1038,103 @@ func TestCoordinator_NoGrantsDeregisterRemovedImmediately(t *testing.T) {
 	})
 }
 
-func setup(ctx context.Context, t *testing.T, domains []model.Domain, withFastActivation bool) Coordinator {
+func TestCoordinator_ConsumerShardLoad(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		// domain named domainName1 has track load enabled.
+		sp1 := model.NewShardingPolicy(1, model.WithTrackLoad(true))
+		opt1 := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp1)))
+		tracked, err := model.NewDomain(domainName, model.Unit, time.Now(), opt1)
+		require.NoError(t, err)
+
+		// domain named domainName2 has track load disabled
+		sp2 := model.NewShardingPolicy(1, model.WithTrackLoad(false))
+		opt2 := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp2)))
+		untracked, err := model.NewDomain(domainName2, model.Unit, time.Now(), opt2)
+		require.NoError(t, err)
+
+		rotateInterval := 1 * time.Minute
+		coord := setup(ctx, t, []model.Domain{tracked, untracked}, WithFastActivation(), WithTrackerRotateInterval(rotateInterval))
+		c := coord.(*coordinator)
+
+		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		in, out := connectConsumer(ctx, t, coord, w)
+
+		// should assign two shards
+		assign := readFn(t, out, isAssign)
+		require.Len(t, assign.Grants(), 1)
+		trackedShard := assign.Grants()[0].Shard()
+		trackedGrantId := assign.Grants()[0].ID()
+
+		assign = readFn(t, out, isAssign)
+		require.Len(t, assign.Grants(), 1)
+		untrackedShard := assign.Grants()[0].Shard()
+		untrackedGrantId := assign.Grants()[0].ID()
+		if trackedShard.Domain == domainName2 {
+			trackedShard, untrackedShard = untrackedShard, trackedShard
+			trackedGrantId, untrackedGrantId = untrackedGrantId, trackedGrantId
+		}
+
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			// out now contains lease extend message, drain and ignore
+			chanx.Drain(out)
+		}()
+		defer func() {
+			coord.Close()
+			assertx.Closed(t, out)
+			wg.Wait()
+		}()
+
+		// TrackLoad is not enabled
+		msg := []model.ShardLoad{model.NewShardLoad(untrackedGrantId, model.Load(10))}
+		in <- model.NewShardLoadMessage(msg)
+		synctest.Wait()
+		require.NotContains(t, c.trackers, domainName2)
+
+		// TrackLoad is enabled
+		expected := model.Load(150)
+		size := 300
+		msg = make([]model.ShardLoad, size+1)
+		for i := 0; i <= size; i++ {
+			msg[i] = model.NewShardLoad(trackedGrantId, model.Load(i))
+		}
+		in <- model.NewShardLoadMessage(msg)
+		synctest.Wait()
+
+		require.Contains(t, c.trackers, domainName)
+		dl, ok := c.trackers[domainName].domainLoad()
+		require.False(t, ok)
+		require.Equal(t, model.Load(0), dl, "load metrics should not publish until tracker rotates")
+
+		// Sleep rotateInterval + loadTicker time + 1 minute buffer
+		time.Sleep(rotateInterval + 11*time.Minute)
+		synctest.Wait()
+		dl, ok = c.trackers[domainName].domainLoad()
+		require.True(t, ok, "should publish metrics from the previous tracking window")
+		require.Equal(t, expected, dl)
+		sl := c.trackers[domainName].shardScoreOrDefault(trackedShard)
+		require.Equal(t, score(50.0), sl)
+	})
+}
+
+func connectConsumer(ctx context.Context, t *testing.T, coord Coordinator, w model.Instance) (chan model.ConsumerMessage, <-chan model.ConsumerMessage) {
+	t.Helper()
+
+	in := make(chan model.ConsumerMessage, 10)
+	in <- model.NewRegister(w, serviceName, nil, nil)
+
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), in)
+	require.NoError(t, err, "consumer failed to connect")
+
+	readFn(t, out, isClusterSnapshot)
+	return in, out
+}
+
+func setup(ctx context.Context, t *testing.T, domains []model.Domain, opts ...Option) Coordinator {
 	t.Helper()
 
 	loc := location.New("centralus", "splitter-0")
@@ -1055,11 +1153,7 @@ func setup(ctx context.Context, t *testing.T, domains []model.Domain, withFastAc
 
 	updates := make(chan core.Update)
 
-	var cOpts []Option
-	if withFastActivation {
-		cOpts = append(cOpts, WithFastActivation())
-	}
-	c := New(ctx, loc, serviceName, state, updates, cOpts...)
+	c := New(ctx, loc, serviceName, state, updates, opts...)
 	<-c.Initialized().Closed()
 
 	return c

@@ -77,6 +77,25 @@ message ClientMessage {
     Grant target = 2;
   }
 
+  // Status informs the coordinator about current status of a consumer
+  message Status {
+
+    // Load contains information about load experienced by the consumer
+    message Load {
+      // ShardLoad represent load of a shard.
+      message ShardLoad {
+        // GrandId. One GrantID is associated with one shard
+        string id = 1;
+        int64 load = 2;
+      }
+      repeated ShardLoad shards = 1;
+    }
+
+    oneof msg {
+       Load load = 1;
+    }
+  }
+
   oneof msg {
     Register register = 1;
     Deregister deregister = 2;
@@ -87,6 +106,7 @@ message ClientMessage {
     Released released = 7;
     Update update = 8;
     Notify notify = 9;
+    Status status = 10;
   }
 }
 

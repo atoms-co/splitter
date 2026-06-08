@@ -37,6 +37,8 @@ const (
 	leaseDuration = 40 * time.Second
 	// newConsumerSuspendDuration is the duration we suspend a new consumer for to account for network unavailability during consumer startup.
 	newConsumerSuspendDuration = 30 * time.Second
+	maxLoad                    = model.Load(1 << 31)
+	defaultRotateInterval      = 24 * time.Hour
 )
 
 var (
@@ -51,6 +53,15 @@ var (
 	)
 	numShards = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
+	)
+	domainLoad = metrics.NewTrackedGauge(
+		metrics.NewGauge("css.com/wds2/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
+	)
+	shardLoad = metrics.NewTrackedGauge(
+		metrics.NewGauge("css.com/wds2/coordinator_shard_load", "Shard load", core.QualifiedShardKeys...),
+	)
+	shardScore = metrics.NewTrackedGauge(
+		metrics.NewGauge("css.com/wds2/coordinator_shard_score", "Shard score", core.QualifiedShardKeys...),
 	)
 	numAssignmentsByLocation = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments_by_location", "Assignment by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
@@ -109,6 +120,12 @@ func WithRefreshDelay(delay time.Duration) Option {
 	}
 }
 
+func WithTrackerRotateInterval(interval time.Duration) Option {
+	return func(c *coordinator) {
+		c.trackerRotateInterval = interval
+	}
+}
+
 // coordinator is responsible for managing a single service. It accepts incoming connections from consumers and
 // distributes work among the consumers by assigning shards with leases.
 type coordinator struct {
@@ -132,6 +149,9 @@ type coordinator struct {
 	cluster   *model.ClusterMap
 	messages  chan *sessionx.Message[model.ConsumerMessage]
 
+	trackerRotateInterval time.Duration
+	trackers              map[model.QualifiedDomainName]*loadTracker
+
 	inject chan func()
 
 	drain, initialized iox.AsyncCloser
@@ -147,9 +167,13 @@ func New(ctx context.Context, loc location.Location, service model.QualifiedServ
 		consumers:    map[model.InstanceID]*consumerSession{},
 		observers:    map[model.InstanceID]*observerSession{},
 		messages:     make(chan *sessionx.Message[model.ConsumerMessage], 1000),
-		inject:       make(chan func()),
-		initialized:  iox.NewAsyncCloser(),
-		drain:        iox.NewAsyncCloser(),
+
+		trackerRotateInterval: defaultRotateInterval,
+		trackers:              map[model.QualifiedDomainName]*loadTracker{},
+
+		inject:      make(chan func()),
+		initialized: iox.NewAsyncCloser(),
+		drain:       iox.NewAsyncCloser(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -549,6 +573,9 @@ func (c *coordinator) process(ctx context.Context, updates <-chan core.Update) {
 	cluster := time.NewTicker(100*time.Millisecond + randx.Duration(50*time.Millisecond))
 	defer cluster.Stop()
 
+	loadTicker := time.NewTicker(10*time.Minute + randx.Duration(10*time.Second))
+	defer loadTicker.Stop()
+
 	var broadcast bool
 
 steady:
@@ -635,6 +662,21 @@ steady:
 			c.emitMetrics(ctx)
 
 			c.recordActionLatency(ctx, "tick", now)
+
+		case <-loadTicker.C:
+			now := time.Now()
+			c.removeTrackerIfDomainRemoved(ctx)
+			for _, t := range c.trackers {
+				t.rotateIfNeeded(now)
+			}
+
+			// (1) emit domain load and shard load metrics
+			c.emitLoadMetrics(ctx)
+
+			// (2) TODO: report load to leader to persist information
+
+			// (3) Record action latency
+			c.recordActionLatency(ctx, "tick/load", now)
 
 		case <-cluster.C:
 			// (1) Broadcast cluster changes
@@ -839,6 +881,10 @@ func (c *coordinator) handleConsumerMessage(ctx context.Context, s *consumerSess
 		revoke, _ := msg.Revoke()
 		c.handleRevoke(ctx, s, revoke)
 
+	case msg.IsStatus():
+		status, _ := msg.Status()
+		c.handleStatus(ctx, status)
+
 	default:
 		log.Errorf(ctx, "Internal: unexpected consumer message: %v", msg)
 	}
@@ -965,6 +1011,51 @@ func (c *coordinator) handleUpdate(ctx context.Context, s *consumerSession, upda
 		return
 	}
 	c.recordAction(ctx, "notify", "ok")
+}
+
+func (c *coordinator) handleStatus(ctx context.Context, status model.StatusMessage) {
+	switch {
+	case status.HasLoad():
+		for _, load := range status.Load().Shards() {
+			_, grantInfo, ok := c.cluster.Grant(load.ID())
+			if !ok {
+				log.Errorf(ctx, "Failed to get grant info for %v: %v", load.ID(), load)
+				continue
+			}
+			shard := grantInfo.Shard()
+			if c.name != shard.Domain.Service {
+				log.Errorf(ctx, "Coordinator for service %v received load for service %v.", c.name, shard.Domain.Service)
+				continue
+			}
+
+			domain, ok := c.cache.Domain(shard.Domain)
+			if !ok {
+				log.Errorf(ctx, "Failed to find domain %v", shard.Domain)
+				continue
+			}
+
+			if !domain.Config().ShardingPolicy().TrackLoad() {
+				log.Infof(ctx, "Load tracking for domain %v is not enabled, skipping", shard.Domain)
+				continue
+			}
+
+			if load.Load() < model.Load(0) || load.Load() > maxLoad {
+				log.Warnf(ctx, "Load %v is out of range [0, %v]", load.Load(), maxLoad)
+				continue
+			}
+
+			now := time.Now()
+			tracker, ok := c.trackers[shard.Domain]
+			if !ok {
+				tracker = newLoadTracker(now, c.trackerRotateInterval)
+				c.trackers[shard.Domain] = tracker
+			}
+			tracker.add(shard, load.Load())
+		}
+
+	default:
+		log.Warnf(ctx, "Unknown status message: %v", status)
+	}
 }
 
 type broadcastOpts struct {
@@ -1447,6 +1538,43 @@ func (c *coordinator) resetMetrics(ctx context.Context) {
 	numLoadImbalanceByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numPlacementByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numColocationByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+}
+
+// Remove tracker if domain was removed
+func (c *coordinator) removeTrackerIfDomainRemoved(ctx context.Context) {
+	for domain := range c.trackers {
+		if _, ok := c.cache.Domain(domain); !ok {
+			log.Infof(ctx, "Domain %v was removed, delete from tracker.", domain)
+			delete(c.trackers, domain)
+			continue
+		}
+	}
+}
+
+func (c *coordinator) emitLoadMetrics(ctx context.Context) {
+	domainLoad.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	shardLoad.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+	shardScore.Reset(ctx, core.QualifiedServiceTags(c.name)...)
+
+	for domain, tracker := range c.trackers {
+		load, ok := tracker.domainLoad()
+		if !ok {
+			continue
+		}
+		domainLoad.Set(ctx, float64(load), core.QualifiedDomainTags(domain)...)
+
+		shardLoads, ok := tracker.shardLoad()
+		if !ok {
+			continue
+		}
+
+		for shard, load := range shardLoads {
+			shardTags := slicex.CopyAppend(core.QualifiedDomainTags(domain), core.ShardTag(shard))
+			shardLoad.Set(ctx, float64(load), shardTags...)
+			score := tracker.shardScoreOrDefault(shard)
+			shardScore.Set(ctx, float64(score), shardTags...)
+		}
+	}
 }
 
 // Txn is a helper that constructs a syncx.TxnFn with the project specific error codes and injection channels

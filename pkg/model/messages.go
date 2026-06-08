@@ -5,10 +5,10 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 
@@ -168,6 +168,22 @@ func NewNotify(update, target Grant) ConsumerMessage {
 	}})
 }
 
+type Load int64
+
+func NewShardLoadMessage(loads []ShardLoad) ConsumerMessage {
+	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
+		Msg: &splitterpb.ClientMessage_Status_{
+			Status: &splitterpb.ClientMessage_Status{
+				Msg: &splitterpb.ClientMessage_Status_Load_{
+					Load: &splitterpb.ClientMessage_Status_Load{
+						Shards: slicex.Map(loads, UnwrapShardLoad),
+					},
+				},
+			},
+		},
+	}})
+}
+
 func NewClusterSnapshot(id ClusterID, assignments []Assignment, shards []Shard) ClusterMessage {
 	return ClusterMessage{pb: &splitterpb.ClusterMessage{
 		Id:        string(id.Origin.ID()),
@@ -295,6 +311,8 @@ func (m ClientMessage) Type() string {
 		return "Update"
 	case m.IsNotify():
 		return "Notify"
+	case m.IsStatus():
+		return "Status"
 	default:
 		return "unknown"
 	}
@@ -397,6 +415,17 @@ func (m ClientMessage) Notify() (NotifyMessage, bool) {
 		return NotifyMessage{}, false
 	}
 	return NotifyMessage{pb: m.pb.GetNotify()}, true
+}
+
+func (m ClientMessage) IsStatus() bool {
+	return m.pb.GetStatus() != nil
+}
+
+func (m ClientMessage) Status() (StatusMessage, bool) {
+	if !m.IsStatus() {
+		return StatusMessage{}, false
+	}
+	return StatusMessage{pb: m.pb.GetStatus()}, true
 }
 
 func (m ClientMessage) String() string {
@@ -614,6 +643,61 @@ func (m NotifyMessage) Target() Grant {
 }
 
 func (m NotifyMessage) String() string {
+	return protox.MarshalTextString(m.pb)
+}
+
+type StatusMessage struct {
+	pb *splitterpb.ClientMessage_Status
+}
+
+func (m StatusMessage) Load() StatusLoad {
+	return WrapStatusLoad(m.pb.GetLoad())
+}
+
+func (m StatusMessage) HasLoad() bool {
+	return m.pb.GetLoad() != nil
+}
+
+type StatusLoad struct {
+	pb *splitterpb.ClientMessage_Status_Load
+}
+
+func WrapStatusLoad(pb *splitterpb.ClientMessage_Status_Load) StatusLoad {
+	return StatusLoad{pb: pb}
+}
+
+func (m StatusLoad) Shards() []ShardLoad {
+	return slicex.Map(m.pb.GetShards(), WrapShardLoad)
+}
+
+type ShardLoad struct {
+	pb *splitterpb.ClientMessage_Status_Load_ShardLoad
+}
+
+func WrapShardLoad(pb *splitterpb.ClientMessage_Status_Load_ShardLoad) ShardLoad {
+	return ShardLoad{pb: pb}
+}
+
+func UnwrapShardLoad(m ShardLoad) *splitterpb.ClientMessage_Status_Load_ShardLoad {
+	return m.pb
+}
+
+func NewShardLoad(id GrantID, load Load) ShardLoad {
+	return ShardLoad{pb: &splitterpb.ClientMessage_Status_Load_ShardLoad{
+		Id:   string(id),
+		Load: int64(load),
+	}}
+}
+
+func (m ShardLoad) ID() GrantID {
+	return GrantID(m.pb.GetId())
+}
+
+func (m ShardLoad) Load() Load {
+	return Load(m.pb.GetLoad())
+}
+
+func (m ShardLoad) String() string {
 	return protox.MarshalTextString(m.pb)
 }
 
