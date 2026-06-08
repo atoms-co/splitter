@@ -36,6 +36,7 @@ type ClientMessage struct {
 	//	*ClientMessage_Released_
 	//	*ClientMessage_Update_
 	//	*ClientMessage_Notify_
+	//	*ClientMessage_Status_
 	Msg           isClientMessage_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -159,6 +160,15 @@ func (x *ClientMessage) GetNotify() *ClientMessage_Notify {
 	return nil
 }
 
+func (x *ClientMessage) GetStatus() *ClientMessage_Status {
+	if x != nil {
+		if x, ok := x.Msg.(*ClientMessage_Status_); ok {
+			return x.Status
+		}
+	}
+	return nil
+}
+
 type isClientMessage_Msg interface {
 	isClientMessage_Msg()
 }
@@ -199,6 +209,10 @@ type ClientMessage_Notify_ struct {
 	Notify *ClientMessage_Notify `protobuf:"bytes,9,opt,name=notify,proto3,oneof"`
 }
 
+type ClientMessage_Status_ struct {
+	Status *ClientMessage_Status `protobuf:"bytes,10,opt,name=status,proto3,oneof"`
+}
+
 func (*ClientMessage_Register_) isClientMessage_Msg() {}
 
 func (*ClientMessage_Deregister_) isClientMessage_Msg() {}
@@ -216,6 +230,8 @@ func (*ClientMessage_Released_) isClientMessage_Msg() {}
 func (*ClientMessage_Update_) isClientMessage_Msg() {}
 
 func (*ClientMessage_Notify_) isClientMessage_Msg() {}
+
+func (*ClientMessage_Status_) isClientMessage_Msg() {}
 
 type ConsumerMessage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -809,6 +825,72 @@ func (x *ClientMessage_Notify) GetTarget() *Grant {
 	return nil
 }
 
+type ClientMessage_Status struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Msg:
+	//
+	//	*ClientMessage_Status_Load_
+	Msg           isClientMessage_Status_Msg `protobuf_oneof:"msg"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClientMessage_Status) Reset() {
+	*x = ClientMessage_Status{}
+	mi := &file_atoms_splitter_consumer_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClientMessage_Status) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClientMessage_Status) ProtoMessage() {}
+
+func (x *ClientMessage_Status) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_consumer_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClientMessage_Status.ProtoReflect.Descriptor instead.
+func (*ClientMessage_Status) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_consumer_proto_rawDescGZIP(), []int{0, 9}
+}
+
+func (x *ClientMessage_Status) GetMsg() isClientMessage_Status_Msg {
+	if x != nil {
+		return x.Msg
+	}
+	return nil
+}
+
+func (x *ClientMessage_Status) GetLoad() *ClientMessage_Status_Load {
+	if x != nil {
+		if x, ok := x.Msg.(*ClientMessage_Status_Load_); ok {
+			return x.Load
+		}
+	}
+	return nil
+}
+
+type isClientMessage_Status_Msg interface {
+	isClientMessage_Status_Msg()
+}
+
+type ClientMessage_Status_Load_ struct {
+	Load *ClientMessage_Status_Load `protobuf:"bytes,1,opt,name=load,proto3,oneof"`
+}
+
+func (*ClientMessage_Status_Load_) isClientMessage_Status_Msg() {}
+
 type ClientMessage_Register_Options struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Names         []*DomainKeyName       `protobuf:"bytes,1,rep,name=names,proto3" json:"names,omitempty"`
@@ -819,7 +901,7 @@ type ClientMessage_Register_Options struct {
 
 func (x *ClientMessage_Register_Options) Reset() {
 	*x = ClientMessage_Register_Options{}
-	mi := &file_atoms_splitter_consumer_proto_msgTypes[12]
+	mi := &file_atoms_splitter_consumer_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -831,7 +913,7 @@ func (x *ClientMessage_Register_Options) String() string {
 func (*ClientMessage_Register_Options) ProtoMessage() {}
 
 func (x *ClientMessage_Register_Options) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_consumer_proto_msgTypes[12]
+	mi := &file_atoms_splitter_consumer_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -861,11 +943,107 @@ func (x *ClientMessage_Register_Options) GetCapacityLimit() uint64 {
 	return 0
 }
 
+type ClientMessage_Status_Load struct {
+	state         protoimpl.MessageState                 `protogen:"open.v1"`
+	Shards        []*ClientMessage_Status_Load_ShardLoad `protobuf:"bytes,1,rep,name=shards,proto3" json:"shards,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClientMessage_Status_Load) Reset() {
+	*x = ClientMessage_Status_Load{}
+	mi := &file_atoms_splitter_consumer_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClientMessage_Status_Load) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClientMessage_Status_Load) ProtoMessage() {}
+
+func (x *ClientMessage_Status_Load) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_consumer_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClientMessage_Status_Load.ProtoReflect.Descriptor instead.
+func (*ClientMessage_Status_Load) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_consumer_proto_rawDescGZIP(), []int{0, 9, 0}
+}
+
+func (x *ClientMessage_Status_Load) GetShards() []*ClientMessage_Status_Load_ShardLoad {
+	if x != nil {
+		return x.Shards
+	}
+	return nil
+}
+
+type ClientMessage_Status_Load_ShardLoad struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Load          int64                  `protobuf:"varint,2,opt,name=load,proto3" json:"load,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ClientMessage_Status_Load_ShardLoad) Reset() {
+	*x = ClientMessage_Status_Load_ShardLoad{}
+	mi := &file_atoms_splitter_consumer_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ClientMessage_Status_Load_ShardLoad) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ClientMessage_Status_Load_ShardLoad) ProtoMessage() {}
+
+func (x *ClientMessage_Status_Load_ShardLoad) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_consumer_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ClientMessage_Status_Load_ShardLoad.ProtoReflect.Descriptor instead.
+func (*ClientMessage_Status_Load_ShardLoad) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_consumer_proto_rawDescGZIP(), []int{0, 9, 0, 0}
+}
+
+func (x *ClientMessage_Status_Load_ShardLoad) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *ClientMessage_Status_Load_ShardLoad) GetLoad() int64 {
+	if x != nil {
+		return x.Load
+	}
+	return 0
+}
+
 var File_atoms_splitter_consumer_proto protoreflect.FileDescriptor
 
 const file_atoms_splitter_consumer_proto_rawDesc = "" +
 	"\n" +
-	"\x1datoms/splitter/consumer.proto\x12\x0eatoms.splitter\x1a\x1fgoogle/protobuf/timestamp.proto\x1a0atoms/splitter/lib/service/session/session.proto\x1a\x1catoms/splitter/cluster.proto\x1a\x1aatoms/splitter/model.proto\"\xe3\v\n" +
+	"\x1datoms/splitter/consumer.proto\x12\x0eatoms.splitter\x1a\x1fgoogle/protobuf/timestamp.proto\x1a0atoms/splitter/lib/service/session/session.proto\x1a\x1catoms/splitter/cluster.proto\x1a\x1aatoms/splitter/model.proto\"\xfd\r\n" +
 	"\rClientMessage\x12D\n" +
 	"\bregister\x18\x01 \x01(\v2&.atoms.splitter.ClientMessage.RegisterH\x00R\bregister\x12J\n" +
 	"\n" +
@@ -877,7 +1055,9 @@ const file_atoms_splitter_consumer_proto_rawDesc = "" +
 	"\x06revoke\x18\x06 \x01(\v2$.atoms.splitter.ClientMessage.RevokeH\x00R\x06revoke\x12D\n" +
 	"\breleased\x18\a \x01(\v2&.atoms.splitter.ClientMessage.ReleasedH\x00R\breleased\x12>\n" +
 	"\x06update\x18\b \x01(\v2$.atoms.splitter.ClientMessage.UpdateH\x00R\x06update\x12>\n" +
-	"\x06notify\x18\t \x01(\v2$.atoms.splitter.ClientMessage.NotifyH\x00R\x06notify\x1a\x9f\x03\n" +
+	"\x06notify\x18\t \x01(\v2$.atoms.splitter.ClientMessage.NotifyH\x00R\x06notify\x12>\n" +
+	"\x06status\x18\n" +
+	" \x01(\v2$.atoms.splitter.ClientMessage.StatusH\x00R\x06status\x1a\x9f\x03\n" +
 	"\bRegister\x124\n" +
 	"\bconsumer\x18\x01 \x01(\v2\x18.atoms.splitter.InstanceR\bconsumer\x12>\n" +
 	"\aservice\x18\x02 \x01(\v2$.atoms.splitter.QualifiedServiceNameR\aservice\x12=\n" +
@@ -903,7 +1083,15 @@ const file_atoms_splitter_consumer_proto_rawDesc = "" +
 	"\x05grant\x18\x01 \x01(\v2\x15.atoms.splitter.GrantR\x05grant\x1af\n" +
 	"\x06Notify\x12-\n" +
 	"\x06update\x18\x01 \x01(\v2\x15.atoms.splitter.GrantR\x06update\x12-\n" +
-	"\x06target\x18\x02 \x01(\v2\x15.atoms.splitter.GrantR\x06targetB\x05\n" +
+	"\x06target\x18\x02 \x01(\v2\x15.atoms.splitter.GrantR\x06target\x1a\xd7\x01\n" +
+	"\x06Status\x12?\n" +
+	"\x04load\x18\x01 \x01(\v2).atoms.splitter.ClientMessage.Status.LoadH\x00R\x04load\x1a\x84\x01\n" +
+	"\x04Load\x12K\n" +
+	"\x06shards\x18\x01 \x03(\v23.atoms.splitter.ClientMessage.Status.Load.ShardLoadR\x06shards\x1a/\n" +
+	"\tShardLoad\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04load\x18\x02 \x01(\x03R\x04loadB\x05\n" +
+	"\x03msgB\x05\n" +
 	"\x03msg\"\x8d\x01\n" +
 	"\x0fConsumerMessage\x127\n" +
 	"\x06client\x18\x01 \x01(\v2\x1d.atoms.splitter.ClientMessageH\x00R\x06client\x12:\n" +
@@ -927,29 +1115,32 @@ func file_atoms_splitter_consumer_proto_rawDescGZIP() []byte {
 	return file_atoms_splitter_consumer_proto_rawDescData
 }
 
-var file_atoms_splitter_consumer_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_atoms_splitter_consumer_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_atoms_splitter_consumer_proto_goTypes = []any{
-	(*ClientMessage)(nil),                  // 0: atoms.splitter.ClientMessage
-	(*ConsumerMessage)(nil),                // 1: atoms.splitter.ConsumerMessage
-	(*JoinMessage)(nil),                    // 2: atoms.splitter.JoinMessage
-	(*ClientMessage_Register)(nil),         // 3: atoms.splitter.ClientMessage.Register
-	(*ClientMessage_Deregister)(nil),       // 4: atoms.splitter.ClientMessage.Deregister
-	(*ClientMessage_Extend)(nil),           // 5: atoms.splitter.ClientMessage.Extend
-	(*ClientMessage_Assign)(nil),           // 6: atoms.splitter.ClientMessage.Assign
-	(*ClientMessage_Promote)(nil),          // 7: atoms.splitter.ClientMessage.Promote
-	(*ClientMessage_Revoke)(nil),           // 8: atoms.splitter.ClientMessage.Revoke
-	(*ClientMessage_Released)(nil),         // 9: atoms.splitter.ClientMessage.Released
-	(*ClientMessage_Update)(nil),           // 10: atoms.splitter.ClientMessage.Update
-	(*ClientMessage_Notify)(nil),           // 11: atoms.splitter.ClientMessage.Notify
-	(*ClientMessage_Register_Options)(nil), // 12: atoms.splitter.ClientMessage.Register.Options
-	(*ClusterMessage)(nil),                 // 13: atoms.splitter.ClusterMessage
-	(*pb.Message)(nil),                     // 14: atoms.splitter.lib.service.service.Message
-	(*Instance)(nil),                       // 15: atoms.splitter.Instance
-	(*QualifiedServiceName)(nil),           // 16: atoms.splitter.QualifiedServiceName
-	(*QualifiedDomainName)(nil),            // 17: atoms.splitter.QualifiedDomainName
-	(*Grant)(nil),                          // 18: atoms.splitter.Grant
-	(*timestamppb.Timestamp)(nil),          // 19: google.protobuf.Timestamp
-	(*DomainKeyName)(nil),                  // 20: atoms.splitter.DomainKeyName
+	(*ClientMessage)(nil),                       // 0: atoms.splitter.ClientMessage
+	(*ConsumerMessage)(nil),                     // 1: atoms.splitter.ConsumerMessage
+	(*JoinMessage)(nil),                         // 2: atoms.splitter.JoinMessage
+	(*ClientMessage_Register)(nil),              // 3: atoms.splitter.ClientMessage.Register
+	(*ClientMessage_Deregister)(nil),            // 4: atoms.splitter.ClientMessage.Deregister
+	(*ClientMessage_Extend)(nil),                // 5: atoms.splitter.ClientMessage.Extend
+	(*ClientMessage_Assign)(nil),                // 6: atoms.splitter.ClientMessage.Assign
+	(*ClientMessage_Promote)(nil),               // 7: atoms.splitter.ClientMessage.Promote
+	(*ClientMessage_Revoke)(nil),                // 8: atoms.splitter.ClientMessage.Revoke
+	(*ClientMessage_Released)(nil),              // 9: atoms.splitter.ClientMessage.Released
+	(*ClientMessage_Update)(nil),                // 10: atoms.splitter.ClientMessage.Update
+	(*ClientMessage_Notify)(nil),                // 11: atoms.splitter.ClientMessage.Notify
+	(*ClientMessage_Status)(nil),                // 12: atoms.splitter.ClientMessage.Status
+	(*ClientMessage_Register_Options)(nil),      // 13: atoms.splitter.ClientMessage.Register.Options
+	(*ClientMessage_Status_Load)(nil),           // 14: atoms.splitter.ClientMessage.Status.Load
+	(*ClientMessage_Status_Load_ShardLoad)(nil), // 15: atoms.splitter.ClientMessage.Status.Load.ShardLoad
+	(*ClusterMessage)(nil),                      // 16: atoms.splitter.ClusterMessage
+	(*pb.Message)(nil),                          // 17: atoms.splitter.lib.service.service.Message
+	(*Instance)(nil),                            // 18: atoms.splitter.Instance
+	(*QualifiedServiceName)(nil),                // 19: atoms.splitter.QualifiedServiceName
+	(*QualifiedDomainName)(nil),                 // 20: atoms.splitter.QualifiedDomainName
+	(*Grant)(nil),                               // 21: atoms.splitter.Grant
+	(*timestamppb.Timestamp)(nil),               // 22: google.protobuf.Timestamp
+	(*DomainKeyName)(nil),                       // 23: atoms.splitter.DomainKeyName
 }
 var file_atoms_splitter_consumer_proto_depIdxs = []int32{
 	3,  // 0: atoms.splitter.ClientMessage.register:type_name -> atoms.splitter.ClientMessage.Register
@@ -961,29 +1152,32 @@ var file_atoms_splitter_consumer_proto_depIdxs = []int32{
 	9,  // 6: atoms.splitter.ClientMessage.released:type_name -> atoms.splitter.ClientMessage.Released
 	10, // 7: atoms.splitter.ClientMessage.update:type_name -> atoms.splitter.ClientMessage.Update
 	11, // 8: atoms.splitter.ClientMessage.notify:type_name -> atoms.splitter.ClientMessage.Notify
-	0,  // 9: atoms.splitter.ConsumerMessage.client:type_name -> atoms.splitter.ClientMessage
-	13, // 10: atoms.splitter.ConsumerMessage.cluster:type_name -> atoms.splitter.ClusterMessage
-	14, // 11: atoms.splitter.JoinMessage.session:type_name -> atoms.splitter.lib.service.service.Message
-	1,  // 12: atoms.splitter.JoinMessage.consumer:type_name -> atoms.splitter.ConsumerMessage
-	15, // 13: atoms.splitter.ClientMessage.Register.consumer:type_name -> atoms.splitter.Instance
-	16, // 14: atoms.splitter.ClientMessage.Register.service:type_name -> atoms.splitter.QualifiedServiceName
-	17, // 15: atoms.splitter.ClientMessage.Register.domains:type_name -> atoms.splitter.QualifiedDomainName
-	18, // 16: atoms.splitter.ClientMessage.Register.active:type_name -> atoms.splitter.Grant
-	12, // 17: atoms.splitter.ClientMessage.Register.options:type_name -> atoms.splitter.ClientMessage.Register.Options
-	19, // 18: atoms.splitter.ClientMessage.Extend.lease:type_name -> google.protobuf.Timestamp
-	18, // 19: atoms.splitter.ClientMessage.Assign.grants:type_name -> atoms.splitter.Grant
-	18, // 20: atoms.splitter.ClientMessage.Promote.grants:type_name -> atoms.splitter.Grant
-	18, // 21: atoms.splitter.ClientMessage.Revoke.grants:type_name -> atoms.splitter.Grant
-	18, // 22: atoms.splitter.ClientMessage.Released.grants:type_name -> atoms.splitter.Grant
-	18, // 23: atoms.splitter.ClientMessage.Update.grant:type_name -> atoms.splitter.Grant
-	18, // 24: atoms.splitter.ClientMessage.Notify.update:type_name -> atoms.splitter.Grant
-	18, // 25: atoms.splitter.ClientMessage.Notify.target:type_name -> atoms.splitter.Grant
-	20, // 26: atoms.splitter.ClientMessage.Register.Options.names:type_name -> atoms.splitter.DomainKeyName
-	27, // [27:27] is the sub-list for method output_type
-	27, // [27:27] is the sub-list for method input_type
-	27, // [27:27] is the sub-list for extension type_name
-	27, // [27:27] is the sub-list for extension extendee
-	0,  // [0:27] is the sub-list for field type_name
+	12, // 9: atoms.splitter.ClientMessage.status:type_name -> atoms.splitter.ClientMessage.Status
+	0,  // 10: atoms.splitter.ConsumerMessage.client:type_name -> atoms.splitter.ClientMessage
+	16, // 11: atoms.splitter.ConsumerMessage.cluster:type_name -> atoms.splitter.ClusterMessage
+	17, // 12: atoms.splitter.JoinMessage.session:type_name -> atoms.splitter.lib.service.service.Message
+	1,  // 13: atoms.splitter.JoinMessage.consumer:type_name -> atoms.splitter.ConsumerMessage
+	18, // 14: atoms.splitter.ClientMessage.Register.consumer:type_name -> atoms.splitter.Instance
+	19, // 15: atoms.splitter.ClientMessage.Register.service:type_name -> atoms.splitter.QualifiedServiceName
+	20, // 16: atoms.splitter.ClientMessage.Register.domains:type_name -> atoms.splitter.QualifiedDomainName
+	21, // 17: atoms.splitter.ClientMessage.Register.active:type_name -> atoms.splitter.Grant
+	13, // 18: atoms.splitter.ClientMessage.Register.options:type_name -> atoms.splitter.ClientMessage.Register.Options
+	22, // 19: atoms.splitter.ClientMessage.Extend.lease:type_name -> google.protobuf.Timestamp
+	21, // 20: atoms.splitter.ClientMessage.Assign.grants:type_name -> atoms.splitter.Grant
+	21, // 21: atoms.splitter.ClientMessage.Promote.grants:type_name -> atoms.splitter.Grant
+	21, // 22: atoms.splitter.ClientMessage.Revoke.grants:type_name -> atoms.splitter.Grant
+	21, // 23: atoms.splitter.ClientMessage.Released.grants:type_name -> atoms.splitter.Grant
+	21, // 24: atoms.splitter.ClientMessage.Update.grant:type_name -> atoms.splitter.Grant
+	21, // 25: atoms.splitter.ClientMessage.Notify.update:type_name -> atoms.splitter.Grant
+	21, // 26: atoms.splitter.ClientMessage.Notify.target:type_name -> atoms.splitter.Grant
+	14, // 27: atoms.splitter.ClientMessage.Status.load:type_name -> atoms.splitter.ClientMessage.Status.Load
+	23, // 28: atoms.splitter.ClientMessage.Register.Options.names:type_name -> atoms.splitter.DomainKeyName
+	15, // 29: atoms.splitter.ClientMessage.Status.Load.shards:type_name -> atoms.splitter.ClientMessage.Status.Load.ShardLoad
+	30, // [30:30] is the sub-list for method output_type
+	30, // [30:30] is the sub-list for method input_type
+	30, // [30:30] is the sub-list for extension type_name
+	30, // [30:30] is the sub-list for extension extendee
+	0,  // [0:30] is the sub-list for field type_name
 }
 
 func init() { file_atoms_splitter_consumer_proto_init() }
@@ -1003,6 +1197,7 @@ func file_atoms_splitter_consumer_proto_init() {
 		(*ClientMessage_Released_)(nil),
 		(*ClientMessage_Update_)(nil),
 		(*ClientMessage_Notify_)(nil),
+		(*ClientMessage_Status_)(nil),
 	}
 	file_atoms_splitter_consumer_proto_msgTypes[1].OneofWrappers = []any{
 		(*ConsumerMessage_Client)(nil),
@@ -1012,13 +1207,16 @@ func file_atoms_splitter_consumer_proto_init() {
 		(*JoinMessage_Session)(nil),
 		(*JoinMessage_Consumer)(nil),
 	}
+	file_atoms_splitter_consumer_proto_msgTypes[12].OneofWrappers = []any{
+		(*ClientMessage_Status_Load_)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atoms_splitter_consumer_proto_rawDesc), len(file_atoms_splitter_consumer_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   13,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

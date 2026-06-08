@@ -26,12 +26,14 @@ const (
 	InstanceIDKey   metrics.Key = "instance_id"
 	LocationKey     metrics.Key = "location"
 	ShardRegionKey  metrics.Key = "shard_region"
+	ShardKey        metrics.Key = "shard"
 )
 
 var (
 	QualifiedDomainKeys    = []metrics.Key{TenantKey, ServiceKey, DomainKey}
 	QualifiedServiceKeys   = []metrics.Key{TenantKey, ServiceKey}
 	QualifiedPlacementKeys = []metrics.Key{TenantKey, PlacementKey}
+	QualifiedShardKeys     = []metrics.Key{TenantKey, ServiceKey, DomainKey, ShardKey}
 
 	GrantDurationBucketOptions = &metrics.BucketOptions{
 		DistributionType: metrics.UserDefined,
@@ -129,4 +131,8 @@ func LocationTag(v location.Location) metrics.Tag {
 
 func ShardRegionTag(v location.Region) metrics.Tag {
 	return metrics.Tag{Key: ShardRegionKey, Value: fmt.Sprintf("%v", v)}
+}
+
+func ShardTag(s model.Shard) metrics.Tag {
+	return metrics.Tag{Key: ShardKey, Value: s.From.String()[:4]}
 }

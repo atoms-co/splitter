@@ -10,10 +10,10 @@ import (
 
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/mapx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
-	splitteruuidx "go.atoms.co/splitter/pkg/util/uuidx"
+	"go.atoms.co/slicex"
 	splitterpb "go.atoms.co/splitter/pb"
+	splitteruuidx "go.atoms.co/splitter/pkg/util/uuidx"
 )
 
 type ShardingPolicyOption func(policy *splitterpb.ShardingPolicy)
@@ -21,6 +21,12 @@ type ShardingPolicyOption func(policy *splitterpb.ShardingPolicy)
 func WithShards(shards int) ShardingPolicyOption {
 	return func(policy *splitterpb.ShardingPolicy) {
 		policy.Shards = int64(shards)
+	}
+}
+
+func WithTrackLoad(track bool) ShardingPolicyOption {
+	return func(policy *splitterpb.ShardingPolicy) {
+		policy.TrackLoad = track
 	}
 }
 
@@ -155,6 +161,9 @@ func (s ShardingPolicy) ShardingPolicyShards() ([]ShardingPolicyShard, error) {
 	}
 
 	return result, nil
+}
+func (s ShardingPolicy) TrackLoad() bool {
+	return s.pb.GetTrackLoad()
 }
 
 // ShardKV is a key-value with a shard.
