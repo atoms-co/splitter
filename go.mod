@@ -58,8 +58,8 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/stretchr/testify v1.11.1
 	go.atoms.co/iox v1.0.0
-	go.atoms.co/lib v1.1.0
-	go.atoms.co/slicex v1.0.1
+	go.atoms.co/lib v1.2.0
+	go.atoms.co/slicex v1.1.0
 	go.uber.org/multierr v1.11.0
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.36.9
