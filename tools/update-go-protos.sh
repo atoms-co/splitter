@@ -2,6 +2,8 @@
 
 # Updates Go files generated from protobufs using Bazel
 
+set -euo pipefail
+
 cd "$(dirname "$0")"/..
 
 # Location
