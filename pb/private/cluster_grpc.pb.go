@@ -19,7 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ClusterService_Notify_FullMethodName = "/atoms.splitter.private.ClusterService/Notify"
+	ClusterService_Notify_FullMethodName     = "/atoms.splitter.private.ClusterService/Notify"
+	ClusterService_AddNode_FullMethodName    = "/atoms.splitter.private.ClusterService/AddNode"
+	ClusterService_RemoveNode_FullMethodName = "/atoms.splitter.private.ClusterService/RemoveNode"
 )
 
 // ClusterServiceClient is the client API for ClusterService service.
@@ -27,6 +29,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ClusterServiceClient interface {
 	Notify(ctx context.Context, in *ClusterNotifyRequest, opts ...grpc.CallOption) (*ClusterNotifyResponse, error)
+	AddNode(ctx context.Context, in *ClusterAddNodeRequest, opts ...grpc.CallOption) (*ClusterAddNodeResponse, error)
+	RemoveNode(ctx context.Context, in *ClusterRemoveNodeRequest, opts ...grpc.CallOption) (*ClusterRemoveNodeResponse, error)
 }
 
 type clusterServiceClient struct {
@@ -47,11 +51,33 @@ func (c *clusterServiceClient) Notify(ctx context.Context, in *ClusterNotifyRequ
 	return out, nil
 }
 
+func (c *clusterServiceClient) AddNode(ctx context.Context, in *ClusterAddNodeRequest, opts ...grpc.CallOption) (*ClusterAddNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ClusterAddNodeResponse)
+	err := c.cc.Invoke(ctx, ClusterService_AddNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *clusterServiceClient) RemoveNode(ctx context.Context, in *ClusterRemoveNodeRequest, opts ...grpc.CallOption) (*ClusterRemoveNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ClusterRemoveNodeResponse)
+	err := c.cc.Invoke(ctx, ClusterService_RemoveNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClusterServiceServer is the server API for ClusterService service.
 // All implementations should embed UnimplementedClusterServiceServer
 // for forward compatibility.
 type ClusterServiceServer interface {
 	Notify(context.Context, *ClusterNotifyRequest) (*ClusterNotifyResponse, error)
+	AddNode(context.Context, *ClusterAddNodeRequest) (*ClusterAddNodeResponse, error)
+	RemoveNode(context.Context, *ClusterRemoveNodeRequest) (*ClusterRemoveNodeResponse, error)
 }
 
 // UnimplementedClusterServiceServer should be embedded to have
@@ -63,6 +89,12 @@ type UnimplementedClusterServiceServer struct{}
 
 func (UnimplementedClusterServiceServer) Notify(context.Context, *ClusterNotifyRequest) (*ClusterNotifyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Notify not implemented")
+}
+func (UnimplementedClusterServiceServer) AddNode(context.Context, *ClusterAddNodeRequest) (*ClusterAddNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddNode not implemented")
+}
+func (UnimplementedClusterServiceServer) RemoveNode(context.Context, *ClusterRemoveNodeRequest) (*ClusterRemoveNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RemoveNode not implemented")
 }
 func (UnimplementedClusterServiceServer) testEmbeddedByValue() {}
 
@@ -102,6 +134,42 @@ func _ClusterService_Notify_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClusterService_AddNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClusterAddNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).AddNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_AddNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).AddNode(ctx, req.(*ClusterAddNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ClusterService_RemoveNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ClusterRemoveNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClusterServiceServer).RemoveNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClusterService_RemoveNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClusterServiceServer).RemoveNode(ctx, req.(*ClusterRemoveNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClusterService_ServiceDesc is the grpc.ServiceDesc for ClusterService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -112,6 +180,14 @@ var ClusterService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Notify",
 			Handler:    _ClusterService_Notify_Handler,
+		},
+		{
+			MethodName: "AddNode",
+			Handler:    _ClusterService_AddNode_Handler,
+		},
+		{
+			MethodName: "RemoveNode",
+			Handler:    _ClusterService_RemoveNode_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
