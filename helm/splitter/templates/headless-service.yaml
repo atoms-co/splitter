@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "splitter.headlessName" . }}
+  labels:
+    {{- include "splitter.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  # Publish pod IPs in DNS before readiness clears, so Raft nodes can discover each other on startup.
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "splitter.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: raft
+      port: {{ .Values.ports.raft }}
+      targetPort: raft
+    - name: internal-grpc
+      port: {{ .Values.ports.internal }}
+      targetPort: internal-grpc
