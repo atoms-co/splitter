@@ -28,6 +28,21 @@ message RaftInfoResponse {
   map<string, string> raft_state = 1;
 }
 
+message RaftAddNodeRequest {
+  string id = 1;
+  string address = 2;
+}
+
+message RaftAddNodeResponse {
+}
+
+message RaftRemoveNodeRequest {
+  string id = 1;
+}
+
+message RaftRemoveNodeResponse {
+}
+
 message SnapshotRequest {
 }
 
@@ -110,6 +125,12 @@ message ConsumerDrainResponse {
 service OperationService {
   // RaftInfo sends an info request to a raft server.
   rpc RaftInfo (RaftInfoRequest) returns (RaftInfoResponse);
+
+  // RaftAddNode adds a node to the RAFT cluster.
+  rpc RaftAddNode (RaftAddNodeRequest) returns (RaftAddNodeResponse);
+
+  // RaftRemoveNode removes a node from the RAFT cluster.
+  rpc RaftRemoveNode (RaftRemoveNodeRequest) returns (RaftRemoveNodeResponse);
 
   // Snapshot sends a Snapshot request to the Leader
   rpc Snapshot (SnapshotRequest) returns (SnapshotResponse);

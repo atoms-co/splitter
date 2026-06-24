@@ -171,6 +171,174 @@ func (x *RaftInfoResponse) GetRaftState() map[string]string {
 	return nil
 }
 
+type RaftAddNodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Address       string                 `protobuf:"bytes,2,opt,name=address,proto3" json:"address,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RaftAddNodeRequest) Reset() {
+	*x = RaftAddNodeRequest{}
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RaftAddNodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RaftAddNodeRequest) ProtoMessage() {}
+
+func (x *RaftAddNodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RaftAddNodeRequest.ProtoReflect.Descriptor instead.
+func (*RaftAddNodeRequest) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *RaftAddNodeRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *RaftAddNodeRequest) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+type RaftAddNodeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RaftAddNodeResponse) Reset() {
+	*x = RaftAddNodeResponse{}
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RaftAddNodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RaftAddNodeResponse) ProtoMessage() {}
+
+func (x *RaftAddNodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RaftAddNodeResponse.ProtoReflect.Descriptor instead.
+func (*RaftAddNodeResponse) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{4}
+}
+
+type RaftRemoveNodeRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RaftRemoveNodeRequest) Reset() {
+	*x = RaftRemoveNodeRequest{}
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RaftRemoveNodeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RaftRemoveNodeRequest) ProtoMessage() {}
+
+func (x *RaftRemoveNodeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RaftRemoveNodeRequest.ProtoReflect.Descriptor instead.
+func (*RaftRemoveNodeRequest) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RaftRemoveNodeRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+type RaftRemoveNodeResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RaftRemoveNodeResponse) Reset() {
+	*x = RaftRemoveNodeResponse{}
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RaftRemoveNodeResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RaftRemoveNodeResponse) ProtoMessage() {}
+
+func (x *RaftRemoveNodeResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RaftRemoveNodeResponse.ProtoReflect.Descriptor instead.
+func (*RaftRemoveNodeResponse) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{6}
+}
+
 type SnapshotRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -179,7 +347,7 @@ type SnapshotRequest struct {
 
 func (x *SnapshotRequest) Reset() {
 	*x = SnapshotRequest{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[3]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -191,7 +359,7 @@ func (x *SnapshotRequest) String() string {
 func (*SnapshotRequest) ProtoMessage() {}
 
 func (x *SnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[3]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -204,7 +372,7 @@ func (x *SnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotRequest.ProtoReflect.Descriptor instead.
 func (*SnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{3}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{7}
 }
 
 type SnapshotResponse struct {
@@ -216,7 +384,7 @@ type SnapshotResponse struct {
 
 func (x *SnapshotResponse) Reset() {
 	*x = SnapshotResponse{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[4]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -228,7 +396,7 @@ func (x *SnapshotResponse) String() string {
 func (*SnapshotResponse) ProtoMessage() {}
 
 func (x *SnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[4]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -241,7 +409,7 @@ func (x *SnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotResponse.ProtoReflect.Descriptor instead.
 func (*SnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{4}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SnapshotResponse) GetSnapshot() *Snapshot {
@@ -261,7 +429,7 @@ type RestoreRequest struct {
 
 func (x *RestoreRequest) Reset() {
 	*x = RestoreRequest{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[5]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -273,7 +441,7 @@ func (x *RestoreRequest) String() string {
 func (*RestoreRequest) ProtoMessage() {}
 
 func (x *RestoreRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[5]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -286,7 +454,7 @@ func (x *RestoreRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreRequest.ProtoReflect.Descriptor instead.
 func (*RestoreRequest) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{5}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RestoreRequest) GetNuke() bool {
@@ -312,7 +480,7 @@ type RestoreResponse struct {
 
 func (x *RestoreResponse) Reset() {
 	*x = RestoreResponse{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[6]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -324,7 +492,7 @@ func (x *RestoreResponse) String() string {
 func (*RestoreResponse) ProtoMessage() {}
 
 func (x *RestoreResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[6]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -337,7 +505,7 @@ func (x *RestoreResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RestoreResponse.ProtoReflect.Descriptor instead.
 func (*RestoreResponse) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{6}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RestoreResponse) GetSnapshot() *Snapshot {
@@ -356,7 +524,7 @@ type CoordinatorInfoRequest struct {
 
 func (x *CoordinatorInfoRequest) Reset() {
 	*x = CoordinatorInfoRequest{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[7]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -368,7 +536,7 @@ func (x *CoordinatorInfoRequest) String() string {
 func (*CoordinatorInfoRequest) ProtoMessage() {}
 
 func (x *CoordinatorInfoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[7]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -381,7 +549,7 @@ func (x *CoordinatorInfoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CoordinatorInfoRequest.ProtoReflect.Descriptor instead.
 func (*CoordinatorInfoRequest) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{7}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *CoordinatorInfoRequest) GetService() *pb.QualifiedServiceName {
@@ -402,7 +570,7 @@ type CoordinatorInfoResponse struct {
 
 func (x *CoordinatorInfoResponse) Reset() {
 	*x = CoordinatorInfoResponse{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[8]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -414,7 +582,7 @@ func (x *CoordinatorInfoResponse) String() string {
 func (*CoordinatorInfoResponse) ProtoMessage() {}
 
 func (x *CoordinatorInfoResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[8]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -427,7 +595,7 @@ func (x *CoordinatorInfoResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CoordinatorInfoResponse.ProtoReflect.Descriptor instead.
 func (*CoordinatorInfoResponse) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{8}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *CoordinatorInfoResponse) GetConsumers() []*pb.Instance {
@@ -460,7 +628,7 @@ type CoordinatorRestartRequest struct {
 
 func (x *CoordinatorRestartRequest) Reset() {
 	*x = CoordinatorRestartRequest{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[9]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -472,7 +640,7 @@ func (x *CoordinatorRestartRequest) String() string {
 func (*CoordinatorRestartRequest) ProtoMessage() {}
 
 func (x *CoordinatorRestartRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[9]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -485,7 +653,7 @@ func (x *CoordinatorRestartRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CoordinatorRestartRequest.ProtoReflect.Descriptor instead.
 func (*CoordinatorRestartRequest) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{9}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *CoordinatorRestartRequest) GetService() *pb.QualifiedServiceName {
@@ -503,7 +671,7 @@ type CoordinatorRestartResponse struct {
 
 func (x *CoordinatorRestartResponse) Reset() {
 	*x = CoordinatorRestartResponse{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[10]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -515,7 +683,7 @@ func (x *CoordinatorRestartResponse) String() string {
 func (*CoordinatorRestartResponse) ProtoMessage() {}
 
 func (x *CoordinatorRestartResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[10]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -528,7 +696,7 @@ func (x *CoordinatorRestartResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CoordinatorRestartResponse.ProtoReflect.Descriptor instead.
 func (*CoordinatorRestartResponse) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{10}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{14}
 }
 
 type CoordinatorClusterSyncRequest struct {
@@ -540,7 +708,7 @@ type CoordinatorClusterSyncRequest struct {
 
 func (x *CoordinatorClusterSyncRequest) Reset() {
 	*x = CoordinatorClusterSyncRequest{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[11]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -552,7 +720,7 @@ func (x *CoordinatorClusterSyncRequest) String() string {
 func (*CoordinatorClusterSyncRequest) ProtoMessage() {}
 
 func (x *CoordinatorClusterSyncRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[11]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -565,7 +733,7 @@ func (x *CoordinatorClusterSyncRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CoordinatorClusterSyncRequest.ProtoReflect.Descriptor instead.
 func (*CoordinatorClusterSyncRequest) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{11}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *CoordinatorClusterSyncRequest) GetService() *pb.QualifiedServiceName {
@@ -583,7 +751,7 @@ type CoordinatorClusterSyncResponse struct {
 
 func (x *CoordinatorClusterSyncResponse) Reset() {
 	*x = CoordinatorClusterSyncResponse{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[12]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -595,7 +763,7 @@ func (x *CoordinatorClusterSyncResponse) String() string {
 func (*CoordinatorClusterSyncResponse) ProtoMessage() {}
 
 func (x *CoordinatorClusterSyncResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[12]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -608,7 +776,7 @@ func (x *CoordinatorClusterSyncResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CoordinatorClusterSyncResponse.ProtoReflect.Descriptor instead.
 func (*CoordinatorClusterSyncResponse) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{12}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{16}
 }
 
 type CoordinatorRevokeGrantsRequest struct {
@@ -621,7 +789,7 @@ type CoordinatorRevokeGrantsRequest struct {
 
 func (x *CoordinatorRevokeGrantsRequest) Reset() {
 	*x = CoordinatorRevokeGrantsRequest{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[13]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -633,7 +801,7 @@ func (x *CoordinatorRevokeGrantsRequest) String() string {
 func (*CoordinatorRevokeGrantsRequest) ProtoMessage() {}
 
 func (x *CoordinatorRevokeGrantsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[13]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -646,7 +814,7 @@ func (x *CoordinatorRevokeGrantsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CoordinatorRevokeGrantsRequest.ProtoReflect.Descriptor instead.
 func (*CoordinatorRevokeGrantsRequest) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{13}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *CoordinatorRevokeGrantsRequest) GetService() *pb.QualifiedServiceName {
@@ -671,7 +839,7 @@ type CoordinatorRevokeGrantsResponse struct {
 
 func (x *CoordinatorRevokeGrantsResponse) Reset() {
 	*x = CoordinatorRevokeGrantsResponse{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[14]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -683,7 +851,7 @@ func (x *CoordinatorRevokeGrantsResponse) String() string {
 func (*CoordinatorRevokeGrantsResponse) ProtoMessage() {}
 
 func (x *CoordinatorRevokeGrantsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[14]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -696,7 +864,7 @@ func (x *CoordinatorRevokeGrantsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CoordinatorRevokeGrantsResponse.ProtoReflect.Descriptor instead.
 func (*CoordinatorRevokeGrantsResponse) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{14}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{18}
 }
 
 type ConsumerSuspendRequest struct {
@@ -709,7 +877,7 @@ type ConsumerSuspendRequest struct {
 
 func (x *ConsumerSuspendRequest) Reset() {
 	*x = ConsumerSuspendRequest{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[15]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -721,7 +889,7 @@ func (x *ConsumerSuspendRequest) String() string {
 func (*ConsumerSuspendRequest) ProtoMessage() {}
 
 func (x *ConsumerSuspendRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[15]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -734,7 +902,7 @@ func (x *ConsumerSuspendRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsumerSuspendRequest.ProtoReflect.Descriptor instead.
 func (*ConsumerSuspendRequest) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{15}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ConsumerSuspendRequest) GetService() *pb.QualifiedServiceName {
@@ -759,7 +927,7 @@ type ConsumerSuspendResponse struct {
 
 func (x *ConsumerSuspendResponse) Reset() {
 	*x = ConsumerSuspendResponse{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[16]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -771,7 +939,7 @@ func (x *ConsumerSuspendResponse) String() string {
 func (*ConsumerSuspendResponse) ProtoMessage() {}
 
 func (x *ConsumerSuspendResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[16]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -784,7 +952,7 @@ func (x *ConsumerSuspendResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsumerSuspendResponse.ProtoReflect.Descriptor instead.
 func (*ConsumerSuspendResponse) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{16}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{20}
 }
 
 type ConsumerResumeRequest struct {
@@ -797,7 +965,7 @@ type ConsumerResumeRequest struct {
 
 func (x *ConsumerResumeRequest) Reset() {
 	*x = ConsumerResumeRequest{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[17]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -809,7 +977,7 @@ func (x *ConsumerResumeRequest) String() string {
 func (*ConsumerResumeRequest) ProtoMessage() {}
 
 func (x *ConsumerResumeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[17]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -822,7 +990,7 @@ func (x *ConsumerResumeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsumerResumeRequest.ProtoReflect.Descriptor instead.
 func (*ConsumerResumeRequest) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{17}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ConsumerResumeRequest) GetService() *pb.QualifiedServiceName {
@@ -847,7 +1015,7 @@ type ConsumerResumeResponse struct {
 
 func (x *ConsumerResumeResponse) Reset() {
 	*x = ConsumerResumeResponse{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[18]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -859,7 +1027,7 @@ func (x *ConsumerResumeResponse) String() string {
 func (*ConsumerResumeResponse) ProtoMessage() {}
 
 func (x *ConsumerResumeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[18]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -872,7 +1040,7 @@ func (x *ConsumerResumeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsumerResumeResponse.ProtoReflect.Descriptor instead.
 func (*ConsumerResumeResponse) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{18}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{22}
 }
 
 type ConsumerDrainRequest struct {
@@ -885,7 +1053,7 @@ type ConsumerDrainRequest struct {
 
 func (x *ConsumerDrainRequest) Reset() {
 	*x = ConsumerDrainRequest{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[19]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -897,7 +1065,7 @@ func (x *ConsumerDrainRequest) String() string {
 func (*ConsumerDrainRequest) ProtoMessage() {}
 
 func (x *ConsumerDrainRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[19]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -910,7 +1078,7 @@ func (x *ConsumerDrainRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsumerDrainRequest.ProtoReflect.Descriptor instead.
 func (*ConsumerDrainRequest) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{19}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ConsumerDrainRequest) GetService() *pb.QualifiedServiceName {
@@ -935,7 +1103,7 @@ type ConsumerDrainResponse struct {
 
 func (x *ConsumerDrainResponse) Reset() {
 	*x = ConsumerDrainResponse{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[20]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -947,7 +1115,7 @@ func (x *ConsumerDrainResponse) String() string {
 func (*ConsumerDrainResponse) ProtoMessage() {}
 
 func (x *ConsumerDrainResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[20]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -960,7 +1128,7 @@ func (x *ConsumerDrainResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConsumerDrainResponse.ProtoReflect.Descriptor instead.
 func (*ConsumerDrainResponse) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{20}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{24}
 }
 
 type CoordinatorRevokeGrantsRequest_ConsumerGrants struct {
@@ -973,7 +1141,7 @@ type CoordinatorRevokeGrantsRequest_ConsumerGrants struct {
 
 func (x *CoordinatorRevokeGrantsRequest_ConsumerGrants) Reset() {
 	*x = CoordinatorRevokeGrantsRequest_ConsumerGrants{}
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[22]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -985,7 +1153,7 @@ func (x *CoordinatorRevokeGrantsRequest_ConsumerGrants) String() string {
 func (*CoordinatorRevokeGrantsRequest_ConsumerGrants) ProtoMessage() {}
 
 func (x *CoordinatorRevokeGrantsRequest_ConsumerGrants) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_operation_proto_msgTypes[22]
+	mi := &file_atoms_splitter_private_operation_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -998,7 +1166,7 @@ func (x *CoordinatorRevokeGrantsRequest_ConsumerGrants) ProtoReflect() protorefl
 
 // Deprecated: Use CoordinatorRevokeGrantsRequest_ConsumerGrants.ProtoReflect.Descriptor instead.
 func (*CoordinatorRevokeGrantsRequest_ConsumerGrants) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{13, 0}
+	return file_atoms_splitter_private_operation_proto_rawDescGZIP(), []int{17, 0}
 }
 
 func (x *CoordinatorRevokeGrantsRequest_ConsumerGrants) GetConsumer() string {
@@ -1032,7 +1200,14 @@ const file_atoms_splitter_private_operation_proto_rawDesc = "" +
 	"raft_state\x18\x01 \x03(\v27.atoms.splitter.private.RaftInfoResponse.RaftStateEntryR\traftState\x1a<\n" +
 	"\x0eRaftStateEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x11\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\">\n" +
+	"\x12RaftAddNodeRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x18\n" +
+	"\aaddress\x18\x02 \x01(\tR\aaddress\"\x15\n" +
+	"\x13RaftAddNodeResponse\"'\n" +
+	"\x15RaftRemoveNodeRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"\x18\n" +
+	"\x16RaftRemoveNodeResponse\"\x11\n" +
 	"\x0fSnapshotRequest\"P\n" +
 	"\x10SnapshotResponse\x12<\n" +
 	"\bsnapshot\x18\x01 \x01(\v2 .atoms.splitter.private.SnapshotR\bsnapshot\"b\n" +
@@ -1074,9 +1249,12 @@ const file_atoms_splitter_private_operation_proto_rawDesc = "" +
 	"\aservice\x18\x01 \x01(\v2$.atoms.splitter.QualifiedServiceNameR\aservice\x12\x1f\n" +
 	"\vconsumer_id\x18\x02 \x01(\tR\n" +
 	"consumerId\"\x17\n" +
-	"\x15ConsumerDrainResponse2\x87\t\n" +
+	"\x15ConsumerDrainResponse2\xe0\n" +
+	"\n" +
 	"\x10OperationService\x12]\n" +
-	"\bRaftInfo\x12'.atoms.splitter.private.RaftInfoRequest\x1a(.atoms.splitter.private.RaftInfoResponse\x12]\n" +
+	"\bRaftInfo\x12'.atoms.splitter.private.RaftInfoRequest\x1a(.atoms.splitter.private.RaftInfoResponse\x12f\n" +
+	"\vRaftAddNode\x12*.atoms.splitter.private.RaftAddNodeRequest\x1a+.atoms.splitter.private.RaftAddNodeResponse\x12o\n" +
+	"\x0eRaftRemoveNode\x12-.atoms.splitter.private.RaftRemoveNodeRequest\x1a..atoms.splitter.private.RaftRemoveNodeResponse\x12]\n" +
 	"\bSnapshot\x12'.atoms.splitter.private.SnapshotRequest\x1a(.atoms.splitter.private.SnapshotResponse\x12Z\n" +
 	"\aRestore\x12&.atoms.splitter.private.RestoreRequest\x1a'.atoms.splitter.private.RestoreResponse\x12r\n" +
 	"\x0fCoordinatorInfo\x12..atoms.splitter.private.CoordinatorInfoRequest\x1a/.atoms.splitter.private.CoordinatorInfoResponse\x12{\n" +
@@ -1099,79 +1277,87 @@ func file_atoms_splitter_private_operation_proto_rawDescGZIP() []byte {
 	return file_atoms_splitter_private_operation_proto_rawDescData
 }
 
-var file_atoms_splitter_private_operation_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_atoms_splitter_private_operation_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
 var file_atoms_splitter_private_operation_proto_goTypes = []any{
 	(*InstanceInfo)(nil),                                  // 0: atoms.splitter.private.InstanceInfo
 	(*RaftInfoRequest)(nil),                               // 1: atoms.splitter.private.RaftInfoRequest
 	(*RaftInfoResponse)(nil),                              // 2: atoms.splitter.private.RaftInfoResponse
-	(*SnapshotRequest)(nil),                               // 3: atoms.splitter.private.SnapshotRequest
-	(*SnapshotResponse)(nil),                              // 4: atoms.splitter.private.SnapshotResponse
-	(*RestoreRequest)(nil),                                // 5: atoms.splitter.private.RestoreRequest
-	(*RestoreResponse)(nil),                               // 6: atoms.splitter.private.RestoreResponse
-	(*CoordinatorInfoRequest)(nil),                        // 7: atoms.splitter.private.CoordinatorInfoRequest
-	(*CoordinatorInfoResponse)(nil),                       // 8: atoms.splitter.private.CoordinatorInfoResponse
-	(*CoordinatorRestartRequest)(nil),                     // 9: atoms.splitter.private.CoordinatorRestartRequest
-	(*CoordinatorRestartResponse)(nil),                    // 10: atoms.splitter.private.CoordinatorRestartResponse
-	(*CoordinatorClusterSyncRequest)(nil),                 // 11: atoms.splitter.private.CoordinatorClusterSyncRequest
-	(*CoordinatorClusterSyncResponse)(nil),                // 12: atoms.splitter.private.CoordinatorClusterSyncResponse
-	(*CoordinatorRevokeGrantsRequest)(nil),                // 13: atoms.splitter.private.CoordinatorRevokeGrantsRequest
-	(*CoordinatorRevokeGrantsResponse)(nil),               // 14: atoms.splitter.private.CoordinatorRevokeGrantsResponse
-	(*ConsumerSuspendRequest)(nil),                        // 15: atoms.splitter.private.ConsumerSuspendRequest
-	(*ConsumerSuspendResponse)(nil),                       // 16: atoms.splitter.private.ConsumerSuspendResponse
-	(*ConsumerResumeRequest)(nil),                         // 17: atoms.splitter.private.ConsumerResumeRequest
-	(*ConsumerResumeResponse)(nil),                        // 18: atoms.splitter.private.ConsumerResumeResponse
-	(*ConsumerDrainRequest)(nil),                          // 19: atoms.splitter.private.ConsumerDrainRequest
-	(*ConsumerDrainResponse)(nil),                         // 20: atoms.splitter.private.ConsumerDrainResponse
-	nil,                                                   // 21: atoms.splitter.private.RaftInfoResponse.RaftStateEntry
-	(*CoordinatorRevokeGrantsRequest_ConsumerGrants)(nil), // 22: atoms.splitter.private.CoordinatorRevokeGrantsRequest.ConsumerGrants
-	(*pb.Instance)(nil),                                   // 23: atoms.splitter.Instance
-	(*timestamppb.Timestamp)(nil),                         // 24: google.protobuf.Timestamp
-	(*pb.DomainKeyName)(nil),                              // 25: atoms.splitter.DomainKeyName
-	(*Snapshot)(nil),                                      // 26: atoms.splitter.private.Snapshot
-	(*pb.QualifiedServiceName)(nil),                       // 27: atoms.splitter.QualifiedServiceName
-	(*pb.ClusterMessage_Snapshot)(nil),                    // 28: atoms.splitter.ClusterMessage.Snapshot
+	(*RaftAddNodeRequest)(nil),                            // 3: atoms.splitter.private.RaftAddNodeRequest
+	(*RaftAddNodeResponse)(nil),                           // 4: atoms.splitter.private.RaftAddNodeResponse
+	(*RaftRemoveNodeRequest)(nil),                         // 5: atoms.splitter.private.RaftRemoveNodeRequest
+	(*RaftRemoveNodeResponse)(nil),                        // 6: atoms.splitter.private.RaftRemoveNodeResponse
+	(*SnapshotRequest)(nil),                               // 7: atoms.splitter.private.SnapshotRequest
+	(*SnapshotResponse)(nil),                              // 8: atoms.splitter.private.SnapshotResponse
+	(*RestoreRequest)(nil),                                // 9: atoms.splitter.private.RestoreRequest
+	(*RestoreResponse)(nil),                               // 10: atoms.splitter.private.RestoreResponse
+	(*CoordinatorInfoRequest)(nil),                        // 11: atoms.splitter.private.CoordinatorInfoRequest
+	(*CoordinatorInfoResponse)(nil),                       // 12: atoms.splitter.private.CoordinatorInfoResponse
+	(*CoordinatorRestartRequest)(nil),                     // 13: atoms.splitter.private.CoordinatorRestartRequest
+	(*CoordinatorRestartResponse)(nil),                    // 14: atoms.splitter.private.CoordinatorRestartResponse
+	(*CoordinatorClusterSyncRequest)(nil),                 // 15: atoms.splitter.private.CoordinatorClusterSyncRequest
+	(*CoordinatorClusterSyncResponse)(nil),                // 16: atoms.splitter.private.CoordinatorClusterSyncResponse
+	(*CoordinatorRevokeGrantsRequest)(nil),                // 17: atoms.splitter.private.CoordinatorRevokeGrantsRequest
+	(*CoordinatorRevokeGrantsResponse)(nil),               // 18: atoms.splitter.private.CoordinatorRevokeGrantsResponse
+	(*ConsumerSuspendRequest)(nil),                        // 19: atoms.splitter.private.ConsumerSuspendRequest
+	(*ConsumerSuspendResponse)(nil),                       // 20: atoms.splitter.private.ConsumerSuspendResponse
+	(*ConsumerResumeRequest)(nil),                         // 21: atoms.splitter.private.ConsumerResumeRequest
+	(*ConsumerResumeResponse)(nil),                        // 22: atoms.splitter.private.ConsumerResumeResponse
+	(*ConsumerDrainRequest)(nil),                          // 23: atoms.splitter.private.ConsumerDrainRequest
+	(*ConsumerDrainResponse)(nil),                         // 24: atoms.splitter.private.ConsumerDrainResponse
+	nil,                                                   // 25: atoms.splitter.private.RaftInfoResponse.RaftStateEntry
+	(*CoordinatorRevokeGrantsRequest_ConsumerGrants)(nil), // 26: atoms.splitter.private.CoordinatorRevokeGrantsRequest.ConsumerGrants
+	(*pb.Instance)(nil),                                   // 27: atoms.splitter.Instance
+	(*timestamppb.Timestamp)(nil),                         // 28: google.protobuf.Timestamp
+	(*pb.DomainKeyName)(nil),                              // 29: atoms.splitter.DomainKeyName
+	(*Snapshot)(nil),                                      // 30: atoms.splitter.private.Snapshot
+	(*pb.QualifiedServiceName)(nil),                       // 31: atoms.splitter.QualifiedServiceName
+	(*pb.ClusterMessage_Snapshot)(nil),                    // 32: atoms.splitter.ClusterMessage.Snapshot
 }
 var file_atoms_splitter_private_operation_proto_depIdxs = []int32{
-	23, // 0: atoms.splitter.private.InstanceInfo.consumer:type_name -> atoms.splitter.Instance
-	24, // 1: atoms.splitter.private.InstanceInfo.joined:type_name -> google.protobuf.Timestamp
-	25, // 2: atoms.splitter.private.InstanceInfo.named_keys:type_name -> atoms.splitter.DomainKeyName
-	21, // 3: atoms.splitter.private.RaftInfoResponse.raft_state:type_name -> atoms.splitter.private.RaftInfoResponse.RaftStateEntry
-	26, // 4: atoms.splitter.private.SnapshotResponse.snapshot:type_name -> atoms.splitter.private.Snapshot
-	26, // 5: atoms.splitter.private.RestoreRequest.snapshot:type_name -> atoms.splitter.private.Snapshot
-	26, // 6: atoms.splitter.private.RestoreResponse.snapshot:type_name -> atoms.splitter.private.Snapshot
-	27, // 7: atoms.splitter.private.CoordinatorInfoRequest.service:type_name -> atoms.splitter.QualifiedServiceName
-	23, // 8: atoms.splitter.private.CoordinatorInfoResponse.consumers:type_name -> atoms.splitter.Instance
-	28, // 9: atoms.splitter.private.CoordinatorInfoResponse.snapshot:type_name -> atoms.splitter.ClusterMessage.Snapshot
+	27, // 0: atoms.splitter.private.InstanceInfo.consumer:type_name -> atoms.splitter.Instance
+	28, // 1: atoms.splitter.private.InstanceInfo.joined:type_name -> google.protobuf.Timestamp
+	29, // 2: atoms.splitter.private.InstanceInfo.named_keys:type_name -> atoms.splitter.DomainKeyName
+	25, // 3: atoms.splitter.private.RaftInfoResponse.raft_state:type_name -> atoms.splitter.private.RaftInfoResponse.RaftStateEntry
+	30, // 4: atoms.splitter.private.SnapshotResponse.snapshot:type_name -> atoms.splitter.private.Snapshot
+	30, // 5: atoms.splitter.private.RestoreRequest.snapshot:type_name -> atoms.splitter.private.Snapshot
+	30, // 6: atoms.splitter.private.RestoreResponse.snapshot:type_name -> atoms.splitter.private.Snapshot
+	31, // 7: atoms.splitter.private.CoordinatorInfoRequest.service:type_name -> atoms.splitter.QualifiedServiceName
+	27, // 8: atoms.splitter.private.CoordinatorInfoResponse.consumers:type_name -> atoms.splitter.Instance
+	32, // 9: atoms.splitter.private.CoordinatorInfoResponse.snapshot:type_name -> atoms.splitter.ClusterMessage.Snapshot
 	0,  // 10: atoms.splitter.private.CoordinatorInfoResponse.infos:type_name -> atoms.splitter.private.InstanceInfo
-	27, // 11: atoms.splitter.private.CoordinatorRestartRequest.service:type_name -> atoms.splitter.QualifiedServiceName
-	27, // 12: atoms.splitter.private.CoordinatorClusterSyncRequest.service:type_name -> atoms.splitter.QualifiedServiceName
-	27, // 13: atoms.splitter.private.CoordinatorRevokeGrantsRequest.service:type_name -> atoms.splitter.QualifiedServiceName
-	22, // 14: atoms.splitter.private.CoordinatorRevokeGrantsRequest.grants:type_name -> atoms.splitter.private.CoordinatorRevokeGrantsRequest.ConsumerGrants
-	27, // 15: atoms.splitter.private.ConsumerSuspendRequest.service:type_name -> atoms.splitter.QualifiedServiceName
-	27, // 16: atoms.splitter.private.ConsumerResumeRequest.service:type_name -> atoms.splitter.QualifiedServiceName
-	27, // 17: atoms.splitter.private.ConsumerDrainRequest.service:type_name -> atoms.splitter.QualifiedServiceName
+	31, // 11: atoms.splitter.private.CoordinatorRestartRequest.service:type_name -> atoms.splitter.QualifiedServiceName
+	31, // 12: atoms.splitter.private.CoordinatorClusterSyncRequest.service:type_name -> atoms.splitter.QualifiedServiceName
+	31, // 13: atoms.splitter.private.CoordinatorRevokeGrantsRequest.service:type_name -> atoms.splitter.QualifiedServiceName
+	26, // 14: atoms.splitter.private.CoordinatorRevokeGrantsRequest.grants:type_name -> atoms.splitter.private.CoordinatorRevokeGrantsRequest.ConsumerGrants
+	31, // 15: atoms.splitter.private.ConsumerSuspendRequest.service:type_name -> atoms.splitter.QualifiedServiceName
+	31, // 16: atoms.splitter.private.ConsumerResumeRequest.service:type_name -> atoms.splitter.QualifiedServiceName
+	31, // 17: atoms.splitter.private.ConsumerDrainRequest.service:type_name -> atoms.splitter.QualifiedServiceName
 	1,  // 18: atoms.splitter.private.OperationService.RaftInfo:input_type -> atoms.splitter.private.RaftInfoRequest
-	3,  // 19: atoms.splitter.private.OperationService.Snapshot:input_type -> atoms.splitter.private.SnapshotRequest
-	5,  // 20: atoms.splitter.private.OperationService.Restore:input_type -> atoms.splitter.private.RestoreRequest
-	7,  // 21: atoms.splitter.private.OperationService.CoordinatorInfo:input_type -> atoms.splitter.private.CoordinatorInfoRequest
-	9,  // 22: atoms.splitter.private.OperationService.CoordinatorRestart:input_type -> atoms.splitter.private.CoordinatorRestartRequest
-	13, // 23: atoms.splitter.private.OperationService.CoordinatorRevokeGrants:input_type -> atoms.splitter.private.CoordinatorRevokeGrantsRequest
-	11, // 24: atoms.splitter.private.OperationService.CoordinatorClusterSync:input_type -> atoms.splitter.private.CoordinatorClusterSyncRequest
-	15, // 25: atoms.splitter.private.OperationService.ConsumerSuspend:input_type -> atoms.splitter.private.ConsumerSuspendRequest
-	17, // 26: atoms.splitter.private.OperationService.ConsumerResume:input_type -> atoms.splitter.private.ConsumerResumeRequest
-	19, // 27: atoms.splitter.private.OperationService.ConsumerDrain:input_type -> atoms.splitter.private.ConsumerDrainRequest
-	2,  // 28: atoms.splitter.private.OperationService.RaftInfo:output_type -> atoms.splitter.private.RaftInfoResponse
-	4,  // 29: atoms.splitter.private.OperationService.Snapshot:output_type -> atoms.splitter.private.SnapshotResponse
-	6,  // 30: atoms.splitter.private.OperationService.Restore:output_type -> atoms.splitter.private.RestoreResponse
-	8,  // 31: atoms.splitter.private.OperationService.CoordinatorInfo:output_type -> atoms.splitter.private.CoordinatorInfoResponse
-	10, // 32: atoms.splitter.private.OperationService.CoordinatorRestart:output_type -> atoms.splitter.private.CoordinatorRestartResponse
-	14, // 33: atoms.splitter.private.OperationService.CoordinatorRevokeGrants:output_type -> atoms.splitter.private.CoordinatorRevokeGrantsResponse
-	12, // 34: atoms.splitter.private.OperationService.CoordinatorClusterSync:output_type -> atoms.splitter.private.CoordinatorClusterSyncResponse
-	16, // 35: atoms.splitter.private.OperationService.ConsumerSuspend:output_type -> atoms.splitter.private.ConsumerSuspendResponse
-	18, // 36: atoms.splitter.private.OperationService.ConsumerResume:output_type -> atoms.splitter.private.ConsumerResumeResponse
-	20, // 37: atoms.splitter.private.OperationService.ConsumerDrain:output_type -> atoms.splitter.private.ConsumerDrainResponse
-	28, // [28:38] is the sub-list for method output_type
-	18, // [18:28] is the sub-list for method input_type
+	3,  // 19: atoms.splitter.private.OperationService.RaftAddNode:input_type -> atoms.splitter.private.RaftAddNodeRequest
+	5,  // 20: atoms.splitter.private.OperationService.RaftRemoveNode:input_type -> atoms.splitter.private.RaftRemoveNodeRequest
+	7,  // 21: atoms.splitter.private.OperationService.Snapshot:input_type -> atoms.splitter.private.SnapshotRequest
+	9,  // 22: atoms.splitter.private.OperationService.Restore:input_type -> atoms.splitter.private.RestoreRequest
+	11, // 23: atoms.splitter.private.OperationService.CoordinatorInfo:input_type -> atoms.splitter.private.CoordinatorInfoRequest
+	13, // 24: atoms.splitter.private.OperationService.CoordinatorRestart:input_type -> atoms.splitter.private.CoordinatorRestartRequest
+	17, // 25: atoms.splitter.private.OperationService.CoordinatorRevokeGrants:input_type -> atoms.splitter.private.CoordinatorRevokeGrantsRequest
+	15, // 26: atoms.splitter.private.OperationService.CoordinatorClusterSync:input_type -> atoms.splitter.private.CoordinatorClusterSyncRequest
+	19, // 27: atoms.splitter.private.OperationService.ConsumerSuspend:input_type -> atoms.splitter.private.ConsumerSuspendRequest
+	21, // 28: atoms.splitter.private.OperationService.ConsumerResume:input_type -> atoms.splitter.private.ConsumerResumeRequest
+	23, // 29: atoms.splitter.private.OperationService.ConsumerDrain:input_type -> atoms.splitter.private.ConsumerDrainRequest
+	2,  // 30: atoms.splitter.private.OperationService.RaftInfo:output_type -> atoms.splitter.private.RaftInfoResponse
+	4,  // 31: atoms.splitter.private.OperationService.RaftAddNode:output_type -> atoms.splitter.private.RaftAddNodeResponse
+	6,  // 32: atoms.splitter.private.OperationService.RaftRemoveNode:output_type -> atoms.splitter.private.RaftRemoveNodeResponse
+	8,  // 33: atoms.splitter.private.OperationService.Snapshot:output_type -> atoms.splitter.private.SnapshotResponse
+	10, // 34: atoms.splitter.private.OperationService.Restore:output_type -> atoms.splitter.private.RestoreResponse
+	12, // 35: atoms.splitter.private.OperationService.CoordinatorInfo:output_type -> atoms.splitter.private.CoordinatorInfoResponse
+	14, // 36: atoms.splitter.private.OperationService.CoordinatorRestart:output_type -> atoms.splitter.private.CoordinatorRestartResponse
+	18, // 37: atoms.splitter.private.OperationService.CoordinatorRevokeGrants:output_type -> atoms.splitter.private.CoordinatorRevokeGrantsResponse
+	16, // 38: atoms.splitter.private.OperationService.CoordinatorClusterSync:output_type -> atoms.splitter.private.CoordinatorClusterSyncResponse
+	20, // 39: atoms.splitter.private.OperationService.ConsumerSuspend:output_type -> atoms.splitter.private.ConsumerSuspendResponse
+	22, // 40: atoms.splitter.private.OperationService.ConsumerResume:output_type -> atoms.splitter.private.ConsumerResumeResponse
+	24, // 41: atoms.splitter.private.OperationService.ConsumerDrain:output_type -> atoms.splitter.private.ConsumerDrainResponse
+	30, // [30:42] is the sub-list for method output_type
+	18, // [18:30] is the sub-list for method input_type
 	18, // [18:18] is the sub-list for extension type_name
 	18, // [18:18] is the sub-list for extension extendee
 	0,  // [0:18] is the sub-list for field type_name
@@ -1189,7 +1375,7 @@ func file_atoms_splitter_private_operation_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atoms_splitter_private_operation_proto_rawDesc), len(file_atoms_splitter_private_operation_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   23,
+			NumMessages:   27,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

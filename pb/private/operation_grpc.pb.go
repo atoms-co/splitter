@@ -20,6 +20,8 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	OperationService_RaftInfo_FullMethodName                = "/atoms.splitter.private.OperationService/RaftInfo"
+	OperationService_RaftAddNode_FullMethodName             = "/atoms.splitter.private.OperationService/RaftAddNode"
+	OperationService_RaftRemoveNode_FullMethodName          = "/atoms.splitter.private.OperationService/RaftRemoveNode"
 	OperationService_Snapshot_FullMethodName                = "/atoms.splitter.private.OperationService/Snapshot"
 	OperationService_Restore_FullMethodName                 = "/atoms.splitter.private.OperationService/Restore"
 	OperationService_CoordinatorInfo_FullMethodName         = "/atoms.splitter.private.OperationService/CoordinatorInfo"
@@ -36,6 +38,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OperationServiceClient interface {
 	RaftInfo(ctx context.Context, in *RaftInfoRequest, opts ...grpc.CallOption) (*RaftInfoResponse, error)
+	RaftAddNode(ctx context.Context, in *RaftAddNodeRequest, opts ...grpc.CallOption) (*RaftAddNodeResponse, error)
+	RaftRemoveNode(ctx context.Context, in *RaftRemoveNodeRequest, opts ...grpc.CallOption) (*RaftRemoveNodeResponse, error)
 	Snapshot(ctx context.Context, in *SnapshotRequest, opts ...grpc.CallOption) (*SnapshotResponse, error)
 	Restore(ctx context.Context, in *RestoreRequest, opts ...grpc.CallOption) (*RestoreResponse, error)
 	CoordinatorInfo(ctx context.Context, in *CoordinatorInfoRequest, opts ...grpc.CallOption) (*CoordinatorInfoResponse, error)
@@ -59,6 +63,26 @@ func (c *operationServiceClient) RaftInfo(ctx context.Context, in *RaftInfoReque
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RaftInfoResponse)
 	err := c.cc.Invoke(ctx, OperationService_RaftInfo_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operationServiceClient) RaftAddNode(ctx context.Context, in *RaftAddNodeRequest, opts ...grpc.CallOption) (*RaftAddNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RaftAddNodeResponse)
+	err := c.cc.Invoke(ctx, OperationService_RaftAddNode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *operationServiceClient) RaftRemoveNode(ctx context.Context, in *RaftRemoveNodeRequest, opts ...grpc.CallOption) (*RaftRemoveNodeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RaftRemoveNodeResponse)
+	err := c.cc.Invoke(ctx, OperationService_RaftRemoveNode_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -160,6 +184,8 @@ func (c *operationServiceClient) ConsumerDrain(ctx context.Context, in *Consumer
 // for forward compatibility.
 type OperationServiceServer interface {
 	RaftInfo(context.Context, *RaftInfoRequest) (*RaftInfoResponse, error)
+	RaftAddNode(context.Context, *RaftAddNodeRequest) (*RaftAddNodeResponse, error)
+	RaftRemoveNode(context.Context, *RaftRemoveNodeRequest) (*RaftRemoveNodeResponse, error)
 	Snapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
 	Restore(context.Context, *RestoreRequest) (*RestoreResponse, error)
 	CoordinatorInfo(context.Context, *CoordinatorInfoRequest) (*CoordinatorInfoResponse, error)
@@ -180,6 +206,12 @@ type UnimplementedOperationServiceServer struct{}
 
 func (UnimplementedOperationServiceServer) RaftInfo(context.Context, *RaftInfoRequest) (*RaftInfoResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RaftInfo not implemented")
+}
+func (UnimplementedOperationServiceServer) RaftAddNode(context.Context, *RaftAddNodeRequest) (*RaftAddNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RaftAddNode not implemented")
+}
+func (UnimplementedOperationServiceServer) RaftRemoveNode(context.Context, *RaftRemoveNodeRequest) (*RaftRemoveNodeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RaftRemoveNode not implemented")
 }
 func (UnimplementedOperationServiceServer) Snapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Snapshot not implemented")
@@ -242,6 +274,42 @@ func _OperationService_RaftInfo_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(OperationServiceServer).RaftInfo(ctx, req.(*RaftInfoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OperationService_RaftAddNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RaftAddNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationServiceServer).RaftAddNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OperationService_RaftAddNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationServiceServer).RaftAddNode(ctx, req.(*RaftAddNodeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OperationService_RaftRemoveNode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RaftRemoveNodeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OperationServiceServer).RaftRemoveNode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OperationService_RaftRemoveNode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OperationServiceServer).RaftRemoveNode(ctx, req.(*RaftRemoveNodeRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -418,6 +486,14 @@ var OperationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RaftInfo",
 			Handler:    _OperationService_RaftInfo_Handler,
+		},
+		{
+			MethodName: "RaftAddNode",
+			Handler:    _OperationService_RaftAddNode_Handler,
+		},
+		{
+			MethodName: "RaftRemoveNode",
+			Handler:    _OperationService_RaftRemoveNode_Handler,
 		},
 		{
 			MethodName: "Snapshot",
