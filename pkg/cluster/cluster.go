@@ -5,22 +5,24 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/hashicorp/raft"
 	boltdb "github.com/hashicorp/raft-boltdb/v2"
 
+	"go.atoms.co/iox"
+	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/iox"
 	"go.atoms.co/lib/syncx"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 const (
@@ -28,6 +30,7 @@ const (
 	notifyInterval   = 30 * time.Second
 	notifyTimeout    = 10 * time.Second
 	bootstrapTimeout = 1 * time.Minute
+	forwardTimeout   = 35 * time.Second
 )
 
 var (
@@ -50,6 +53,8 @@ type Cluster interface {
 	iox.RAsyncCloser
 
 	Notify(ctx context.Context, id string, address string) error
+	AddNode(ctx context.Context, id string, address string) error
+	RemoveNode(ctx context.Context, id string) error
 	Info(ctx context.Context) map[string]string
 	Drain(timeout time.Duration)
 }
@@ -63,11 +68,13 @@ type cluster struct {
 	ldb, sdb *boltdb.BoltStore
 	trans    *raft.NetworkTransport
 	peers    []string
+	port     int
 
 	observer *raft.Observer
 	leaderCh <-chan leader.Directive
 
 	fastBootstrap bool
+	joiningNode   bool
 	drain         iox.AsyncCloser
 
 	inject       chan func()
@@ -85,6 +92,7 @@ func New(id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, ldb, sdb *bolt
 		sdb:         sdb,
 		trans:       trans,
 		peers:       peers,
+		port:        port,
 		drain:       iox.NewAsyncCloser(),
 		inject:      make(chan func()),
 		notified:    make(map[raft.ServerID]raft.ServerAddress),
@@ -92,6 +100,7 @@ func New(id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, ldb, sdb *bolt
 	for _, fn := range opts {
 		fn(c)
 	}
+	c.joiningNode = !c.isBootstrappedPeer(string(c.id))
 
 	observeCh := make(chan raft.Observation)
 	observer := raft.NewObserver(observeCh, true, func(o *raft.Observation) bool {
@@ -199,6 +208,92 @@ func (c *cluster) Notify(ctx context.Context, id string, address string) error {
 	return nil
 }
 
+// AddNode handles an incoming add request from a new node. If the current node is the RAFT leader, it adds the
+// voter. Otherwise, it forwards the request to the current leader.
+func (c *cluster) AddNode(ctx context.Context, id string, address string) error {
+	log.Infof(ctx, "Received add request: %v@%v", id, address)
+
+	leaderAddr, leaderID := c.raft.LeaderWithID()
+	if leaderID == "" {
+		return fmt.Errorf("no leader available")
+	}
+
+	if leaderID != c.id {
+		return c.forwardToLeader(ctx, leaderAddr, func(ctx context.Context, client splitterprivatepb.ClusterServiceClient) error {
+			_, err := client.AddNode(ctx, &splitterprivatepb.ClusterAddNodeRequest{Id: id, Address: address})
+			return err
+		})
+	}
+
+	future := c.raft.AddVoter(raft.ServerID(id), raft.ServerAddress(address), 0, 30*time.Second)
+	if err := future.Error(); err != nil {
+		return fmt.Errorf("failed to add voter %v: %w", id, err)
+	}
+
+	log.Infof(ctx, "Successfully added voter %v@%v", id, address)
+	return nil
+}
+
+// RemoveNode handles an incoming remove request. If this node is the RAFT leader, it removes the
+// node. Otherwise, it forwards the request to the current leader.
+func (c *cluster) RemoveNode(ctx context.Context, id string) error {
+	log.Infof(ctx, "Received remove request: %v", id)
+
+	if c.isBootstrappedPeer(id) {
+		return fmt.Errorf("cannot remove bootstrap peer %v", id)
+	}
+
+	leaderAddr, leaderID := c.raft.LeaderWithID()
+	if leaderID == "" {
+		return fmt.Errorf("no leader available")
+	}
+
+	if leaderID != c.id {
+		return c.forwardToLeader(ctx, leaderAddr, func(ctx context.Context, client splitterprivatepb.ClusterServiceClient) error {
+			_, err := client.RemoveNode(ctx, &splitterprivatepb.ClusterRemoveNodeRequest{Id: id})
+			return err
+		})
+	}
+
+	if id == string(c.id) {
+		log.Infof(ctx, "Leader is leaving, transferring leadership")
+		if err := c.raft.LeadershipTransfer().Error(); err != nil {
+			return fmt.Errorf("failed to transfer leadership: %w", err)
+		}
+
+		return raft.ErrNotLeader
+	}
+
+	future := c.raft.RemoveServer(raft.ServerID(id), 0, 30*time.Second)
+	if err := future.Error(); err != nil {
+		return fmt.Errorf("failed to remove server %v: %w", id, err)
+	}
+
+	log.Infof(ctx, "Successfully removed server %v", id)
+	return nil
+}
+
+// forwardToLeader forwards a request to the current RAFT leader.
+func (c *cluster) forwardToLeader(ctx context.Context, leaderAddr raft.ServerAddress, fn func(context.Context, splitterprivatepb.ClusterServiceClient) error) error {
+	host, _, err := net.SplitHostPort(string(leaderAddr))
+	if err != nil {
+		return fmt.Errorf("unexpected leader address %v: %w", leaderAddr, err)
+	}
+	endpoint := fmt.Sprintf("%v:%v", host, c.port)
+
+	ctx, cancel := context.WithTimeout(ctx, forwardTimeout)
+	defer cancel()
+
+	cc, err := grpcx.DialNonBlocking(ctx, endpoint, grpcx.WithInsecure())
+	if err != nil {
+		return fmt.Errorf("failed to dial leader %v: %w", endpoint, err)
+	}
+	defer func() { _ = cc.Close() }()
+
+	log.Infof(ctx, "Not leader, forwarding to leader %v", endpoint)
+	return fn(ctx, splitterprivatepb.NewClusterServiceClient(cc))
+}
+
 func (c *cluster) Info(ctx context.Context) map[string]string {
 	return c.raft.Stats()
 }
@@ -212,6 +307,18 @@ func (c *cluster) init(ctx context.Context, observeCh chan raft.Observation) {
 	defer c.Close()
 	defer close(observeCh) // closes c.leaderCh
 
+	if c.joiningNode {
+		// Joining node: RAFT is running but this node may not be part of the cluster yet.
+		// An operator must call the Join RPC on an existing peer to add it.
+		// On restart, RAFT reconnects automatically via TCP transport.
+		log.Infof(ctx, "Node %v is not a bootstrap peer, waiting for manual join or reconnect", c.id)
+		c.process(ctx)
+	} else {
+		c.bootstrapCluster(ctx)
+	}
+}
+
+func (c *cluster) bootstrapCluster(ctx context.Context) {
 	notifyTicker := time.NewTicker(notifyInterval)
 	defer notifyTicker.Stop()
 
@@ -337,6 +444,15 @@ func (c *cluster) shutdownRaft(ctx context.Context) error {
 		return fmt.Errorf("failed to shutdown raft stable store cleanly: %w", err)
 	}
 	return nil
+}
+
+// isBootstrappedPeer returns true if the given raft ID matches one of the peers in the static peer list.
+// Assumes peers are DNS names of the form <raft-id>.<domain>:<port> and that --raft_id equals the
+// pod HOSTNAME. These assumptions hold for the existing bootstrap flow.
+func (c *cluster) isBootstrappedPeer(id string) bool {
+	return slices.ContainsFunc(c.peers, func(peer string) bool {
+		return strings.HasPrefix(peer, id+".") || peer == id
+	})
 }
 
 // txn runs the given function in the main thread sync. Any signal that triggers a complex action must

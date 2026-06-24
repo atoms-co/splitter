@@ -3,8 +3,8 @@ package frontend
 import (
 	"context"
 
-	"go.atoms.co/splitter/pkg/cluster"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pkg/cluster"
 )
 
 type ClusterService struct {
@@ -22,4 +22,18 @@ func (r *ClusterService) Notify(ctx context.Context, req *splitterprivatepb.Clus
 		return nil, err
 	}
 	return &splitterprivatepb.ClusterNotifyResponse{}, nil
+}
+
+func (r *ClusterService) AddNode(ctx context.Context, req *splitterprivatepb.ClusterAddNodeRequest) (*splitterprivatepb.ClusterAddNodeResponse, error) {
+	if err := r.cluster.AddNode(ctx, req.GetId(), req.GetAddress()); err != nil {
+		return nil, err
+	}
+	return &splitterprivatepb.ClusterAddNodeResponse{}, nil
+}
+
+func (r *ClusterService) RemoveNode(ctx context.Context, req *splitterprivatepb.ClusterRemoveNodeRequest) (*splitterprivatepb.ClusterRemoveNodeResponse, error) {
+	if err := r.cluster.RemoveNode(ctx, req.GetId()); err != nil {
+		return nil, err
+	}
+	return &splitterprivatepb.ClusterRemoveNodeResponse{}, nil
 }
