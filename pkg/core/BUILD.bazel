@@ -13,6 +13,7 @@ go_library(
         "//lib/service/session",
         "//pkg/allocation",
         "//pkg/model",
+        "//pkg/util/p2quantile",
         "//proto/atoms/splitter",
         "//proto/atoms/splitter/private",
         "@co_atoms_go_iox//:iox",

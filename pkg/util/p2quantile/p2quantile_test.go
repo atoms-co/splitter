@@ -62,3 +62,81 @@ func TestP2Quantile_DataPoints(t *testing.T) {
 		assert.InDeltaf(t, expected, actual, tolerance, "got %g want %g ± %g", actual, expected, tolerance)
 	}
 }
+
+func TestP2Quantile_NewSnapshot(t *testing.T) {
+	t.Parallel()
+
+	desired := []float64{1, 2.25, 3.5, 4.75, 6}
+	s, err := NewSnapshot(0.5, []float64{0.02, 0.15, 0.74, 0.83, 22.37}, []uint64{1, 2, 3, 4, 6}, desired)
+	require.NoError(t, err)
+	require.Equal(t, 0.5, s.Percentile)
+	require.Equal(t, [5]float64{0.02, 0.15, 0.74, 0.83, 22.37}, s.Height)
+	require.Equal(t, [5]uint64{1, 2, 3, 4, 6}, s.MarkerPos)
+	require.Equal(t, [5]float64{1, 2.25, 3.5, 4.75, 6}, s.DesiredMarkerPos)
+
+	_, err = NewSnapshot(-0.1, make([]float64, 5), make([]uint64, 5), make([]float64, 5))
+	require.Error(t, err)
+
+	_, err = NewSnapshot(1.1, make([]float64, 5), make([]uint64, 5), make([]float64, 5))
+	require.Error(t, err)
+
+	_, err = NewSnapshot(0.5, []float64{1, 2, 3}, make([]uint64, 5), make([]float64, 5))
+	require.Error(t, err)
+
+	_, err = NewSnapshot(0.5, make([]float64, 5), []uint64{1, 2, 3}, make([]float64, 5))
+	require.Error(t, err)
+
+	_, err = NewSnapshot(0.5, make([]float64, 5), make([]uint64, 5), []float64{1, 2, 3})
+	require.Error(t, err)
+
+	s, err = NewSnapshot(0.5, make([]float64, 5), make([]uint64, 5), make([]float64, 5))
+	require.NoError(t, err)
+
+}
+
+func TestP2Quantile_TakeSnapshotRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	q, err := New(0.5)
+	require.NoError(t, err)
+
+	for _, dp := range dataPoints {
+		q.Add(dp.data)
+
+		snap := q.Snapshot()
+		restored, err := NewSnapshot(snap.Percentile, snap.Height[:], snap.MarkerPos[:], snap.DesiredMarkerPos[:])
+		require.NoError(t, err)
+
+		q2 := Restore(restored)
+		actual, ok := q2.Quantile()
+		require.True(t, ok)
+		assert.InDeltaf(t, dp.quantile, actual, tolerance, "got %g want %g ± %g", actual, dp.quantile, tolerance)
+		require.Equal(t, snap, q2.Snapshot())
+	}
+}
+
+func TestP2Quantile_RestoreContinuesStreaming(t *testing.T) {
+	t.Parallel()
+
+	q1, err := New(0.2)
+	require.NoError(t, err)
+	for i := 0; i < len(dataPoints)/2; i++ {
+		q1.Add(dataPoints[i].data)
+	}
+
+	snap := q1.Snapshot()
+	for i := len(dataPoints) / 2; i < len(dataPoints); i++ {
+		q1.Add(dataPoints[i].data)
+	}
+	expected, ok := q1.Quantile()
+	require.True(t, ok)
+
+	q2 := Restore(snap)
+	for i := len(dataPoints) / 2; i < len(dataPoints); i++ {
+		q2.Add(dataPoints[i].data)
+	}
+
+	actual, ok := q2.Quantile()
+	require.True(t, ok)
+	assert.InDeltaf(t, expected, actual, tolerance, "got %g want %g ± %g", actual, expected, tolerance)
+}
