@@ -12,10 +12,29 @@ message ClusterNotifyRequest {
 message ClusterNotifyResponse {
 }
 
+message ClusterAddNodeRequest {
+  string id = 1;
+  string address = 2;
+}
+
+message ClusterAddNodeResponse {}
+
+message ClusterRemoveNodeRequest {
+  string id = 1;
+}
+
+message ClusterRemoveNodeResponse {}
+
 // ClusterService is the internal service for RAFT cluster communication.
 service ClusterService {
   // Notify is an idempotent API designed for bootstrapping a RAFT cluster. Upon startup, Splitter instances will enter a
   // bootstrapping phase in which notifications will be sent out to all instances in an initial static list. When one
   // instance receives notifications from all instances, it will attempt to Bootstrap a RAFT cluster.
   rpc Notify (ClusterNotifyRequest) returns (ClusterNotifyResponse);
+
+  // AddNode adds a new node to the RAFT cluster.
+  rpc AddNode (ClusterAddNodeRequest) returns (ClusterAddNodeResponse);
+
+  // RemoveNode removes a node from the RAFT cluster.
+  rpc RemoveNode (ClusterRemoveNodeRequest) returns (ClusterRemoveNodeResponse);
 }
