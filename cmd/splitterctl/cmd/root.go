@@ -67,8 +67,11 @@ func init() {
 	consumerCommand.AddCommand(makeConsumerSuspendCmd())
 	consumerCommand.AddCommand(makeConsumerResumeCmd())
 	consumerCommand.AddCommand(makeConsumerDrainCmd())
-	operationCmd.AddCommand(makeRaftInfoCmd())
-	operationCmd.AddCommand(makeRestoreCmd())
+	operationCmd.AddCommand(raftCommand)
+	raftCommand.AddCommand(makeRaftInfoCmd())
+	raftCommand.AddCommand(makeRaftAddCmd())
+	raftCommand.AddCommand(makeRaftRemoveCmd())
+	raftCommand.AddCommand(makeRestoreCmd())
 
 	rootCmd.AddCommand(joinCmd())
 }

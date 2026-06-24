@@ -8,13 +8,13 @@ import (
 
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/log"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 type OperationService struct {
@@ -199,6 +199,20 @@ func (o *OperationService) RaftInfo(ctx context.Context, request *splitterprivat
 	return &splitterprivatepb.RaftInfoResponse{
 		RaftState: o.cluster.Info(ctx),
 	}, nil
+}
+
+func (o *OperationService) RaftAddNode(ctx context.Context, request *splitterprivatepb.RaftAddNodeRequest) (*splitterprivatepb.RaftAddNodeResponse, error) {
+	if err := o.cluster.AddNode(ctx, request.GetId(), request.GetAddress()); err != nil {
+		return nil, err
+	}
+	return &splitterprivatepb.RaftAddNodeResponse{}, nil
+}
+
+func (o *OperationService) RaftRemoveNode(ctx context.Context, request *splitterprivatepb.RaftRemoveNodeRequest) (*splitterprivatepb.RaftRemoveNodeResponse, error) {
+	if err := o.cluster.RemoveNode(ctx, request.GetId()); err != nil {
+		return nil, err
+	}
+	return &splitterprivatepb.RaftRemoveNodeResponse{}, nil
 }
 
 func (o *OperationService) Snapshot(ctx context.Context, request *splitterprivatepb.SnapshotRequest) (*splitterprivatepb.SnapshotResponse, error) {
