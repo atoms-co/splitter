@@ -32,7 +32,7 @@ func makeRaftInfoCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			stats, _ := json.Marshal(info)
+			stats, _ := json.MarshalIndent(info, "", "  ")
 			fmt.Println(string(stats))
 			return nil
 		})
