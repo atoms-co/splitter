@@ -7,18 +7,18 @@ import (
 
 	"google.golang.org/grpc"
 
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/iox"
 	"go.atoms.co/lib/randx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
-	"go.atoms.co/splitter/pkg/model"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/session"
 	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 type Observer = model.Instance
@@ -54,6 +54,8 @@ type Client interface {
 	ConsumerDrain(ctx context.Context, name model.QualifiedServiceName, id model.InstanceID) error
 
 	RaftInfo(ctx context.Context) (map[string]string, error)
+	RaftAddNode(ctx context.Context, id string, address string) error
+	RaftRemoveNode(ctx context.Context, id string) error
 	Snapshot(ctx context.Context) (Snapshot, error)
 	Restore(ctx context.Context, nuke bool) (Snapshot, error)
 	RestoreFromSnapshot(ctx context.Context, snapshot Snapshot) (Snapshot, error)
@@ -221,6 +223,25 @@ func (c *client) RaftInfo(ctx context.Context) (map[string]string, error) {
 
 	resp, err := c.operation.RaftInfo(ctx, req)
 	return resp.GetRaftState(), err
+}
+
+func (c *client) RaftAddNode(ctx context.Context, id string, address string) error {
+	req := &splitterprivatepb.RaftAddNodeRequest{
+		Id:      id,
+		Address: address,
+	}
+
+	_, err := c.operation.RaftAddNode(ctx, req)
+	return err
+}
+
+func (c *client) RaftRemoveNode(ctx context.Context, id string) error {
+	req := &splitterprivatepb.RaftRemoveNodeRequest{
+		Id: id,
+	}
+
+	_, err := c.operation.RaftRemoveNode(ctx, req)
+	return err
 }
 
 func (c *client) Snapshot(ctx context.Context) (Snapshot, error) {
