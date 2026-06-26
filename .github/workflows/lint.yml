@@ -1,0 +1,19 @@
+name: lint.yml
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+
+  build-bazel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Check for prohibited strings
+        run: |
+          if git grep -i wds | grep -v '.github/workflows/lint.yml'; then
+            echo "Error: found reference to WDS in repository"
+            exit 1
+          fi
