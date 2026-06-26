@@ -107,11 +107,11 @@ func TestWorker(t *testing.T) {
 			consumer := model.NewInstance(location.NewInstance(location.New("centralus", "node")), "endpoint")
 			in := chanx.NewFixed(model.NewRegister(consumer, service2, nil, nil))
 
-			_, err := d.worker.Connect(d.ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), in)
+			_, err := d.worker.Connect(d.ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 			require.NoError(t, err)
 
 			in2 := chanx.NewFixed(model.NewRegister(consumer, service1, nil, nil))
-			_, err = d.worker.Connect(d.ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), in2)
+			_, err = d.worker.Connect(d.ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
 			assert.Error(t, err)
 		})
 	})

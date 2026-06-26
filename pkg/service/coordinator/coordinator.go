@@ -55,13 +55,13 @@ var (
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
 	)
 	domainLoad = metrics.NewTrackedGauge(
-		metrics.NewGauge("css.com/wds2/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
 	)
 	shardLoad = metrics.NewTrackedGauge(
-		metrics.NewGauge("css.com/wds2/coordinator_shard_load", "Shard load", core.QualifiedShardKeys...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_shard_load", "Shard load", core.QualifiedShardKeys...),
 	)
 	shardScore = metrics.NewTrackedGauge(
-		metrics.NewGauge("css.com/wds2/coordinator_shard_score", "Shard score", core.QualifiedShardKeys...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_shard_score", "Shard score", core.QualifiedShardKeys...),
 	)
 	numAssignmentsByLocation = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments_by_location", "Assignment by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),

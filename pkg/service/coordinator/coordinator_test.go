@@ -1008,14 +1008,14 @@ func TestCoordinator_NoGrantsDeregisterRemovedImmediately(t *testing.T) {
 		a := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		inA := make(chan model.ConsumerMessage, 1)
 		inA <- model.NewRegister(a, serviceName, nil, nil)
-		outA, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), inA)
+		outA, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), inA)
 		require.NoError(t, err, "consumer A failed to join")
 
 		// Consumer B observer for cluster broadcasts.
 		b := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
 		inB := make(chan model.ConsumerMessage, 1)
 		inB <- model.NewRegister(b, serviceName, nil, nil)
-		outB, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), inB)
+		outB, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), inB)
 		require.NoError(t, err, "consumer B failed to join")
 
 		readFn(t, outB, isClusterSnapshot)
@@ -1127,7 +1127,7 @@ func connectConsumer(ctx context.Context, t *testing.T, coord Coordinator, w mod
 	in := make(chan model.ConsumerMessage, 10)
 	in <- model.NewRegister(w, serviceName, nil, nil)
 
-	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), in)
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 	require.NoError(t, err, "consumer failed to connect")
 
 	readFn(t, out, isClusterSnapshot)
