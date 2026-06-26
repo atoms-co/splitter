@@ -772,17 +772,15 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 		if move, load, ok := c.loadBalance(ctx, now); ok {
 			// Revoke from source worker, on failure, lease will run out
 			s := c.consumers[move.From.Worker]
-			if !s.TrySend(ctx, model.NewRevoke(toGrant(move.From))) {
-				log.Errorf(ctx, "Failed to send revoke for move %v to consumer: %v. Disconnecting", move, s)
-				c.disconnect(ctx, "stuck", s)
+			if !c.mustSend(ctx, s, model.NewRevoke(toGrant(move.From))) {
+				log.Errorf(ctx, "Failed to send revoke for move %v to consumer: %v. Disconnected", move, s)
 			}
 
 			// Allocate to destination worker, on failure, release allocation
 			s = c.consumers[move.To.Worker]
-			if !s.TrySend(ctx, model.NewAssign(toGrant(move.To))) {
-				log.Errorf(ctx, "Failed to send allocate for move %v to consumer: %v. Disconnecting", move, s)
+			if !c.mustSend(ctx, s, model.NewAssign(toGrant(move.To))) {
+				log.Errorf(ctx, "Failed to send allocate for move %v to consumer: %v. Disconnected", move, s)
 				c.alloc.Release(move.To, now)
-				c.disconnect(ctx, "stuck", s)
 			}
 
 			log.Infof(ctx, "Initiated grant move: %v, load=%v", move, load)
@@ -817,11 +815,10 @@ func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant
 			continue
 		}
 
-		if !s.TrySend(ctx, model.NewAssign(toGrant(grant))) {
-			log.Errorf(ctx, "Failed to send assignment for grant %v to consumer: %v. Disconnecting", grant, s)
+		if !c.mustSend(ctx, s, model.NewAssign(toGrant(grant))) {
+			log.Errorf(ctx, "Failed to send assignment for grant %v to consumer: %v. Disconnected", grant, s)
 
 			c.alloc.Release(grant, now) // undo assignment. Safe because it was not sent (no duration recording for new grants)
-			c.disconnect(ctx, "stuck", s)
 			c.recordAction(ctx, "assign", "failed")
 			continue
 		}
@@ -844,9 +841,8 @@ func (c *coordinator) promote(ctx context.Context, grants ...Grant) {
 			continue
 		}
 
-		if !s.TrySend(ctx, model.NewPromote(toGrant(grant))) {
-			log.Errorf(ctx, "Failed to send promotion for grant %v to consumer: %v. Disconnecting", grant, s)
-			c.disconnect(ctx, "stuck", s)
+		if !c.mustSend(ctx, s, model.NewPromote(toGrant(grant))) {
+			log.Errorf(ctx, "Failed to send promotion for grant %v to consumer: %v. Disconnected", grant, s)
 			c.recordAction(ctx, "promote", "failed")
 			continue
 		}
@@ -911,9 +907,8 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 	}
 	if len(assigned.Active) > 0 {
 		revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
-		if !s.TrySend(ctx, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
-			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(assigned.Active), s)
-			c.disconnect(ctx, "stuck", s)
+		if !c.mustSend(ctx, s, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
+			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnected", len(assigned.Active), s)
 			return
 		}
 	}
@@ -1004,9 +999,8 @@ func (c *coordinator) handleUpdate(ctx context.Context, s *consumerSession, upda
 		return
 	}
 
-	if !t.TrySend(ctx, model.NewNotify(update.Grant(), toGrant(transition))) {
-		log.Errorf(ctx, "Failed to send notify for grant %v for target %v on session %v. Disconnecting", g, transition, t)
-		c.disconnect(ctx, "stuck", t)
+	if !c.mustSend(ctx, t, model.NewNotify(update.Grant(), toGrant(transition))) {
+		log.Errorf(ctx, "Failed to send notify for grant %v for target %v on session %v. Disconnected", g, transition, t)
 		c.recordAction(ctx, "notify", "failed")
 		return
 	}
@@ -1349,9 +1343,8 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 		}
 		if len(assigned.Active) > 0 {
 			revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
-			if !s.TrySend(ctx, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
-				log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(assigned.Active), s)
-				c.disconnect(ctx, "stuck", s)
+			if !c.mustSend(ctx, s, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
+				log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnected", len(assigned.Active), s)
 				return model.Consumer{}, fmt.Errorf("failed to revoke grants: %v", revoked)
 			}
 		}
