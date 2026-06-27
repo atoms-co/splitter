@@ -3,6 +3,8 @@ package coordinator
 import (
 	"time"
 
+	"go.atoms.co/lib/mapx"
+	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/p2quantile"
 )
@@ -12,143 +14,258 @@ const (
 	median = 0.5
 	// Score is ranged in [0, scoreRange)
 	scoreRange = 100.0
+	// defaultRotationInterval defines the interval a domainLoadTracker lives before rotation.
+	defaultRotationInterval = 24 * time.Hour
 )
 
 // score represents the load score of a shard. It is in range (0, 100)
 type score float64
 
-// aggregatedLoad tracks aggregated load for a domain and its shards.
-type aggregatedLoad struct {
-	domainLoad model.Load
-	shardLoad  map[model.Shard]model.Load
+// domainQuantileInfo holds published quantile values for a domain and its shards.
+// Mutable version of core.DomainQuantileInfo.
+type domainQuantileInfo struct {
+	domainQuantile float64
+	shardQuantiles map[core.Shard]float64
 }
 
-// load returns aggregated domain load
-func (l *aggregatedLoad) load() model.Load {
-	return l.domainLoad
-}
-
-// score returns score of the given shard if exists.
-func (l *aggregatedLoad) score(shard model.Shard) (score, bool) {
-	if l.domainLoad == 0 {
-		return 0, false
-	}
-
-	ld, ok := l.shardLoad[shard]
+func (q *domainQuantileInfo) score(shard core.Shard) (score, bool) {
+	sq, ok := q.shardQuantiles[shard]
 	if !ok {
 		return 0, false
 	}
 
-	// ld is median load of the given shard, l.domainLoad is the median load of the whole domain.
-	// Following formula give the shard score in [0, scoreRange)
-	return score(scoreRange * ld / (ld + l.domainLoad)), true
+	// Should not happen as the load has been adjusted to at least 1 in domainTracker.add().
+	// Checking for zero to avoid dividing by zero.
+	if (q.domainQuantile + sq) == 0 {
+		return 0, false
+	}
+
+	// sq is the median load for the shard.
+	// The following formula gives the shard score in [0, scoreRange).
+	return score(scoreRange * sq / (q.domainQuantile + sq)), true
 }
 
-// quantileTracker tracks P2Quantiles for domain and its shards.
-type quantileTracker struct {
-	createdAt      time.Time
+// quantiles converts the current instance to core.DomainQuantileInfo.
+func (q *domainQuantileInfo) quantiles() *core.DomainQuantileInfo {
+	shardQuantiles := mapx.MapToSlice(q.shardQuantiles, core.NewShardQuantileInfo)
+	ret := core.NewDomainQuantileInfo(q.domainQuantile, shardQuantiles)
+	return &ret
+}
+
+// restoreDomainQuantileInfo restores quantiles from core.DomainQuantileInfo.
+func restoreDomainQuantileInfo(q core.DomainQuantileInfo) (*domainQuantileInfo, error) {
+	shardQuantiles := map[core.Shard]float64{}
+	for _, sq := range q.ShardQuantiles() {
+		shard, err := sq.Shard()
+		if err != nil {
+			return nil, err
+		}
+		shardQuantiles[shard] = sq.Quantile()
+	}
+
+	return &domainQuantileInfo{
+		domainQuantile: q.DomainQuantile(),
+		shardQuantiles: shardQuantiles,
+	}, nil
+}
+
+// domainTracker tracks P2Quantiles for a domain and its shards.
+// Mutable version of core.DomainTrackerSnapshot.
+type domainTracker struct {
+	createdAt time.Time
+
 	domainQuantile *p2quantile.P2Quantile
-	shardQuantile  map[model.Shard]*p2quantile.P2Quantile
+	shardQuantiles map[core.Shard]*p2quantile.P2Quantile
 }
 
-// newTracker creates a new quantilTracker
-func newTracker(now time.Time) *quantileTracker {
+func newDomainTracker(now time.Time) *domainTracker {
 	tl, _ := p2quantile.New(median)
 
-	return &quantileTracker{
+	return &domainTracker{
 		createdAt:      now,
 		domainQuantile: tl,
-		shardQuantile:  map[model.Shard]*p2quantile.P2Quantile{},
+		shardQuantiles: map[core.Shard]*p2quantile.P2Quantile{},
 	}
 }
 
-// add adds an observation to quantile trackers.
-func (t *quantileTracker) add(shard model.Shard, load model.Load) {
-	t.domainQuantile.Add(float64(load))
-	p, ok := t.shardQuantile[shard]
+// add adds an observation.
+func (t *domainTracker) add(shard model.Shard, load model.Load) {
+	// Adjust load to at least 1.
+	adjustedLoad := max(load, model.Load(1))
+
+	t.domainQuantile.Add(float64(adjustedLoad))
+	s := core.NewShard(shard.From, shard.To, shard.Region)
+	p, ok := t.shardQuantiles[s]
 	if !ok {
 		p, _ = p2quantile.New(median)
-		t.shardQuantile[shard] = p
+		t.shardQuantiles[s] = p
 	}
-	p.Add(float64(load))
+	p.Add(float64(adjustedLoad))
 }
 
-// load return aggregatedLoad of current quantilTracker, called when the loadTracker is rotating.
-func (t *quantileTracker) load() *aggregatedLoad {
-	dl, _ := t.domainQuantile.Quantile()
-	shardLoads := map[model.Shard]model.Load{}
-	for shard, q := range t.shardQuantile {
-		l, _ := q.Quantile()
-		shardLoads[shard] = model.Load(l)
+// publish publishes domainQuantileInfo from current domainTracker.
+func (t *domainTracker) quantileInfo() (*domainQuantileInfo, bool) {
+	dq, ok := t.domainQuantile.Quantile()
+	if !ok {
+		return nil, false
 	}
 
-	return &aggregatedLoad{
-		domainLoad: model.Load(dl),
-		shardLoad:  shardLoads,
+	sq := mapx.MapIf(t.shardQuantiles, func(shard core.Shard, qt *p2quantile.P2Quantile) (core.Shard, float64, bool) {
+		if q, ok := qt.Quantile(); ok {
+			return shard, q, true
+		}
+		return shard, 0.0, false
+	})
+
+	return &domainQuantileInfo{
+		domainQuantile: dq,
+		shardQuantiles: sq,
+	}, true
+}
+
+// needsRotation reports whether the current tracker instance should rotate.
+func (t *domainTracker) needsRotation(now time.Time) bool {
+	return now.Sub(t.createdAt) > defaultRotationInterval
+}
+
+func (t *domainTracker) domainLoad() (model.Load, bool) {
+	dl, ok := t.domainQuantile.Quantile()
+	if !ok {
+		return 0, false
 	}
+
+	return model.Load(dl), true
 }
 
-// needsRotation check if current quantileTracker needs to rotate.
-func (t *quantileTracker) needsRotation(now time.Time, rotateInterval time.Duration) bool {
-	return now.Sub(t.createdAt) > rotateInterval
+func (t *domainTracker) shardLoad() map[core.Shard]model.Load {
+	return mapx.MapIf(t.shardQuantiles, func(s core.Shard, q *p2quantile.P2Quantile) (core.Shard, model.Load, bool) {
+		ld, ok := q.Quantile()
+		return s, model.Load(ld), ok
+	})
 }
 
-// loadTracker manages a quantileTracker that accepts new observations and an aggregatedLoad that represents load from prev quantileTracker.
-type loadTracker struct {
-	rotateInterval time.Duration
-	prevLoad       *aggregatedLoad
-	currTracker    *quantileTracker
+// snapshot takes a snapshot from current domainTracker.
+func (t *domainTracker) snapshot() core.DomainTrackerSnapshot {
+	shardTrackers := mapx.MapToSlice(t.shardQuantiles, func(s core.Shard, q *p2quantile.P2Quantile) core.ShardP2QuantileSnapshot {
+		return core.NewShardP2QuantileSnapshot(s, core.SnapshotQuantile(q))
+	})
+
+	return core.NewDomainTrackerSnapshot(t.createdAt, core.SnapshotQuantile(t.domainQuantile), shardTrackers)
 }
 
-func newLoadTracker(now time.Time, rotateInterval time.Duration) *loadTracker {
-	return &loadTracker{
-		rotateInterval: rotateInterval,
-		currTracker:    newTracker(now),
+// restoreDomainTracker restores a domainTracker instance from core.DomainTrackerSnapshot
+func restoreDomainTracker(t core.DomainTrackerSnapshot) (*domainTracker, error) {
+	domainQuantile, err := t.DomainSnapshot().Restore()
+	if err != nil {
+		return nil, err
+	}
+
+	shardTrackers := map[core.Shard]*p2quantile.P2Quantile{}
+	for _, ss := range t.ShardSnapshot() {
+		shard, err := ss.Shard()
+		if err != nil {
+			return nil, err
+		}
+
+		q, err := ss.Snapshot().Restore()
+		if err != nil {
+			return nil, err
+		}
+
+		shardTrackers[shard] = q
+	}
+
+	return &domainTracker{
+		createdAt:      t.CreatedAt(),
+		domainQuantile: domainQuantile,
+		shardQuantiles: shardTrackers,
+	}, nil
+}
+
+// domainLoadTracker manages active domainTracker and published quantiles for a domain and its shards.
+// Mutable version of core.DomainLoadTracker.
+type domainLoadTracker struct {
+	domain   model.DomainName
+	quantile *domainQuantileInfo
+	tracker  *domainTracker
+}
+
+func newDomainLoadTracker(now time.Time, domain model.DomainName) *domainLoadTracker {
+	return &domainLoadTracker{
+		domain:  domain,
+		tracker: newDomainTracker(now),
 	}
 }
 
 // rotateIfNeeded seals current load tracker and creates a new one if needed.
-func (l *loadTracker) rotateIfNeeded(now time.Time) {
-	if l.currTracker.needsRotation(now, l.rotateInterval) {
-		ld := l.currTracker.load()
-
-		l.prevLoad = ld
-		l.currTracker = newTracker(now)
+func (t *domainLoadTracker) rotateIfNeeded(now time.Time) {
+	if t.tracker.needsRotation(now) {
+		if q, ok := t.tracker.quantileInfo(); ok {
+			t.quantile = q
+		}
+		t.tracker = newDomainTracker(now)
 	}
 }
 
 // add adds an observation of a shard load.
-func (l *loadTracker) add(shard model.Shard, load model.Load) {
-	l.currTracker.add(shard, load)
+func (t *domainLoadTracker) add(shard model.Shard, load model.Load) {
+	t.tracker.add(shard, load)
 }
 
-// domainLoad returns the load of a domain.
-func (l *loadTracker) domainLoad() (model.Load, bool) {
-	if l.prevLoad == nil {
-		return 0, false
-	}
-	return l.prevLoad.load(), true
+// domainLoad returns domain load from active tracker.
+func (t *domainLoadTracker) domainLoad() (model.Load, bool) {
+	return t.tracker.domainLoad()
 }
 
-// shardLoad returns a map of <shard, Load>
-func (l *loadTracker) shardLoad() (map[model.Shard]model.Load, bool) {
-	if l.prevLoad == nil {
-		return nil, false
-	}
-	return l.prevLoad.shardLoad, true
+// shardLoad returns shard load from the active tracker.
+func (t *domainLoadTracker) shardLoad() map[core.Shard]model.Load {
+	return t.tracker.shardLoad()
 }
 
 // shardScoreOrDefault returns score of a shard if it has been tracked.
 // Or, default score that equals to (scoreRange / 2).
-func (l *loadTracker) shardScoreOrDefault(shard model.Shard) score {
+func (t *domainLoadTracker) shardScoreOrDefault(shard core.Shard) score {
 	defaultScore := score(scoreRange / 2)
-	if l.prevLoad == nil {
+	if t.quantile == nil {
 		return defaultScore
 	}
 
-	s, ok := l.prevLoad.score(shard)
+	s, ok := t.quantile.score(shard)
 	if !ok {
 		return defaultScore
 	}
 	return s
+}
+
+// snapshot takes a snapshot of the current domainLoadTracker instance to a core.DomainLoadTracker.
+func (t *domainLoadTracker) snapshot() core.DomainLoadInfo {
+	var q *core.DomainQuantileInfo
+	if t.quantile != nil {
+		q = t.quantile.quantiles()
+	}
+
+	return core.NewDomainLoadInfo(t.domain, t.tracker.snapshot(), q)
+}
+
+// restoreDomainLoadTracker restores a domainLoadTracker from core.DomainLoadTracker.
+func restoreDomainLoadTracker(t core.DomainLoadInfo) (*domainLoadTracker, error) {
+	var err error
+	var restored *domainQuantileInfo
+	if t.HasQuantileInfo() {
+		restored, err = restoreDomainQuantileInfo(t.QuantileInfo())
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	rt, err := restoreDomainTracker(t.TrackerSnapshot())
+	if err != nil {
+		return nil, err
+	}
+
+	return &domainLoadTracker{
+		domain:   t.DomainName(),
+		quantile: restored,
+		tracker:  rt,
+	}, nil
 }

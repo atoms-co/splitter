@@ -1,0 +1,146 @@
+syntax = "proto3";
+
+package atoms.splitter.private;
+
+option go_package = "go.atoms.co/splitter/pb/private";
+
+import "google/protobuf/timestamp.proto";
+import "atoms/splitter/model.proto";
+
+message Shard {
+  string from = 1;
+  string to = 2;
+  string region = 3;
+}
+
+/**
+This file defines protobuf messages that are used to track load of consumer services.
+Here is how load tracking works:
+1. Each range (shard owner) collects and reports its load to the coordinator.
+2. The coordinator
+  - maintains load trackers for its domains and adds load observations to the corresponding trackers.
+  - periodically (e.g., every 24 hours) finalizes recorded observations by transferring quantile values
+    from the current tracker to immutable quantile values stored separately and creates a new active tracker.
+  - while allocating work to a worker, uses quantile values to calculate load score for each shard instead
+    of hard-coded score.
+3. To preserve the active trackers and quantile values during coordinator switch, the coordinator periodically captures
+   the snapshot of the active tracker data (as `DomainTrackerSnapshot`) and the quantile values (as `DomainQuantileInfo`)
+   and sends them to the leader (in `ServiceLoadInfo`).
+4. The leader then persists this information to raft storage so that it won't be lost during leader restart.
+5. While assigning a new coordinator, the leader sends the ServiceLoadInfo in the assign message. The new coordinator restores
+   the trackers and quantile values, and continues tracking load.
+**/
+
+// DomainQuantileInfo represents quantile values for a domain and its shards.
+// It is used to calculate load scores of shards.
+//
+// For example:
+// A domain has two shards: shard1 and shard2
+// - Shard1 has observations [1, 2]
+// - Shard2 has observations [3, 4, 5]
+// After these observations are added, the domain has observations [1, 2, 3, 4, 5]
+// The DomainQuantileInfo looks like:
+// {
+//   domain_quantile:  3,
+//   shard_quantiles:  [
+//     {
+//       shard:  {
+//         from:  "00000000-0000-0000-0000-000000000000",
+//         to:  "80000000-0000-0000-0000-000000000000",
+//       },
+//       quantile:  2,
+//     },
+//     {
+//       shard:  {
+//         from:  "80000000-0000-0000-0000-000000000000",
+//         to:  "ffffffff-ffff-ffff-ffff-ffffffffffff",
+//       },
+//       quantile:  4
+//      }
+//   ]
+// }
+message DomainQuantileInfo {
+  message ShardQuantileInfo {
+    Shard shard = 1;
+    double quantile = 2;
+  }
+
+  // quantile value of the domain
+  double domain_quantile = 1;
+  // quantile values of shards
+  repeated ShardQuantileInfo shard_quantiles = 2;
+}
+
+// DomainTrackerSnapshot represents a snapshot of a domain load tracker for a domain and its shards.
+// For example, the observations above generate the following snapshot:
+// {
+//   age:  {
+//     nanos:  125000000
+//   },
+//   domain_snapshot: {
+//     percentile: 0.5
+//     height: [1, 2, 3, 4, 5]
+//     marker_pos: [1, 2, 3, 4, 5]
+//     desired_marker_pos: [1, 2, 3, 4, 5]
+//   },
+//   shard_snapshot: [
+//   {
+//     shard: {
+//       from: "00000000-0000-0000-0000-000000000000"
+//       to: "80000000-0000-0000-0000-000000000000"
+//     },
+//     snapshot: {
+//       percentile: 0.5
+//       height: [1, 2, 0, 0, 0]
+//       marker_pos: [1, 2, 3, 4, 2]
+//       desired_marker_pos: [1, 2, 3, 4, 5]
+//     },
+//     shard: {
+//       from: "80000000-0000-0000-0000-000000000000"
+//       to: "ffffffff-ffff-ffff-ffff-ffffffffffff"
+//     },
+//     snapshot: {
+//       percentile: 0.5
+//       height: [3, 4, 5, 0, 0]
+//       marker_pos: [1, 2, 3, 4, 3]
+//       desired_marker_pos: [1, 2, 3, 4, 5]
+//     },
+//   }]
+// }
+message DomainTrackerSnapshot {
+  // P2QuantileSnapshot represents snapshot of a pkg/util/p2quantile/p2quantile.
+  message P2QuantileSnapshot {
+    double percentile = 1;
+    repeated double height = 2;
+    repeated uint64 marker_pos = 3;
+    repeated double desired_marker_pos = 4;
+  }
+
+  // ShardP2QuantileSnapshot represents a pair of Shard and P2QuantileSnapshot.
+  message ShardP2QuantileSnapshot {
+    Shard shard = 1;
+    P2QuantileSnapshot snapshot = 2;
+  }
+
+  // Time when the tracker (where the Snapshot was taken from) was created.
+  google.protobuf.Timestamp created_at = 1;
+  P2QuantileSnapshot domain_snapshot = 2;
+  repeated ShardP2QuantileSnapshot shard_snapshot = 3;
+}
+
+// DomainLoadInfo contains snapshots of domain load trackers and quantiles for a domain.
+message DomainLoadInfo {
+  // Name of the domain being tracked.
+  string domain_name = 1;
+  // Snapshot of active tracker, used to continuously track new observations.
+  DomainTrackerSnapshot tracker_snapshot = 2;
+  // Quantiles calculated from sealed tracker after a certain period, used to calculate scores of shards. Optional.
+  DomainQuantileInfo quantile_info = 3;
+}
+
+// ServiceLoadInfo contains information about load of all domains of a service.
+// Used by coordinators to report service load to the leader and leader to snapshot current status of tenants
+message ServiceLoadInfo {
+  atoms.splitter.QualifiedServiceName service = 1;
+  repeated DomainLoadInfo info = 2;
+}

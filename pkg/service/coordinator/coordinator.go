@@ -38,7 +38,8 @@ const (
 	// newConsumerSuspendDuration is the duration we suspend a new consumer for to account for network unavailability during consumer startup.
 	newConsumerSuspendDuration = 30 * time.Second
 	maxLoad                    = model.Load(1 << 31)
-	defaultRotateInterval      = 24 * time.Hour
+	// loadTickerInterval defines the interval between load-related actions.
+	loadTickerInterval = 10 * time.Minute
 )
 
 var (
@@ -120,12 +121,6 @@ func WithRefreshDelay(delay time.Duration) Option {
 	}
 }
 
-func WithTrackerRotateInterval(interval time.Duration) Option {
-	return func(c *coordinator) {
-		c.trackerRotateInterval = interval
-	}
-}
-
 // coordinator is responsible for managing a single service. It accepts incoming connections from consumers and
 // distributes work among the consumers by assigning shards with leases.
 type coordinator struct {
@@ -149,8 +144,7 @@ type coordinator struct {
 	cluster   *model.ClusterMap
 	messages  chan *sessionx.Message[model.ConsumerMessage]
 
-	trackerRotateInterval time.Duration
-	trackers              map[model.QualifiedDomainName]*loadTracker
+	trackers map[model.QualifiedDomainName]*domainLoadTracker
 
 	inject chan func()
 
@@ -168,8 +162,7 @@ func New(ctx context.Context, loc location.Location, service model.QualifiedServ
 		observers:    map[model.InstanceID]*observerSession{},
 		messages:     make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 
-		trackerRotateInterval: defaultRotateInterval,
-		trackers:              map[model.QualifiedDomainName]*loadTracker{},
+		trackers: map[model.QualifiedDomainName]*domainLoadTracker{},
 
 		inject:      make(chan func()),
 		initialized: iox.NewAsyncCloser(),
@@ -573,7 +566,7 @@ func (c *coordinator) process(ctx context.Context, updates <-chan core.Update) {
 	cluster := time.NewTicker(100*time.Millisecond + randx.Duration(50*time.Millisecond))
 	defer cluster.Stop()
 
-	loadTicker := time.NewTicker(10*time.Minute + randx.Duration(10*time.Second))
+	loadTicker := time.NewTicker(loadTickerInterval + randx.Duration(10*time.Second))
 	defer loadTicker.Stop()
 
 	var broadcast bool
@@ -1047,7 +1040,7 @@ func (c *coordinator) handleStatus(ctx context.Context, status model.StatusMessa
 			now := time.Now()
 			tracker, ok := c.trackers[shard.Domain]
 			if !ok {
-				tracker = newLoadTracker(now, c.trackerRotateInterval)
+				tracker = newDomainLoadTracker(now, shard.Domain.Domain)
 				c.trackers[shard.Domain] = tracker
 			}
 			tracker.add(shard, load.Load())
@@ -1563,10 +1556,7 @@ func (c *coordinator) emitLoadMetrics(ctx context.Context) {
 		}
 		domainLoad.Set(ctx, float64(load), core.QualifiedDomainTags(domain)...)
 
-		shardLoads, ok := tracker.shardLoad()
-		if !ok {
-			continue
-		}
+		shardLoads := tracker.shardLoad()
 
 		for shard, load := range shardLoads {
 			shardTags := slicex.CopyAppend(core.QualifiedDomainTags(domain), core.ShardTag(shard))
