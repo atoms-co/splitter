@@ -3,9 +3,9 @@ package core
 import (
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pkg/model"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 // Snapshot holds the complete state of all tenants.
@@ -33,6 +33,10 @@ func (s Snapshot) Tenants() []State {
 
 func (s Snapshot) String() string {
 	return protox.MarshalTextString(s.pb)
+}
+
+func (s Snapshot) Size() int {
+	return protox.Size(s.pb)
 }
 
 // State is the complete state of a single tenant.
@@ -218,6 +222,10 @@ func (s Update) PlacementsRemoved() []model.QualifiedPlacementName {
 	})
 }
 
+func (s Update) Size() int {
+	return protox.Size(s.pb)
+}
+
 func (s Update) String() string {
 	return protox.MarshalTextString(s.pb)
 }
@@ -244,6 +252,10 @@ func (s Delete) Tenant() model.TenantName {
 	return model.TenantName(s.pb.GetTenant())
 }
 
+func (s Delete) Size() int {
+	return protox.Size(s.pb)
+}
+
 func (s Delete) String() string {
 	return protox.MarshalTextString(s.pb)
 }
@@ -268,4 +280,8 @@ func UnwrapRestore(t Restore) *splitterprivatepb.Restore {
 
 func (s Restore) Snapshot() Snapshot {
 	return WrapSnapshot(s.pb.GetSnapshot())
+}
+
+func (s Restore) Size() int {
+	return protox.Size(s.pb)
 }
