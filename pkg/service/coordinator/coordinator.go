@@ -450,17 +450,17 @@ func (c *coordinator) disconnect(ctx context.Context, reason string, consumers .
 		log.Infof(ctx, "Disconnecting consumer (reason: %v): %v", reason, s)
 		c.recordAction(ctx, "disconnect", "ok")
 
-		if len(s.consumer.Keys()) > 0 {
-			// Refresh allocation rules on disconnect if using named keys
-			c.refresh(ctx, 0)
-		}
-
 		if c.alloc.Detach(s.consumer.ID()) {
 			assigned := c.alloc.Assigned(s.ID())
 			if len(assigned.Active) > 0 || len(assigned.Allocated) > 0 {
 				log.Warnf(ctx, "Detached consumer %v with %v active and %v allocated domains", s.consumer, len(assigned.Active), len(assigned.Allocated))
 			}
 		} // else: already detached
+
+		if len(s.consumer.Keys()) > 0 {
+			// Refresh allocation rules on disconnect if using named keys
+			c.refresh(ctx, 0)
+		}
 
 		s.connection.Disconnect()
 		delete(c.consumers, s.consumer.ID())
@@ -704,6 +704,9 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	var isKeys bool
 	var keys []model.QualifiedDomainKey
 	for _, worker := range c.alloc.Workers() {
+		if worker.State != allocation.Attached {
+			continue
+		}
 		if len(worker.Instance.Data.Keys()) > 0 {
 			isKeys = true
 			keys = append(keys, worker.Instance.Data.Keys()...)

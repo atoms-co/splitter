@@ -451,6 +451,59 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 	})
 }
 
+func TestCoordinator_NamedKeyDisconnectDropsNamedShardPenalty(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		name := model.NamedDomainKey{Name: "test", Key: model.DomainKey{Region: "centralus", Key: model.MustParseKey("b188ea31-f889-4ce5-9fc9-77fda8ab5c83")}}
+		domain, err := model.NewDomain(domainName, model.Regional, time.Now(), model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(4)), model.WithDomainRegions("centralus"), model.WithDomainNamedKeys(name))))
+		require.NoError(t, err)
+
+		coord := setup(ctx, t, []model.Domain{domain}, WithFastActivation())
+		c := coord.(*coordinator)
+
+		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		in := make(chan model.ConsumerMessage, 1)
+		in <- model.NewRegister(w, serviceName, nil, nil)
+		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
+		require.NoError(t, err, "consumer failed to join coordinator")
+		defer func() {
+			coord.Close()
+			assertx.Closed(t, out)
+		}()
+
+		readFn(t, out, isClusterSnapshot)
+		for i := 0; i < 4; i++ {
+			assign := readFn(t, out, isAssign)
+			require.Len(t, assign.Grants(), 1)
+		}
+
+		_, load := c.alloc.Load()
+		require.Zero(t, load.Place)
+
+		w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
+		in2 := make(chan model.ConsumerMessage, 1)
+		in2 <- model.NewRegister(w2, serviceName, nil, nil, model.WithKeyNames(model.DomainKeyName{Domain: domainName.Domain, Name: "test"}))
+		out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
+		require.NoError(t, err, "consumer failed to join coordinator")
+
+		readFn(t, out2, isClusterSnapshot)
+		_, load = c.alloc.Load()
+		require.EqualValues(t, 20, load.Place, "matching shard should be marked as named")
+
+		close(in2)
+		synctest.Wait()
+		assertx.Closed(t, out2)
+
+		namedWorker, ok := c.alloc.Worker(w2.ID())
+		require.True(t, ok, "detached worker should remain until lease expiry")
+		require.Equal(t, "detached", string(namedWorker.State))
+
+		_, load = c.alloc.Load()
+		assert.Zero(t, load.Place, "disconnected consumer should stop influencing named-shard placement")
+	})
+}
+
 func TestCoordinator_RevokeGrant(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 
