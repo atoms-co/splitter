@@ -38,7 +38,8 @@ const (
 	// newConsumerSuspendDuration is the duration we suspend a new consumer for to account for network unavailability during consumer startup.
 	newConsumerSuspendDuration = 30 * time.Second
 	maxLoad                    = model.Load(1 << 31)
-	defaultRotateInterval      = 24 * time.Hour
+	// loadTickerInterval defines the interval between load-related actions.
+	loadTickerInterval = 10 * time.Minute
 )
 
 var (
@@ -55,13 +56,13 @@ var (
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
 	)
 	domainLoad = metrics.NewTrackedGauge(
-		metrics.NewGauge("css.com/wds2/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
 	)
 	shardLoad = metrics.NewTrackedGauge(
-		metrics.NewGauge("css.com/wds2/coordinator_shard_load", "Shard load", core.QualifiedShardKeys...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_shard_load", "Shard load", core.QualifiedShardKeys...),
 	)
 	shardScore = metrics.NewTrackedGauge(
-		metrics.NewGauge("css.com/wds2/coordinator_shard_score", "Shard score", core.QualifiedShardKeys...),
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_shard_score", "Shard score", core.QualifiedShardKeys...),
 	)
 	numAssignmentsByLocation = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments_by_location", "Assignment by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
@@ -120,12 +121,6 @@ func WithRefreshDelay(delay time.Duration) Option {
 	}
 }
 
-func WithTrackerRotateInterval(interval time.Duration) Option {
-	return func(c *coordinator) {
-		c.trackerRotateInterval = interval
-	}
-}
-
 // coordinator is responsible for managing a single service. It accepts incoming connections from consumers and
 // distributes work among the consumers by assigning shards with leases.
 type coordinator struct {
@@ -149,8 +144,7 @@ type coordinator struct {
 	cluster   *model.ClusterMap
 	messages  chan *sessionx.Message[model.ConsumerMessage]
 
-	trackerRotateInterval time.Duration
-	trackers              map[model.QualifiedDomainName]*loadTracker
+	trackers map[model.QualifiedDomainName]*domainLoadTracker
 
 	inject chan func()
 
@@ -168,8 +162,7 @@ func New(ctx context.Context, loc location.Location, service model.QualifiedServ
 		observers:    map[model.InstanceID]*observerSession{},
 		messages:     make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 
-		trackerRotateInterval: defaultRotateInterval,
-		trackers:              map[model.QualifiedDomainName]*loadTracker{},
+		trackers: map[model.QualifiedDomainName]*domainLoadTracker{},
 
 		inject:      make(chan func()),
 		initialized: iox.NewAsyncCloser(),
@@ -573,7 +566,7 @@ func (c *coordinator) process(ctx context.Context, updates <-chan core.Update) {
 	cluster := time.NewTicker(100*time.Millisecond + randx.Duration(50*time.Millisecond))
 	defer cluster.Stop()
 
-	loadTicker := time.NewTicker(10*time.Minute + randx.Duration(10*time.Second))
+	loadTicker := time.NewTicker(loadTickerInterval + randx.Duration(10*time.Second))
 	defer loadTicker.Stop()
 
 	var broadcast bool
@@ -772,17 +765,15 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 		if move, load, ok := c.loadBalance(ctx, now); ok {
 			// Revoke from source worker, on failure, lease will run out
 			s := c.consumers[move.From.Worker]
-			if !s.TrySend(ctx, model.NewRevoke(toGrant(move.From))) {
-				log.Errorf(ctx, "Failed to send revoke for move %v to consumer: %v. Disconnecting", move, s)
-				c.disconnect(ctx, "stuck", s)
+			if !c.mustSend(ctx, s, model.NewRevoke(toGrant(move.From))) {
+				log.Errorf(ctx, "Failed to send revoke for move %v to consumer: %v. Disconnected", move, s)
 			}
 
 			// Allocate to destination worker, on failure, release allocation
 			s = c.consumers[move.To.Worker]
-			if !s.TrySend(ctx, model.NewAssign(toGrant(move.To))) {
-				log.Errorf(ctx, "Failed to send allocate for move %v to consumer: %v. Disconnecting", move, s)
+			if !c.mustSend(ctx, s, model.NewAssign(toGrant(move.To))) {
+				log.Errorf(ctx, "Failed to send allocate for move %v to consumer: %v. Disconnected", move, s)
 				c.alloc.Release(move.To, now)
-				c.disconnect(ctx, "stuck", s)
 			}
 
 			log.Infof(ctx, "Initiated grant move: %v, load=%v", move, load)
@@ -817,11 +808,10 @@ func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant
 			continue
 		}
 
-		if !s.TrySend(ctx, model.NewAssign(toGrant(grant))) {
-			log.Errorf(ctx, "Failed to send assignment for grant %v to consumer: %v. Disconnecting", grant, s)
+		if !c.mustSend(ctx, s, model.NewAssign(toGrant(grant))) {
+			log.Errorf(ctx, "Failed to send assignment for grant %v to consumer: %v. Disconnected", grant, s)
 
 			c.alloc.Release(grant, now) // undo assignment. Safe because it was not sent (no duration recording for new grants)
-			c.disconnect(ctx, "stuck", s)
 			c.recordAction(ctx, "assign", "failed")
 			continue
 		}
@@ -844,9 +834,8 @@ func (c *coordinator) promote(ctx context.Context, grants ...Grant) {
 			continue
 		}
 
-		if !s.TrySend(ctx, model.NewPromote(toGrant(grant))) {
-			log.Errorf(ctx, "Failed to send promotion for grant %v to consumer: %v. Disconnecting", grant, s)
-			c.disconnect(ctx, "stuck", s)
+		if !c.mustSend(ctx, s, model.NewPromote(toGrant(grant))) {
+			log.Errorf(ctx, "Failed to send promotion for grant %v to consumer: %v. Disconnected", grant, s)
 			c.recordAction(ctx, "promote", "failed")
 			continue
 		}
@@ -911,9 +900,8 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 	}
 	if len(assigned.Active) > 0 {
 		revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
-		if !s.TrySend(ctx, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
-			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(assigned.Active), s)
-			c.disconnect(ctx, "stuck", s)
+		if !c.mustSend(ctx, s, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
+			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnected", len(assigned.Active), s)
 			return
 		}
 	}
@@ -1004,9 +992,8 @@ func (c *coordinator) handleUpdate(ctx context.Context, s *consumerSession, upda
 		return
 	}
 
-	if !t.TrySend(ctx, model.NewNotify(update.Grant(), toGrant(transition))) {
-		log.Errorf(ctx, "Failed to send notify for grant %v for target %v on session %v. Disconnecting", g, transition, t)
-		c.disconnect(ctx, "stuck", t)
+	if !c.mustSend(ctx, t, model.NewNotify(update.Grant(), toGrant(transition))) {
+		log.Errorf(ctx, "Failed to send notify for grant %v for target %v on session %v. Disconnected", g, transition, t)
 		c.recordAction(ctx, "notify", "failed")
 		return
 	}
@@ -1047,7 +1034,7 @@ func (c *coordinator) handleStatus(ctx context.Context, status model.StatusMessa
 			now := time.Now()
 			tracker, ok := c.trackers[shard.Domain]
 			if !ok {
-				tracker = newLoadTracker(now, c.trackerRotateInterval)
+				tracker = newDomainLoadTracker(now, shard.Domain.Domain)
 				c.trackers[shard.Domain] = tracker
 			}
 			tracker.add(shard, load.Load())
@@ -1349,9 +1336,8 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 		}
 		if len(assigned.Active) > 0 {
 			revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
-			if !s.TrySend(ctx, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
-				log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnecting", len(assigned.Active), s)
-				c.disconnect(ctx, "stuck", s)
+			if !c.mustSend(ctx, s, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
+				log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnected", len(assigned.Active), s)
 				return model.Consumer{}, fmt.Errorf("failed to revoke grants: %v", revoked)
 			}
 		}
@@ -1563,10 +1549,7 @@ func (c *coordinator) emitLoadMetrics(ctx context.Context) {
 		}
 		domainLoad.Set(ctx, float64(load), core.QualifiedDomainTags(domain)...)
 
-		shardLoads, ok := tracker.shardLoad()
-		if !ok {
-			continue
-		}
+		shardLoads := tracker.shardLoad()
 
 		for shard, load := range shardLoads {
 			shardTags := slicex.CopyAppend(core.QualifiedDomainTags(domain), core.ShardTag(shard))

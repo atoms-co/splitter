@@ -6,8 +6,8 @@ import (
 
 	"github.com/hashicorp/raft"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/pkg/model"
 )
 
@@ -133,6 +133,6 @@ func ShardRegionTag(v location.Region) metrics.Tag {
 	return metrics.Tag{Key: ShardRegionKey, Value: fmt.Sprintf("%v", v)}
 }
 
-func ShardTag(s model.Shard) metrics.Tag {
+func ShardTag(s Shard) metrics.Tag {
 	return metrics.Tag{Key: ShardKey, Value: s.From.String()[:4]}
 }

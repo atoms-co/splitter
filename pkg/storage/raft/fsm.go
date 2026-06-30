@@ -4,16 +4,17 @@ import (
 	"context"
 	"io"
 	"sync"
+	"time"
 
 	"github.com/hashicorp/raft"
 
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 var (
@@ -21,7 +22,26 @@ var (
 )
 
 var (
-	numActions = metrics.NewCounter("go.atoms.co/splitter/storage_raft_fsm_actions", "Raft FSM actions", core.ActionKey, core.ResultKey)
+	// messageSizeBucketOpts contains the buckets for message size (in bytes) for fsm messages
+	messageSizeBucketOpts = &metrics.BucketOptions{
+		UserDefinedBuckets: []float64{
+			1024,       // 1Kb
+			4096,       // 4Kb
+			16_384,     // 16Kb
+			65_536,     // 64Kb
+			262_144,    // 256Kb
+			1_048_576,  // 1Mb
+			4_194_304,  // 4Mb
+			16_777_216, // 16Mb
+			67_108_864, // 64Mb
+		},
+		DistributionType: metrics.UserDefined,
+	}
+)
+
+var (
+	actionLatency = metrics.NewHistogram("go.atoms.co/splitter/storage_raft_fsm_action_latency", "Raft FSM action latency", nil, core.ActionKey, core.ResultKey)
+	messageSize   = metrics.NewByteHistogram("go.atoms.co/splitter/storage_raft_message_size", "Raft FSM message size", messageSizeBucketOpts, core.MessageTypeKey)
 )
 
 // FSM implements the finite state machine logic needed for deterministic state propagation. It
@@ -43,6 +63,8 @@ func (f *FSM) Read() core.Snapshot {
 }
 
 func (f *FSM) Apply(l *raft.Log) interface{} {
+	now := time.Now()
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -54,7 +76,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 	if err != nil {
 		log.Errorf(context.Background(), "Internal: invalid raft mutation %v @%v: %v", l.Index, l.AppendedAt, err)
 
-		recordAction("apply/unmarshal", err)
+		recordActionLatency(time.Since(now), "apply/unmarshal", err)
 		return nil
 	}
 
@@ -63,46 +85,59 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 
 	switch {
 	case pb.GetUpdate() != nil:
-		err := f.db.Update(core.WrapUpdate(pb.GetUpdate()), false)
+		upd := core.WrapUpdate(pb.GetUpdate())
+		err := f.db.Update(upd, false)
 		if err != nil {
 			log.Errorf(context.Background(), "Internal: invalid raft update %v @%v: %v: %v", l.Index, l.AppendedAt, protox.MarshalTextString(pb), err)
 		}
 
-		recordAction("apply/update", err)
+		recordActionLatency(time.Since(now), "apply/update", err)
+		recordMessageSize(upd.Size(), "update")
 		return nil
 
 	case pb.GetDelete() != nil:
-		err := f.db.Delete(core.WrapDelete(pb.GetDelete()))
+		del := core.WrapDelete(pb.GetDelete())
+		err := f.db.Delete(del)
 		if err != nil {
 			log.Errorf(context.Background(), "Internal: invalid raft delete %v @%v: %v: %v", l.Index, l.AppendedAt, protox.MarshalTextString(pb), err)
 		}
 
-		recordAction("apply/delete", err)
+		recordActionLatency(time.Since(now), "apply/delete", err)
+		recordMessageSize(del.Size(), "delete")
 		return nil
 
 	case pb.GetRestore() != nil:
-		f.db.Restore(core.WrapRestore(pb.GetRestore()).Snapshot())
+		restore := core.WrapRestore(pb.GetRestore())
+		f.db.Restore(restore.Snapshot())
 
-		recordAction("apply/restore", err)
+		recordActionLatency(time.Since(now), "apply/restore", err)
+		recordMessageSize(restore.Size(), "restore")
 		return nil
 
 	default:
 		log.Errorf(context.Background(), "Internal: unknown raft mutation %v @%v: %v", l.Index, l.AppendedAt, protox.MarshalTextString(pb))
 
-		recordAction("apply/unknown", model.ErrInvalid)
+		recordActionLatency(time.Since(now), "apply/unknown", model.ErrInvalid)
 		return nil
 	}
 }
 
 func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
+	now := time.Now()
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	recordAction("snapshot", nil)
-	return &fsmSnapshot{data: f.db.Snapshot()}, nil
+	snap := f.db.Snapshot()
+
+	recordActionLatency(time.Since(now), "snapshot", nil)
+	recordMessageSize(snap.Size(), "snapshot")
+	return &fsmSnapshot{data: snap}, nil
 }
 
 func (f *FSM) Restore(snapshot io.ReadCloser) error {
+	now := time.Now()
+
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -110,14 +145,14 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 	if err != nil {
 		log.Errorf(context.Background(), "Failed to read raft snapshot: %v", err)
 
-		recordAction("restore/read", err)
+		recordActionLatency(time.Since(now), "restore/read", err)
 		return err
 	}
 	pb, err := protox.Unmarshal[splitterprivatepb.Snapshot](buf)
 	if err != nil {
 		log.Errorf(context.Background(), "Failed to unmarshal raft snapshot: %v", err)
 
-		recordAction("restore/unmarshal", err)
+		recordActionLatency(time.Since(now), "restore/unmarshal", err)
 		return err
 	}
 
@@ -125,7 +160,7 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 
 	log.Infof(context.Background(), "Restored raft snapshot")
 
-	recordAction("restore", nil)
+	recordActionLatency(time.Since(now), "restore", nil)
 	return nil
 }
 
@@ -134,8 +169,9 @@ type fsmSnapshot struct {
 }
 
 func (f *fsmSnapshot) Persist(sink raft.SnapshotSink) error {
+	now := time.Now()
 	err := f.persist(sink)
-	recordAction("persist", err)
+	recordActionLatency(time.Since(now), "persist", err)
 	return err
 }
 
@@ -163,6 +199,10 @@ func (f *fsmSnapshot) tryPersist(sink raft.SnapshotSink) error {
 
 func (f *fsmSnapshot) Release() {}
 
-func recordAction(action string, err error) {
-	numActions.Increment(context.Background(), 1, core.ActionTag(action), core.ResultErrorTag(err))
+func recordActionLatency(latency time.Duration, action string, err error) {
+	actionLatency.Observe(context.Background(), latency, core.ActionTag(action), core.ResultErrorTag(err))
+}
+
+func recordMessageSize(size int, msgType string) {
+	messageSize.Observe(context.Background(), float64(size), core.MessageTypeTag(msgType))
 }

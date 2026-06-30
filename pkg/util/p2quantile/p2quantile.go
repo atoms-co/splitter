@@ -7,6 +7,40 @@ import (
 
 const epsilon = 1e-6
 
+// Snapshot represents a Snapshot of P2Quantile, used to marshal to/unmarshal from proto message.
+type Snapshot struct {
+	Percentile       float64
+	Height           [5]float64
+	MarkerPos        [5]uint64
+	DesiredMarkerPos [5]float64
+}
+
+func NewSnapshot(p float64, height []float64, markerPos []uint64, desiredMarkerPos []float64) (Snapshot, error) {
+	if p < 0 || p > 1 {
+		return Snapshot{}, fmt.Errorf("quantile %.2f must be between 0 and 1", p)
+	}
+
+	if len(height) != 5 {
+		return Snapshot{}, fmt.Errorf("height must have 5 elements, but got %d", len(height))
+	}
+
+	if len(markerPos) != 5 {
+		return Snapshot{}, fmt.Errorf("markerPos must have 5 elements, but got %d", len(markerPos))
+	}
+
+	if len(desiredMarkerPos) != 5 {
+		return Snapshot{}, fmt.Errorf("desiredMarkerPos must have 5 elements, but got %d", len(desiredMarkerPos))
+	}
+
+	s := Snapshot{
+		Percentile:       p,
+		Height:           [5]float64(height),
+		MarkerPos:        [5]uint64(markerPos),
+		DesiredMarkerPos: [5]float64(desiredMarkerPos),
+	}
+	return s, nil
+}
+
 // P2Quantile is a data structure with O(1) time and space complexities for estimating the percentile quantile of
 // a stream of observations based on "The P^2 Algorithm for Dynamic Calculation of Quantiles and
 // Histograms Without Storing Observations" by RAJ JAIN and IIMRICH CHLAMTAC, Communications of the ACM, Oct. 1985
@@ -45,6 +79,24 @@ func New(p float64) (*P2Quantile, error) {
 		desiredMarkerPos: [5]float64{1, 1 + 2*p, 1 + 4*p, 3 + 2*p, 5},
 		deltalMarkerPos:  [5]float64{0, p / 2, p, (1 + p) / 2, 1},
 	}, nil
+}
+
+// Restore restores a P2Quantile instance from given values.
+func Restore(s Snapshot) *P2Quantile {
+	p := s.Percentile
+	return &P2Quantile{
+		percentile:       s.Percentile,
+		height:           [5]float64(s.Height[:]),
+		markerPos:        [5]uint64(s.MarkerPos[:]),
+		desiredMarkerPos: [5]float64(s.DesiredMarkerPos[:]),
+		deltalMarkerPos:  [5]float64{0, p / 2, p, (1 + p) / 2, 1},
+	}
+}
+
+// Snapshot takes a snapshot from P2Quantile
+func (p *P2Quantile) Snapshot() Snapshot {
+	snap, _ := NewSnapshot(p.percentile, p.height[:], p.markerPos[:], p.desiredMarkerPos[:])
+	return snap
 }
 
 // Add adds a data point.

@@ -1008,14 +1008,14 @@ func TestCoordinator_NoGrantsDeregisterRemovedImmediately(t *testing.T) {
 		a := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		inA := make(chan model.ConsumerMessage, 1)
 		inA <- model.NewRegister(a, serviceName, nil, nil)
-		outA, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), inA)
+		outA, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), inA)
 		require.NoError(t, err, "consumer A failed to join")
 
 		// Consumer B observer for cluster broadcasts.
 		b := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
 		inB := make(chan model.ConsumerMessage, 1)
 		inB <- model.NewRegister(b, serviceName, nil, nil)
-		outB, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), inB)
+		outB, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), inB)
 		require.NoError(t, err, "consumer B failed to join")
 
 		readFn(t, outB, isClusterSnapshot)
@@ -1042,20 +1042,19 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
-		// domain named domainName1 has track load enabled.
+		// domain named domainName1 has load tracking enabled.
 		sp1 := model.NewShardingPolicy(1, model.WithTrackLoad(true))
 		opt1 := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp1)))
 		tracked, err := model.NewDomain(domainName, model.Unit, time.Now(), opt1)
 		require.NoError(t, err)
 
-		// domain named domainName2 has track load disabled
+		// domain named domainName2 has load tracking disabled
 		sp2 := model.NewShardingPolicy(1, model.WithTrackLoad(false))
 		opt2 := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp2)))
 		untracked, err := model.NewDomain(domainName2, model.Unit, time.Now(), opt2)
 		require.NoError(t, err)
 
-		rotateInterval := 1 * time.Minute
-		coord := setup(ctx, t, []model.Domain{tracked, untracked}, WithFastActivation(), WithTrackerRotateInterval(rotateInterval))
+		coord := setup(ctx, t, []model.Domain{tracked, untracked}, WithFastActivation())
 		c := coord.(*coordinator)
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
@@ -1107,27 +1106,37 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 
 		require.Contains(t, c.trackers, domainName)
 		dl, ok := c.trackers[domainName].domainLoad()
-		require.False(t, ok)
-		require.Equal(t, model.Load(0), dl, "load metrics should not publish until tracker rotates")
-
-		// Sleep rotateInterval + loadTicker time + 1 minute buffer
-		time.Sleep(rotateInterval + 11*time.Minute)
-		synctest.Wait()
-		dl, ok = c.trackers[domainName].domainLoad()
-		require.True(t, ok, "should publish metrics from the previous tracking window")
+		require.True(t, ok)
 		require.Equal(t, expected, dl)
-		sl := c.trackers[domainName].shardScoreOrDefault(trackedShard)
+
+		// update age of trackers to simulate time advancing.
+		updateAge(c.trackers, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
+		time.Sleep(loadTickerInterval + 10*time.Second)
+		synctest.Wait()
+
+		dl, ok = c.trackers[domainName].domainLoad()
+		require.False(t, ok, "empty tracker should not have domain load")
+		sps := core.NewShard(trackedShard.From, trackedShard.To, trackedShard.Region)
+		sl := c.trackers[domainName].shardScoreOrDefault(sps)
 		require.Equal(t, score(50.0), sl)
 	})
 }
 
+// updateCreatedAt updates the createdAt of domainLoadTrackers to simulate time advancing and avoid a long sleep (24 hours).
+// With synctest, time.Sleep triggers all tickers to fire within the synctest bubble;
+// long sleeps slow the test.
+func updateAge(trackers map[model.QualifiedDomainName]*domainLoadTracker, createdAt time.Time) {
+	for _, tracker := range trackers {
+		tracker.tracker.createdAt = createdAt
+	}
+}
 func connectConsumer(ctx context.Context, t *testing.T, coord Coordinator, w model.Instance) (chan model.ConsumerMessage, <-chan model.ConsumerMessage) {
 	t.Helper()
 
 	in := make(chan model.ConsumerMessage, 10)
 	in <- model.NewRegister(w, serviceName, nil, nil)
 
-	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "wds1")), in)
+	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 	require.NoError(t, err, "consumer failed to connect")
 
 	readFn(t, out, isClusterSnapshot)
