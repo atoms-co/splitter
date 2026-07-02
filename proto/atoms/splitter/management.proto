@@ -145,7 +145,4 @@ message ShardingPolicy {
   // Custom shards should be non over-lapping and defining custom shards changes the number of shards,
   // final shard count can exceed or be less than target shard count.
   repeated Shard custom_shards = 2;
-  // Enables load tracking/reporting for this sharding policy so consumers can report load.
-  // TODO: remove, use track_load check in Service.Config.
-  bool track_load = 3;
 }
