@@ -10,13 +10,15 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/statshandlerx"
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
+	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -25,8 +27,6 @@ import (
 	"go.atoms.co/splitter/pkg/service/frontend"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type options struct {
@@ -98,7 +98,7 @@ func New(ctx context.Context, loc location.Location, endpoint string, cluster cl
 		})
 	}
 
-	factoryFn := func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator {
+	factoryFn := func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) (coordinator.Coordinator, <-chan core.ServiceStatusMessage) {
 		var copts []coordinator.Option
 		if opt.fastActivation {
 			copts = append(copts, coordinator.WithFastActivation())

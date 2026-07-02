@@ -6,24 +6,24 @@ import (
 	"sync"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/metrics"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
-	"go.atoms.co/iox"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/randx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
+	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -364,6 +364,10 @@ func (l *leader) handleMessage(ctx context.Context, w *workerSession, m Message)
 	case msg.IsRelinquished():
 		relinquished, _ := msg.Relinquished()
 		l.handleRelinquished(ctx, w, relinquished)
+
+	case msg.IsServiceStatus():
+		// TODO: handleServiceStatus
+		log.Debugf(ctx, "Received service status message: %v", msg)
 
 	default:
 		log.Errorf(ctx, "Internal: unexpected worker message: %v", msg)
