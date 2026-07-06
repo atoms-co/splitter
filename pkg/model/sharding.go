@@ -24,12 +24,6 @@ func WithShards(shards int) ShardingPolicyOption {
 	}
 }
 
-func WithTrackLoad(track bool) ShardingPolicyOption {
-	return func(policy *splitterpb.ShardingPolicy) {
-		policy.TrackLoad = track
-	}
-}
-
 type ShardingPolicyShard struct {
 	From   Key
 	To     Key

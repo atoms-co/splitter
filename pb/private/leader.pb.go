@@ -1536,6 +1536,7 @@ type WorkerMessage struct {
 	//	*WorkerMessage_Update_
 	//	*WorkerMessage_Revoke_
 	//	*WorkerMessage_Relinquished_
+	//	*WorkerMessage_ServiceStatus_
 	Msg           isWorkerMessage_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1641,6 +1642,15 @@ func (x *WorkerMessage) GetRelinquished() *WorkerMessage_Relinquished {
 	return nil
 }
 
+func (x *WorkerMessage) GetServiceStatus() *WorkerMessage_ServiceStatus {
+	if x != nil {
+		if x, ok := x.Msg.(*WorkerMessage_ServiceStatus_); ok {
+			return x.ServiceStatus
+		}
+	}
+	return nil
+}
+
 type isWorkerMessage_Msg interface {
 	isWorkerMessage_Msg()
 }
@@ -1673,6 +1683,10 @@ type WorkerMessage_Relinquished_ struct {
 	Relinquished *WorkerMessage_Relinquished `protobuf:"bytes,7,opt,name=relinquished,proto3,oneof"`
 }
 
+type WorkerMessage_ServiceStatus_ struct {
+	ServiceStatus *WorkerMessage_ServiceStatus `protobuf:"bytes,9,opt,name=service_status,json=serviceStatus,proto3,oneof"`
+}
+
 func (*WorkerMessage_Register_) isWorkerMessage_Msg() {}
 
 func (*WorkerMessage_Deregister_) isWorkerMessage_Msg() {}
@@ -1686,6 +1700,8 @@ func (*WorkerMessage_Update_) isWorkerMessage_Msg() {}
 func (*WorkerMessage_Revoke_) isWorkerMessage_Msg() {}
 
 func (*WorkerMessage_Relinquished_) isWorkerMessage_Msg() {}
+
+func (*WorkerMessage_ServiceStatus_) isWorkerMessage_Msg() {}
 
 type ClusterMessage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -2297,6 +2313,50 @@ func (x *WorkerMessage_Relinquished) GetGrants() []*Grant {
 	return nil
 }
 
+type WorkerMessage_ServiceStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Load          *ServiceLoadInfo       `protobuf:"bytes,1,opt,name=load,proto3" json:"load,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerMessage_ServiceStatus) Reset() {
+	*x = WorkerMessage_ServiceStatus{}
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerMessage_ServiceStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerMessage_ServiceStatus) ProtoMessage() {}
+
+func (x *WorkerMessage_ServiceStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerMessage_ServiceStatus.ProtoReflect.Descriptor instead.
+func (*WorkerMessage_ServiceStatus) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_private_leader_proto_rawDescGZIP(), []int{13, 7}
+}
+
+func (x *WorkerMessage_ServiceStatus) GetLoad() *ServiceLoadInfo {
+	if x != nil {
+		return x.Load
+	}
+	return nil
+}
+
 type ClusterMessage_Assignment struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Worker        *pb.Instance           `protobuf:"bytes,1,opt,name=worker,proto3" json:"worker,omitempty"`
@@ -2307,7 +2367,7 @@ type ClusterMessage_Assignment struct {
 
 func (x *ClusterMessage_Assignment) Reset() {
 	*x = ClusterMessage_Assignment{}
-	mi := &file_atoms_splitter_private_leader_proto_msgTypes[24]
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2319,7 +2379,7 @@ func (x *ClusterMessage_Assignment) String() string {
 func (*ClusterMessage_Assignment) ProtoMessage() {}
 
 func (x *ClusterMessage_Assignment) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_leader_proto_msgTypes[24]
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2359,7 +2419,7 @@ type ClusterMessage_Snapshot struct {
 
 func (x *ClusterMessage_Snapshot) Reset() {
 	*x = ClusterMessage_Snapshot{}
-	mi := &file_atoms_splitter_private_leader_proto_msgTypes[25]
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2371,7 +2431,7 @@ func (x *ClusterMessage_Snapshot) String() string {
 func (*ClusterMessage_Snapshot) ProtoMessage() {}
 
 func (x *ClusterMessage_Snapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_leader_proto_msgTypes[25]
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2410,7 +2470,7 @@ type ClusterMessage_Update struct {
 
 func (x *ClusterMessage_Update) Reset() {
 	*x = ClusterMessage_Update{}
-	mi := &file_atoms_splitter_private_leader_proto_msgTypes[26]
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2422,7 +2482,7 @@ func (x *ClusterMessage_Update) String() string {
 func (*ClusterMessage_Update) ProtoMessage() {}
 
 func (x *ClusterMessage_Update) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_leader_proto_msgTypes[26]
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2454,7 +2514,7 @@ type ClusterMessage_Remove struct {
 
 func (x *ClusterMessage_Remove) Reset() {
 	*x = ClusterMessage_Remove{}
-	mi := &file_atoms_splitter_private_leader_proto_msgTypes[27]
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2466,7 +2526,7 @@ func (x *ClusterMessage_Remove) String() string {
 func (*ClusterMessage_Remove) ProtoMessage() {}
 
 func (x *ClusterMessage_Remove) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_leader_proto_msgTypes[27]
+	mi := &file_atoms_splitter_private_leader_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2493,7 +2553,7 @@ var File_atoms_splitter_private_leader_proto protoreflect.FileDescriptor
 
 const file_atoms_splitter_private_leader_proto_rawDesc = "" +
 	"\n" +
-	"#atoms/splitter/private/leader.proto\x12\x16atoms.splitter.private\x1a\x1aatoms/splitter/model.proto\x1a\"atoms/splitter/managementapi.proto\x1a&atoms/splitter/private/operation.proto\x1a&atoms/splitter/private/placement.proto\x1a\"atoms/splitter/private/state.proto\x1a0atoms/splitter/lib/service/session/session.proto\x1a2atoms/splitter/lib/service/location/location.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbd\x02\n" +
+	"#atoms/splitter/private/leader.proto\x12\x16atoms.splitter.private\x1a\x1aatoms/splitter/model.proto\x1a\"atoms/splitter/managementapi.proto\x1a!atoms/splitter/private/load.proto\x1a&atoms/splitter/private/operation.proto\x1a&atoms/splitter/private/placement.proto\x1a\"atoms/splitter/private/state.proto\x1a0atoms/splitter/lib/service/session/session.proto\x1a2atoms/splitter/lib/service/location/location.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbd\x02\n" +
 	"\rTenantRequest\x128\n" +
 	"\x04list\x18\x01 \x01(\v2\".atoms.splitter.ListTenantsRequestH\x00R\x04list\x124\n" +
 	"\x03new\x18\x02 \x01(\v2 .atoms.splitter.NewTenantRequestH\x00R\x03new\x127\n" +
@@ -2574,7 +2634,8 @@ const file_atoms_splitter_private_leader_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12>\n" +
 	"\aservice\x18\x02 \x01(\v2$.atoms.splitter.QualifiedServiceNameR\aservice\x120\n" +
 	"\x05lease\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x05lease\x126\n" +
-	"\bassigned\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bassigned\"\xe6\b\n" +
+	"\bassigned\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\bassigned\"\x92\n" +
+	"\n" +
 	"\rWorkerMessage\x12L\n" +
 	"\bregister\x18\x01 \x01(\v2..atoms.splitter.private.WorkerMessage.RegisterH\x00R\bregister\x12R\n" +
 	"\n" +
@@ -2584,7 +2645,8 @@ const file_atoms_splitter_private_leader_proto_rawDesc = "" +
 	"\x06assign\x18\x05 \x01(\v2,.atoms.splitter.private.WorkerMessage.AssignH\x00R\x06assign\x12F\n" +
 	"\x06update\x18\b \x01(\v2,.atoms.splitter.private.WorkerMessage.UpdateH\x00R\x06update\x12F\n" +
 	"\x06revoke\x18\x06 \x01(\v2,.atoms.splitter.private.WorkerMessage.RevokeH\x00R\x06revoke\x12X\n" +
-	"\frelinquished\x18\a \x01(\v22.atoms.splitter.private.WorkerMessage.RelinquishedH\x00R\frelinquished\x1as\n" +
+	"\frelinquished\x18\a \x01(\v22.atoms.splitter.private.WorkerMessage.RelinquishedH\x00R\frelinquished\x12\\\n" +
+	"\x0eservice_status\x18\t \x01(\v23.atoms.splitter.private.WorkerMessage.ServiceStatusH\x00R\rserviceStatus\x1as\n" +
 	"\bRegister\x120\n" +
 	"\x06worker\x18\x01 \x01(\v2\x18.atoms.splitter.InstanceR\x06worker\x125\n" +
 	"\x06active\x18\x02 \x03(\v2\x1d.atoms.splitter.private.GrantR\x06active\x1a\f\n" +
@@ -2601,7 +2663,9 @@ const file_atoms_splitter_private_leader_proto_rawDesc = "" +
 	"\x06Revoke\x125\n" +
 	"\x06grants\x18\x01 \x03(\v2\x1d.atoms.splitter.private.GrantR\x06grants\x1aE\n" +
 	"\fRelinquished\x125\n" +
-	"\x06grants\x18\x01 \x03(\v2\x1d.atoms.splitter.private.GrantR\x06grantsB\x05\n" +
+	"\x06grants\x18\x01 \x03(\v2\x1d.atoms.splitter.private.GrantR\x06grants\x1aL\n" +
+	"\rServiceStatus\x12;\n" +
+	"\x04load\x18\x01 \x01(\v2'.atoms.splitter.private.ServiceLoadInfoR\x04loadB\x05\n" +
 	"\x03msg\"\xa7\x06\n" +
 	"\x0eClusterMessage\x12M\n" +
 	"\bsnapshot\x18\x01 \x01(\v2/.atoms.splitter.private.ClusterMessage.SnapshotH\x00R\bsnapshot\x12G\n" +
@@ -2646,129 +2710,131 @@ func file_atoms_splitter_private_leader_proto_rawDescGZIP() []byte {
 	return file_atoms_splitter_private_leader_proto_rawDescData
 }
 
-var file_atoms_splitter_private_leader_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_atoms_splitter_private_leader_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_atoms_splitter_private_leader_proto_goTypes = []any{
-	(*TenantRequest)(nil),              // 0: atoms.splitter.private.TenantRequest
-	(*TenantResponse)(nil),             // 1: atoms.splitter.private.TenantResponse
-	(*ServiceRequest)(nil),             // 2: atoms.splitter.private.ServiceRequest
-	(*ServiceResponse)(nil),            // 3: atoms.splitter.private.ServiceResponse
-	(*DomainRequest)(nil),              // 4: atoms.splitter.private.DomainRequest
-	(*DomainResponse)(nil),             // 5: atoms.splitter.private.DomainResponse
-	(*PlacementRequest)(nil),           // 6: atoms.splitter.private.PlacementRequest
-	(*PlacementResponse)(nil),          // 7: atoms.splitter.private.PlacementResponse
-	(*OperationRequest)(nil),           // 8: atoms.splitter.private.OperationRequest
-	(*OperationResponse)(nil),          // 9: atoms.splitter.private.OperationResponse
-	(*LeaderHandleRequest)(nil),        // 10: atoms.splitter.private.LeaderHandleRequest
-	(*LeaderHandleResponse)(nil),       // 11: atoms.splitter.private.LeaderHandleResponse
-	(*Grant)(nil),                      // 12: atoms.splitter.private.Grant
-	(*WorkerMessage)(nil),              // 13: atoms.splitter.private.WorkerMessage
-	(*ClusterMessage)(nil),             // 14: atoms.splitter.private.ClusterMessage
-	(*LeaderMessage)(nil),              // 15: atoms.splitter.private.LeaderMessage
-	(*JoinMessage)(nil),                // 16: atoms.splitter.private.JoinMessage
-	(*WorkerMessage_Register)(nil),     // 17: atoms.splitter.private.WorkerMessage.Register
-	(*WorkerMessage_Deregister)(nil),   // 18: atoms.splitter.private.WorkerMessage.Deregister
-	(*WorkerMessage_LeaseUpdate)(nil),  // 19: atoms.splitter.private.WorkerMessage.LeaseUpdate
-	(*WorkerMessage_Assign)(nil),       // 20: atoms.splitter.private.WorkerMessage.Assign
-	(*WorkerMessage_Update)(nil),       // 21: atoms.splitter.private.WorkerMessage.Update
-	(*WorkerMessage_Revoke)(nil),       // 22: atoms.splitter.private.WorkerMessage.Revoke
-	(*WorkerMessage_Relinquished)(nil), // 23: atoms.splitter.private.WorkerMessage.Relinquished
-	(*ClusterMessage_Assignment)(nil),  // 24: atoms.splitter.private.ClusterMessage.Assignment
-	(*ClusterMessage_Snapshot)(nil),    // 25: atoms.splitter.private.ClusterMessage.Snapshot
-	(*ClusterMessage_Update)(nil),      // 26: atoms.splitter.private.ClusterMessage.Update
-	(*ClusterMessage_Remove)(nil),      // 27: atoms.splitter.private.ClusterMessage.Remove
-	(*pb.ListTenantsRequest)(nil),      // 28: atoms.splitter.ListTenantsRequest
-	(*pb.NewTenantRequest)(nil),        // 29: atoms.splitter.NewTenantRequest
-	(*pb.InfoTenantRequest)(nil),       // 30: atoms.splitter.InfoTenantRequest
-	(*pb.UpdateTenantRequest)(nil),     // 31: atoms.splitter.UpdateTenantRequest
-	(*pb.DeleteTenantRequest)(nil),     // 32: atoms.splitter.DeleteTenantRequest
-	(*pb.ListTenantsResponse)(nil),     // 33: atoms.splitter.ListTenantsResponse
-	(*pb.NewTenantResponse)(nil),       // 34: atoms.splitter.NewTenantResponse
-	(*pb.InfoTenantResponse)(nil),      // 35: atoms.splitter.InfoTenantResponse
-	(*pb.UpdateTenantResponse)(nil),    // 36: atoms.splitter.UpdateTenantResponse
-	(*pb.DeleteTenantResponse)(nil),    // 37: atoms.splitter.DeleteTenantResponse
-	(*pb.ListServicesRequest)(nil),     // 38: atoms.splitter.ListServicesRequest
-	(*pb.NewServiceRequest)(nil),       // 39: atoms.splitter.NewServiceRequest
-	(*pb.InfoServiceRequest)(nil),      // 40: atoms.splitter.InfoServiceRequest
-	(*pb.UpdateServiceRequest)(nil),    // 41: atoms.splitter.UpdateServiceRequest
-	(*pb.DeleteServiceRequest)(nil),    // 42: atoms.splitter.DeleteServiceRequest
-	(*pb.ListServicesResponse)(nil),    // 43: atoms.splitter.ListServicesResponse
-	(*pb.NewServiceResponse)(nil),      // 44: atoms.splitter.NewServiceResponse
-	(*pb.InfoServiceResponse)(nil),     // 45: atoms.splitter.InfoServiceResponse
-	(*pb.UpdateServiceResponse)(nil),   // 46: atoms.splitter.UpdateServiceResponse
-	(*pb.DeleteServiceResponse)(nil),   // 47: atoms.splitter.DeleteServiceResponse
-	(*pb.ListDomainsRequest)(nil),      // 48: atoms.splitter.ListDomainsRequest
-	(*pb.NewDomainRequest)(nil),        // 49: atoms.splitter.NewDomainRequest
-	(*pb.UpdateDomainRequest)(nil),     // 50: atoms.splitter.UpdateDomainRequest
-	(*pb.DeleteDomainRequest)(nil),     // 51: atoms.splitter.DeleteDomainRequest
-	(*pb.ListDomainsResponse)(nil),     // 52: atoms.splitter.ListDomainsResponse
-	(*pb.NewDomainResponse)(nil),       // 53: atoms.splitter.NewDomainResponse
-	(*pb.UpdateDomainResponse)(nil),    // 54: atoms.splitter.UpdateDomainResponse
-	(*pb.DeleteDomainResponse)(nil),    // 55: atoms.splitter.DeleteDomainResponse
-	(*ListPlacementsRequest)(nil),      // 56: atoms.splitter.private.ListPlacementsRequest
-	(*NewPlacementRequest)(nil),        // 57: atoms.splitter.private.NewPlacementRequest
-	(*InfoPlacementRequest)(nil),       // 58: atoms.splitter.private.InfoPlacementRequest
-	(*UpdatePlacementRequest)(nil),     // 59: atoms.splitter.private.UpdatePlacementRequest
-	(*DeletePlacementRequest)(nil),     // 60: atoms.splitter.private.DeletePlacementRequest
-	(*ListPlacementsResponse)(nil),     // 61: atoms.splitter.private.ListPlacementsResponse
-	(*NewPlacementResponse)(nil),       // 62: atoms.splitter.private.NewPlacementResponse
-	(*InfoPlacementResponse)(nil),      // 63: atoms.splitter.private.InfoPlacementResponse
-	(*UpdatePlacementResponse)(nil),    // 64: atoms.splitter.private.UpdatePlacementResponse
-	(*DeletePlacementResponse)(nil),    // 65: atoms.splitter.private.DeletePlacementResponse
-	(*RestoreRequest)(nil),             // 66: atoms.splitter.private.RestoreRequest
-	(*SnapshotRequest)(nil),            // 67: atoms.splitter.private.SnapshotRequest
-	(*RestoreResponse)(nil),            // 68: atoms.splitter.private.RestoreResponse
-	(*SnapshotResponse)(nil),           // 69: atoms.splitter.private.SnapshotResponse
-	(*pb.QualifiedServiceName)(nil),    // 70: atoms.splitter.QualifiedServiceName
-	(*timestamppb.Timestamp)(nil),      // 71: google.protobuf.Timestamp
-	(*pb1.Message)(nil),                // 72: atoms.splitter.lib.service.service.Message
-	(*pb.Instance)(nil),                // 73: atoms.splitter.Instance
-	(*State)(nil),                      // 74: atoms.splitter.private.State
-	(*Update)(nil),                     // 75: atoms.splitter.private.Update
-	(*pb2.Instance)(nil),               // 76: atoms.splitter.lib.service.location.Instance
+	(*TenantRequest)(nil),               // 0: atoms.splitter.private.TenantRequest
+	(*TenantResponse)(nil),              // 1: atoms.splitter.private.TenantResponse
+	(*ServiceRequest)(nil),              // 2: atoms.splitter.private.ServiceRequest
+	(*ServiceResponse)(nil),             // 3: atoms.splitter.private.ServiceResponse
+	(*DomainRequest)(nil),               // 4: atoms.splitter.private.DomainRequest
+	(*DomainResponse)(nil),              // 5: atoms.splitter.private.DomainResponse
+	(*PlacementRequest)(nil),            // 6: atoms.splitter.private.PlacementRequest
+	(*PlacementResponse)(nil),           // 7: atoms.splitter.private.PlacementResponse
+	(*OperationRequest)(nil),            // 8: atoms.splitter.private.OperationRequest
+	(*OperationResponse)(nil),           // 9: atoms.splitter.private.OperationResponse
+	(*LeaderHandleRequest)(nil),         // 10: atoms.splitter.private.LeaderHandleRequest
+	(*LeaderHandleResponse)(nil),        // 11: atoms.splitter.private.LeaderHandleResponse
+	(*Grant)(nil),                       // 12: atoms.splitter.private.Grant
+	(*WorkerMessage)(nil),               // 13: atoms.splitter.private.WorkerMessage
+	(*ClusterMessage)(nil),              // 14: atoms.splitter.private.ClusterMessage
+	(*LeaderMessage)(nil),               // 15: atoms.splitter.private.LeaderMessage
+	(*JoinMessage)(nil),                 // 16: atoms.splitter.private.JoinMessage
+	(*WorkerMessage_Register)(nil),      // 17: atoms.splitter.private.WorkerMessage.Register
+	(*WorkerMessage_Deregister)(nil),    // 18: atoms.splitter.private.WorkerMessage.Deregister
+	(*WorkerMessage_LeaseUpdate)(nil),   // 19: atoms.splitter.private.WorkerMessage.LeaseUpdate
+	(*WorkerMessage_Assign)(nil),        // 20: atoms.splitter.private.WorkerMessage.Assign
+	(*WorkerMessage_Update)(nil),        // 21: atoms.splitter.private.WorkerMessage.Update
+	(*WorkerMessage_Revoke)(nil),        // 22: atoms.splitter.private.WorkerMessage.Revoke
+	(*WorkerMessage_Relinquished)(nil),  // 23: atoms.splitter.private.WorkerMessage.Relinquished
+	(*WorkerMessage_ServiceStatus)(nil), // 24: atoms.splitter.private.WorkerMessage.ServiceStatus
+	(*ClusterMessage_Assignment)(nil),   // 25: atoms.splitter.private.ClusterMessage.Assignment
+	(*ClusterMessage_Snapshot)(nil),     // 26: atoms.splitter.private.ClusterMessage.Snapshot
+	(*ClusterMessage_Update)(nil),       // 27: atoms.splitter.private.ClusterMessage.Update
+	(*ClusterMessage_Remove)(nil),       // 28: atoms.splitter.private.ClusterMessage.Remove
+	(*pb.ListTenantsRequest)(nil),       // 29: atoms.splitter.ListTenantsRequest
+	(*pb.NewTenantRequest)(nil),         // 30: atoms.splitter.NewTenantRequest
+	(*pb.InfoTenantRequest)(nil),        // 31: atoms.splitter.InfoTenantRequest
+	(*pb.UpdateTenantRequest)(nil),      // 32: atoms.splitter.UpdateTenantRequest
+	(*pb.DeleteTenantRequest)(nil),      // 33: atoms.splitter.DeleteTenantRequest
+	(*pb.ListTenantsResponse)(nil),      // 34: atoms.splitter.ListTenantsResponse
+	(*pb.NewTenantResponse)(nil),        // 35: atoms.splitter.NewTenantResponse
+	(*pb.InfoTenantResponse)(nil),       // 36: atoms.splitter.InfoTenantResponse
+	(*pb.UpdateTenantResponse)(nil),     // 37: atoms.splitter.UpdateTenantResponse
+	(*pb.DeleteTenantResponse)(nil),     // 38: atoms.splitter.DeleteTenantResponse
+	(*pb.ListServicesRequest)(nil),      // 39: atoms.splitter.ListServicesRequest
+	(*pb.NewServiceRequest)(nil),        // 40: atoms.splitter.NewServiceRequest
+	(*pb.InfoServiceRequest)(nil),       // 41: atoms.splitter.InfoServiceRequest
+	(*pb.UpdateServiceRequest)(nil),     // 42: atoms.splitter.UpdateServiceRequest
+	(*pb.DeleteServiceRequest)(nil),     // 43: atoms.splitter.DeleteServiceRequest
+	(*pb.ListServicesResponse)(nil),     // 44: atoms.splitter.ListServicesResponse
+	(*pb.NewServiceResponse)(nil),       // 45: atoms.splitter.NewServiceResponse
+	(*pb.InfoServiceResponse)(nil),      // 46: atoms.splitter.InfoServiceResponse
+	(*pb.UpdateServiceResponse)(nil),    // 47: atoms.splitter.UpdateServiceResponse
+	(*pb.DeleteServiceResponse)(nil),    // 48: atoms.splitter.DeleteServiceResponse
+	(*pb.ListDomainsRequest)(nil),       // 49: atoms.splitter.ListDomainsRequest
+	(*pb.NewDomainRequest)(nil),         // 50: atoms.splitter.NewDomainRequest
+	(*pb.UpdateDomainRequest)(nil),      // 51: atoms.splitter.UpdateDomainRequest
+	(*pb.DeleteDomainRequest)(nil),      // 52: atoms.splitter.DeleteDomainRequest
+	(*pb.ListDomainsResponse)(nil),      // 53: atoms.splitter.ListDomainsResponse
+	(*pb.NewDomainResponse)(nil),        // 54: atoms.splitter.NewDomainResponse
+	(*pb.UpdateDomainResponse)(nil),     // 55: atoms.splitter.UpdateDomainResponse
+	(*pb.DeleteDomainResponse)(nil),     // 56: atoms.splitter.DeleteDomainResponse
+	(*ListPlacementsRequest)(nil),       // 57: atoms.splitter.private.ListPlacementsRequest
+	(*NewPlacementRequest)(nil),         // 58: atoms.splitter.private.NewPlacementRequest
+	(*InfoPlacementRequest)(nil),        // 59: atoms.splitter.private.InfoPlacementRequest
+	(*UpdatePlacementRequest)(nil),      // 60: atoms.splitter.private.UpdatePlacementRequest
+	(*DeletePlacementRequest)(nil),      // 61: atoms.splitter.private.DeletePlacementRequest
+	(*ListPlacementsResponse)(nil),      // 62: atoms.splitter.private.ListPlacementsResponse
+	(*NewPlacementResponse)(nil),        // 63: atoms.splitter.private.NewPlacementResponse
+	(*InfoPlacementResponse)(nil),       // 64: atoms.splitter.private.InfoPlacementResponse
+	(*UpdatePlacementResponse)(nil),     // 65: atoms.splitter.private.UpdatePlacementResponse
+	(*DeletePlacementResponse)(nil),     // 66: atoms.splitter.private.DeletePlacementResponse
+	(*RestoreRequest)(nil),              // 67: atoms.splitter.private.RestoreRequest
+	(*SnapshotRequest)(nil),             // 68: atoms.splitter.private.SnapshotRequest
+	(*RestoreResponse)(nil),             // 69: atoms.splitter.private.RestoreResponse
+	(*SnapshotResponse)(nil),            // 70: atoms.splitter.private.SnapshotResponse
+	(*pb.QualifiedServiceName)(nil),     // 71: atoms.splitter.QualifiedServiceName
+	(*timestamppb.Timestamp)(nil),       // 72: google.protobuf.Timestamp
+	(*pb1.Message)(nil),                 // 73: atoms.splitter.lib.service.service.Message
+	(*pb.Instance)(nil),                 // 74: atoms.splitter.Instance
+	(*State)(nil),                       // 75: atoms.splitter.private.State
+	(*Update)(nil),                      // 76: atoms.splitter.private.Update
+	(*ServiceLoadInfo)(nil),             // 77: atoms.splitter.private.ServiceLoadInfo
+	(*pb2.Instance)(nil),                // 78: atoms.splitter.lib.service.location.Instance
 }
 var file_atoms_splitter_private_leader_proto_depIdxs = []int32{
-	28, // 0: atoms.splitter.private.TenantRequest.list:type_name -> atoms.splitter.ListTenantsRequest
-	29, // 1: atoms.splitter.private.TenantRequest.new:type_name -> atoms.splitter.NewTenantRequest
-	30, // 2: atoms.splitter.private.TenantRequest.info:type_name -> atoms.splitter.InfoTenantRequest
-	31, // 3: atoms.splitter.private.TenantRequest.update:type_name -> atoms.splitter.UpdateTenantRequest
-	32, // 4: atoms.splitter.private.TenantRequest.delete:type_name -> atoms.splitter.DeleteTenantRequest
-	33, // 5: atoms.splitter.private.TenantResponse.list:type_name -> atoms.splitter.ListTenantsResponse
-	34, // 6: atoms.splitter.private.TenantResponse.new:type_name -> atoms.splitter.NewTenantResponse
-	35, // 7: atoms.splitter.private.TenantResponse.info:type_name -> atoms.splitter.InfoTenantResponse
-	36, // 8: atoms.splitter.private.TenantResponse.update:type_name -> atoms.splitter.UpdateTenantResponse
-	37, // 9: atoms.splitter.private.TenantResponse.delete:type_name -> atoms.splitter.DeleteTenantResponse
-	38, // 10: atoms.splitter.private.ServiceRequest.list:type_name -> atoms.splitter.ListServicesRequest
-	39, // 11: atoms.splitter.private.ServiceRequest.new:type_name -> atoms.splitter.NewServiceRequest
-	40, // 12: atoms.splitter.private.ServiceRequest.info:type_name -> atoms.splitter.InfoServiceRequest
-	41, // 13: atoms.splitter.private.ServiceRequest.update:type_name -> atoms.splitter.UpdateServiceRequest
-	42, // 14: atoms.splitter.private.ServiceRequest.delete:type_name -> atoms.splitter.DeleteServiceRequest
-	43, // 15: atoms.splitter.private.ServiceResponse.list:type_name -> atoms.splitter.ListServicesResponse
-	44, // 16: atoms.splitter.private.ServiceResponse.new:type_name -> atoms.splitter.NewServiceResponse
-	45, // 17: atoms.splitter.private.ServiceResponse.info:type_name -> atoms.splitter.InfoServiceResponse
-	46, // 18: atoms.splitter.private.ServiceResponse.update:type_name -> atoms.splitter.UpdateServiceResponse
-	47, // 19: atoms.splitter.private.ServiceResponse.delete:type_name -> atoms.splitter.DeleteServiceResponse
-	48, // 20: atoms.splitter.private.DomainRequest.list:type_name -> atoms.splitter.ListDomainsRequest
-	49, // 21: atoms.splitter.private.DomainRequest.new:type_name -> atoms.splitter.NewDomainRequest
-	50, // 22: atoms.splitter.private.DomainRequest.update:type_name -> atoms.splitter.UpdateDomainRequest
-	51, // 23: atoms.splitter.private.DomainRequest.delete:type_name -> atoms.splitter.DeleteDomainRequest
-	52, // 24: atoms.splitter.private.DomainResponse.list:type_name -> atoms.splitter.ListDomainsResponse
-	53, // 25: atoms.splitter.private.DomainResponse.new:type_name -> atoms.splitter.NewDomainResponse
-	54, // 26: atoms.splitter.private.DomainResponse.update:type_name -> atoms.splitter.UpdateDomainResponse
-	55, // 27: atoms.splitter.private.DomainResponse.delete:type_name -> atoms.splitter.DeleteDomainResponse
-	56, // 28: atoms.splitter.private.PlacementRequest.list:type_name -> atoms.splitter.private.ListPlacementsRequest
-	57, // 29: atoms.splitter.private.PlacementRequest.new:type_name -> atoms.splitter.private.NewPlacementRequest
-	58, // 30: atoms.splitter.private.PlacementRequest.info:type_name -> atoms.splitter.private.InfoPlacementRequest
-	59, // 31: atoms.splitter.private.PlacementRequest.update:type_name -> atoms.splitter.private.UpdatePlacementRequest
-	60, // 32: atoms.splitter.private.PlacementRequest.delete:type_name -> atoms.splitter.private.DeletePlacementRequest
-	61, // 33: atoms.splitter.private.PlacementResponse.list:type_name -> atoms.splitter.private.ListPlacementsResponse
-	62, // 34: atoms.splitter.private.PlacementResponse.new:type_name -> atoms.splitter.private.NewPlacementResponse
-	63, // 35: atoms.splitter.private.PlacementResponse.info:type_name -> atoms.splitter.private.InfoPlacementResponse
-	64, // 36: atoms.splitter.private.PlacementResponse.update:type_name -> atoms.splitter.private.UpdatePlacementResponse
-	65, // 37: atoms.splitter.private.PlacementResponse.delete:type_name -> atoms.splitter.private.DeletePlacementResponse
-	66, // 38: atoms.splitter.private.OperationRequest.restore:type_name -> atoms.splitter.private.RestoreRequest
-	67, // 39: atoms.splitter.private.OperationRequest.snapshot:type_name -> atoms.splitter.private.SnapshotRequest
-	68, // 40: atoms.splitter.private.OperationResponse.restore:type_name -> atoms.splitter.private.RestoreResponse
-	69, // 41: atoms.splitter.private.OperationResponse.snapshot:type_name -> atoms.splitter.private.SnapshotResponse
+	29, // 0: atoms.splitter.private.TenantRequest.list:type_name -> atoms.splitter.ListTenantsRequest
+	30, // 1: atoms.splitter.private.TenantRequest.new:type_name -> atoms.splitter.NewTenantRequest
+	31, // 2: atoms.splitter.private.TenantRequest.info:type_name -> atoms.splitter.InfoTenantRequest
+	32, // 3: atoms.splitter.private.TenantRequest.update:type_name -> atoms.splitter.UpdateTenantRequest
+	33, // 4: atoms.splitter.private.TenantRequest.delete:type_name -> atoms.splitter.DeleteTenantRequest
+	34, // 5: atoms.splitter.private.TenantResponse.list:type_name -> atoms.splitter.ListTenantsResponse
+	35, // 6: atoms.splitter.private.TenantResponse.new:type_name -> atoms.splitter.NewTenantResponse
+	36, // 7: atoms.splitter.private.TenantResponse.info:type_name -> atoms.splitter.InfoTenantResponse
+	37, // 8: atoms.splitter.private.TenantResponse.update:type_name -> atoms.splitter.UpdateTenantResponse
+	38, // 9: atoms.splitter.private.TenantResponse.delete:type_name -> atoms.splitter.DeleteTenantResponse
+	39, // 10: atoms.splitter.private.ServiceRequest.list:type_name -> atoms.splitter.ListServicesRequest
+	40, // 11: atoms.splitter.private.ServiceRequest.new:type_name -> atoms.splitter.NewServiceRequest
+	41, // 12: atoms.splitter.private.ServiceRequest.info:type_name -> atoms.splitter.InfoServiceRequest
+	42, // 13: atoms.splitter.private.ServiceRequest.update:type_name -> atoms.splitter.UpdateServiceRequest
+	43, // 14: atoms.splitter.private.ServiceRequest.delete:type_name -> atoms.splitter.DeleteServiceRequest
+	44, // 15: atoms.splitter.private.ServiceResponse.list:type_name -> atoms.splitter.ListServicesResponse
+	45, // 16: atoms.splitter.private.ServiceResponse.new:type_name -> atoms.splitter.NewServiceResponse
+	46, // 17: atoms.splitter.private.ServiceResponse.info:type_name -> atoms.splitter.InfoServiceResponse
+	47, // 18: atoms.splitter.private.ServiceResponse.update:type_name -> atoms.splitter.UpdateServiceResponse
+	48, // 19: atoms.splitter.private.ServiceResponse.delete:type_name -> atoms.splitter.DeleteServiceResponse
+	49, // 20: atoms.splitter.private.DomainRequest.list:type_name -> atoms.splitter.ListDomainsRequest
+	50, // 21: atoms.splitter.private.DomainRequest.new:type_name -> atoms.splitter.NewDomainRequest
+	51, // 22: atoms.splitter.private.DomainRequest.update:type_name -> atoms.splitter.UpdateDomainRequest
+	52, // 23: atoms.splitter.private.DomainRequest.delete:type_name -> atoms.splitter.DeleteDomainRequest
+	53, // 24: atoms.splitter.private.DomainResponse.list:type_name -> atoms.splitter.ListDomainsResponse
+	54, // 25: atoms.splitter.private.DomainResponse.new:type_name -> atoms.splitter.NewDomainResponse
+	55, // 26: atoms.splitter.private.DomainResponse.update:type_name -> atoms.splitter.UpdateDomainResponse
+	56, // 27: atoms.splitter.private.DomainResponse.delete:type_name -> atoms.splitter.DeleteDomainResponse
+	57, // 28: atoms.splitter.private.PlacementRequest.list:type_name -> atoms.splitter.private.ListPlacementsRequest
+	58, // 29: atoms.splitter.private.PlacementRequest.new:type_name -> atoms.splitter.private.NewPlacementRequest
+	59, // 30: atoms.splitter.private.PlacementRequest.info:type_name -> atoms.splitter.private.InfoPlacementRequest
+	60, // 31: atoms.splitter.private.PlacementRequest.update:type_name -> atoms.splitter.private.UpdatePlacementRequest
+	61, // 32: atoms.splitter.private.PlacementRequest.delete:type_name -> atoms.splitter.private.DeletePlacementRequest
+	62, // 33: atoms.splitter.private.PlacementResponse.list:type_name -> atoms.splitter.private.ListPlacementsResponse
+	63, // 34: atoms.splitter.private.PlacementResponse.new:type_name -> atoms.splitter.private.NewPlacementResponse
+	64, // 35: atoms.splitter.private.PlacementResponse.info:type_name -> atoms.splitter.private.InfoPlacementResponse
+	65, // 36: atoms.splitter.private.PlacementResponse.update:type_name -> atoms.splitter.private.UpdatePlacementResponse
+	66, // 37: atoms.splitter.private.PlacementResponse.delete:type_name -> atoms.splitter.private.DeletePlacementResponse
+	67, // 38: atoms.splitter.private.OperationRequest.restore:type_name -> atoms.splitter.private.RestoreRequest
+	68, // 39: atoms.splitter.private.OperationRequest.snapshot:type_name -> atoms.splitter.private.SnapshotRequest
+	69, // 40: atoms.splitter.private.OperationResponse.restore:type_name -> atoms.splitter.private.RestoreResponse
+	70, // 41: atoms.splitter.private.OperationResponse.snapshot:type_name -> atoms.splitter.private.SnapshotResponse
 	0,  // 42: atoms.splitter.private.LeaderHandleRequest.tenant:type_name -> atoms.splitter.private.TenantRequest
 	2,  // 43: atoms.splitter.private.LeaderHandleRequest.service:type_name -> atoms.splitter.private.ServiceRequest
 	4,  // 44: atoms.splitter.private.LeaderHandleRequest.domain:type_name -> atoms.splitter.private.DomainRequest
@@ -2779,9 +2845,9 @@ var file_atoms_splitter_private_leader_proto_depIdxs = []int32{
 	5,  // 49: atoms.splitter.private.LeaderHandleResponse.domain:type_name -> atoms.splitter.private.DomainResponse
 	7,  // 50: atoms.splitter.private.LeaderHandleResponse.placement:type_name -> atoms.splitter.private.PlacementResponse
 	9,  // 51: atoms.splitter.private.LeaderHandleResponse.operation:type_name -> atoms.splitter.private.OperationResponse
-	70, // 52: atoms.splitter.private.Grant.service:type_name -> atoms.splitter.QualifiedServiceName
-	71, // 53: atoms.splitter.private.Grant.lease:type_name -> google.protobuf.Timestamp
-	71, // 54: atoms.splitter.private.Grant.assigned:type_name -> google.protobuf.Timestamp
+	71, // 52: atoms.splitter.private.Grant.service:type_name -> atoms.splitter.QualifiedServiceName
+	72, // 53: atoms.splitter.private.Grant.lease:type_name -> google.protobuf.Timestamp
+	72, // 54: atoms.splitter.private.Grant.assigned:type_name -> google.protobuf.Timestamp
 	17, // 55: atoms.splitter.private.WorkerMessage.register:type_name -> atoms.splitter.private.WorkerMessage.Register
 	18, // 56: atoms.splitter.private.WorkerMessage.deregister:type_name -> atoms.splitter.private.WorkerMessage.Deregister
 	19, // 57: atoms.splitter.private.WorkerMessage.lease:type_name -> atoms.splitter.private.WorkerMessage.LeaseUpdate
@@ -2789,38 +2855,40 @@ var file_atoms_splitter_private_leader_proto_depIdxs = []int32{
 	21, // 59: atoms.splitter.private.WorkerMessage.update:type_name -> atoms.splitter.private.WorkerMessage.Update
 	22, // 60: atoms.splitter.private.WorkerMessage.revoke:type_name -> atoms.splitter.private.WorkerMessage.Revoke
 	23, // 61: atoms.splitter.private.WorkerMessage.relinquished:type_name -> atoms.splitter.private.WorkerMessage.Relinquished
-	25, // 62: atoms.splitter.private.ClusterMessage.snapshot:type_name -> atoms.splitter.private.ClusterMessage.Snapshot
-	26, // 63: atoms.splitter.private.ClusterMessage.update:type_name -> atoms.splitter.private.ClusterMessage.Update
-	27, // 64: atoms.splitter.private.ClusterMessage.remove:type_name -> atoms.splitter.private.ClusterMessage.Remove
-	71, // 65: atoms.splitter.private.ClusterMessage.timestamp:type_name -> google.protobuf.Timestamp
-	13, // 66: atoms.splitter.private.LeaderMessage.worker:type_name -> atoms.splitter.private.WorkerMessage
-	14, // 67: atoms.splitter.private.LeaderMessage.cluster:type_name -> atoms.splitter.private.ClusterMessage
-	72, // 68: atoms.splitter.private.JoinMessage.session:type_name -> atoms.splitter.lib.service.service.Message
-	15, // 69: atoms.splitter.private.JoinMessage.leader:type_name -> atoms.splitter.private.LeaderMessage
-	73, // 70: atoms.splitter.private.WorkerMessage.Register.worker:type_name -> atoms.splitter.Instance
-	12, // 71: atoms.splitter.private.WorkerMessage.Register.active:type_name -> atoms.splitter.private.Grant
-	71, // 72: atoms.splitter.private.WorkerMessage.LeaseUpdate.ttl:type_name -> google.protobuf.Timestamp
-	12, // 73: atoms.splitter.private.WorkerMessage.Assign.grant:type_name -> atoms.splitter.private.Grant
-	74, // 74: atoms.splitter.private.WorkerMessage.Assign.state:type_name -> atoms.splitter.private.State
-	12, // 75: atoms.splitter.private.WorkerMessage.Update.grant:type_name -> atoms.splitter.private.Grant
-	75, // 76: atoms.splitter.private.WorkerMessage.Update.state:type_name -> atoms.splitter.private.Update
-	12, // 77: atoms.splitter.private.WorkerMessage.Revoke.grants:type_name -> atoms.splitter.private.Grant
-	12, // 78: atoms.splitter.private.WorkerMessage.Relinquished.grants:type_name -> atoms.splitter.private.Grant
-	73, // 79: atoms.splitter.private.ClusterMessage.Assignment.worker:type_name -> atoms.splitter.Instance
-	12, // 80: atoms.splitter.private.ClusterMessage.Assignment.grants:type_name -> atoms.splitter.private.Grant
-	24, // 81: atoms.splitter.private.ClusterMessage.Snapshot.assignments:type_name -> atoms.splitter.private.ClusterMessage.Assignment
-	76, // 82: atoms.splitter.private.ClusterMessage.Snapshot.origin:type_name -> atoms.splitter.lib.service.location.Instance
-	24, // 83: atoms.splitter.private.ClusterMessage.Update.assignments:type_name -> atoms.splitter.private.ClusterMessage.Assignment
-	70, // 84: atoms.splitter.private.ClusterMessage.Remove.services:type_name -> atoms.splitter.QualifiedServiceName
-	16, // 85: atoms.splitter.private.LeaderService.Join:input_type -> atoms.splitter.private.JoinMessage
-	10, // 86: atoms.splitter.private.LeaderService.Handle:input_type -> atoms.splitter.private.LeaderHandleRequest
-	16, // 87: atoms.splitter.private.LeaderService.Join:output_type -> atoms.splitter.private.JoinMessage
-	11, // 88: atoms.splitter.private.LeaderService.Handle:output_type -> atoms.splitter.private.LeaderHandleResponse
-	87, // [87:89] is the sub-list for method output_type
-	85, // [85:87] is the sub-list for method input_type
-	85, // [85:85] is the sub-list for extension type_name
-	85, // [85:85] is the sub-list for extension extendee
-	0,  // [0:85] is the sub-list for field type_name
+	24, // 62: atoms.splitter.private.WorkerMessage.service_status:type_name -> atoms.splitter.private.WorkerMessage.ServiceStatus
+	26, // 63: atoms.splitter.private.ClusterMessage.snapshot:type_name -> atoms.splitter.private.ClusterMessage.Snapshot
+	27, // 64: atoms.splitter.private.ClusterMessage.update:type_name -> atoms.splitter.private.ClusterMessage.Update
+	28, // 65: atoms.splitter.private.ClusterMessage.remove:type_name -> atoms.splitter.private.ClusterMessage.Remove
+	72, // 66: atoms.splitter.private.ClusterMessage.timestamp:type_name -> google.protobuf.Timestamp
+	13, // 67: atoms.splitter.private.LeaderMessage.worker:type_name -> atoms.splitter.private.WorkerMessage
+	14, // 68: atoms.splitter.private.LeaderMessage.cluster:type_name -> atoms.splitter.private.ClusterMessage
+	73, // 69: atoms.splitter.private.JoinMessage.session:type_name -> atoms.splitter.lib.service.service.Message
+	15, // 70: atoms.splitter.private.JoinMessage.leader:type_name -> atoms.splitter.private.LeaderMessage
+	74, // 71: atoms.splitter.private.WorkerMessage.Register.worker:type_name -> atoms.splitter.Instance
+	12, // 72: atoms.splitter.private.WorkerMessage.Register.active:type_name -> atoms.splitter.private.Grant
+	72, // 73: atoms.splitter.private.WorkerMessage.LeaseUpdate.ttl:type_name -> google.protobuf.Timestamp
+	12, // 74: atoms.splitter.private.WorkerMessage.Assign.grant:type_name -> atoms.splitter.private.Grant
+	75, // 75: atoms.splitter.private.WorkerMessage.Assign.state:type_name -> atoms.splitter.private.State
+	12, // 76: atoms.splitter.private.WorkerMessage.Update.grant:type_name -> atoms.splitter.private.Grant
+	76, // 77: atoms.splitter.private.WorkerMessage.Update.state:type_name -> atoms.splitter.private.Update
+	12, // 78: atoms.splitter.private.WorkerMessage.Revoke.grants:type_name -> atoms.splitter.private.Grant
+	12, // 79: atoms.splitter.private.WorkerMessage.Relinquished.grants:type_name -> atoms.splitter.private.Grant
+	77, // 80: atoms.splitter.private.WorkerMessage.ServiceStatus.load:type_name -> atoms.splitter.private.ServiceLoadInfo
+	74, // 81: atoms.splitter.private.ClusterMessage.Assignment.worker:type_name -> atoms.splitter.Instance
+	12, // 82: atoms.splitter.private.ClusterMessage.Assignment.grants:type_name -> atoms.splitter.private.Grant
+	25, // 83: atoms.splitter.private.ClusterMessage.Snapshot.assignments:type_name -> atoms.splitter.private.ClusterMessage.Assignment
+	78, // 84: atoms.splitter.private.ClusterMessage.Snapshot.origin:type_name -> atoms.splitter.lib.service.location.Instance
+	25, // 85: atoms.splitter.private.ClusterMessage.Update.assignments:type_name -> atoms.splitter.private.ClusterMessage.Assignment
+	71, // 86: atoms.splitter.private.ClusterMessage.Remove.services:type_name -> atoms.splitter.QualifiedServiceName
+	16, // 87: atoms.splitter.private.LeaderService.Join:input_type -> atoms.splitter.private.JoinMessage
+	10, // 88: atoms.splitter.private.LeaderService.Handle:input_type -> atoms.splitter.private.LeaderHandleRequest
+	16, // 89: atoms.splitter.private.LeaderService.Join:output_type -> atoms.splitter.private.JoinMessage
+	11, // 90: atoms.splitter.private.LeaderService.Handle:output_type -> atoms.splitter.private.LeaderHandleResponse
+	89, // [89:91] is the sub-list for method output_type
+	87, // [87:89] is the sub-list for method input_type
+	87, // [87:87] is the sub-list for extension type_name
+	87, // [87:87] is the sub-list for extension extendee
+	0,  // [0:87] is the sub-list for field type_name
 }
 
 func init() { file_atoms_splitter_private_leader_proto_init() }
@@ -2828,6 +2896,7 @@ func file_atoms_splitter_private_leader_proto_init() {
 	if File_atoms_splitter_private_leader_proto != nil {
 		return
 	}
+	file_atoms_splitter_private_load_proto_init()
 	file_atoms_splitter_private_operation_proto_init()
 	file_atoms_splitter_private_placement_proto_init()
 	file_atoms_splitter_private_state_proto_init()
@@ -2915,6 +2984,7 @@ func file_atoms_splitter_private_leader_proto_init() {
 		(*WorkerMessage_Update_)(nil),
 		(*WorkerMessage_Revoke_)(nil),
 		(*WorkerMessage_Relinquished_)(nil),
+		(*WorkerMessage_ServiceStatus_)(nil),
 	}
 	file_atoms_splitter_private_leader_proto_msgTypes[14].OneofWrappers = []any{
 		(*ClusterMessage_Snapshot_)(nil),
@@ -2935,7 +3005,7 @@ func file_atoms_splitter_private_leader_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atoms_splitter_private_leader_proto_rawDesc), len(file_atoms_splitter_private_leader_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   28,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
