@@ -156,9 +156,6 @@ func (s ShardingPolicy) ShardingPolicyShards() ([]ShardingPolicyShard, error) {
 
 	return result, nil
 }
-func (s ShardingPolicy) TrackLoad() bool {
-	return s.pb.GetTrackLoad()
-}
 
 // ShardKV is a key-value with a shard.
 type ShardKV[K comparable, V any] struct {
