@@ -92,7 +92,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		}
 
 		recordActionLatency(time.Since(now), "apply/update", err)
-		recordMessageSize(upd.Size(), "update")
+		recordMessageSize(upd.Size(), "apply/update")
 		return nil
 
 	case pb.GetDelete() != nil:
@@ -103,7 +103,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		}
 
 		recordActionLatency(time.Since(now), "apply/delete", err)
-		recordMessageSize(del.Size(), "delete")
+		recordMessageSize(del.Size(), "apply/delete")
 		return nil
 
 	case pb.GetRestore() != nil:
@@ -111,7 +111,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		f.db.Restore(restore.Snapshot())
 
 		recordActionLatency(time.Since(now), "apply/restore", err)
-		recordMessageSize(restore.Size(), "restore")
+		recordMessageSize(restore.Size(), "apply/restore")
 		return nil
 
 	default:
@@ -158,9 +158,10 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 
 	f.db.Restore(core.WrapSnapshot(pb))
 
-	log.Infof(context.Background(), "Restored raft snapshot")
+	log.Infof(context.Background(), "Restored raft snapshot with length %v", len(buf))
 
 	recordActionLatency(time.Since(now), "restore", nil)
+	recordMessageSize(len(buf), "restore")
 	return nil
 }
 
