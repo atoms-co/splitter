@@ -324,7 +324,7 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 			return chanx.Map(joined, UnwrapJoinMessage), nil
 		})
 	}
-	pool, clusters := NewWorkPool(consumer, service, nil, joinFn, handler, opts...)
+	pool, clusters := newWorkPool(consumer, service, nil, joinFn, handler, opts...)
 
 	go func() {
 		defer quit.Close()
