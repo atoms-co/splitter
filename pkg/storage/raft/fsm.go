@@ -158,7 +158,7 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 
 	f.db.Restore(core.WrapSnapshot(pb))
 
-	log.Infof(context.Background(), "Restored raft snapshot with length %v", len(buf))
+	log.Infof(context.Background(), "Restored raft snapshot with size %v", len(buf))
 
 	recordActionLatency(time.Since(now), "restore", nil)
 	recordMessageSize(len(buf), "restore")
