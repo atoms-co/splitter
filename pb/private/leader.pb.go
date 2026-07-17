@@ -2691,7 +2691,7 @@ const file_atoms_splitter_private_leader_proto_rawDesc = "" +
 	"\acluster\x18\x02 \x01(\v2&.atoms.splitter.private.ClusterMessageH\x00R\aclusterB\x05\n" +
 	"\x03msg\"\x9e\x01\n" +
 	"\vJoinMessage\x12G\n" +
-	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.service.MessageH\x00R\asession\x12?\n" +
+	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.session.MessageH\x00R\asession\x12?\n" +
 	"\x06leader\x18\x02 \x01(\v2%.atoms.splitter.private.LeaderMessageH\x00R\x06leaderB\x05\n" +
 	"\x03msg2\xca\x01\n" +
 	"\rLeaderService\x12T\n" +
@@ -2785,7 +2785,7 @@ var file_atoms_splitter_private_leader_proto_goTypes = []any{
 	(*SnapshotResponse)(nil),            // 70: atoms.splitter.private.SnapshotResponse
 	(*pb.QualifiedServiceName)(nil),     // 71: atoms.splitter.QualifiedServiceName
 	(*timestamppb.Timestamp)(nil),       // 72: google.protobuf.Timestamp
-	(*pb1.Message)(nil),                 // 73: atoms.splitter.lib.service.service.Message
+	(*pb1.Message)(nil),                 // 73: atoms.splitter.lib.service.session.Message
 	(*pb.Instance)(nil),                 // 74: atoms.splitter.Instance
 	(*State)(nil),                       // 75: atoms.splitter.private.State
 	(*Update)(nil),                      // 76: atoms.splitter.private.Update
@@ -2862,7 +2862,7 @@ var file_atoms_splitter_private_leader_proto_depIdxs = []int32{
 	72, // 66: atoms.splitter.private.ClusterMessage.timestamp:type_name -> google.protobuf.Timestamp
 	13, // 67: atoms.splitter.private.LeaderMessage.worker:type_name -> atoms.splitter.private.WorkerMessage
 	14, // 68: atoms.splitter.private.LeaderMessage.cluster:type_name -> atoms.splitter.private.ClusterMessage
-	73, // 69: atoms.splitter.private.JoinMessage.session:type_name -> atoms.splitter.lib.service.service.Message
+	73, // 69: atoms.splitter.private.JoinMessage.session:type_name -> atoms.splitter.lib.service.session.Message
 	15, // 70: atoms.splitter.private.JoinMessage.leader:type_name -> atoms.splitter.private.LeaderMessage
 	74, // 71: atoms.splitter.private.WorkerMessage.Register.worker:type_name -> atoms.splitter.Instance
 	12, // 72: atoms.splitter.private.WorkerMessage.Register.active:type_name -> atoms.splitter.private.Grant

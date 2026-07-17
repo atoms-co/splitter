@@ -245,14 +245,14 @@ const file_atoms_splitter_private_observer_proto_rawDesc = "" +
 	"\n" +
 	"%atoms/splitter/private/observer.proto\x12\x16atoms.splitter.private\x1a0atoms/splitter/lib/service/session/session.proto\x1a\x1catoms/splitter/cluster.proto\x1a\x1aatoms/splitter/model.proto\"\xc0\x02\n" +
 	"\x15ObserverClientMessage\x12G\n" +
-	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.service.MessageH\x00R\asession\x12T\n" +
+	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.session.MessageH\x00R\asession\x12T\n" +
 	"\bregister\x18\x02 \x01(\v26.atoms.splitter.private.ObserverClientMessage.RegisterH\x00R\bregister\x1a\x80\x01\n" +
 	"\bRegister\x124\n" +
 	"\bobserver\x18\x01 \x01(\v2\x18.atoms.splitter.InstanceR\bobserver\x12>\n" +
 	"\aservice\x18\x02 \x01(\v2$.atoms.splitter.QualifiedServiceNameR\aserviceB\x05\n" +
 	"\x03msg\"\xa3\x01\n" +
 	"\x15ObserverServerMessage\x12G\n" +
-	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.service.MessageH\x00R\asession\x12:\n" +
+	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.session.MessageH\x00R\asession\x12:\n" +
 	"\acluster\x18\x02 \x01(\v2\x1e.atoms.splitter.ClusterMessageH\x00R\aclusterB\x05\n" +
 	"\x03msg2~\n" +
 	"\x0fObserverService\x12k\n" +
@@ -275,15 +275,15 @@ var file_atoms_splitter_private_observer_proto_goTypes = []any{
 	(*ObserverClientMessage)(nil),          // 0: atoms.splitter.private.ObserverClientMessage
 	(*ObserverServerMessage)(nil),          // 1: atoms.splitter.private.ObserverServerMessage
 	(*ObserverClientMessage_Register)(nil), // 2: atoms.splitter.private.ObserverClientMessage.Register
-	(*pb.Message)(nil),                     // 3: atoms.splitter.lib.service.service.Message
+	(*pb.Message)(nil),                     // 3: atoms.splitter.lib.service.session.Message
 	(*pb1.ClusterMessage)(nil),             // 4: atoms.splitter.ClusterMessage
 	(*pb1.Instance)(nil),                   // 5: atoms.splitter.Instance
 	(*pb1.QualifiedServiceName)(nil),       // 6: atoms.splitter.QualifiedServiceName
 }
 var file_atoms_splitter_private_observer_proto_depIdxs = []int32{
-	3, // 0: atoms.splitter.private.ObserverClientMessage.session:type_name -> atoms.splitter.lib.service.service.Message
+	3, // 0: atoms.splitter.private.ObserverClientMessage.session:type_name -> atoms.splitter.lib.service.session.Message
 	2, // 1: atoms.splitter.private.ObserverClientMessage.register:type_name -> atoms.splitter.private.ObserverClientMessage.Register
-	3, // 2: atoms.splitter.private.ObserverServerMessage.session:type_name -> atoms.splitter.lib.service.service.Message
+	3, // 2: atoms.splitter.private.ObserverServerMessage.session:type_name -> atoms.splitter.lib.service.session.Message
 	4, // 3: atoms.splitter.private.ObserverServerMessage.cluster:type_name -> atoms.splitter.ClusterMessage
 	5, // 4: atoms.splitter.private.ObserverClientMessage.Register.observer:type_name -> atoms.splitter.Instance
 	6, // 5: atoms.splitter.private.ObserverClientMessage.Register.service:type_name -> atoms.splitter.QualifiedServiceName

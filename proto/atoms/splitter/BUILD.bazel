@@ -3,7 +3,16 @@ load("@rules_go//proto:def.bzl", "go_proto_library")
 
 proto_library(
     name = "splitter_proto",
-    srcs = glob(["*.proto"]),
+    srcs = [
+        "cluster.proto",
+        "consumer.proto",
+        "consumerapi.proto",
+        "management.proto",
+        "managementapi.proto",
+        "model.proto",
+        "placement.proto",
+        "placementapi.proto",
+    ],
     strip_import_prefix = "/proto",
     visibility = ["//visibility:public"],
     deps = [
@@ -14,7 +23,7 @@ proto_library(
 )
 
 go_proto_library(
-    name = "splitter",
+    name = "splitter_go_proto",
     compilers = [
         "@rules_go//proto:go_proto",
         "@rules_go//proto:go_grpc_v2",
@@ -23,7 +32,7 @@ go_proto_library(
     proto = ":splitter_proto",
     visibility = ["//visibility:public"],
     deps = [
-        "//proto/atoms/splitter/lib/service/location",
-        "//proto/atoms/splitter/lib/service/session",
+        "//proto/atoms/splitter/lib/service/location:location_go_proto",
+        "//proto/atoms/splitter/lib/service/session:session_go_proto",
     ],
 )

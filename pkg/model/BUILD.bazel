@@ -13,7 +13,7 @@ go_library(
         "//lib/service/session",
         "//pkg/allocation",
         "//pkg/util/uuidx",
-        "//proto/atoms/splitter",
+        "//proto/atoms/splitter:splitter_go_proto",
         "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//backoffx",
         "@co_atoms_go_lib//chanx",
@@ -50,7 +50,7 @@ go_test(
     rundir = ".",
     deps = [
         "//lib/service/location",
-        "//proto/atoms/splitter",
+        "//proto/atoms/splitter:splitter_go_proto",
         "//testing/prefab",
         "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//chanx",

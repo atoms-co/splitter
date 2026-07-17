@@ -247,7 +247,7 @@ message LeaderMessage {
 
 message JoinMessage {
   oneof msg {
-    atoms.splitter.lib.service.service.Message session = 1;
+    atoms.splitter.lib.service.session.Message session = 1;
     LeaderMessage leader = 2;
   }
 }
