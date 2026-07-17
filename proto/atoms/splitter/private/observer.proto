@@ -16,7 +16,7 @@ message ObserverClientMessage {
   }
 
   oneof msg {
-    atoms.splitter.lib.service.service.Message session = 1;
+    atoms.splitter.lib.service.session.Message session = 1;
     Register register = 2;
   }
 }
@@ -24,7 +24,7 @@ message ObserverClientMessage {
 // ObserverServerMessage is a message sent from coordinator to observer
 message ObserverServerMessage {
   oneof msg {
-    atoms.splitter.lib.service.service.Message session = 1;
+    atoms.splitter.lib.service.session.Message session = 1;
     atoms.splitter.ClusterMessage cluster = 2;
   }
 }

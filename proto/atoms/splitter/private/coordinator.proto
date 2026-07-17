@@ -51,7 +51,7 @@ message CoordinatorHandleResponse {
 
 message ConnectMessage {
   oneof msg {
-    atoms.splitter.lib.service.service.Message session = 1;
+    atoms.splitter.lib.service.session.Message session = 1;
     atoms.splitter.ConsumerMessage consumer = 2;
   }
 }
