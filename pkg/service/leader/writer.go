@@ -606,6 +606,10 @@ func (w *Writer) updateAsync(ctx context.Context, upd core.Update) iox.AsyncClos
 		log.Fatalf(ctx, "Internal: pre-commit cache inconsistent with writer: %v", err)
 	}
 
+	return w.applyUpdateAsync(ctx, upd)
+}
+
+func (w *Writer) applyUpdateAsync(ctx context.Context, upd core.Update) iox.AsyncCloser {
 	done := iox.NewAsyncCloser()
 	w.pool.Chan() <- func() {
 		defer done.Close()
@@ -625,6 +629,22 @@ func (w *Writer) updateAsync(ctx context.Context, upd core.Update) iox.AsyncClos
 
 	}
 	return done
+}
+
+// UpdateServiceStatusAsync attempts to update ServiceStatus. Does not wait for response.
+func (w *Writer) UpdateServiceStatusAsync(ctx context.Context, status core.ServiceStatus) error {
+	upd := core.NewServiceStatusUpdate(status)
+	if err := w.cache.Update(upd, true); err != nil {
+		return err
+	}
+
+	if len(w.pool.Chan()) == pendingApplyCapacity {
+		log.Warnf(ctx, "Internal: pending applies reached internal limit: %v", pendingApplyCapacity)
+		return model.ErrOverloaded
+	}
+
+	_ = w.applyUpdateAsync(ctx, upd)
+	return nil
 }
 
 func (w *Writer) deleteAsync(ctx context.Context, del core.Delete) iox.AsyncCloser {

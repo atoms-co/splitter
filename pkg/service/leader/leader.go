@@ -310,6 +310,10 @@ steady:
 				return
 			}
 
+			if !upd.IsStateUpdated() {
+				break // cache only; do not refresh allocation or notify workers
+			}
+
 			l.refresh(ctx)
 			l.update(ctx, upd)
 			l.allocate(ctx, time.Now(), false)
@@ -366,8 +370,8 @@ func (l *leader) handleMessage(ctx context.Context, w *workerSession, m Message)
 		l.handleRelinquished(ctx, w, relinquished)
 
 	case msg.IsServiceStatus():
-		// TODO: handleServiceStatus
-		log.Debugf(ctx, "Received service status message: %v", msg)
+		serviceStatus, _ := msg.ServiceStatus()
+		l.handleServiceStatus(ctx, serviceStatus)
 
 	default:
 		log.Errorf(ctx, "Internal: unexpected worker message: %v", msg)
@@ -437,6 +441,13 @@ func (l *leader) handleRelinquished(ctx context.Context, w *workerSession, relin
 
 	// (3) Broadcast cluster changes
 	l.broadcast(ctx, now)
+}
+
+func (l *leader) handleServiceStatus(ctx context.Context, status core.ServiceStatusMessage) {
+	err := l.writer.UpdateServiceStatusAsync(ctx, core.NewServiceStatus(status.Load()))
+	if err != nil {
+		log.Errorf(ctx, "Failed to update service status %v: %v", status, err)
+	}
 }
 
 func (l *leader) connect(ctx context.Context, now time.Time, sid session.ID, register RegisterMessage, in <-chan Message) (*workerSession, <-chan Message) {

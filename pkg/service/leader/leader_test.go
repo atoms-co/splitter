@@ -18,6 +18,8 @@ import (
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/storage/memory"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	splitterpb "go.atoms.co/splitter/pb"
+	"go.atoms.co/lib/chanx"
 )
 
 const (
@@ -188,6 +190,83 @@ func TestLeader_Operations(t *testing.T) {
 	assert.Len(t, snap.GetSnapshot().GetTenants(), 2)
 }
 
+func TestLeader_HandleUpdate(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		loc := location.New("centralus", "splitter-0")
+
+		cfg := model.NewServiceConfig(model.WithTrackLoad(true))
+		service, err := model.NewService(s1, time.Now(), model.WithServiceConfig(cfg))
+		require.NoError(t, err)
+
+		qdn := model.QualifiedDomainName{Service: service.Name(), Domain: model.DomainName("domain")}
+		domain, err := model.NewDomain(qdn, model.Unit, time.Now())
+		require.NoError(t, err)
+		db := setupWithDomains(t, ctx, service, domain)
+
+		l := leader.New(ctx, loc, db, leader.WithFastActivation())
+		defer l.Close()
+		<-l.Initialized().Closed()
+
+		worker := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		in := make(chan leader.Message, 2)
+		in <- leader.NewRegister(worker)
+
+		out, err := l.Join(ctx, session.NewID(), in)
+		require.NoError(t, err, "worker failed to join leader")
+		readFn(t, out, isAssign)
+		synctest.Wait()
+		chanx.Clear(out)
+
+		// (1) Test Status update
+		snap := core.NewP2QuantileSnapshot(
+			0.5,
+			[]float64{10, 10, 10, 10, 10},
+			[]uint64{1, 2, 3, 4, 10},
+			[]float64{1, 2, 3, 4, 10},
+		)
+		trackers := core.NewDomainTrackerSnapshot(time.Now(), snap, nil)
+		status := core.NewServiceStatusMessage(core.NewServiceLoadInfo(service.Name(), []core.DomainLoadInfo{
+			core.NewDomainLoadInfo(domain.Name().Domain, trackers, nil),
+		}))
+		in <- leader.NewServiceStatus(status)
+		synctest.Wait()
+
+		resp, err := l.Handle(ctx, leader.NewHandleOperationRequest(&splitterprivatepb.OperationRequest{
+			Req: &splitterprivatepb.OperationRequest_Snapshot{Snapshot: &splitterprivatepb.SnapshotRequest{}},
+		}))
+		require.NoError(t, err)
+		require.NotNil(t, resp.GetOperation())
+		synctest.Wait()
+
+		// snapshot contains ServiceStatus
+		snapshot := core.WrapSnapshot(resp.GetOperation().GetSnapshot().GetSnapshot())
+		require.True(t, snapshotHasServiceStatus(snapshot, service.Name(), domain.Name()))
+
+		// no message sent to worker
+		_, ok := chanx.TryRead(out, time.Millisecond)
+		require.False(t, ok)
+
+		// (2) Test State update
+		resp, err = l.Handle(ctx, leader.NewHandleServiceRequest(&splitterprivatepb.ServiceRequest{
+			Req: &splitterprivatepb.ServiceRequest_Update{
+				Update: &splitterpb.UpdateServiceRequest{
+					Name:    service.Name().ToProto(),
+					Version: int64(snapshot.Tenants()[0].Services()[0].Info().Version()),
+					Config:  model.UnwrapServiceConfig(model.NewServiceConfig(model.WithTrackLoad(false))),
+				},
+			},
+		}))
+		require.NoError(t, err)
+		require.NotNil(t, resp.GetService().GetUpdate())
+
+		// Update message send to worker
+		update := readFn(t, out, isUpdate)
+		assert.Equal(t, service.Name(), update.Grant().Service())
+		assert.True(t, update.State().IsStateUpdated())
+	})
+}
+
 func setup(t *testing.T, ctx context.Context, services ...model.Service) storage.Storage {
 	db := memory.New()
 
@@ -204,6 +283,46 @@ func setup(t *testing.T, ctx context.Context, services ...model.Service) storage
 	return db
 }
 
+func setupWithDomains(t *testing.T, ctx context.Context, service model.Service, domains ...model.Domain) storage.Storage {
+	db := memory.New()
+
+	tenant, err := model.NewTenant(service.Name().Tenant, time.Now())
+	require.NoError(t, err)
+
+	err = db.Update(ctx, core.NewTenantUpdate(model.NewTenantInfo(tenant, 1, time.Now())))
+	require.NoError(t, err)
+
+	serviceInfo := model.NewServiceInfo(service, 1, time.Now())
+	err = db.Update(ctx, core.NewServiceUpdate(serviceInfo))
+	require.NoError(t, err)
+
+	for _, domain := range domains {
+		serviceInfo = model.NewServiceInfo(service, serviceInfo.Version()+1, time.Now())
+		err = db.Update(ctx, core.NewDomainUpdate(serviceInfo, domain))
+		require.NoError(t, err)
+	}
+
+	return db
+}
+
+func snapshotHasServiceStatus(snapshot core.Snapshot, service model.QualifiedServiceName, domain model.QualifiedDomainName) bool {
+	for _, state := range snapshot.Tenants() {
+		for _, status := range state.Statuses() {
+			load := status.Load()
+			if load.Service() != service {
+				continue
+			}
+
+			for _, domainLoad := range load.Domains() {
+				if domainLoad.DomainName() == domain.Domain {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func isAssign(msg leader.Message) (leader.AssignMessage, bool) {
 	if msg.IsWorkerMessage() {
 		w, _ := msg.WorkerMessage()
@@ -218,6 +337,14 @@ func isRevoke(msg leader.Message) (leader.RevokeMessage, bool) {
 		return w.Revoke()
 	}
 	return leader.RevokeMessage{}, false
+}
+
+func isUpdate(msg leader.Message) (leader.UpdateMessage, bool) {
+	if msg.IsWorkerMessage() {
+		w, _ := msg.WorkerMessage()
+		return w.Update()
+	}
+	return leader.UpdateMessage{}, false
 }
 
 func readFn[T any](t *testing.T, in <-chan leader.Message, fn func(message leader.Message) (T, bool)) T {

@@ -27,6 +27,7 @@ type State struct {
 	Tenant        *pb.TenantInfo           `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	Services      []*pb.ServiceInfoEx      `protobuf:"bytes,2,rep,name=services,proto3" json:"services,omitempty"`
 	Placements    []*InternalPlacementInfo `protobuf:"bytes,3,rep,name=placements,proto3" json:"placements,omitempty"`
+	Statuses      []*ServiceStatus         `protobuf:"bytes,4,rep,name=statuses,proto3" json:"statuses,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -78,6 +79,13 @@ func (x *State) GetServices() []*pb.ServiceInfoEx {
 func (x *State) GetPlacements() []*InternalPlacementInfo {
 	if x != nil {
 		return x.Placements
+	}
+	return nil
+}
+
+func (x *State) GetStatuses() []*ServiceStatus {
+	if x != nil {
+		return x.Statuses
 	}
 	return nil
 }
@@ -142,19 +150,64 @@ func (x *ServiceUpdate) GetRemoved() []*pb.QualifiedDomainName {
 	return nil
 }
 
+type ServiceStatus struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Load          *ServiceLoadInfo       `protobuf:"bytes,1,opt,name=load,proto3" json:"load,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServiceStatus) Reset() {
+	*x = ServiceStatus{}
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServiceStatus) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServiceStatus) ProtoMessage() {}
+
+func (x *ServiceStatus) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServiceStatus.ProtoReflect.Descriptor instead.
+func (*ServiceStatus) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ServiceStatus) GetLoad() *ServiceLoadInfo {
+	if x != nil {
+		return x.Load
+	}
+	return nil
+}
+
 type Update struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Tenant        *Update_Tenant         `protobuf:"bytes,2,opt,name=tenant,proto3" json:"tenant,omitempty"`
 	Service       *Update_Service        `protobuf:"bytes,3,opt,name=service,proto3" json:"service,omitempty"`
 	Placement     *Update_Placement      `protobuf:"bytes,4,opt,name=placement,proto3" json:"placement,omitempty"`
+	Status        *ServiceStatus         `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Update) Reset() {
 	*x = Update{}
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[2]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -166,7 +219,7 @@ func (x *Update) String() string {
 func (*Update) ProtoMessage() {}
 
 func (x *Update) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[2]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -179,7 +232,7 @@ func (x *Update) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Update.ProtoReflect.Descriptor instead.
 func (*Update) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{2}
+	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *Update) GetName() string {
@@ -210,6 +263,13 @@ func (x *Update) GetPlacement() *Update_Placement {
 	return nil
 }
 
+func (x *Update) GetStatus() *ServiceStatus {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
 type Delete struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Tenant        string                 `protobuf:"bytes,1,opt,name=tenant,proto3" json:"tenant,omitempty"`
@@ -219,7 +279,7 @@ type Delete struct {
 
 func (x *Delete) Reset() {
 	*x = Delete{}
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[3]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -231,7 +291,7 @@ func (x *Delete) String() string {
 func (*Delete) ProtoMessage() {}
 
 func (x *Delete) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[3]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -244,7 +304,7 @@ func (x *Delete) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Delete.ProtoReflect.Descriptor instead.
 func (*Delete) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{3}
+	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Delete) GetTenant() string {
@@ -263,7 +323,7 @@ type Restore struct {
 
 func (x *Restore) Reset() {
 	*x = Restore{}
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[4]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -275,7 +335,7 @@ func (x *Restore) String() string {
 func (*Restore) ProtoMessage() {}
 
 func (x *Restore) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[4]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -288,7 +348,7 @@ func (x *Restore) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Restore.ProtoReflect.Descriptor instead.
 func (*Restore) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{4}
+	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Restore) GetSnapshot() *Snapshot {
@@ -312,7 +372,7 @@ type Mutation struct {
 
 func (x *Mutation) Reset() {
 	*x = Mutation{}
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[5]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -324,7 +384,7 @@ func (x *Mutation) String() string {
 func (*Mutation) ProtoMessage() {}
 
 func (x *Mutation) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[5]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -337,7 +397,7 @@ func (x *Mutation) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Mutation.ProtoReflect.Descriptor instead.
 func (*Mutation) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{5}
+	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Mutation) GetMsg() isMutation_Msg {
@@ -405,7 +465,7 @@ type Snapshot struct {
 
 func (x *Snapshot) Reset() {
 	*x = Snapshot{}
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[6]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -417,7 +477,7 @@ func (x *Snapshot) String() string {
 func (*Snapshot) ProtoMessage() {}
 
 func (x *Snapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[6]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -430,7 +490,7 @@ func (x *Snapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Snapshot.ProtoReflect.Descriptor instead.
 func (*Snapshot) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{6}
+	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Snapshot) GetTenants() []*State {
@@ -449,7 +509,7 @@ type Update_Tenant struct {
 
 func (x *Update_Tenant) Reset() {
 	*x = Update_Tenant{}
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[7]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -461,7 +521,7 @@ func (x *Update_Tenant) String() string {
 func (*Update_Tenant) ProtoMessage() {}
 
 func (x *Update_Tenant) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[7]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -474,7 +534,7 @@ func (x *Update_Tenant) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Update_Tenant.ProtoReflect.Descriptor instead.
 func (*Update_Tenant) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{2, 0}
+	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{3, 0}
 }
 
 func (x *Update_Tenant) GetUpdated() *pb.TenantInfo {
@@ -494,7 +554,7 @@ type Update_Service struct {
 
 func (x *Update_Service) Reset() {
 	*x = Update_Service{}
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[8]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -506,7 +566,7 @@ func (x *Update_Service) String() string {
 func (*Update_Service) ProtoMessage() {}
 
 func (x *Update_Service) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[8]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -519,7 +579,7 @@ func (x *Update_Service) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Update_Service.ProtoReflect.Descriptor instead.
 func (*Update_Service) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{2, 1}
+	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{3, 1}
 }
 
 func (x *Update_Service) GetUpdated() []*ServiceUpdate {
@@ -546,7 +606,7 @@ type Update_Placement struct {
 
 func (x *Update_Placement) Reset() {
 	*x = Update_Placement{}
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[9]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -558,7 +618,7 @@ func (x *Update_Placement) String() string {
 func (*Update_Placement) ProtoMessage() {}
 
 func (x *Update_Placement) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_state_proto_msgTypes[9]
+	mi := &file_atoms_splitter_private_state_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -571,7 +631,7 @@ func (x *Update_Placement) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Update_Placement.ProtoReflect.Descriptor instead.
 func (*Update_Placement) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{2, 2}
+	return file_atoms_splitter_private_state_proto_rawDescGZIP(), []int{3, 2}
 }
 
 func (x *Update_Placement) GetUpdated() []*InternalPlacementInfo {
@@ -592,22 +652,26 @@ var File_atoms_splitter_private_state_proto protoreflect.FileDescriptor
 
 const file_atoms_splitter_private_state_proto_rawDesc = "" +
 	"\n" +
-	"\"atoms/splitter/private/state.proto\x12\x16atoms.splitter.private\x1a\x1aatoms/splitter/model.proto\x1a\x1fatoms/splitter/management.proto\x1a\x1eatoms/splitter/placement.proto\x1a&atoms/splitter/private/placement.proto\"\xc5\x01\n" +
+	"\"atoms/splitter/private/state.proto\x12\x16atoms.splitter.private\x1a\x1aatoms/splitter/model.proto\x1a\x1fatoms/splitter/management.proto\x1a\x1eatoms/splitter/placement.proto\x1a!atoms/splitter/private/load.proto\x1a&atoms/splitter/private/placement.proto\"\x88\x02\n" +
 	"\x05State\x122\n" +
 	"\x06tenant\x18\x01 \x01(\v2\x1a.atoms.splitter.TenantInfoR\x06tenant\x129\n" +
 	"\bservices\x18\x02 \x03(\v2\x1d.atoms.splitter.ServiceInfoExR\bservices\x12M\n" +
 	"\n" +
 	"placements\x18\x03 \x03(\v2-.atoms.splitter.private.InternalPlacementInfoR\n" +
-	"placements\"\xb7\x01\n" +
+	"placements\x12A\n" +
+	"\bstatuses\x18\x04 \x03(\v2%.atoms.splitter.private.ServiceStatusR\bstatuses\"\xb7\x01\n" +
 	"\rServiceUpdate\x125\n" +
 	"\aservice\x18\x01 \x01(\v2\x1b.atoms.splitter.ServiceInfoR\aservice\x120\n" +
 	"\aupdated\x18\x02 \x03(\v2\x16.atoms.splitter.DomainR\aupdated\x12=\n" +
-	"\aremoved\x18\x03 \x03(\v2#.atoms.splitter.QualifiedDomainNameR\aremoved\"\xcb\x04\n" +
+	"\aremoved\x18\x03 \x03(\v2#.atoms.splitter.QualifiedDomainNameR\aremoved\"L\n" +
+	"\rServiceStatus\x12;\n" +
+	"\x04load\x18\x01 \x01(\v2'.atoms.splitter.private.ServiceLoadInfoR\x04load\"\x8a\x05\n" +
 	"\x06Update\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12=\n" +
 	"\x06tenant\x18\x02 \x01(\v2%.atoms.splitter.private.Update.TenantR\x06tenant\x12@\n" +
 	"\aservice\x18\x03 \x01(\v2&.atoms.splitter.private.Update.ServiceR\aservice\x12F\n" +
-	"\tplacement\x18\x04 \x01(\v2(.atoms.splitter.private.Update.PlacementR\tplacement\x1a>\n" +
+	"\tplacement\x18\x04 \x01(\v2(.atoms.splitter.private.Update.PlacementR\tplacement\x12=\n" +
+	"\x06status\x18\x05 \x01(\v2%.atoms.splitter.private.ServiceStatusR\x06status\x1a>\n" +
 	"\x06Tenant\x124\n" +
 	"\aupdated\x18\x01 \x01(\v2\x1a.atoms.splitter.TenantInfoR\aupdated\x1a\x8a\x01\n" +
 	"\aService\x12?\n" +
@@ -640,52 +704,57 @@ func file_atoms_splitter_private_state_proto_rawDescGZIP() []byte {
 	return file_atoms_splitter_private_state_proto_rawDescData
 }
 
-var file_atoms_splitter_private_state_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
+var file_atoms_splitter_private_state_proto_msgTypes = make([]protoimpl.MessageInfo, 11)
 var file_atoms_splitter_private_state_proto_goTypes = []any{
 	(*State)(nil),                     // 0: atoms.splitter.private.State
 	(*ServiceUpdate)(nil),             // 1: atoms.splitter.private.ServiceUpdate
-	(*Update)(nil),                    // 2: atoms.splitter.private.Update
-	(*Delete)(nil),                    // 3: atoms.splitter.private.Delete
-	(*Restore)(nil),                   // 4: atoms.splitter.private.Restore
-	(*Mutation)(nil),                  // 5: atoms.splitter.private.Mutation
-	(*Snapshot)(nil),                  // 6: atoms.splitter.private.Snapshot
-	(*Update_Tenant)(nil),             // 7: atoms.splitter.private.Update.Tenant
-	(*Update_Service)(nil),            // 8: atoms.splitter.private.Update.Service
-	(*Update_Placement)(nil),          // 9: atoms.splitter.private.Update.Placement
-	(*pb.TenantInfo)(nil),             // 10: atoms.splitter.TenantInfo
-	(*pb.ServiceInfoEx)(nil),          // 11: atoms.splitter.ServiceInfoEx
-	(*InternalPlacementInfo)(nil),     // 12: atoms.splitter.private.InternalPlacementInfo
-	(*pb.ServiceInfo)(nil),            // 13: atoms.splitter.ServiceInfo
-	(*pb.Domain)(nil),                 // 14: atoms.splitter.Domain
-	(*pb.QualifiedDomainName)(nil),    // 15: atoms.splitter.QualifiedDomainName
-	(*pb.QualifiedServiceName)(nil),   // 16: atoms.splitter.QualifiedServiceName
-	(*pb.QualifiedPlacementName)(nil), // 17: atoms.splitter.QualifiedPlacementName
+	(*ServiceStatus)(nil),             // 2: atoms.splitter.private.ServiceStatus
+	(*Update)(nil),                    // 3: atoms.splitter.private.Update
+	(*Delete)(nil),                    // 4: atoms.splitter.private.Delete
+	(*Restore)(nil),                   // 5: atoms.splitter.private.Restore
+	(*Mutation)(nil),                  // 6: atoms.splitter.private.Mutation
+	(*Snapshot)(nil),                  // 7: atoms.splitter.private.Snapshot
+	(*Update_Tenant)(nil),             // 8: atoms.splitter.private.Update.Tenant
+	(*Update_Service)(nil),            // 9: atoms.splitter.private.Update.Service
+	(*Update_Placement)(nil),          // 10: atoms.splitter.private.Update.Placement
+	(*pb.TenantInfo)(nil),             // 11: atoms.splitter.TenantInfo
+	(*pb.ServiceInfoEx)(nil),          // 12: atoms.splitter.ServiceInfoEx
+	(*InternalPlacementInfo)(nil),     // 13: atoms.splitter.private.InternalPlacementInfo
+	(*pb.ServiceInfo)(nil),            // 14: atoms.splitter.ServiceInfo
+	(*pb.Domain)(nil),                 // 15: atoms.splitter.Domain
+	(*pb.QualifiedDomainName)(nil),    // 16: atoms.splitter.QualifiedDomainName
+	(*ServiceLoadInfo)(nil),           // 17: atoms.splitter.private.ServiceLoadInfo
+	(*pb.QualifiedServiceName)(nil),   // 18: atoms.splitter.QualifiedServiceName
+	(*pb.QualifiedPlacementName)(nil), // 19: atoms.splitter.QualifiedPlacementName
 }
 var file_atoms_splitter_private_state_proto_depIdxs = []int32{
-	10, // 0: atoms.splitter.private.State.tenant:type_name -> atoms.splitter.TenantInfo
-	11, // 1: atoms.splitter.private.State.services:type_name -> atoms.splitter.ServiceInfoEx
-	12, // 2: atoms.splitter.private.State.placements:type_name -> atoms.splitter.private.InternalPlacementInfo
-	13, // 3: atoms.splitter.private.ServiceUpdate.service:type_name -> atoms.splitter.ServiceInfo
-	14, // 4: atoms.splitter.private.ServiceUpdate.updated:type_name -> atoms.splitter.Domain
-	15, // 5: atoms.splitter.private.ServiceUpdate.removed:type_name -> atoms.splitter.QualifiedDomainName
-	7,  // 6: atoms.splitter.private.Update.tenant:type_name -> atoms.splitter.private.Update.Tenant
-	8,  // 7: atoms.splitter.private.Update.service:type_name -> atoms.splitter.private.Update.Service
-	9,  // 8: atoms.splitter.private.Update.placement:type_name -> atoms.splitter.private.Update.Placement
-	6,  // 9: atoms.splitter.private.Restore.snapshot:type_name -> atoms.splitter.private.Snapshot
-	2,  // 10: atoms.splitter.private.Mutation.update:type_name -> atoms.splitter.private.Update
-	3,  // 11: atoms.splitter.private.Mutation.delete:type_name -> atoms.splitter.private.Delete
-	4,  // 12: atoms.splitter.private.Mutation.restore:type_name -> atoms.splitter.private.Restore
-	0,  // 13: atoms.splitter.private.Snapshot.tenants:type_name -> atoms.splitter.private.State
-	10, // 14: atoms.splitter.private.Update.Tenant.updated:type_name -> atoms.splitter.TenantInfo
-	1,  // 15: atoms.splitter.private.Update.Service.updated:type_name -> atoms.splitter.private.ServiceUpdate
-	16, // 16: atoms.splitter.private.Update.Service.removed:type_name -> atoms.splitter.QualifiedServiceName
-	12, // 17: atoms.splitter.private.Update.Placement.updated:type_name -> atoms.splitter.private.InternalPlacementInfo
-	17, // 18: atoms.splitter.private.Update.Placement.removed:type_name -> atoms.splitter.QualifiedPlacementName
-	19, // [19:19] is the sub-list for method output_type
-	19, // [19:19] is the sub-list for method input_type
-	19, // [19:19] is the sub-list for extension type_name
-	19, // [19:19] is the sub-list for extension extendee
-	0,  // [0:19] is the sub-list for field type_name
+	11, // 0: atoms.splitter.private.State.tenant:type_name -> atoms.splitter.TenantInfo
+	12, // 1: atoms.splitter.private.State.services:type_name -> atoms.splitter.ServiceInfoEx
+	13, // 2: atoms.splitter.private.State.placements:type_name -> atoms.splitter.private.InternalPlacementInfo
+	2,  // 3: atoms.splitter.private.State.statuses:type_name -> atoms.splitter.private.ServiceStatus
+	14, // 4: atoms.splitter.private.ServiceUpdate.service:type_name -> atoms.splitter.ServiceInfo
+	15, // 5: atoms.splitter.private.ServiceUpdate.updated:type_name -> atoms.splitter.Domain
+	16, // 6: atoms.splitter.private.ServiceUpdate.removed:type_name -> atoms.splitter.QualifiedDomainName
+	17, // 7: atoms.splitter.private.ServiceStatus.load:type_name -> atoms.splitter.private.ServiceLoadInfo
+	8,  // 8: atoms.splitter.private.Update.tenant:type_name -> atoms.splitter.private.Update.Tenant
+	9,  // 9: atoms.splitter.private.Update.service:type_name -> atoms.splitter.private.Update.Service
+	10, // 10: atoms.splitter.private.Update.placement:type_name -> atoms.splitter.private.Update.Placement
+	2,  // 11: atoms.splitter.private.Update.status:type_name -> atoms.splitter.private.ServiceStatus
+	7,  // 12: atoms.splitter.private.Restore.snapshot:type_name -> atoms.splitter.private.Snapshot
+	3,  // 13: atoms.splitter.private.Mutation.update:type_name -> atoms.splitter.private.Update
+	4,  // 14: atoms.splitter.private.Mutation.delete:type_name -> atoms.splitter.private.Delete
+	5,  // 15: atoms.splitter.private.Mutation.restore:type_name -> atoms.splitter.private.Restore
+	0,  // 16: atoms.splitter.private.Snapshot.tenants:type_name -> atoms.splitter.private.State
+	11, // 17: atoms.splitter.private.Update.Tenant.updated:type_name -> atoms.splitter.TenantInfo
+	1,  // 18: atoms.splitter.private.Update.Service.updated:type_name -> atoms.splitter.private.ServiceUpdate
+	18, // 19: atoms.splitter.private.Update.Service.removed:type_name -> atoms.splitter.QualifiedServiceName
+	13, // 20: atoms.splitter.private.Update.Placement.updated:type_name -> atoms.splitter.private.InternalPlacementInfo
+	19, // 21: atoms.splitter.private.Update.Placement.removed:type_name -> atoms.splitter.QualifiedPlacementName
+	22, // [22:22] is the sub-list for method output_type
+	22, // [22:22] is the sub-list for method input_type
+	22, // [22:22] is the sub-list for extension type_name
+	22, // [22:22] is the sub-list for extension extendee
+	0,  // [0:22] is the sub-list for field type_name
 }
 
 func init() { file_atoms_splitter_private_state_proto_init() }
@@ -693,8 +762,9 @@ func file_atoms_splitter_private_state_proto_init() {
 	if File_atoms_splitter_private_state_proto != nil {
 		return
 	}
+	file_atoms_splitter_private_load_proto_init()
 	file_atoms_splitter_private_placement_proto_init()
-	file_atoms_splitter_private_state_proto_msgTypes[5].OneofWrappers = []any{
+	file_atoms_splitter_private_state_proto_msgTypes[6].OneofWrappers = []any{
 		(*Mutation_Update)(nil),
 		(*Mutation_Delete)(nil),
 		(*Mutation_Restore)(nil),
@@ -705,7 +775,7 @@ func file_atoms_splitter_private_state_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atoms_splitter_private_state_proto_rawDesc), len(file_atoms_splitter_private_state_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   10,
+			NumMessages:   11,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

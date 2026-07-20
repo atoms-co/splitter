@@ -513,6 +513,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	start := time.Now()
 
+	// TODO: restore trackers from ServiceStatus
 	c.cache.Restore(core.NewSnapshot(state))
 
 	tenant, ok := c.cache.Tenant(c.name.Tenant)

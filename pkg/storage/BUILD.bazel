@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "storage",
@@ -12,5 +12,16 @@ go_library(
         "//pkg/core",
         "//pkg/model",
         "@co_atoms_go_lib//mapx",
+    ],
+)
+
+go_test(
+    name = "storage_test",
+    srcs = glob(["*_test.go"]),
+    embed = [":storage"],
+    deps = [
+        "//pkg/core",
+        "//pkg/model",
+        "@com_github_stretchr_testify//require",
     ],
 )
