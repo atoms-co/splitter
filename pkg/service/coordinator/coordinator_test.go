@@ -39,6 +39,26 @@ var (
 	domainName3 = model.QualifiedDomainName{Service: serviceName, Domain: domain3}
 )
 
+func newRegister(consumer model.Consumer, service model.QualifiedServiceName, domains []model.QualifiedDomainName, grants []model.Grant, opts ...model.Options) model.ConsumerMessage {
+	options := model.NewOptions()
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+	return model.NewRegister(consumer, service, domains, grants, options)
+}
+
+func capacityLimitOptions(limit int) model.Options {
+	return model.WrapOptions(&splitterpb.ClientMessage_Register_Options{
+		CapacityLimit: uint64(limit),
+	})
+}
+
+func keyNameOptions(names ...model.DomainKeyName) model.Options {
+	return model.WrapOptions(&splitterpb.ClientMessage_Register_Options{
+		Names: slicex.Map(names, model.DomainKeyName.ToProto),
+	})
+}
+
 func TestCoordinator_SingleConsumer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
@@ -50,7 +70,7 @@ func TestCoordinator_SingleConsumer(t *testing.T) {
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
-		in <- model.NewRegister(w, serviceName, nil, nil)
+		in <- newRegister(w, serviceName, nil, nil)
 
 		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 		require.NoError(t, err, "consumer failed to join leader")
@@ -103,11 +123,11 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
-		in <- model.NewRegister(w, serviceName, nil, nil)
+		in <- newRegister(w, serviceName, nil, nil)
 
 		w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint")
 		in2 := make(chan model.ConsumerMessage, 1)
-		in2 <- model.NewRegister(w2, serviceName, nil, nil)
+		in2 <- newRegister(w2, serviceName, nil, nil)
 
 		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 		require.NoError(t, err, "consumer1 failed to join leader")
@@ -243,7 +263,7 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
-		in <- model.NewRegister(w, serviceName, nil, nil)
+		in <- newRegister(w, serviceName, nil, nil)
 
 		// (2) Connect w1. It should receive all shards
 
@@ -268,7 +288,7 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 
 		w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint")
 		in2 := make(chan model.ConsumerMessage, 1)
-		in2 <- model.NewRegister(w2, serviceName, nil, nil)
+		in2 <- newRegister(w2, serviceName, nil, nil)
 
 		out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
 		require.NoError(t, err, "consumer2 failed to join leader")
@@ -314,7 +334,7 @@ func TestCoordinator_CapacityLimitConsumer(t *testing.T) {
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
-		in <- model.NewRegister(w, serviceName, nil, nil, model.WithCapacityLimit(1))
+		in <- newRegister(w, serviceName, nil, nil, capacityLimitOptions(1))
 
 		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 		require.NoError(t, err, "consumer failed to join leader")
@@ -380,7 +400,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 		// Worker 1 joins for key "test"
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
-		in <- model.NewRegister(w, serviceName, nil, nil, model.WithKeyNames(model.DomainKeyName{
+		in <- newRegister(w, serviceName, nil, nil, keyNameOptions(model.DomainKeyName{
 			Domain: domainName.Domain,
 			Name:   "test",
 		}))
@@ -400,7 +420,7 @@ func TestCoordinator_NamedKeyConsumers(t *testing.T) {
 		// Worker 2 joins for key "test2"
 		w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
 		in2 := make(chan model.ConsumerMessage, 1)
-		in2 <- model.NewRegister(w2, serviceName, nil, nil, model.WithKeyNames(model.DomainKeyName{
+		in2 <- newRegister(w2, serviceName, nil, nil, keyNameOptions(model.DomainKeyName{
 			Domain: domainName.Domain,
 			Name:   "test2",
 		}))
@@ -464,7 +484,7 @@ func TestCoordinator_NamedKeyDisconnectDropsNamedShardPenalty(t *testing.T) {
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
-		in <- model.NewRegister(w, serviceName, nil, nil)
+		in <- newRegister(w, serviceName, nil, nil)
 		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 		require.NoError(t, err, "consumer failed to join coordinator")
 		defer func() {
@@ -483,7 +503,7 @@ func TestCoordinator_NamedKeyDisconnectDropsNamedShardPenalty(t *testing.T) {
 
 		w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
 		in2 := make(chan model.ConsumerMessage, 1)
-		in2 <- model.NewRegister(w2, serviceName, nil, nil, model.WithKeyNames(model.DomainKeyName{Domain: domainName.Domain, Name: "test"}))
+		in2 <- newRegister(w2, serviceName, nil, nil, keyNameOptions(model.DomainKeyName{Domain: domainName.Domain, Name: "test"}))
 		out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
 		require.NoError(t, err, "consumer failed to join coordinator")
 
@@ -517,7 +537,7 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
-		in <- model.NewRegister(w, serviceName, nil, nil)
+		in <- newRegister(w, serviceName, nil, nil)
 
 		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 		require.NoError(t, err, "consumer failed to join coordinator")
@@ -539,7 +559,7 @@ func TestCoordinator_RevokeGrant(t *testing.T) {
 		// connect new consumer
 		w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
 		in2 := make(chan model.ConsumerMessage, 1)
-		in2 <- model.NewRegister(w2, serviceName, nil, nil)
+		in2 <- newRegister(w2, serviceName, nil, nil)
 
 		out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter")), in2)
 		require.NoError(t, err, "consumer failed to join coordinator")
@@ -619,7 +639,7 @@ func TestCoordinator_RelinquishGrant(t *testing.T) {
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
-		in <- model.NewRegister(w, serviceName, nil, nil)
+		in <- newRegister(w, serviceName, nil, nil)
 
 		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 		require.NoError(t, err, "consumer failed to join coordinator")
@@ -667,7 +687,7 @@ func TestCoordinator_CustomShards(t *testing.T) {
 
 		consumer1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		in1 := make(chan model.ConsumerMessage, 1)
-		in1 <- model.NewRegister(consumer1, serviceName, nil, nil)
+		in1 <- newRegister(consumer1, serviceName, nil, nil)
 
 		out1, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in1)
 		require.NoError(t, err, "First consumer failed to connect")
@@ -685,7 +705,7 @@ func TestCoordinator_CustomShards(t *testing.T) {
 
 		consumer2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
 		in2 := make(chan model.ConsumerMessage, 1)
-		in2 <- model.NewRegister(consumer2, serviceName, nil, nil)
+		in2 <- newRegister(consumer2, serviceName, nil, nil)
 
 		out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
 		require.NoError(t, err, "Second consumer failed to connect")
@@ -748,7 +768,7 @@ func TestCoordinator_RegionSpecificShards(t *testing.T) {
 
 		consumer1 := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		in1 := make(chan model.ConsumerMessage, 1)
-		in1 <- model.NewRegister(consumer1, serviceName, nil, nil)
+		in1 <- newRegister(consumer1, serviceName, nil, nil)
 
 		out1, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in1)
 		require.NoError(t, err, "Consumer from centralus failed to connect")
@@ -763,7 +783,7 @@ func TestCoordinator_RegionSpecificShards(t *testing.T) {
 
 		consumer2 := model.NewInstance(location.NewInstance(location.New("eastus", "pod1")), "endpoint1")
 		in2 := make(chan model.ConsumerMessage, 1)
-		in2 <- model.NewRegister(consumer2, serviceName, nil, nil)
+		in2 <- newRegister(consumer2, serviceName, nil, nil)
 
 		out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("eastus", "splitter1")), in2)
 		require.NoError(t, err, "Consumer from eastus failed to connect")
@@ -855,7 +875,7 @@ func TestObserverReceivesClusterUpdates(t *testing.T) {
 		consumerSid := session.NewID()
 
 		consumerInstance := model.NewInstance(consumer, "foo")
-		consumerIn <- model.NewRegister(consumerInstance, serviceName, nil, nil)
+		consumerIn <- newRegister(consumerInstance, serviceName, nil, nil)
 
 		_, err = coord.Connect(ctx, consumerSid, consumer, consumerIn)
 		require.NoError(t, err)
@@ -911,7 +931,7 @@ func TestMultipleObservers(t *testing.T) {
 		consumerSid := session.NewID()
 
 		consumerInstance := model.NewInstance(consumer, "foo")
-		consumerIn <- model.NewRegister(consumerInstance, serviceName, nil, nil)
+		consumerIn <- newRegister(consumerInstance, serviceName, nil, nil)
 		_, err = coord.Connect(ctx, consumerSid, consumer, consumerIn)
 		require.NoError(t, err)
 
@@ -943,7 +963,7 @@ func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		in1 := make(chan model.ConsumerMessage, 1)
-		in1 <- model.NewRegister(w, serviceName, nil, nil)
+		in1 <- newRegister(w, serviceName, nil, nil)
 
 		sid1 := session.NewID()
 		out1, err := coord.Connect(ctx, sid1, location.NewInstance(location.New("centralus", "splitter1")), in1)
@@ -955,7 +975,7 @@ func TestCoordinator_ConsumerReconnectsWhileSuspended(t *testing.T) {
 		time.Sleep(time.Second)
 
 		in2 := make(chan model.ConsumerMessage, 1)
-		in2 <- model.NewRegister(w, serviceName, nil, nil) // reconnect the same consumer
+		in2 <- newRegister(w, serviceName, nil, nil) // reconnect the same consumer
 
 		sid2 := session.NewID()
 		out2, err := coord.Connect(ctx, sid2, location.NewInstance(location.New("centralus", "splitter1")), in2)
@@ -994,7 +1014,7 @@ func TestCoordinator_ConsumerSuspendAndResume(t *testing.T) {
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
-		in <- model.NewRegister(w, serviceName, nil, nil)
+		in <- newRegister(w, serviceName, nil, nil)
 		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 		require.NoError(t, err)
 
@@ -1060,14 +1080,14 @@ func TestCoordinator_NoGrantsDeregisterRemovedImmediately(t *testing.T) {
 		// Consumer A  will deregister with zero grants.
 		a := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint1")
 		inA := make(chan model.ConsumerMessage, 1)
-		inA <- model.NewRegister(a, serviceName, nil, nil)
+		inA <- newRegister(a, serviceName, nil, nil)
 		outA, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), inA)
 		require.NoError(t, err, "consumer A failed to join")
 
 		// Consumer B observer for cluster broadcasts.
 		b := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint2")
 		inB := make(chan model.ConsumerMessage, 1)
-		inB <- model.NewRegister(b, serviceName, nil, nil)
+		inB <- newRegister(b, serviceName, nil, nil)
 		outB, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), inB)
 		require.NoError(t, err, "consumer B failed to join")
 
@@ -1171,7 +1191,7 @@ func connectConsumer(ctx context.Context, t *testing.T, coord Coordinator, w mod
 	t.Helper()
 
 	in := make(chan model.ConsumerMessage, 10)
-	in <- model.NewRegister(w, serviceName, nil, nil)
+	in <- newRegister(w, serviceName, nil, nil)
 
 	out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 	require.NoError(t, err, "consumer failed to connect")

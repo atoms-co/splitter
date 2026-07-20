@@ -21,6 +21,10 @@ var (
 	domain1  = QualifiedDomainName{Service: service1, Domain: "domain1"}
 )
 
+func newTestWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn workPoolJoinFn, handlerFn Handler, poolOpts *workPoolOptions) (*workPool, <-chan Cluster) {
+	return newWorkPool(consumer, service, domains, joinFn, handlerFn, poolOpts, NewOptions())
+}
+
 func TestWorkpool(t *testing.T) {
 	// (1) Workpool sends REGISTER
 
@@ -31,7 +35,7 @@ func TestWorkpool(t *testing.T) {
 		shards := make(chan Shard)
 
 		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
-		w, _ := newWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
 			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 				return coordinatorCon.connect(ctx, handler)
 			},
@@ -46,9 +50,10 @@ func TestWorkpool(t *testing.T) {
 					}
 				}
 			},
+			&workPoolOptions{drainTimeout: time.Second},
 		)
 		defer func() {
-			w.Drain(time.Second)
+			w.Drain()
 			<-w.Closed()
 		}()
 
@@ -78,7 +83,7 @@ func TestWorkpool(t *testing.T) {
 		shards := make(chan Shard)
 
 		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
-		w, _ := newWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
 			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 				return coordinatorCon.connect(ctx, handler)
 			},
@@ -93,9 +98,10 @@ func TestWorkpool(t *testing.T) {
 					}
 				}
 			},
+			&workPoolOptions{drainTimeout: time.Second},
 		)
 		defer func() {
-			w.Drain(time.Second)
+			w.Drain()
 			<-w.Closed()
 		}()
 
@@ -134,7 +140,7 @@ func TestWorkpool(t *testing.T) {
 		shards := make(chan Shard)
 
 		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
-		w, _ := newWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
 			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 				return coordinatorCon.connect(ctx, handler)
 			},
@@ -149,9 +155,10 @@ func TestWorkpool(t *testing.T) {
 					}
 				}
 			},
+			&workPoolOptions{drainTimeout: time.Second},
 		)
 		defer func() {
-			w.Drain(time.Second)
+			w.Drain()
 			<-w.Closed()
 		}()
 
@@ -194,7 +201,7 @@ func TestWorkpool(t *testing.T) {
 		shards := make(chan Shard)
 
 		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
-		w, _ := newWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
 			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 				return coordinatorCon.connect(ctx, handler)
 			},
@@ -207,9 +214,10 @@ func TestWorkpool(t *testing.T) {
 					}
 				}
 			},
+			&workPoolOptions{drainTimeout: time.Second},
 		)
 		defer func() {
-			w.Drain(time.Second)
+			w.Drain()
 			<-w.Closed()
 		}()
 
@@ -257,7 +265,7 @@ func TestWorkpool(t *testing.T) {
 		active := make(chan struct{}, 10)
 
 		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
-		w, _ := newWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
 			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 				return coordinatorCon.connect(ctx, handler)
 			},
@@ -277,9 +285,10 @@ func TestWorkpool(t *testing.T) {
 					return
 				}
 			},
+			&workPoolOptions{drainTimeout: time.Second},
 		)
 		defer func() {
-			w.Drain(time.Second)
+			w.Drain()
 			<-w.Closed()
 		}()
 
@@ -335,7 +344,7 @@ func TestWorkpool(t *testing.T) {
 		quit := iox.NewAsyncCloser()
 
 		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
-		w, _ := newWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
 			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 				return coordinatorCon.connect(ctx, handler)
 			},
@@ -350,9 +359,10 @@ func TestWorkpool(t *testing.T) {
 					quit.Close()
 				}
 			},
+			&workPoolOptions{drainTimeout: time.Second},
 		)
 		defer func() {
-			w.Drain(time.Second)
+			w.Drain()
 			<-w.Closed()
 		}()
 
@@ -408,7 +418,7 @@ func TestWorkpool(t *testing.T) {
 		done := iox.NewAsyncCloser()
 
 		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
-		w, _ := newWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
 			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 				return coordinatorCon.connect(ctx, handler)
 			},
@@ -417,9 +427,10 @@ func TestWorkpool(t *testing.T) {
 				<-ctx.Done()
 				done.Close()
 			},
+			&workPoolOptions{drainTimeout: time.Second},
 		)
 		defer func() {
-			w.Drain(time.Second)
+			w.Drain()
 			<-w.Closed()
 		}()
 
@@ -433,7 +444,7 @@ func TestWorkpool(t *testing.T) {
 		coordinatorCon.Out <- NewAssign(grant)
 
 		requirex.Closed(t, start.Closed())
-		w.Drain(time.Second)
+		w.Drain()
 		time.Sleep(2 * time.Second)
 
 		requirex.Closed(t, done.Closed())
@@ -447,7 +458,7 @@ func TestWorkpool(t *testing.T) {
 		done := iox.NewAsyncCloser()
 
 		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
-		w, _ := newWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
 			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 				return coordinatorCon.connect(ctx, handler)
 			},
@@ -456,9 +467,10 @@ func TestWorkpool(t *testing.T) {
 				<-ownership.Revoked().Closed()
 				done.Close()
 			},
+			&workPoolOptions{drainTimeout: time.Second},
 		)
 		defer func() {
-			w.Drain(time.Second)
+			w.Drain()
 			<-w.Closed()
 		}()
 
@@ -473,7 +485,7 @@ func TestWorkpool(t *testing.T) {
 
 		requirex.Closed(t, start.Closed())
 
-		w.Drain(10 * time.Second)
+		w.Drain()
 
 		// Shut down coordinator connection to force reconnect
 		oldCoordinatorCon := coordinatorCon
@@ -484,6 +496,96 @@ func TestWorkpool(t *testing.T) {
 		requirex.Closed(t, done.Closed())
 	})
 
+	synctestx.Run(t, "drains after disconnected timeout", func(t *testing.T) {
+		connections := make(chan *fakeCon[ConsumerMessage], 1)
+		coordinatorCon := newFakeCon[ConsumerMessage]()
+		connections <- coordinatorCon
+
+		started := iox.NewAsyncCloser()
+		revoked := iox.NewAsyncCloser()
+		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
+				select {
+				case con := <-connections:
+					return con.connect(ctx, handler)
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			},
+			func(ctx context.Context, id GrantID, shard Shard, ownership Ownership) {
+				started.Close()
+				select {
+				case <-ownership.Revoked().Closed():
+					revoked.Close()
+				case <-ctx.Done():
+				}
+			},
+			&workPoolOptions{disconnectTimeout: time.Second, drainTimeout: 2 * time.Second},
+		)
+		defer func() {
+			w.Drain()
+			<-w.Closed()
+		}()
+
+		requirex.Closed(t, coordinatorCon.Connected.Closed())
+		requirex.Element(t, coordinatorCon.In)                       // register
+		coordinatorCon.Out <- NewExtend(time.Now().Add(time.Minute)) // initial extend
+		shard := Shard{Domain: domain1, Type: Unit}
+		grant := NewGrant("grant1", shard, ActiveGrantState, time.Now().Add(time.Minute), time.Now())
+		coordinatorCon.Out <- NewAssign(grant)
+		requirex.Closed(t, started.Closed())
+
+		coordinatorCon.Close()
+		time.Sleep(2 * time.Second)
+
+		requirex.Closed(t, revoked.Closed())
+		requirex.Closed(t, w.Closed())
+	})
+
+	synctestx.Run(t, "reconnect cancels timeout", func(t *testing.T) {
+		connections := make(chan *fakeCon[ConsumerMessage], 2)
+		firstCon := newFakeCon[ConsumerMessage]()
+		secondCon := newFakeCon[ConsumerMessage]()
+		connections <- firstCon
+
+		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
+				select {
+				case con := <-connections:
+					return con.connect(ctx, handler)
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			},
+			func(ctx context.Context, id GrantID, shard Shard, ownership Ownership) {
+				<-ctx.Done()
+			},
+			&workPoolOptions{disconnectTimeout: 10 * time.Second, drainTimeout: 2 * time.Second},
+		)
+		defer func() {
+			w.Drain()
+			<-w.Closed()
+		}()
+
+		requirex.Closed(t, firstCon.Connected.Closed())
+		requirex.Element(t, firstCon.In) // register
+		firstCon.Close()
+
+		time.Sleep(2 * time.Second)
+		connections <- secondCon
+		requirex.Closed(t, secondCon.Connected.Closed())
+		requirex.Element(t, secondCon.In) // register
+
+		time.Sleep(6 * time.Second)
+		select {
+		case <-w.Closed():
+			t.Fatal("work pool closed after reconnect")
+		default:
+		}
+	})
+
 	synctestx.Run(t, "release grant", func(t *testing.T) {
 		coordinatorCon := newFakeCon[ConsumerMessage]()
 		defer coordinatorCon.Close()
@@ -491,7 +593,7 @@ func TestWorkpool(t *testing.T) {
 		done := iox.NewAsyncCloser()
 
 		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
-		w, _ := newWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
 			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
 				return coordinatorCon.connect(ctx, handler)
 			},
@@ -502,9 +604,10 @@ func TestWorkpool(t *testing.T) {
 					return
 				}
 			},
+			&workPoolOptions{drainTimeout: time.Second},
 		)
 		defer func() {
-			w.Drain(time.Second)
+			w.Drain()
 			<-w.Closed()
 		}()
 
@@ -555,6 +658,11 @@ func (f *fakeCon[T]) connect(ctx context.Context, handler grpcx.Handler[T, T]) e
 	f.In = out
 	f.Out = in
 	f.Connected.Close()
-	<-f.Closed()
-	return nil
+
+	select {
+	case <-f.Closed():
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

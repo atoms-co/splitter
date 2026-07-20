@@ -42,11 +42,19 @@ type workPoolStats struct {
 	grants int
 }
 
+type workPoolOptions struct {
+	disconnectTimeout time.Duration
+	drainTimeout      time.Duration
+}
+
 // workPool manages a pool of grants assigned by Splitter to the consumer and provides updated clusters. It maintains
 // the service connection, re-connecting on failures, and continues to manage assigned grants when disconnected.
 //
 // Shutdown is initiated by calling Drain(). Closed() can be used to detect when draining has stopped and
 // the pool is closed.
+// The work pool is also drained when it stays disconnected for the disconnect timeout. This disconnected status
+// is reset only after receiving the first message from the coordinator after reconnection. In cases where
+// the consumer reconnects multiple times, but has not received a single message, it will be drained.
 type workPool struct {
 	iox.RAsyncCloser
 
@@ -55,7 +63,7 @@ type workPool struct {
 	domains []QualifiedDomainName
 	joinFn  workPoolJoinFn
 	handler Handler
-	opts    []ConsumerOption
+	opts    Options
 
 	status *joinStatus            // coordinator connectivity status
 	in     <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
@@ -74,9 +82,12 @@ type workPool struct {
 	inject chan func()
 	quit   iox.AsyncCloser
 	drain  iox.AsyncCloser
+
+	poolOptions     *workPoolOptions
+	disconnectTimer *time.Timer
 }
 
-func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn workPoolJoinFn, handlerFn Handler, opts ...ConsumerOption) (*workPool, <-chan Cluster) {
+func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn workPoolJoinFn, handlerFn Handler, poolOpts *workPoolOptions, opts Options) (*workPool, <-chan Cluster) {
 	quit := iox.NewAsyncCloser()
 	p := &workPool{
 		RAsyncCloser: quit,
@@ -86,6 +97,7 @@ func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []Qual
 		joinFn:       joinFn,
 		handler:      handlerFn,
 		opts:         opts,
+		poolOptions:  poolOpts,
 		cluster:      NewClusterMap(NewClusterID(consumer.Instance(), time.Now()), nil), // empty self-origin map
 		clusters:     make(chan Cluster, 1),
 		grants:       map[GrantID]*grant{},
@@ -102,13 +114,14 @@ func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []Qual
 	return p, p.clusters
 }
 
-func (p *workPool) Drain(timeout time.Duration) {
+func (p *workPool) Drain() {
 	ctx := NewConsumerContext(context.Background(), p.self)
-	log.Infof(ctx, "Draining WorkPool with timeout %v", timeout)
+	o := p.poolOptions
+	log.Infof(ctx, "Draining WorkPool with timeout %v", o.drainTimeout)
 	now := time.Now()
 	p.drain.Close()
 	go func() {
-		timeoutTimer := time.NewTimer(timeout)
+		timeoutTimer := time.NewTimer(o.drainTimeout)
 		defer timeoutTimer.Stop()
 		select {
 		case <-timeoutTimer.C:
@@ -171,7 +184,7 @@ func (p *workPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessag
 	log.Infof(ctx, "Connected to coordinator, #grants=%v, #active=%v", len(p.grants), len(active))
 
 	out := make(chan ConsumerMessage, 2_000)
-	out <- NewRegister(p.self, p.service, p.domains, active, p.opts...)
+	out <- NewRegister(p.self, p.service, p.domains, active, p.opts)
 
 	p.in = in
 	p.out = out
@@ -196,19 +209,18 @@ func (p *workPool) lostCoordinator(ctx context.Context) {
 
 	p.in = make(chan ConsumerMessage)
 	p.out = make(chan ConsumerMessage)
+	lastConnectedAt := p.status.connected
 	p.status = nil
 	p.lease = nil
-	leases := map[time.Time]*timex.Timer{}
 
 	for _, g := range p.grants {
 		if g.LeaseState != LeaseRevoked {
 			g.LeaseState = LeaseStale
 		}
-		// Revoke all non-revoked grants if the work pool is draining. It will not reconnect to the server
-		// after disconnecting in this case, and it's safe to revoke locally.
-		if p.drain.IsClosed() && !IsRevokedOrUnloaded(g.Grant.State()) {
-			p.revokeGrant(ctx, leases, g, g.Grant.WithState(RevokedGrantState))
-		}
+	}
+	p.revokeGrantsIfDraining(ctx)
+	if !p.drain.IsClosed() {
+		p.startDisconnectTimer(ctx, lastConnectedAt)
 	}
 
 	p.emitStatus(ctx)
@@ -216,6 +228,7 @@ func (p *workPool) lostCoordinator(ctx context.Context) {
 
 func (p *workPool) process(ctx context.Context) {
 	defer p.quit.Close()
+	defer p.stopDisconnectTimer()
 	defer func() {
 		log.Infof(ctx, "Finishing WorkPool processing")
 	}()
@@ -233,6 +246,7 @@ steady:
 				break
 			}
 			p.handleMessage(ctx, msg)
+			p.stopDisconnectTimer()
 
 		case <-p.expire:
 			p.checkExpiration(ctx)
@@ -259,6 +273,7 @@ steady:
 
 	if p.status == nil || !p.trySend(ctx, NewDeregister()) {
 		log.Infof(ctx, "WorkPool is draining while disconnected/stuck")
+		p.revokeGrantsIfDraining(ctx)
 	}
 
 drain:
@@ -305,6 +320,47 @@ drain:
 
 		case <-p.Closed():
 			return
+		}
+	}
+}
+
+func (p *workPool) startDisconnectTimer(ctx context.Context, lastConnectedAt time.Time) {
+	o := p.poolOptions
+	if o.disconnectTimeout <= 0 || p.drain.IsClosed() || p.disconnectTimer != nil {
+		return
+	}
+
+	var timer *time.Timer
+	timer = time.AfterFunc(o.disconnectTimeout, func() {
+		syncx.AsyncTxn(p.txn, func() {
+			if p.drain.IsClosed() || p.disconnectTimer != timer {
+				return
+			}
+			log.Warnf(ctx, "WorkPool disconnected from coordinator for %v, last connection at %v, now %v. Draining", o.disconnectTimeout, lastConnectedAt, time.Now())
+			p.Drain()
+		})
+	})
+	p.disconnectTimer = timer
+}
+
+func (p *workPool) stopDisconnectTimer() {
+	if p.disconnectTimer == nil {
+		return
+	}
+	p.disconnectTimer.Stop()
+	p.disconnectTimer = nil
+}
+
+func (p *workPool) revokeGrantsIfDraining(ctx context.Context) {
+	if !p.drain.IsClosed() {
+		return
+	}
+	leases := map[time.Time]*timex.Timer{}
+	for _, g := range p.grants {
+		// Revoke all non-revoked grants if the work pool is draining. It will not reconnect to the server
+		// after disconnecting in this case, and it's safe to revoke locally.
+		if !IsRevokedOrUnloaded(g.Grant.State()) {
+			p.revokeGrant(ctx, leases, g, g.Grant.WithState(RevokedGrantState))
 		}
 	}
 }
