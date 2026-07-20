@@ -29,7 +29,7 @@ const (
 	statsInterval    = 5 * time.Second
 	notifyInterval   = 30 * time.Second
 	notifyTimeout    = 10 * time.Second
-	bootstrapTimeout = 1 * time.Minute
+	bootstrapTimeout = 5 * time.Minute
 	forwardTimeout   = 35 * time.Second
 )
 
