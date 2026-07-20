@@ -18,6 +18,8 @@ import (
 	splitterpb "go.atoms.co/splitter/pb"
 )
 
+const poolDrainTimeout = 1 * time.Minute
+
 var (
 	ErrRevoked = errors.New("grant revoked")
 	ErrExpired = errors.New("grant expired")
@@ -271,16 +273,45 @@ type Client interface {
 	InfoPlacement(ctx context.Context, name QualifiedPlacementName) (PlacementInfo, error)
 }
 
-type ConsumerOption func(opts Options)
+type ConsumerOptions struct {
+	options         Options
+	workPoolOptions *workPoolOptions
+}
+
+type ConsumerOption func(opts ConsumerOptions)
 
 func WithKeyNames(names ...DomainKeyName) ConsumerOption {
-	return func(opts Options) {
-		opts.pb.Names = slicex.Map(names, DomainKeyName.ToProto)
+	return func(opts ConsumerOptions) {
+		opts.options.pb.Names = slicex.Map(names, DomainKeyName.ToProto)
 	}
 }
+
 func WithCapacityLimit(limit int) ConsumerOption {
-	return func(opts Options) {
-		opts.pb.CapacityLimit = uint64(limit)
+	return func(opts ConsumerOptions) {
+		opts.options.pb.CapacityLimit = uint64(limit)
+	}
+}
+
+// WithConsumerDisconnectTimeout sets the duration after which a disconnected consumer is shut down.
+// This should be used to prevent consumers disconnected for a long time from serving forwarding requests
+// using outdated routing information.
+func WithConsumerDisconnectTimeout(timeout time.Duration) ConsumerOption {
+	return func(o ConsumerOptions) {
+		if timeout <= 0 {
+			return
+		}
+		o.workPoolOptions.disconnectTimeout = timeout
+	}
+}
+
+// WithConsumerDrainTimeout sets the duration of the consumer drain, either requested using Drain
+// or automatic due to a long disconnect.
+func WithConsumerDrainTimeout(timeout time.Duration) ConsumerOption {
+	return func(o ConsumerOptions) {
+		if timeout <= 0 {
+			return
+		}
+		o.workPoolOptions.drainTimeout = timeout
 	}
 }
 
@@ -324,16 +355,30 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 			return chanx.Map(joined, UnwrapJoinMessage), nil
 		})
 	}
-	pool, clusters := newWorkPool(consumer, service, nil, joinFn, handler, opts...)
+	co := ConsumerOptions{
+		options: NewOptions(),
+		workPoolOptions: &workPoolOptions{
+			drainTimeout: poolDrainTimeout,
+		},
+	}
+	for _, opt := range opts {
+		opt(co)
+	}
+	pool, clusters := newWorkPool(consumer, service, nil, joinFn, handler, co.workPoolOptions, co.options)
 
 	go func() {
 		defer quit.Close()
-		<-ctx.Done()
 
-		pool.Drain(1 * time.Minute)
-		now := time.Now()
-		<-pool.Closed()
-		log.Infof(ctx, "Closed work pool in %v", time.Since(now))
+		select {
+		case <-ctx.Done():
+			pool.Drain()
+			now := time.Now()
+			<-pool.Closed()
+			log.Infof(ctx, "Closed work pool in %v", time.Since(now))
+
+		case <-pool.Closed():
+			log.Infof(ctx, "Work pool closed")
+		}
 	}()
 
 	return clusters, quit
