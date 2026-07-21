@@ -41,7 +41,7 @@ var (
 
 var (
 	actionLatency = metrics.NewHistogram("go.atoms.co/splitter/storage_raft_fsm_action_latency", "Raft FSM action latency", nil, core.ActionKey, core.ResultKey)
-	messageSize   = metrics.NewByteHistogram("go.atoms.co/splitter/storage_raft_message_size", "Raft FSM message size", messageSizeBucketOpts, core.MessageTypeKey)
+	messageSize   = metrics.NewByteHistogram("go.atoms.co/splitter/storage_raft_message_size", "Raft FSM message size", messageSizeBucketOpts, core.TenantKey, core.MessageTypeKey)
 )
 
 // FSM implements the finite state machine logic needed for deterministic state propagation. It
@@ -92,7 +92,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		}
 
 		recordActionLatency(time.Since(now), "apply/update", err)
-		recordMessageSize(upd.Size(), "apply/update")
+		recordMessageSize(upd.Size(), upd.Name(), "apply/update")
 		return nil
 
 	case pb.GetDelete() != nil:
@@ -103,7 +103,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		}
 
 		recordActionLatency(time.Since(now), "apply/delete", err)
-		recordMessageSize(del.Size(), "apply/delete")
+		recordMessageSize(del.Size(), del.Tenant(), "apply/delete")
 		return nil
 
 	case pb.GetRestore() != nil:
@@ -111,7 +111,7 @@ func (f *FSM) Apply(l *raft.Log) interface{} {
 		f.db.Restore(restore.Snapshot())
 
 		recordActionLatency(time.Since(now), "apply/restore", err)
-		recordMessageSize(restore.Size(), "apply/restore")
+		recordMessageSize(restore.Size(), "_all", "apply/restore")
 		return nil
 
 	default:
@@ -131,7 +131,7 @@ func (f *FSM) Snapshot() (raft.FSMSnapshot, error) {
 	snap := f.db.Snapshot()
 
 	recordActionLatency(time.Since(now), "snapshot", nil)
-	recordMessageSize(snap.Size(), "snapshot")
+	recordMessageSize(snap.Size(), "_all", "snapshot")
 	return &fsmSnapshot{data: snap}, nil
 }
 
@@ -156,12 +156,18 @@ func (f *FSM) Restore(snapshot io.ReadCloser) error {
 		return err
 	}
 
-	f.db.Restore(core.WrapSnapshot(pb))
+	snap := core.WrapSnapshot(pb)
+	f.db.Restore(snap)
 
 	log.Infof(context.Background(), "Restored raft snapshot with size %v", len(buf))
 
 	recordActionLatency(time.Since(now), "restore", nil)
-	recordMessageSize(len(buf), "restore")
+
+	recordMessageSize(len(buf), "_all", "restore")
+	for _, s := range snap.Tenants() {
+		recordMessageSize(s.Size(), s.Tenant().Name(), "restore")
+	}
+
 	return nil
 }
 
@@ -204,6 +210,6 @@ func recordActionLatency(latency time.Duration, action string, err error) {
 	actionLatency.Observe(context.Background(), latency, core.ActionTag(action), core.ResultErrorTag(err))
 }
 
-func recordMessageSize(size int, msgType string) {
-	messageSize.Observe(context.Background(), float64(size), core.MessageTypeTag(msgType))
+func recordMessageSize(size int, tenant model.TenantName, msgType string) {
+	messageSize.Observe(context.Background(), float64(size), core.TenantTag(tenant), core.MessageTypeTag(msgType))
 }

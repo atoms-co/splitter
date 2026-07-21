@@ -77,6 +77,10 @@ func (s State) Statuses() []ServiceStatus {
 	return slicex.Map(s.pb.GetStatuses(), WrapServiceStatus)
 }
 
+func (s State) Size() int {
+	return protox.Size(s.pb)
+}
+
 func (s State) String() string {
 	return protox.MarshalTextString(s.pb)
 }
