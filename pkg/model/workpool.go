@@ -7,18 +7,18 @@ import (
 	"sync"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/timex"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
-	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/iox"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/randx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/lib/timex"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
 )
 
 const (
@@ -30,7 +30,7 @@ var (
 	grantsDuration = metrics.NewHistogram("go.atoms.co/splitter/client/workpool_grants_duration", "Workpool grants duration", grantDurationBucketOptions, slicex.CopyAppend(qualifiedDomainKeys, sourceKey, sourceVersionKey, leaseStateKey)...)
 )
 
-type JoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error
+type workPoolJoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error
 
 type joinStatus struct {
 	connected time.Time
@@ -42,20 +42,28 @@ type workPoolStats struct {
 	grants int
 }
 
-// WorkPool manages a pool of grants assigned by Splitter to the consumer and provides updated clusters. It maintains
-// WorkPool with the service, re-connecting on failures, and continues to manage assigned grants when disconnected.
+type workPoolOptions struct {
+	disconnectTimeout time.Duration
+	drainTimeout      time.Duration
+}
+
+// workPool manages a pool of grants assigned by Splitter to the consumer and provides updated clusters. It maintains
+// the service connection, re-connecting on failures, and continues to manage assigned grants when disconnected.
 //
 // Shutdown is initiated by calling Drain(). Closed() can be used to detect when draining has stopped and
 // the pool is closed.
-type WorkPool struct {
+// The work pool is also drained when it stays disconnected for the disconnect timeout. This disconnected status
+// is reset only after receiving the first message from the coordinator after reconnection. In cases where
+// the consumer reconnects multiple times, but has not received a single message, it will be drained.
+type workPool struct {
 	iox.RAsyncCloser
 
 	self    Consumer
 	service QualifiedServiceName
 	domains []QualifiedDomainName
-	joinFn  JoinFn
+	joinFn  workPoolJoinFn
 	handler Handler
-	opts    []ConsumerOption
+	opts    Options
 
 	status *joinStatus            // coordinator connectivity status
 	in     <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
@@ -74,11 +82,14 @@ type WorkPool struct {
 	inject chan func()
 	quit   iox.AsyncCloser
 	drain  iox.AsyncCloser
+
+	poolOptions     *workPoolOptions
+	disconnectTimer *time.Timer
 }
 
-func NewWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn JoinFn, handlerFn Handler, opts ...ConsumerOption) (*WorkPool, <-chan Cluster) {
+func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn workPoolJoinFn, handlerFn Handler, poolOpts *workPoolOptions, opts Options) (*workPool, <-chan Cluster) {
 	quit := iox.NewAsyncCloser()
-	p := &WorkPool{
+	p := &workPool{
 		RAsyncCloser: quit,
 		self:         consumer,
 		service:      service,
@@ -86,6 +97,7 @@ func NewWorkPool(consumer Consumer, service QualifiedServiceName, domains []Qual
 		joinFn:       joinFn,
 		handler:      handlerFn,
 		opts:         opts,
+		poolOptions:  poolOpts,
 		cluster:      NewClusterMap(NewClusterID(consumer.Instance(), time.Now()), nil), // empty self-origin map
 		clusters:     make(chan Cluster, 1),
 		grants:       map[GrantID]*grant{},
@@ -102,13 +114,14 @@ func NewWorkPool(consumer Consumer, service QualifiedServiceName, domains []Qual
 	return p, p.clusters
 }
 
-func (p *WorkPool) Drain(timeout time.Duration) {
+func (p *workPool) Drain() {
 	ctx := NewConsumerContext(context.Background(), p.self)
-	log.Infof(ctx, "Draining WorkPool with timeout %v", timeout)
+	o := p.poolOptions
+	log.Infof(ctx, "Draining WorkPool with timeout %v", o.drainTimeout)
 	now := time.Now()
 	p.drain.Close()
 	go func() {
-		timeoutTimer := time.NewTimer(timeout)
+		timeoutTimer := time.NewTimer(o.drainTimeout)
 		defer timeoutTimer.Stop()
 		select {
 		case <-timeoutTimer.C:
@@ -120,7 +133,7 @@ func (p *WorkPool) Drain(timeout time.Duration) {
 	}()
 }
 
-func (p *WorkPool) join(ctx context.Context) {
+func (p *workPool) join(ctx context.Context) {
 	defer func() {
 		log.Infof(ctx, "Finishing WorkPool reconnection to the coordinator")
 	}()
@@ -161,7 +174,7 @@ func (p *WorkPool) join(ctx context.Context) {
 	}
 }
 
-func (p *WorkPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessage) (<-chan ConsumerMessage, error) {
+func (p *workPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessage) (<-chan ConsumerMessage, error) {
 	p.lostCoordinator(ctx) // sanity check
 
 	active := mapx.MapValuesIf(p.grants, func(g *grant) (Grant, bool) {
@@ -171,7 +184,7 @@ func (p *WorkPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessag
 	log.Infof(ctx, "Connected to coordinator, #grants=%v, #active=%v", len(p.grants), len(active))
 
 	out := make(chan ConsumerMessage, 2_000)
-	out <- NewRegister(p.self, p.service, p.domains, active, p.opts...)
+	out <- NewRegister(p.self, p.service, p.domains, active, p.opts)
 
 	p.in = in
 	p.out = out
@@ -180,12 +193,12 @@ func (p *WorkPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessag
 	}
 	p.lease = nil
 
-    p.emitStatus(ctx)
+	p.emitStatus(ctx)
 
 	return out, nil
 }
 
-func (p *WorkPool) lostCoordinator(ctx context.Context) {
+func (p *workPool) lostCoordinator(ctx context.Context) {
 	if p.status == nil {
 		return // ok: already disconnected
 	}
@@ -196,26 +209,26 @@ func (p *WorkPool) lostCoordinator(ctx context.Context) {
 
 	p.in = make(chan ConsumerMessage)
 	p.out = make(chan ConsumerMessage)
+	lastConnectedAt := p.status.connected
 	p.status = nil
 	p.lease = nil
-	leases := map[time.Time]*timex.Timer{}
 
 	for _, g := range p.grants {
 		if g.LeaseState != LeaseRevoked {
 			g.LeaseState = LeaseStale
 		}
-		// Revoke all non-revoked grants if the work pool is draining. It will not reconnect to the server
-		// after disconnecting in this case, and it's safe to revoke locally.
-		if p.drain.IsClosed() && !IsRevokedOrUnloaded(g.Grant.State()) {
-			p.revokeGrant(ctx, leases, g, g.Grant.WithState(RevokedGrantState))
-		}
+	}
+	p.revokeGrantsIfDraining(ctx)
+	if !p.drain.IsClosed() {
+		p.startDisconnectTimer(ctx, lastConnectedAt)
 	}
 
 	p.emitStatus(ctx)
 }
 
-func (p *WorkPool) process(ctx context.Context) {
+func (p *workPool) process(ctx context.Context) {
 	defer p.quit.Close()
+	defer p.stopDisconnectTimer()
 	defer func() {
 		log.Infof(ctx, "Finishing WorkPool processing")
 	}()
@@ -233,6 +246,7 @@ steady:
 				break
 			}
 			p.handleMessage(ctx, msg)
+			p.stopDisconnectTimer()
 
 		case <-p.expire:
 			p.checkExpiration(ctx)
@@ -259,6 +273,7 @@ steady:
 
 	if p.status == nil || !p.trySend(ctx, NewDeregister()) {
 		log.Infof(ctx, "WorkPool is draining while disconnected/stuck")
+		p.revokeGrantsIfDraining(ctx)
 	}
 
 drain:
@@ -309,7 +324,48 @@ drain:
 	}
 }
 
-func (p *WorkPool) handleMessage(ctx context.Context, msg ConsumerMessage) {
+func (p *workPool) startDisconnectTimer(ctx context.Context, lastConnectedAt time.Time) {
+	o := p.poolOptions
+	if o.disconnectTimeout <= 0 || p.drain.IsClosed() || p.disconnectTimer != nil {
+		return
+	}
+
+	var timer *time.Timer
+	timer = time.AfterFunc(o.disconnectTimeout, func() {
+		syncx.AsyncTxn(p.txn, func() {
+			if p.drain.IsClosed() || p.disconnectTimer != timer {
+				return
+			}
+			log.Warnf(ctx, "WorkPool disconnected from coordinator for %v, last connection at %v, now %v. Draining", o.disconnectTimeout, lastConnectedAt, time.Now())
+			p.Drain()
+		})
+	})
+	p.disconnectTimer = timer
+}
+
+func (p *workPool) stopDisconnectTimer() {
+	if p.disconnectTimer == nil {
+		return
+	}
+	p.disconnectTimer.Stop()
+	p.disconnectTimer = nil
+}
+
+func (p *workPool) revokeGrantsIfDraining(ctx context.Context) {
+	if !p.drain.IsClosed() {
+		return
+	}
+	leases := map[time.Time]*timex.Timer{}
+	for _, g := range p.grants {
+		// Revoke all non-revoked grants if the work pool is draining. It will not reconnect to the server
+		// after disconnecting in this case, and it's safe to revoke locally.
+		if !IsRevokedOrUnloaded(g.Grant.State()) {
+			p.revokeGrant(ctx, leases, g, g.Grant.WithState(RevokedGrantState))
+		}
+	}
+}
+
+func (p *workPool) handleMessage(ctx context.Context, msg ConsumerMessage) {
 	switch {
 	case msg.IsClientMessage():
 		client, _ := msg.ClientMessage()
@@ -324,7 +380,7 @@ func (p *WorkPool) handleMessage(ctx context.Context, msg ConsumerMessage) {
 	}
 }
 
-func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
+func (p *workPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 	switch {
 	case msg.IsAssign():
 		assign, _ := msg.Assign()
@@ -492,14 +548,14 @@ func (p *WorkPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 	}
 }
 
-func (p *WorkPool) activateGrant(ctx context.Context, grant *grant, active Grant) {
+func (p *workPool) activateGrant(ctx context.Context, grant *grant, active Grant) {
 	grant.Grant = active               // Overwrite allocated grant with active grant
 	grant.Handler.ownership.activate() // Signal consumer that grant is activated
 
 	log.Infof(ctx, "Promoted grant to active: %v", active)
 }
 
-func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*timex.Timer, grant *grant, revoked Grant) {
+func (p *workPool) revokeGrant(ctx context.Context, leases map[time.Time]*timex.Timer, grant *grant, revoked Grant) {
 	// (1) Create lease that expires at the passed grant expiration. The workpool lease no longer includes this grant.
 	// We share the leases to not get a flood of identical expiration checks.
 
@@ -519,7 +575,7 @@ func (p *WorkPool) revokeGrant(ctx context.Context, leases map[time.Time]*timex.
 	grant.Handler.Drain(time.Until(ttl))
 }
 
-func (p *WorkPool) updateStaleGrant(ctx context.Context, old *grant, newGrant Grant) bool {
+func (p *workPool) updateStaleGrant(ctx context.Context, old *grant, newGrant Grant) bool {
 	if old.Grant.State() == newGrant.State() {
 		return true
 	}
@@ -549,7 +605,7 @@ func (p *WorkPool) updateStaleGrant(ctx context.Context, old *grant, newGrant Gr
 	}
 }
 
-func (p *WorkPool) handleClusterMessage(ctx context.Context, msg ClusterMessage) {
+func (p *workPool) handleClusterMessage(ctx context.Context, msg ClusterMessage) {
 	// Cluster update. Merge with current cluster and forward to listeners.
 
 	upd, err := UpdateClusterMap(ctx, p.cluster, msg)
@@ -566,7 +622,7 @@ func (p *WorkPool) handleClusterMessage(ctx context.Context, msg ClusterMessage)
 
 }
 
-func (p *WorkPool) emitExpirationCheck() {
+func (p *workPool) emitExpirationCheck() {
 	select {
 	case <-p.expire:
 	default:
@@ -580,7 +636,7 @@ func (p *WorkPool) emitExpirationCheck() {
 	}
 }
 
-func (p *WorkPool) checkExpiration(ctx context.Context) {
+func (p *workPool) checkExpiration(ctx context.Context) {
 	// Possible grant expiration
 
 	now := time.Now()
@@ -591,7 +647,7 @@ func (p *WorkPool) checkExpiration(ctx context.Context) {
 	}
 }
 
-func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
+func (p *workPool) removeGrant(ctx context.Context, gid GrantID) {
 	grant, ok := p.grants[gid]
 	if !ok {
 		return // ok: no longer present
@@ -611,7 +667,7 @@ func (p *WorkPool) removeGrant(ctx context.Context, gid GrantID) {
 	log.Infof(ctx, "Removed grant %v", grant)
 }
 
-func (p *WorkPool) releaseGrant(ctx context.Context, gid GrantID) {
+func (p *workPool) releaseGrant(ctx context.Context, gid GrantID) {
 	g, ok := p.grants[gid]
 	if !ok {
 		return // ok: no longer present
@@ -628,7 +684,7 @@ func (p *WorkPool) releaseGrant(ctx context.Context, gid GrantID) {
 	}
 }
 
-func (p *WorkPool) emitStatus(ctx context.Context) {
+func (p *workPool) emitStatus(ctx context.Context) {
 	stats := workPoolStats{joined: p.status != nil, shards: len(p.shards), grants: len(p.grants)}
 	if stats == p.stats {
 		return
@@ -637,8 +693,7 @@ func (p *WorkPool) emitStatus(ctx context.Context) {
 	p.stats = stats
 }
 
-
-func (p *WorkPool) emitMetrics(ctx context.Context) {
+func (p *workPool) emitMetrics(ctx context.Context) {
 	p.resetMetrics(ctx)
 
 	grants := map[QualifiedDomainName]map[LeaseState]int{}
@@ -657,11 +712,11 @@ func (p *WorkPool) emitMetrics(ctx context.Context) {
 	}
 }
 
-func (p *WorkPool) resetMetrics(ctx context.Context) {
+func (p *workPool) resetMetrics(ctx context.Context) {
 	numGrants.Reset(ctx)
 }
 
-func (p *WorkPool) trySend(ctx context.Context, msg ConsumerMessage) bool {
+func (p *workPool) trySend(ctx context.Context, msg ConsumerMessage) bool {
 	select {
 	case p.out <- msg:
 		return true
@@ -670,7 +725,7 @@ func (p *WorkPool) trySend(ctx context.Context, msg ConsumerMessage) bool {
 	}
 }
 
-func (p *WorkPool) mustSend(ctx context.Context, msg ConsumerMessage) {
+func (p *workPool) mustSend(ctx context.Context, msg ConsumerMessage) {
 	if p.status == nil {
 		return // ok: disconnected
 	}
@@ -688,7 +743,7 @@ func (p *WorkPool) mustSend(ctx context.Context, msg ConsumerMessage) {
 	}
 }
 
-func (p *WorkPool) txn(ctx context.Context, fn func() error) error {
+func (p *workPool) txn(ctx context.Context, fn func() error) error {
 	var wg sync.WaitGroup
 	var err error
 

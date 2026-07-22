@@ -12,6 +12,9 @@ jobs:
     steps:
     - uses: actions/checkout@v6
 
+    - name: Gazelle
+      run: bazel run //:gazelle && git diff --exit-code
+
     - name: Build
       run: bazel build //...
 

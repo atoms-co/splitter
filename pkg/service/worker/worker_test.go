@@ -9,18 +9,18 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/testing/assertx"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/iox"
+	"go.atoms.co/lib/testing/assertx"
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/service/worker"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 var (
@@ -105,14 +105,51 @@ func TestWorker(t *testing.T) {
 			assertx.Element(t, d.coordinatorChan)
 
 			consumer := model.NewInstance(location.NewInstance(location.New("centralus", "node")), "endpoint")
-			in := chanx.NewFixed(model.NewRegister(consumer, service2, nil, nil))
+			in := chanx.NewFixed(model.NewRegister(consumer, service2, nil, nil, model.NewOptions()))
 
 			_, err := d.worker.Connect(d.ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
 			require.NoError(t, err)
 
-			in2 := chanx.NewFixed(model.NewRegister(consumer, service1, nil, nil))
+			in2 := chanx.NewFixed(model.NewRegister(consumer, service1, nil, nil, model.NewOptions()))
 			_, err = d.worker.Connect(d.ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
 			assert.Error(t, err)
+		})
+	})
+
+	// (4) Coordinator status forwarded to leader
+	t.Run("status/report", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			d := setupWorkerTestDeps(t)
+			defer d.close()
+
+			grant := core.NewGrant("grant1", service1, time.Now().Add(time.Minute), time.Now())
+			d.leaderConn.Out <- leader.NewAssign(grant, core.State{})
+			c := assertx.Element(t, d.coordinatorChan)
+
+			p2quantileSnapshot := core.NewP2QuantileSnapshot(
+				0.5,
+				[]float64{10, 10, 10, 10, 10},
+				[]uint64{1, 2, 3, 4, 10},
+				[]float64{1, 2, 3, 4, 10},
+			)
+
+			domainName := model.DomainName("domain1")
+			trackers := core.NewDomainTrackerSnapshot(time.Now(), p2quantileSnapshot, nil)
+			domainLoad := []core.DomainLoadInfo{core.NewDomainLoadInfo(domainName, trackers, nil)}
+			serviceLoad := core.NewServiceLoadInfo(service1, domainLoad)
+			serviceStatus := core.NewServiceStatusMessage(serviceLoad)
+			c.out <- serviceStatus
+			synctest.Wait()
+
+			msg := assertx.Element(t, d.leaderConn.In)
+			wMsg, ok := msg.WorkerMessage()
+			require.True(t, ok)
+			require.True(t, wMsg.IsServiceStatus())
+
+			reported, ok := wMsg.ServiceStatus()
+			require.True(t, ok)
+			assert.Equal(t, service1.Tenant, reported.Load().Service().Tenant)
+			assert.Equal(t, service1, reported.Load().Service())
 		})
 	})
 }
@@ -122,6 +159,7 @@ type fakeCoordinator struct {
 	t           *testing.T
 	service     model.QualifiedServiceName
 	updates     <-chan core.Update
+	out         chan<- core.ServiceStatusMessage
 	initialized iox.RAsyncCloser
 }
 
@@ -137,15 +175,17 @@ func (f *fakeCoordinator) Handle(ctx context.Context, request coordinator.Handle
 	return nil, nil
 }
 
-func newFakeCoordinator(service model.QualifiedServiceName, updates <-chan core.Update) *fakeCoordinator {
+func newFakeCoordinator(service model.QualifiedServiceName, updates <-chan core.Update) (*fakeCoordinator, <-chan core.ServiceStatusMessage) {
 	i := iox.NewAsyncCloser()
 	i.Close()
+	out := make(chan core.ServiceStatusMessage, 100)
 	return &fakeCoordinator{
 		AsyncCloser: iox.NewAsyncCloser(),
 		initialized: i,
 		service:     service,
 		updates:     updates,
-	}
+		out:         out,
+	}, out
 }
 
 func (f *fakeCoordinator) Connect(ctx context.Context, sid session.ID, consumer location.Instance, in <-chan model.ConsumerMessage) (<-chan model.ConsumerMessage, error) {
@@ -216,11 +256,11 @@ func setupWorkerTestDeps(t *testing.T) *workerTestDeps {
 		return d.leaderConn.connect(ctx, handler)
 	}
 
-	coordFactory := func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator {
-		c := newFakeCoordinator(service, updates)
+	coordFactory := func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) (coordinator.Coordinator, <-chan core.ServiceStatusMessage) {
+		c, out := newFakeCoordinator(service, updates)
 		d.coordinators = append(d.coordinators, c)
 		d.coordinatorChan <- c
-		return c
+		return c, out
 	}
 
 	d.worker, _ = worker.New(location.New("centralus", "pod1"), "endpoint", joinFn, coordFactory)

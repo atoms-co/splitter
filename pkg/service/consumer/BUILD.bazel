@@ -15,7 +15,7 @@ go_library(
         "//pkg/model",
         "//pkg/service/coordinator",
         "//pkg/service/worker",
-        "//proto/atoms/splitter/private",
+        "//proto/atoms/splitter/private:private_go_proto",
         "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//chanx",
         "@co_atoms_go_lib//contextx",

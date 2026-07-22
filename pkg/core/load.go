@@ -317,3 +317,29 @@ func (t ServiceLoadInfo) Domains() []DomainLoadInfo {
 func (t ServiceLoadInfo) String() string {
 	return protox.MarshalTextString(t.pb)
 }
+
+type ServiceStatusMessage struct {
+	pb *splitterprivatepb.WorkerMessage_ServiceStatus
+}
+
+func NewServiceStatusMessage(serviceLoad ServiceLoadInfo) ServiceStatusMessage {
+	return ServiceStatusMessage{pb: &splitterprivatepb.WorkerMessage_ServiceStatus{
+		Load: UnwrapServiceLoadInfo(serviceLoad),
+	}}
+}
+
+func WrapServiceStatusMessage(pb *splitterprivatepb.WorkerMessage_ServiceStatus) ServiceStatusMessage {
+	return ServiceStatusMessage{pb: pb}
+}
+
+func UnwrapServiceStatusMessage(m ServiceStatusMessage) *splitterprivatepb.WorkerMessage_ServiceStatus {
+	return m.pb
+}
+
+func (m ServiceStatusMessage) Load() ServiceLoadInfo {
+	return WrapServiceLoadInfo(m.pb.GetLoad())
+}
+
+func (m ServiceStatusMessage) String() string {
+	return protox.MarshalTextString(m.pb)
+}

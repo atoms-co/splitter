@@ -10,7 +10,7 @@ go_library(
     visibility = ["//visibility:public"],
     deps = [
         "//lib/service/location",
-        "//proto/atoms/splitter/lib/service/session",
+        "//proto/atoms/splitter/lib/service/session:session_go_proto",
         "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//chanx",
         "@co_atoms_go_lib//log",

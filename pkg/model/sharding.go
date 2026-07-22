@@ -24,12 +24,6 @@ func WithShards(shards int) ShardingPolicyOption {
 	}
 }
 
-func WithTrackLoad(track bool) ShardingPolicyOption {
-	return func(policy *splitterpb.ShardingPolicy) {
-		policy.TrackLoad = track
-	}
-}
-
 type ShardingPolicyShard struct {
 	From   Key
 	To     Key
@@ -161,9 +155,6 @@ func (s ShardingPolicy) ShardingPolicyShards() ([]ShardingPolicyShard, error) {
 	}
 
 	return result, nil
-}
-func (s ShardingPolicy) TrackLoad() bool {
-	return s.pb.GetTrackLoad()
 }
 
 // ShardKV is a key-value with a shard.

@@ -143,6 +143,7 @@ type coordinator struct {
 	noLb      map[model.Shard]bool // shards excluded from load balancing
 	cluster   *model.ClusterMap
 	messages  chan *sessionx.Message[model.ConsumerMessage]
+	out       chan core.ServiceStatusMessage
 
 	trackers map[model.QualifiedDomainName]*domainLoadTracker
 
@@ -151,7 +152,7 @@ type coordinator struct {
 	drain, initialized iox.AsyncCloser
 }
 
-func New(ctx context.Context, loc location.Location, service model.QualifiedServiceName, state core.State, updates <-chan core.Update, opts ...Option) Coordinator {
+func New(ctx context.Context, loc location.Location, service model.QualifiedServiceName, state core.State, updates <-chan core.Update, opts ...Option) (Coordinator, <-chan core.ServiceStatusMessage) {
 	c := &coordinator{
 		AsyncCloser:  iox.WithQuit(ctx.Done(), iox.NewAsyncCloser()),
 		self:         location.NewNamedInstance("coordinator", loc),
@@ -161,6 +162,7 @@ func New(ctx context.Context, loc location.Location, service model.QualifiedServ
 		consumers:    map[model.InstanceID]*consumerSession{},
 		observers:    map[model.InstanceID]*observerSession{},
 		messages:     make(chan *sessionx.Message[model.ConsumerMessage], 1000),
+		out:          make(chan core.ServiceStatusMessage, 100),
 
 		trackers: map[model.QualifiedDomainName]*domainLoadTracker{},
 
@@ -174,7 +176,7 @@ func New(ctx context.Context, loc location.Location, service model.QualifiedServ
 
 	go c.init(core.NewServiceContext(context.Background(), service), state, updates)
 
-	return c
+	return c, c.out
 }
 
 func (c *coordinator) Initialized() iox.RAsyncCloser {
@@ -450,17 +452,17 @@ func (c *coordinator) disconnect(ctx context.Context, reason string, consumers .
 		log.Infof(ctx, "Disconnecting consumer (reason: %v): %v", reason, s)
 		c.recordAction(ctx, "disconnect", "ok")
 
-		if len(s.consumer.Keys()) > 0 {
-			// Refresh allocation rules on disconnect if using named keys
-			c.refresh(ctx, 0)
-		}
-
 		if c.alloc.Detach(s.consumer.ID()) {
 			assigned := c.alloc.Assigned(s.ID())
 			if len(assigned.Active) > 0 || len(assigned.Allocated) > 0 {
 				log.Warnf(ctx, "Detached consumer %v with %v active and %v allocated domains", s.consumer, len(assigned.Active), len(assigned.Allocated))
 			}
 		} // else: already detached
+
+		if len(s.consumer.Keys()) > 0 {
+			// Refresh allocation rules on disconnect if using named keys
+			c.refresh(ctx, 0)
+		}
 
 		s.connection.Disconnect()
 		delete(c.consumers, s.consumer.ID())
@@ -558,6 +560,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 }
 
 func (c *coordinator) process(ctx context.Context, updates <-chan core.Update) {
+	defer c.Close()
 	defer c.resetMetrics(ctx)
 
 	ticker := time.NewTicker(10*time.Second + randx.Duration(time.Second))
@@ -659,6 +662,18 @@ steady:
 		case <-loadTicker.C:
 			now := time.Now()
 			c.removeTrackerIfDomainRemoved(ctx)
+
+			service, ok := c.cache.Service(c.name)
+			if !ok {
+				log.Errorf(ctx, "Internal: invalid state for coordinator, service not found %v/%v", c.name, c.self)
+				return
+			}
+
+			if !service.Info().Service().Config().TrackLoad() {
+				log.Infof(ctx, "Load tracking for service %v is not enabled, skipping.", c.name)
+				break
+			}
+
 			for _, t := range c.trackers {
 				t.rotateIfNeeded(now)
 			}
@@ -666,7 +681,17 @@ steady:
 			// (1) emit domain load and shard load metrics
 			c.emitLoadMetrics(ctx)
 
-			// (2) TODO: report load to leader to persist information
+			// (2) report load to leader to persist information
+			load := mapx.MapValues(c.trackers, func(v *domainLoadTracker) core.DomainLoadInfo {
+				return v.snapshot()
+			})
+			serviceLoad := core.NewServiceLoadInfo(c.name, load)
+			serviceStatus := core.NewServiceStatusMessage(serviceLoad)
+			select {
+			case c.out <- serviceStatus:
+			default:
+				log.Warnf(ctx, "Skipping status update from coordinator %v to leader: outbound buffer full", c.self)
+			}
 
 			// (3) Record action latency
 			c.recordActionLatency(ctx, "tick/load", now)
@@ -704,6 +729,9 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	var isKeys bool
 	var keys []model.QualifiedDomainKey
 	for _, worker := range c.alloc.Workers() {
+		if worker.State != allocation.Attached {
+			continue
+		}
 		if len(worker.Instance.Data.Keys()) > 0 {
 			isKeys = true
 			keys = append(keys, worker.Instance.Data.Keys()...)
@@ -1021,8 +1049,14 @@ func (c *coordinator) handleStatus(ctx context.Context, status model.StatusMessa
 				continue
 			}
 
-			if !domain.Config().ShardingPolicy().TrackLoad() {
-				log.Infof(ctx, "Load tracking for domain %v is not enabled, skipping", shard.Domain)
+			service, ok := c.cache.Service(domain.Name().Service)
+			if !ok {
+				log.Infof(ctx, "Failed to find service %v", domain.Name().Service)
+				continue
+			}
+
+			if !service.Info().Service().Config().TrackLoad() {
+				log.Infof(ctx, "TrackLoad for service %v is not enabled, skipping", domain.Name().Service)
 				continue
 			}
 

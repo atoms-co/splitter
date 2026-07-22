@@ -3,14 +3,14 @@ load("@rules_go//proto:def.bzl", "go_proto_library")
 
 proto_library(
     name = "location_proto",
-    srcs = glob(["*.proto"]),
+    srcs = ["location.proto"],
     strip_import_prefix = "/proto",
     visibility = ["//visibility:public"],
     deps = ["@com_google_protobuf//:timestamp_proto"],
 )
 
 go_proto_library(
-    name = "location",
+    name = "location_go_proto",
     importpath = "go.atoms.co/splitter/lib/service/location/pb",
     proto = ":location_proto",
     visibility = ["//visibility:public"],

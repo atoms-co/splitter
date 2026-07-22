@@ -12,7 +12,7 @@ go_library(
         "//lib/service/session",
         "//pkg/model",
         "//pkg/service/leader",
-        "//proto/atoms/splitter/private",
+        "//proto/atoms/splitter/private:private_go_proto",
         "@co_atoms_go_iox//:iox",
     ],
 )

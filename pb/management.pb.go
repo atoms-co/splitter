@@ -467,7 +467,6 @@ type ShardingPolicy struct {
 	state         protoimpl.MessageState  `protogen:"open.v1"`
 	Shards        int64                   `protobuf:"varint,1,opt,name=shards,proto3" json:"shards,omitempty"`
 	CustomShards  []*ShardingPolicy_Shard `protobuf:"bytes,2,rep,name=custom_shards,json=customShards,proto3" json:"custom_shards,omitempty"`
-	TrackLoad     bool                    `protobuf:"varint,3,opt,name=track_load,json=trackLoad,proto3" json:"track_load,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -514,13 +513,6 @@ func (x *ShardingPolicy) GetCustomShards() []*ShardingPolicy_Shard {
 		return x.CustomShards
 	}
 	return nil
-}
-
-func (x *ShardingPolicy) GetTrackLoad() bool {
-	if x != nil {
-		return x.TrackLoad
-	}
-	return false
 }
 
 type Tenant_Config struct {
@@ -609,6 +601,7 @@ type Service_Config struct {
 	DefaultShardingPolicy *ShardingPolicy                    `protobuf:"bytes,2,opt,name=default_sharding_policy,json=defaultShardingPolicy,proto3" json:"default_sharding_policy,omitempty"`
 	Overrides             []*Service_Config_LocalityOverride `protobuf:"bytes,3,rep,name=overrides,proto3" json:"overrides,omitempty"`
 	Regions               []string                           `protobuf:"bytes,4,rep,name=regions,proto3" json:"regions,omitempty"`
+	TrackLoad             bool                               `protobuf:"varint,5,opt,name=track_load,json=trackLoad,proto3" json:"track_load,omitempty"`
 	unknownFields         protoimpl.UnknownFields
 	sizeCache             protoimpl.SizeCache
 }
@@ -669,6 +662,13 @@ func (x *Service_Config) GetRegions() []string {
 		return x.Regions
 	}
 	return nil
+}
+
+func (x *Service_Config) GetTrackLoad() bool {
+	if x != nil {
+		return x.TrackLoad
+	}
+	return false
 }
 
 type Service_Operational struct {
@@ -996,17 +996,19 @@ const file_atoms_splitter_management_proto_rawDesc = "" +
 	"TenantInfo\x12.\n" +
 	"\x06tenant\x18\x01 \x01(\v2\x16.atoms.splitter.TenantR\x06tenant\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x03R\aversion\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xe6\x05\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x85\x06\n" +
 	"\aService\x128\n" +
 	"\x04name\x18\x01 \x01(\v2$.atoms.splitter.QualifiedServiceNameR\x04name\x126\n" +
 	"\x06config\x18\x02 \x01(\v2\x1e.atoms.splitter.Service.ConfigR\x06config\x124\n" +
 	"\acreated\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\acreated\x12E\n" +
-	"\voperational\x18\x04 \x01(\v2#.atoms.splitter.Service.OperationalR\voperational\x1a\xc1\x02\n" +
+	"\voperational\x18\x04 \x01(\v2#.atoms.splitter.Service.OperationalR\voperational\x1a\xe0\x02\n" +
 	"\x06Config\x12\x16\n" +
 	"\x06region\x18\x01 \x01(\tR\x06region\x12V\n" +
 	"\x17default_sharding_policy\x18\x02 \x01(\v2\x1e.atoms.splitter.ShardingPolicyR\x15defaultShardingPolicy\x12M\n" +
 	"\toverrides\x18\x03 \x03(\v2/.atoms.splitter.Service.Config.LocalityOverrideR\toverrides\x12\x18\n" +
-	"\aregions\x18\x04 \x03(\tR\aregions\x1a^\n" +
+	"\aregions\x18\x04 \x03(\tR\aregions\x12\x1d\n" +
+	"\n" +
+	"track_load\x18\x05 \x01(\bR\ttrackLoad\x1a^\n" +
 	"\x10LocalityOverride\x12!\n" +
 	"\fshard_region\x18\x01 \x01(\tR\vshardRegion\x12'\n" +
 	"\x0fconsumer_region\x18\x02 \x01(\tR\x0econsumerRegion\x1a\xa7\x01\n" +
@@ -1042,12 +1044,10 @@ const file_atoms_splitter_management_proto_rawDesc = "" +
 	"\aUNKNOWN\x10\x00\x12\n" +
 	"\n" +
 	"\x06ACTIVE\x10\x01\x12\r\n" +
-	"\tSUSPENDED\x10\x02\"\xd7\x01\n" +
+	"\tSUSPENDED\x10\x02\"\xb8\x01\n" +
 	"\x0eShardingPolicy\x12\x16\n" +
 	"\x06shards\x18\x01 \x01(\x03R\x06shards\x12I\n" +
-	"\rcustom_shards\x18\x02 \x03(\v2$.atoms.splitter.ShardingPolicy.ShardR\fcustomShards\x12\x1d\n" +
-	"\n" +
-	"track_load\x18\x03 \x01(\bR\ttrackLoad\x1aC\n" +
+	"\rcustom_shards\x18\x02 \x03(\v2$.atoms.splitter.ShardingPolicy.ShardR\fcustomShards\x1aC\n" +
 	"\x05Shard\x12\x12\n" +
 	"\x04from\x18\x01 \x01(\tR\x04from\x12\x0e\n" +
 	"\x02to\x18\x02 \x01(\tR\x02to\x12\x16\n" +
