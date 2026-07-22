@@ -5,6 +5,7 @@ package atoms.splitter.private;
 import "atoms/splitter/model.proto";
 import "atoms/splitter/management.proto";
 import "atoms/splitter/placement.proto";
+import "atoms/splitter/private/load.proto";
 import "atoms/splitter/private/placement.proto";
 
 option go_package = "go.atoms.co/splitter/pb/private";
@@ -14,12 +15,18 @@ message State {
   atoms.splitter.TenantInfo tenant = 1;
   repeated atoms.splitter.ServiceInfoEx services = 2;
   repeated InternalPlacementInfo placements = 3;
+  repeated ServiceStatus statuses = 4;
 }
 
 message ServiceUpdate {
   atoms.splitter.ServiceInfo service = 1;
   repeated atoms.splitter.Domain updated = 2;
   repeated atoms.splitter.QualifiedDomainName removed = 3;
+}
+
+// ServiceStatus represents status of a service.
+message ServiceStatus {
+  ServiceLoadInfo load = 1;
 }
 
 // Update is an incremental update to a single tenant. Updates to multiple aspects can be made
@@ -43,6 +50,7 @@ message Update {
   Tenant tenant = 2;
   Service service = 3;
   Placement placement = 4;
+  ServiceStatus status = 5;
 }
 
 // Delete removes an entire tenant.

@@ -12,6 +12,7 @@ type tenantInfo struct {
 	info       model.TenantInfo
 	services   map[model.QualifiedServiceName]model.ServiceInfoEx
 	placements map[model.QualifiedPlacementName]core.InternalPlacementInfo
+	statuses   map[model.QualifiedServiceName]core.ServiceStatus
 }
 
 // Cache is an in-memory cache of state. Not thread-safe.
@@ -89,7 +90,11 @@ func (c *Cache) Placement(name model.QualifiedPlacementName) (core.InternalPlace
 func (c *Cache) ServiceState(name model.QualifiedServiceName) (core.State, bool) {
 	if t, ok := c.tenants[name.Tenant]; ok {
 		if s, ok := t.services[name]; ok {
-			return core.NewState(t.info, []model.ServiceInfoEx{s}, mapx.Values(t.placements)), ok
+			var statuses []core.ServiceStatus
+			if serviceStatus, ok := c.ServiceStatus(name); ok {
+				statuses = []core.ServiceStatus{serviceStatus}
+			}
+			return core.NewState(t.info, []model.ServiceInfoEx{s}, mapx.Values(t.placements), statuses), ok
 		}
 	}
 	return core.State{}, false
@@ -97,14 +102,28 @@ func (c *Cache) ServiceState(name model.QualifiedServiceName) (core.State, bool)
 
 func (c *Cache) State(name model.TenantName) (core.State, bool) {
 	if t, ok := c.tenants[name]; ok {
-		return core.NewState(t.info, mapx.Values(t.services), mapx.Values(t.placements)), ok
+		return core.NewState(t.info, mapx.Values(t.services), mapx.Values(t.placements), mapx.Values(t.statuses)), ok
 	}
 	return core.State{}, false
 }
 
+func (c *Cache) ServiceStatus(name model.QualifiedServiceName) (core.ServiceStatus, bool) {
+	t, ok := c.tenants[name.Tenant]
+	if !ok {
+		return core.ServiceStatus{}, false
+	}
+
+	status, ok := t.statuses[name]
+	if !ok {
+		return core.ServiceStatus{}, false
+	}
+
+	return status, true
+}
+
 func (c *Cache) Snapshot() core.Snapshot {
 	return core.NewSnapshot(mapx.MapValues(c.tenants, func(v *tenantInfo) core.State {
-		return core.NewState(v.info, mapx.Values(v.services), mapx.Values(v.placements))
+		return core.NewState(v.info, mapx.Values(v.services), mapx.Values(v.placements), mapx.Values(v.statuses))
 	})...)
 }
 
@@ -116,6 +135,7 @@ func (c *Cache) Restore(snapshot core.Snapshot) {
 			info:       info,
 			services:   mapx.New(s.Services(), model.ServiceInfoEx.Name),
 			placements: mapx.New(s.Placements(), core.InternalPlacementInfo.Name),
+			statuses:   mapx.New(s.Statuses(), func(v core.ServiceStatus) model.QualifiedServiceName { return v.Load().Service() }),
 		}
 	}
 }
@@ -137,14 +157,22 @@ func (c *Cache) Update(update core.Update, strict bool) error {
 		}
 		for _, remove := range upd.DomainsRemoved() {
 			delete(domains, remove)
+			// do not remove domainLoad from status as it will be removed after tracker rotation.
 		}
+
 		s.services[upd.Service().Name()] = model.NewServiceInfoEx(upd.Service(), mapx.Values(domains))
+
+		// update service config to disable TrackLoad
+		if !upd.Service().Service().Config().TrackLoad() {
+			delete(s.statuses, upd.Service().Name())
+		}
 	}
 	for _, rm := range update.ServicesRemoved() {
 		if _, ok := s.services[rm]; !ok {
 			return fmt.Errorf("service %v not found", rm)
 		}
 		delete(s.services, rm)
+		delete(s.statuses, rm)
 	}
 
 	for _, upd := range update.PlacementsUpdated() {
@@ -162,9 +190,27 @@ func (c *Cache) Update(update core.Update, strict bool) error {
 	}
 
 	c.tenants[update.Name()] = s
+
+	status, ok := update.ServiceStatus()
+	if !ok {
+		return nil
+	}
+
+	service := status.Load().Service()
+	info, ok := c.Service(service)
+	if !ok || !info.Service().Config().TrackLoad() {
+		// service or tenant does not exist, or TrackLoad is not enabled
+		return nil
+	}
+
+	if t, ok := c.tenants[service.Tenant]; ok {
+		t.statuses[service] = status
+	}
+
 	return nil
 }
 
+// Delete deletes a tenant
 func (c *Cache) Delete(del core.Delete) error {
 	if _, ok := c.tenants[del.Tenant()]; !ok {
 		return fmt.Errorf("tenant %v not found", del.Tenant())
@@ -189,6 +235,7 @@ func (c *Cache) cloneTenant(update core.Update, strict bool) (*tenantInfo, error
 			info:       info,
 			services:   map[model.QualifiedServiceName]model.ServiceInfoEx{},
 			placements: map[model.QualifiedPlacementName]core.InternalPlacementInfo{},
+			statuses:   map[model.QualifiedServiceName]core.ServiceStatus{},
 		}, nil
 	}
 
@@ -196,6 +243,7 @@ func (c *Cache) cloneTenant(update core.Update, strict bool) (*tenantInfo, error
 		info:       s.info,
 		services:   mapx.Clone(s.services),
 		placements: mapx.Clone(s.placements),
+		statuses:   mapx.Clone(s.statuses),
 	}
 
 	if info, ok := update.TenantUpdated(); ok {

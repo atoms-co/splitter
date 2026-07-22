@@ -44,11 +44,12 @@ type State struct {
 	pb *splitterprivatepb.State
 }
 
-func NewState(tenant model.TenantInfo, services []model.ServiceInfoEx, placements []InternalPlacementInfo) State {
+func NewState(tenant model.TenantInfo, services []model.ServiceInfoEx, placements []InternalPlacementInfo, statuses []ServiceStatus) State {
 	return State{pb: &splitterprivatepb.State{
 		Tenant:     model.UnwrapTenantInfo(tenant),
 		Services:   slicex.Map(services, model.UnwrapServiceInfoEx),
 		Placements: slicex.Map(placements, UnwrapInternalPlacementInfo),
+		Statuses:   slicex.Map(statuses, UnwrapServiceStatus),
 	}}
 }
 
@@ -70,6 +71,10 @@ func (s State) Services() []model.ServiceInfoEx {
 
 func (s State) Placements() []InternalPlacementInfo {
 	return slicex.Map(s.pb.GetPlacements(), WrapInternalPlacementInfo)
+}
+
+func (s State) Statuses() []ServiceStatus {
+	return slicex.Map(s.pb.GetStatuses(), WrapServiceStatus)
 }
 
 func (s State) String() string {
@@ -155,6 +160,13 @@ func NewPlacementRemoval(t model.QualifiedPlacementName) Update {
 	})
 }
 
+func NewServiceStatusUpdate(s ServiceStatus) Update {
+	return WrapUpdate(&splitterprivatepb.Update{
+		Name:   string(s.Load().Service().Tenant),
+		Status: UnwrapServiceStatus(s),
+	})
+}
+
 func WrapUpdate(pb *splitterprivatepb.Update) Update {
 	return Update{pb: pb}
 }
@@ -183,6 +195,24 @@ func (s Update) ServicesRemoved() []model.QualifiedServiceName {
 		ret, _ := model.ParseQualifiedServiceName(t)
 		return ret
 	})
+}
+
+func (s Update) ServiceStatus() (ServiceStatus, bool) {
+	status := s.pb.GetStatus()
+	if status == nil {
+		return ServiceStatus{}, false
+	}
+
+	return WrapServiceStatus(status), true
+}
+
+// IsStateUpdated indicates if Update contains any State update, including Tenant, Service and Placements
+func (s Update) IsStateUpdated() bool {
+	if _, ok := s.TenantUpdated(); ok {
+		return true
+	}
+
+	return len(s.ServicesUpdated()) > 0 || len(s.ServicesRemoved()) > 0 || len(s.PlacementsUpdated()) > 0 || len(s.PlacementsRemoved()) > 0
 }
 
 // ServiceUpdate is an incremental update to a single service.
@@ -284,4 +314,34 @@ func (s Restore) Snapshot() Snapshot {
 
 func (s Restore) Size() int {
 	return protox.Size(s.pb)
+}
+
+type ServiceStatus struct {
+	pb *splitterprivatepb.ServiceStatus
+}
+
+func NewServiceStatus(serviceLoad ServiceLoadInfo) ServiceStatus {
+	return ServiceStatus{pb: &splitterprivatepb.ServiceStatus{
+		Load: UnwrapServiceLoadInfo(serviceLoad),
+	}}
+}
+
+func WrapServiceStatus(pb *splitterprivatepb.ServiceStatus) ServiceStatus {
+	return ServiceStatus{pb: pb}
+}
+
+func UnwrapServiceStatus(m ServiceStatus) *splitterprivatepb.ServiceStatus {
+	return m.pb
+}
+
+func (m ServiceStatus) Load() ServiceLoadInfo {
+	return WrapServiceLoadInfo(m.pb.GetLoad())
+}
+
+func (m ServiceStatus) String() string {
+	return protox.MarshalTextString(m.pb)
+}
+
+func (m ServiceStatus) Equal(other ServiceStatus) bool {
+	return protox.Equal(m.pb, other.pb)
 }

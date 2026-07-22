@@ -1221,6 +1221,7 @@ func setupWithServiceConfig(ctx context.Context, t *testing.T, domains []model.D
 		model.NewTenantInfo(tenant, 1, time.Now()),
 		[]model.ServiceInfoEx{model.NewServiceInfoEx(model.NewServiceInfo(service, 1, time.Now()), domains)},
 		nil, // TODO(jhhurwitz): 12/13/23 Test placements when implemented
+		nil,
 	)
 
 	updates := make(chan core.Update)

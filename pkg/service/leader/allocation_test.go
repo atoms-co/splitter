@@ -84,10 +84,10 @@ func TestControl(t *testing.T) {
 	st1 := core.NewState(model.NewTenantInfo(t1, 1, time.Time{}), []model.ServiceInfoEx{
 		model.NewServiceInfoEx(model.NewServiceInfo(s1, 1, time.Time{}), nil),
 		model.NewServiceInfoEx(model.NewServiceInfo(s2, 1, time.Time{}), nil),
-	}, nil)
+	}, nil, nil)
 	st2 := core.NewState(model.NewTenantInfo(t2, 1, time.Time{}), []model.ServiceInfoEx{
 		model.NewServiceInfoEx(model.NewServiceInfo(s3, 1, time.Time{}), nil),
-	}, nil)
+	}, nil, nil)
 
 	ctrl := leader.NewControl(core.NewSnapshot(st1, st2))
 
