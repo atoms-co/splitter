@@ -513,7 +513,6 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 
 	start := time.Now()
 
-	// TODO: restore trackers from ServiceStatus
 	c.cache.Restore(core.NewSnapshot(state))
 
 	tenant, ok := c.cache.Tenant(c.name.Tenant)
@@ -540,6 +539,8 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	c.noLb = c.findUnitDomains()
 	c.cluster = model.NewClusterMap(model.NewClusterID(c.self, now), c.alloc.Units())
 
+	c.restoreLoadTrackers(ctx)
+
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.self, c.alloc.Size())
 	c.recordAction(ctx, "init", "ok")
 	c.recordActionLatency(ctx, "init", start)
@@ -558,6 +559,30 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	}
 
 	log.Infof(ctx, "Coordinator %v/%v closed", c.name, c.self)
+}
+
+func (c *coordinator) restoreLoadTrackers(ctx context.Context) {
+	service, ok := c.cache.Service(c.name)
+	if !ok || !service.Service().Config().TrackLoad() {
+		return
+	}
+
+	status, ok := c.cache.ServiceStatus(c.name)
+	if !ok {
+		return
+	}
+
+	for _, info := range status.Load().Domains() {
+		tracker, err := restoreDomainLoadTracker(info)
+		if err != nil {
+			log.Warnf(ctx, "Failed to restore domain load tracker of domain %s for service %v, err=%v", info.DomainName(), c.name, err)
+			continue
+		}
+		qdn := model.QualifiedDomainName{Service: c.name, Domain: info.DomainName()}
+		if _, ok := c.cache.Domain(qdn); ok {
+			c.trackers[qdn] = tracker
+		}
+	}
 }
 
 func (c *coordinator) process(ctx context.Context, updates <-chan core.Update) {
