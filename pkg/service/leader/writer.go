@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"go.atoms.co/lib/log"
 	"go.atoms.co/iox"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/workqueue"
+	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -386,7 +386,7 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *splitterpb.
 	if !ok {
 		return nil, nil, fmt.Errorf("service %v not found: %w", name, model.ErrNotFound)
 	}
-	guard := service.Info().Version()
+	guard := model.Version(req.GetServiceVersion())
 
 	existing, ok := service.Domain(name.Domain)
 	if !ok {
