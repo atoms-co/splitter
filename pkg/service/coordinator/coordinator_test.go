@@ -1179,6 +1179,56 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 	})
 }
 
+func TestCoordinator_RestoresDomainLoadTrackers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
+		require.NoError(t, err)
+
+		start := testStart()
+		shard := newShard(
+			domainName,
+			model.MustParseKey("00000000-0000-0000-0000-000000000000"),
+			model.MustParseKey("80000000-0000-0000-0000-000000000000"),
+		)
+		expected := newDomainLoadTracker(start, domain1)
+		for range 10 {
+			expected.add(shard, model.Load(20))
+		}
+		expected.rotateIfNeeded(start.Add(defaultRotationInterval + time.Second))
+		for range 5 {
+			expected.add(shard, model.Load(8))
+		}
+		stale := newDomainLoadTracker(start, domain2)
+		for range 10 {
+			stale.add(shard, model.Load(20))
+		}
+
+		status := core.NewServiceStatus(core.NewServiceLoadInfo(serviceName, []core.DomainLoadInfo{
+			expected.snapshot(),
+			stale.snapshot(),
+		}))
+		cfg := model.NewServiceConfig(model.WithTrackLoad(true))
+		coord, _ := setupWithServiceConfigAndStatuses(ctx, t, []model.Domain{domain}, cfg, []core.ServiceStatus{status})
+		defer coord.Close()
+
+		c := coord.(*coordinator)
+		require.NotContains(t, c.trackers, domainName2, "tracker for missing domain should not be restored")
+		restored, ok := c.trackers[domainName]
+		require.True(t, ok)
+		require.Equal(t, expected.domain, restored.domain)
+		require.Equal(t, expected.tracker.createdAt, restored.tracker.createdAt)
+
+		load, ok := restored.domainLoad()
+		require.True(t, ok)
+		require.InDelta(t, 8, float64(load), epsilon)
+
+		shardSnapshot := core.NewShard(shard.From, shard.To, shard.Region)
+		require.Equal(t, expected.shardScoreOrDefault(shardSnapshot), restored.shardScoreOrDefault(shardSnapshot))
+	})
+}
+
 // updateCreatedAt updates the createdAt of domainLoadTrackers to simulate time advancing and avoid a long sleep (24 hours).
 // With synctest, time.Sleep triggers all tickers to fire within the synctest bubble;
 // long sleeps slow the test.
@@ -1209,6 +1259,12 @@ func setup(ctx context.Context, t *testing.T, domains []model.Domain, opts ...Op
 func setupWithServiceConfig(ctx context.Context, t *testing.T, domains []model.Domain, cfg model.ServiceConfig, opts ...Option) (Coordinator, <-chan core.ServiceStatusMessage) {
 	t.Helper()
 
+	return setupWithServiceConfigAndStatuses(ctx, t, domains, cfg, nil, opts...)
+}
+
+func setupWithServiceConfigAndStatuses(ctx context.Context, t *testing.T, domains []model.Domain, cfg model.ServiceConfig, statuses []core.ServiceStatus, opts ...Option) (Coordinator, <-chan core.ServiceStatusMessage) {
+	t.Helper()
+
 	loc := location.New("centralus", "splitter-0")
 
 	tenant, err := model.NewTenant(tenant1, time.Now())
@@ -1221,7 +1277,7 @@ func setupWithServiceConfig(ctx context.Context, t *testing.T, domains []model.D
 		model.NewTenantInfo(tenant, 1, time.Now()),
 		[]model.ServiceInfoEx{model.NewServiceInfoEx(model.NewServiceInfo(service, 1, time.Now()), domains)},
 		nil, // TODO(jhhurwitz): 12/13/23 Test placements when implemented
-		nil,
+		statuses,
 	)
 
 	updates := make(chan core.Update)
