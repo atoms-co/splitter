@@ -52,7 +52,7 @@ type workPoolOptions struct {
 //
 // Shutdown is initiated by calling Drain(). Closed() can be used to detect when draining has stopped and
 // the pool is closed.
-// The work pool is also drained when it stays disconnected for the disconnect timeout. This disconnected status
+// The workpool is also drained when it is not able to (re)join within the disconnect timeout. This disconnected status
 // is reset only after receiving the first message from the coordinator after reconnection. In cases where
 // the consumer reconnects multiple times, but has not received a single message, it will be drained.
 type workPool struct {
@@ -140,6 +140,9 @@ func (p *workPool) join(ctx context.Context) {
 
 	wctx, _ := contextx.WithQuitCancel(ctx, p.Closed())
 
+	syncx.Txn0(wctx, p.txn, func() {
+		p.startDisconnectTimer(ctx, time.Now())
+	})
 	for !p.drain.IsClosed() {
 		// Not connected. Establish WorkPool with coordinator with blocking join call. The workpool is either
 		// connecting or connected while in the join call.
