@@ -267,6 +267,64 @@ func TestLeader_HandleUpdate(t *testing.T) {
 	})
 }
 
+func TestLeader_UpdateDomainRejectsStaleServiceVersion(t *testing.T) {
+	ctx := context.Background()
+	loc := location.New("centralus", "wds2-0")
+
+	service, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
+	require.NoError(t, err)
+
+	qdn := model.QualifiedDomainName{Service: service.Name(), Domain: model.DomainName("domain")}
+	domain, err := model.NewDomain(qdn, model.Regional, time.Now(), model.WithDomainConfig(model.NewDomainConfig(model.WithDomainRegions("centralus"), model.WithDomainShardingPolicy(model.NewShardingPolicy(1)))))
+	require.NoError(t, err)
+
+	db := setupWithDomains(t, ctx, service, domain)
+	l := leader.New(ctx, loc, db, leader.WithFastActivation())
+	defer l.Close()
+	<-l.Initialized().Closed()
+
+	updateDomain := func(version model.Version, config model.DomainConfig) (*wds2pb.UpdateDomainResponse, error) {
+		resp, err := l.Handle(ctx, leader.NewHandleDomainRequest(&wds2internalpb.DomainRequest{
+			Req: &wds2internalpb.DomainRequest_Update{
+				Update: &wds2pb.UpdateDomainRequest{
+					Name:           qdn.ToProto(),
+					ServiceVersion: int64(version),
+					Config:         model.UnwrapDomainConfig(config),
+				},
+			},
+		}))
+		if err != nil {
+			return nil, err
+		}
+		return resp.GetDomain().GetUpdate(), nil
+	}
+
+	const serviceVersion model.Version = 2
+
+	firstConfig, err := model.UpdateDomainConfig(domain, model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))
+	require.NoError(t, err)
+	firstUpdate, err := updateDomain(serviceVersion, firstConfig)
+	require.NoError(t, err)Expand commentComment on lines R302 to R307Resolved
+	assert.Equal(t, 2, model.WrapDomain(firstUpdate.GetDomain()).Config().ShardingPolicy().Shards())
+
+	staleConfig, err := model.UpdateDomainConfig(domain, model.WithDomainRegions("centralus", "eastus2"))
+	require.NoError(t, err)
+	_, err = updateDomain(serviceVersion, staleConfig)
+	require.ErrorIs(t, err, model.ErrVersionMismatch)
+
+	resp, err := l.Handle(ctx, leader.NewHandleDomainRequest(&wds2internalpb.DomainRequest{
+		Req: &wds2internalpb.DomainRequest_List{
+			List: &wds2pb.ListDomainsRequest{Service: service.Name().ToProto()},
+		},
+	}))
+	require.NoError(t, err)
+	domains := resp.GetDomain().GetList().GetDomains()
+	require.Len(t, domains, 1)
+	current := model.WrapDomain(domains[0])
+	assert.Equal(t, 2, current.Config().ShardingPolicy().Shards())
+	assert.Equal(t, []model.Region{"centralus"}, current.Regions())
+}
+
 func setup(t *testing.T, ctx context.Context, services ...model.Service) storage.Storage {
 	db := memory.New()
 
