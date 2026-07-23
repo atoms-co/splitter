@@ -4,6 +4,7 @@ package atoms.splitter.private;
 
 import "atoms/splitter/model.proto";
 import "atoms/splitter/managementapi.proto";
+import "atoms/splitter/private/load.proto";
 import "atoms/splitter/private/operation.proto";
 import "atoms/splitter/private/placement.proto";
 import "atoms/splitter/private/state.proto";
@@ -189,6 +190,11 @@ message WorkerMessage {
     repeated Grant grants = 1;
   }
 
+  // ServiceStatus represents status of a service.
+  message ServiceStatus {
+    ServiceLoadInfo load = 1;
+  }
+
   oneof msg {
     Register register = 1;
     Deregister deregister = 2;
@@ -197,6 +203,7 @@ message WorkerMessage {
     Update update = 8;
     Revoke revoke = 6;
     Relinquished relinquished = 7;
+    ServiceStatus service_status = 9;
   }
 }
 
@@ -240,7 +247,7 @@ message LeaderMessage {
 
 message JoinMessage {
   oneof msg {
-    atoms.splitter.lib.service.service.Message session = 1;
+    atoms.splitter.lib.service.session.Message session = 1;
     LeaderMessage leader = 2;
   }
 }

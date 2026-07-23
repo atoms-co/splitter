@@ -51,6 +51,9 @@ message Service {
 
     // region preferences for coordinator. Overrides `region` config if provided. Optional.
     repeated string regions = 4;
+    // Enables load tracking/reporting for the service
+    bool track_load = 5;
+
   }
   Config config = 2;
 
@@ -142,6 +145,4 @@ message ShardingPolicy {
   // Custom shards should be non over-lapping and defining custom shards changes the number of shards,
   // final shard count can exceed or be less than target shard count.
   repeated Shard custom_shards = 2;
-  // Enables load tracking/reporting for this sharding policy so consumers can report load.
-  bool track_load = 3;
 }

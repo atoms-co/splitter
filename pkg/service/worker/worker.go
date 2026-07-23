@@ -6,24 +6,24 @@ import (
 	"sync"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/metrics"
-	"go.atoms.co/lib/timex"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
-	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/iox"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/randx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/lib/timex"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/leader"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 const (
@@ -37,7 +37,7 @@ var (
 
 type JoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[leader.Message, leader.Message]) error
 
-type CoordinatorFactory func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) coordinator.Coordinator
+type CoordinatorFactory func(ctx context.Context, service model.QualifiedServiceName, state core.State, updates <-chan core.Update) (coordinator.Coordinator, <-chan core.ServiceStatusMessage)
 
 type joinStatus struct {
 	connected time.Time
@@ -386,7 +386,7 @@ func (w *worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 		}
 
 		updates := make(chan core.Update, coordinatorStateBufferLen)
-		c := w.factory(ctx, grant.Service(), state, updates)
+		c, cOut := w.factory(ctx, grant.Service(), state, updates)
 
 		w.grants[grant.ID()] = &Grant{
 			Grant:       grant,
@@ -403,6 +403,26 @@ func (w *worker) handleWorkerMessage(ctx context.Context, msg leader.WorkerMessa
 			syncx.Txn0(ctx, w.txn, func() {
 				w.removeGrant(ctx, grant.ID())
 			})
+		}()
+
+		go func() {
+			for {
+				select {
+				case msg2, ok := <-cOut:
+					if !ok {
+						return
+					}
+
+					// w.out is closed and recreated when losing connection to leader.
+					// Putting below logic into transactional context to avoid race condition.
+					syncx.Txn0(ctx, w.txn, func() {
+						w.mustSend(ctx, leader.NewServiceStatus(msg2))
+					})
+
+				case <-c.Closed():
+					return
+				}
+			}
 		}()
 
 		log.Infof(ctx, "Created coordinator %v for grant %v", c, grant)

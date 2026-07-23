@@ -346,20 +346,13 @@ func (a *Allocation[T, W, K, V]) Revoke(id K, now time.Time, grants ...Grant[T, 
 	return ret, true
 }
 
-func (a *Allocation[T, W, K, V]) revoke(w *worker[T, W, K, V], now time.Time, g live[T, W]) Grant[T, K] {
-	t := g.work.Unit
+func (a *Allocation[T, W, K, V]) revoke(w *worker[T, W, K, V], now time.Time, l live[T, W]) Grant[T, K] {
+	t := l.work.Unit
 
 	// (1) Update worker and re-compute load.
 
-	revoked := w.ToGrant(g).WithState(Revoked)
-
+	revoked := a.removeLive(w, l).WithState(Revoked)
 	w.revoked[t] = revoked
-	delete(w.live, t)
-	delete(a.live, t)
-
-	w.load.Load -= g.work.Load
-	w.load.Place -= w.place[t]
-	delete(w.place, t)
 	w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
 
 	// (2) Add counterpart to unassigned
@@ -384,13 +377,7 @@ func (a *Allocation[T, W, K, V]) Release(grant Grant[T, K], now time.Time) (rele
 		}
 		// Unexpected release of live grant, deliberate delay of assignment
 		if l, ok := w.live[t]; ok && l.grant == grant.ID {
-			released = w.ToGrant(l)
-			delete(w.live, t)
-			delete(a.live, t)
-
-			w.load.Load -= l.work.Load
-			w.load.Place -= w.place[t]
-			delete(w.place, t)
+			released = a.removeLive(w, l)
 			w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
 
 			if u, ok := a.unassigned[t]; ok {
@@ -508,7 +495,7 @@ func (a *Allocation[T, W, K, V]) Expire(now time.Time) (promoted []Grant[T, K], 
 		}
 
 		if len(w.live) > 0 {
-			for t, l := range w.live {
+			for _, l := range w.live {
 				if l.state != Active {
 					// CAVEAT(herohde) 10/29/2023: the counterpart of a Revoked grant must not expire earlier than the
 					// revoked grant itself. That would be a violation of the Revoked/Allocated invariant. If the worker
@@ -516,15 +503,7 @@ func (a *Allocation[T, W, K, V]) Expire(now time.Time) (promoted []Grant[T, K], 
 					continue
 				}
 
-				expired = append(expired, w.ToGrant(l))
-				delete(w.live, t)
-				delete(a.live, t)
-
-				w.load.Load -= l.work.Load
-				w.load.Place -= w.place[l.work.Unit]
-				delete(w.place, l.work.Unit)
-
-				a.unassigned[t] = newUnassigned(Active, w.info.Lease)
+				expired = append(expired, a.unassignAsActive(w, l))
 			}
 			w.load.Colo, w.colo = a.colo.Colocate(w.info.Instance, w.Live())
 		}
@@ -535,6 +514,28 @@ func (a *Allocation[T, W, K, V]) Expire(now time.Time) (promoted []Grant[T, K], 
 	}
 
 	return promoted, expired
+}
+
+// unassignAsActive removes a live grant from a worker and marks its unit unassigned in Active state.
+// Callers must recompute the worker colocation. It returns the removed grant.
+func (a *Allocation[T, W, K, V]) unassignAsActive(w *worker[T, W, K, V], l live[T, W]) Grant[T, K] {
+	t := l.work.Unit
+	g := a.removeLive(w, l)
+	a.unassigned[t] = newUnassigned(Active, w.info.Lease)
+	return g
+}
+
+func (a *Allocation[T, W, K, V]) removeLive(w *worker[T, W, K, V], l live[T, W]) Grant[T, K] {
+	t := l.work.Unit
+	g := w.ToGrant(l)
+	delete(w.live, t)
+	delete(a.live, t)
+
+	w.load.Load -= l.work.Load
+	w.load.Place -= w.place[t]
+	delete(w.place, t)
+
+	return g
 }
 
 // tryPromote promotes corresponding Allocated grant of the given work unit. Returns the promotion grant

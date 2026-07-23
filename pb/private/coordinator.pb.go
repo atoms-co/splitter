@@ -600,7 +600,7 @@ const file_atoms_splitter_private_coordinator_proto_rawDesc = "" +
 	"\toperation\x18\x01 \x01(\v24.atoms.splitter.private.CoordinatorOperationResponseH\x00R\toperationB\x06\n" +
 	"\x04resp\"\x9f\x01\n" +
 	"\x0eConnectMessage\x12G\n" +
-	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.service.MessageH\x00R\asession\x12=\n" +
+	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.session.MessageH\x00R\asession\x12=\n" +
 	"\bconsumer\x18\x02 \x01(\v2\x1f.atoms.splitter.ConsumerMessageH\x00R\bconsumerB\x05\n" +
 	"\x03msg2\xcf\x02\n" +
 	"\x12CoordinatorService\x12]\n" +
@@ -642,7 +642,7 @@ var file_atoms_splitter_private_coordinator_proto_goTypes = []any{
 	(*CoordinatorClusterSyncResponse)(nil),  // 17: atoms.splitter.private.CoordinatorClusterSyncResponse
 	(*CoordinatorRevokeGrantsResponse)(nil), // 18: atoms.splitter.private.CoordinatorRevokeGrantsResponse
 	(*pb.QualifiedServiceName)(nil),         // 19: atoms.splitter.QualifiedServiceName
-	(*pb1.Message)(nil),                     // 20: atoms.splitter.lib.service.service.Message
+	(*pb1.Message)(nil),                     // 20: atoms.splitter.lib.service.session.Message
 	(*pb.ConsumerMessage)(nil),              // 21: atoms.splitter.ConsumerMessage
 	(*ObserverClientMessage)(nil),           // 22: atoms.splitter.private.ObserverClientMessage
 	(*ObserverServerMessage)(nil),           // 23: atoms.splitter.private.ObserverServerMessage
@@ -665,7 +665,7 @@ var file_atoms_splitter_private_coordinator_proto_depIdxs = []int32{
 	19, // 14: atoms.splitter.private.CoordinatorHandleRequest.service:type_name -> atoms.splitter.QualifiedServiceName
 	0,  // 15: atoms.splitter.private.CoordinatorHandleRequest.operation:type_name -> atoms.splitter.private.CoordinatorOperationRequest
 	1,  // 16: atoms.splitter.private.CoordinatorHandleResponse.operation:type_name -> atoms.splitter.private.CoordinatorOperationResponse
-	20, // 17: atoms.splitter.private.ConnectMessage.session:type_name -> atoms.splitter.lib.service.service.Message
+	20, // 17: atoms.splitter.private.ConnectMessage.session:type_name -> atoms.splitter.lib.service.session.Message
 	21, // 18: atoms.splitter.private.ConnectMessage.consumer:type_name -> atoms.splitter.ConsumerMessage
 	4,  // 19: atoms.splitter.private.CoordinatorService.Connect:input_type -> atoms.splitter.private.ConnectMessage
 	2,  // 20: atoms.splitter.private.CoordinatorService.Handle:input_type -> atoms.splitter.private.CoordinatorHandleRequest

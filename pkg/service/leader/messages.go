@@ -5,14 +5,14 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
+	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 type JoinMessage struct {
@@ -136,6 +136,14 @@ func NewRelinquished(grants ...core.Grant) Message {
 			Relinquished: &splitterprivatepb.WorkerMessage_Relinquished{
 				Grants: slicex.Map(grants, core.UnwrapGrant),
 			},
+		},
+	}})
+}
+
+func NewServiceStatus(serviceStatus core.ServiceStatusMessage) Message {
+	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
+		Msg: &splitterprivatepb.WorkerMessage_ServiceStatus_{
+			ServiceStatus: core.UnwrapServiceStatusMessage(serviceStatus),
 		},
 	}})
 }
@@ -320,6 +328,17 @@ func (m WorkerMessage) Relinquished() (RelinquishedMessage, bool) {
 		return RelinquishedMessage{}, false
 	}
 	return RelinquishedMessage{pb: m.pb.GetRelinquished()}, true
+}
+
+func (m WorkerMessage) IsServiceStatus() bool {
+	return m.pb.GetServiceStatus() != nil
+}
+
+func (m WorkerMessage) ServiceStatus() (core.ServiceStatusMessage, bool) {
+	if !m.IsServiceStatus() {
+		return core.ServiceStatusMessage{}, false
+	}
+	return core.WrapServiceStatusMessage(m.pb.GetServiceStatus()), true
 }
 
 func (m WorkerMessage) String() string {

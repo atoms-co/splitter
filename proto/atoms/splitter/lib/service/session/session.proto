@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package atoms.splitter.lib.service.service;
+package atoms.splitter.lib.service.session;
 
 import "google/protobuf/timestamp.proto";
 import "atoms/splitter/lib/service/location/location.proto";

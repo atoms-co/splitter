@@ -1098,7 +1098,7 @@ const file_atoms_splitter_consumer_proto_rawDesc = "" +
 	"\acluster\x18\x02 \x01(\v2\x1e.atoms.splitter.ClusterMessageH\x00R\aclusterB\x05\n" +
 	"\x03msg\"\x9c\x01\n" +
 	"\vJoinMessage\x12G\n" +
-	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.service.MessageH\x00R\asession\x12=\n" +
+	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.session.MessageH\x00R\asession\x12=\n" +
 	"\bconsumer\x18\x02 \x01(\v2\x1f.atoms.splitter.ConsumerMessageH\x00R\bconsumerB\x05\n" +
 	"\x03msgB1\n" +
 	"\x14co.atoms.splitter.pbP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
@@ -1134,7 +1134,7 @@ var file_atoms_splitter_consumer_proto_goTypes = []any{
 	(*ClientMessage_Status_Load)(nil),           // 14: atoms.splitter.ClientMessage.Status.Load
 	(*ClientMessage_Status_Load_ShardLoad)(nil), // 15: atoms.splitter.ClientMessage.Status.Load.ShardLoad
 	(*ClusterMessage)(nil),                      // 16: atoms.splitter.ClusterMessage
-	(*pb.Message)(nil),                          // 17: atoms.splitter.lib.service.service.Message
+	(*pb.Message)(nil),                          // 17: atoms.splitter.lib.service.session.Message
 	(*Instance)(nil),                            // 18: atoms.splitter.Instance
 	(*QualifiedServiceName)(nil),                // 19: atoms.splitter.QualifiedServiceName
 	(*QualifiedDomainName)(nil),                 // 20: atoms.splitter.QualifiedDomainName
@@ -1155,7 +1155,7 @@ var file_atoms_splitter_consumer_proto_depIdxs = []int32{
 	12, // 9: atoms.splitter.ClientMessage.status:type_name -> atoms.splitter.ClientMessage.Status
 	0,  // 10: atoms.splitter.ConsumerMessage.client:type_name -> atoms.splitter.ClientMessage
 	16, // 11: atoms.splitter.ConsumerMessage.cluster:type_name -> atoms.splitter.ClusterMessage
-	17, // 12: atoms.splitter.JoinMessage.session:type_name -> atoms.splitter.lib.service.service.Message
+	17, // 12: atoms.splitter.JoinMessage.session:type_name -> atoms.splitter.lib.service.session.Message
 	1,  // 13: atoms.splitter.JoinMessage.consumer:type_name -> atoms.splitter.ConsumerMessage
 	18, // 14: atoms.splitter.ClientMessage.Register.consumer:type_name -> atoms.splitter.Instance
 	19, // 15: atoms.splitter.ClientMessage.Register.service:type_name -> atoms.splitter.QualifiedServiceName

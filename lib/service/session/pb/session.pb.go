@@ -393,13 +393,13 @@ var File_atoms_splitter_lib_service_session_session_proto protoreflect.FileDescr
 
 const file_atoms_splitter_lib_service_session_session_proto_rawDesc = "" +
 	"\n" +
-	"0atoms/splitter/lib/service/session/session.proto\x12\"atoms.splitter.lib.service.service\x1a\x1fgoogle/protobuf/timestamp.proto\x1a2atoms/splitter/lib/service/location/location.proto\"\xbd\x06\n" +
+	"0atoms/splitter/lib/service/session/session.proto\x12\"atoms.splitter.lib.service.session\x1a\x1fgoogle/protobuf/timestamp.proto\x1a2atoms/splitter/lib/service/location/location.proto\"\xbd\x06\n" +
 	"\aMessage\x12U\n" +
-	"\testablish\x18\x01 \x01(\v25.atoms.splitter.lib.service.service.Message.EstablishH\x00R\testablish\x12[\n" +
-	"\vestablished\x18\x04 \x01(\v27.atoms.splitter.lib.service.service.Message.EstablishedH\x00R\vestablished\x12U\n" +
-	"\theartbeat\x18\x03 \x01(\v25.atoms.splitter.lib.service.service.Message.HeartbeatH\x00R\theartbeat\x12L\n" +
-	"\x03ack\x18\x02 \x01(\v28.atoms.splitter.lib.service.service.Message.HeartbeatAckH\x00R\x03ack\x12L\n" +
-	"\x06closed\x18\x05 \x01(\v22.atoms.splitter.lib.service.service.Message.ClosedH\x00R\x06closed\x1ab\n" +
+	"\testablish\x18\x01 \x01(\v25.atoms.splitter.lib.service.session.Message.EstablishH\x00R\testablish\x12[\n" +
+	"\vestablished\x18\x04 \x01(\v27.atoms.splitter.lib.service.session.Message.EstablishedH\x00R\vestablished\x12U\n" +
+	"\theartbeat\x18\x03 \x01(\v25.atoms.splitter.lib.service.session.Message.HeartbeatH\x00R\theartbeat\x12L\n" +
+	"\x03ack\x18\x02 \x01(\v28.atoms.splitter.lib.service.session.Message.HeartbeatAckH\x00R\x03ack\x12L\n" +
+	"\x06closed\x18\x05 \x01(\v22.atoms.splitter.lib.service.session.Message.ClosedH\x00R\x06closed\x1ab\n" +
 	"\tEstablish\x12E\n" +
 	"\x06client\x18\x01 \x01(\v2-.atoms.splitter.lib.service.location.InstanceR\x06client\x12\x0e\n" +
 	"\x02id\x18\x02 \x01(\tR\x02id\x1a\x82\x01\n" +
@@ -428,26 +428,26 @@ func file_atoms_splitter_lib_service_session_session_proto_rawDescGZIP() []byte 
 
 var file_atoms_splitter_lib_service_session_session_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_atoms_splitter_lib_service_session_session_proto_goTypes = []any{
-	(*Message)(nil),               // 0: atoms.splitter.lib.service.service.Message
-	(*Message_Establish)(nil),     // 1: atoms.splitter.lib.service.service.Message.Establish
-	(*Message_Established)(nil),   // 2: atoms.splitter.lib.service.service.Message.Established
-	(*Message_Heartbeat)(nil),     // 3: atoms.splitter.lib.service.service.Message.Heartbeat
-	(*Message_HeartbeatAck)(nil),  // 4: atoms.splitter.lib.service.service.Message.HeartbeatAck
-	(*Message_Closed)(nil),        // 5: atoms.splitter.lib.service.service.Message.Closed
+	(*Message)(nil),               // 0: atoms.splitter.lib.service.session.Message
+	(*Message_Establish)(nil),     // 1: atoms.splitter.lib.service.session.Message.Establish
+	(*Message_Established)(nil),   // 2: atoms.splitter.lib.service.session.Message.Established
+	(*Message_Heartbeat)(nil),     // 3: atoms.splitter.lib.service.session.Message.Heartbeat
+	(*Message_HeartbeatAck)(nil),  // 4: atoms.splitter.lib.service.session.Message.HeartbeatAck
+	(*Message_Closed)(nil),        // 5: atoms.splitter.lib.service.session.Message.Closed
 	(*pb.Instance)(nil),           // 6: atoms.splitter.lib.service.location.Instance
 	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
 }
 var file_atoms_splitter_lib_service_session_session_proto_depIdxs = []int32{
-	1,  // 0: atoms.splitter.lib.service.service.Message.establish:type_name -> atoms.splitter.lib.service.service.Message.Establish
-	2,  // 1: atoms.splitter.lib.service.service.Message.established:type_name -> atoms.splitter.lib.service.service.Message.Established
-	3,  // 2: atoms.splitter.lib.service.service.Message.heartbeat:type_name -> atoms.splitter.lib.service.service.Message.Heartbeat
-	4,  // 3: atoms.splitter.lib.service.service.Message.ack:type_name -> atoms.splitter.lib.service.service.Message.HeartbeatAck
-	5,  // 4: atoms.splitter.lib.service.service.Message.closed:type_name -> atoms.splitter.lib.service.service.Message.Closed
-	6,  // 5: atoms.splitter.lib.service.service.Message.Establish.client:type_name -> atoms.splitter.lib.service.location.Instance
-	7,  // 6: atoms.splitter.lib.service.service.Message.Established.ttl:type_name -> google.protobuf.Timestamp
-	6,  // 7: atoms.splitter.lib.service.service.Message.Established.server:type_name -> atoms.splitter.lib.service.location.Instance
-	7,  // 8: atoms.splitter.lib.service.service.Message.Heartbeat.now:type_name -> google.protobuf.Timestamp
-	7,  // 9: atoms.splitter.lib.service.service.Message.HeartbeatAck.ttl:type_name -> google.protobuf.Timestamp
+	1,  // 0: atoms.splitter.lib.service.session.Message.establish:type_name -> atoms.splitter.lib.service.session.Message.Establish
+	2,  // 1: atoms.splitter.lib.service.session.Message.established:type_name -> atoms.splitter.lib.service.session.Message.Established
+	3,  // 2: atoms.splitter.lib.service.session.Message.heartbeat:type_name -> atoms.splitter.lib.service.session.Message.Heartbeat
+	4,  // 3: atoms.splitter.lib.service.session.Message.ack:type_name -> atoms.splitter.lib.service.session.Message.HeartbeatAck
+	5,  // 4: atoms.splitter.lib.service.session.Message.closed:type_name -> atoms.splitter.lib.service.session.Message.Closed
+	6,  // 5: atoms.splitter.lib.service.session.Message.Establish.client:type_name -> atoms.splitter.lib.service.location.Instance
+	7,  // 6: atoms.splitter.lib.service.session.Message.Established.ttl:type_name -> google.protobuf.Timestamp
+	6,  // 7: atoms.splitter.lib.service.session.Message.Established.server:type_name -> atoms.splitter.lib.service.location.Instance
+	7,  // 8: atoms.splitter.lib.service.session.Message.Heartbeat.now:type_name -> google.protobuf.Timestamp
+	7,  // 9: atoms.splitter.lib.service.session.Message.HeartbeatAck.ttl:type_name -> google.protobuf.Timestamp
 	10, // [10:10] is the sub-list for method output_type
 	10, // [10:10] is the sub-list for method input_type
 	10, // [10:10] is the sub-list for extension type_name

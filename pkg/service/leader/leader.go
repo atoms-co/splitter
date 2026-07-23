@@ -6,24 +6,24 @@ import (
 	"sync"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/metrics"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
-	"go.atoms.co/iox"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/randx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/splitter/lib/service/session"
+	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/util/sessionx"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -310,6 +310,10 @@ steady:
 				return
 			}
 
+			if !upd.IsStateUpdated() {
+				break // cache only; do not refresh allocation or notify workers
+			}
+
 			l.refresh(ctx)
 			l.update(ctx, upd)
 			l.allocate(ctx, time.Now(), false)
@@ -364,6 +368,10 @@ func (l *leader) handleMessage(ctx context.Context, w *workerSession, m Message)
 	case msg.IsRelinquished():
 		relinquished, _ := msg.Relinquished()
 		l.handleRelinquished(ctx, w, relinquished)
+
+	case msg.IsServiceStatus():
+		serviceStatus, _ := msg.ServiceStatus()
+		l.handleServiceStatus(ctx, serviceStatus)
 
 	default:
 		log.Errorf(ctx, "Internal: unexpected worker message: %v", msg)
@@ -433,6 +441,13 @@ func (l *leader) handleRelinquished(ctx context.Context, w *workerSession, relin
 
 	// (3) Broadcast cluster changes
 	l.broadcast(ctx, now)
+}
+
+func (l *leader) handleServiceStatus(ctx context.Context, status core.ServiceStatusMessage) {
+	err := l.writer.UpdateServiceStatusAsync(ctx, core.NewServiceStatus(status.Load()))
+	if err != nil {
+		log.Errorf(ctx, "Failed to update service status %v: %v", status, err)
+	}
 }
 
 func (l *leader) connect(ctx context.Context, now time.Time, sid session.ID, register RegisterMessage, in <-chan Message) (*workerSession, <-chan Message) {

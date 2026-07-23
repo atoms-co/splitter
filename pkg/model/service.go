@@ -7,11 +7,11 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/mapx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 
@@ -172,6 +172,12 @@ func WithLocalityOverrides(overrides map[location.Region]location.Region) Servic
 	}
 }
 
+func WithTrackLoad(trackLoad bool) ServiceConfigOption {
+	return func(cfg *splitterpb.Service_Config) {
+		cfg.TrackLoad = trackLoad
+	}
+}
+
 // ServiceConfig holds service configuration.
 type ServiceConfig struct {
 	pb *splitterpb.Service_Config
@@ -224,6 +230,10 @@ func (c ServiceConfig) Overrides() map[location.Region]location.Region {
 	return mapx.MapNew(c.pb.GetOverrides(), func(t *splitterpb.Service_Config_LocalityOverride) (location.Region, location.Region) {
 		return location.Region(t.GetShardRegion()), location.Region(t.GetConsumerRegion())
 	})
+}
+
+func (c ServiceConfig) TrackLoad() bool {
+	return c.pb.GetTrackLoad()
 }
 
 func (c ServiceConfig) Equals(c1 ServiceConfig) bool {

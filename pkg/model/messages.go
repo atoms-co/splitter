@@ -68,18 +68,13 @@ func NewClusterMessage(m ClusterMessage) ConsumerMessage {
 	}}
 }
 
-func NewRegister(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant, opts ...ConsumerOption) ConsumerMessage {
-	options := NewOptions()
-	for _, opt := range opts {
-		opt(options)
-	}
-
+func NewRegister(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant, opts Options) ConsumerMessage {
 	register := &splitterpb.ClientMessage_Register{
 		Consumer: UnwrapInstance(consumer),
 		Service:  service.ToProto(),
 		Domains:  slicex.Map(domains, QualifiedDomainName.ToProto),
 		Active:   slicex.Map(grants, UnwrapGrant),
-		Options:  UnwrapOptions(options),
+		Options:  UnwrapOptions(opts),
 	}
 
 	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{

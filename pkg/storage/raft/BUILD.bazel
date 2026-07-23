@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "raft",
@@ -12,10 +12,25 @@ go_library(
         "//pkg/core",
         "//pkg/model",
         "//pkg/storage",
-        "//proto/atoms/splitter/private",
+        "//proto/atoms/splitter/private:private_go_proto",
         "@co_atoms_go_lib//encoding/protox",
         "@co_atoms_go_lib//log",
         "@co_atoms_go_lib//metrics",
         "@com_github_hashicorp_raft//:raft",
+    ],
+)
+
+go_test(
+    name = "raft_test",
+    srcs = glob(["*_test.go"]),
+    embed = [":raft"],
+    deps = [
+        "//pkg/core",
+        "//pkg/model",
+        "//proto/atoms/splitter/private:private_go_proto",
+        "//testing/prefab",
+        "@co_atoms_go_lib//encoding/protox",
+        "@com_github_hashicorp_raft//:raft",
+        "@com_github_stretchr_testify//require",
     ],
 )
