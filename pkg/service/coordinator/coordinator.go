@@ -393,7 +393,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, origin locati
 	lease := now.Add(leaseDuration)
 	s.TrySend(ctx, model.NewExtend(lease)) // grants will be covered under this lease
 
-	capacity := allocation.Load(int64(limit) * int64(baseShardLoad)) // Set capacity shard limit * shard load (0 for no capacity)
+	capacity := allocation.Load(int64(limit) * int64(defaultShardLoad)) // Set capacity shard limit * shard load (0 for no capacity)
 	if capacity > 0 {
 		log.Infof(ctx, "Consumer %v connected with non-zero capacity limit: %v", consumer, capacity)
 	}

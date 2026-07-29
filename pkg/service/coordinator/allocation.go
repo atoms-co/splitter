@@ -19,11 +19,11 @@ import (
 )
 
 const (
-	baseShardLoad      allocation.Load = 10
-	unitShardLoad      allocation.Load = 50
-	regionAffinityLoad allocation.Load = 20
-	namedShardsLoad    allocation.Load = 20
-	antiAffinityLoad   allocation.Load = 20
+	defaultShardLoad   = allocation.Load(50)
+	unitShardLoad      = defaultShardLoad * 5
+	regionAffinityLoad = defaultShardLoad * 2
+	namedShardsLoad    = defaultShardLoad * 2
+	antiAffinityLoad   = defaultShardLoad * 2
 )
 
 type (
@@ -301,7 +301,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							To:     model.Key(shard.To()),
 						},
 						Data: slicex.New(location.Location{Region: region}),
-						Load: baseShardLoad,
+						Load: defaultShardLoad,
 					}
 					ret = append(ret, w)
 				}
@@ -320,7 +320,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							To:     model.Key(shard.To()),
 						},
 						Data: locations,
-						Load: baseShardLoad,
+						Load: defaultShardLoad,
 					}
 					ret = append(ret, w)
 				}
@@ -340,7 +340,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							To:     model.Key(shard.To()),
 						},
 						Data: slicex.New(location.Location{Region: region}),
-						Load: baseShardLoad,
+						Load: defaultShardLoad,
 					})
 				}
 			}
