@@ -136,11 +136,11 @@ func TestNamedShards(t *testing.T) {
 
 	load, ok = ctrl.TryPlace(w3, Work{Unit: namedShards[0]})
 	assert.True(t, ok)
-	assert.Equal(t, allocation.Load(20), load)
+	assert.Equal(t, namedShardsLoad, load)
 
 	load, ok = ctrl.TryPlace(w3, Work{Unit: namedShards[1]})
 	assert.True(t, ok)
-	assert.Equal(t, allocation.Load(20), load)
+	assert.Equal(t, namedShardsLoad, load)
 }
 
 func TestDomainState(t *testing.T) {
@@ -311,7 +311,7 @@ func TestRegionAffinity(t *testing.T) {
 		Data: slicex.New(location.New("northcentralus", "")),
 	})
 	assert.True(t, ok)
-	assert.Equal(t, allocation.Load(20), penalty)
+	assert.Equal(t, regionAffinityLoad, penalty)
 }
 
 func TestMultiRegionAffinity(t *testing.T) {
@@ -374,7 +374,7 @@ func TestMultiRegionAffinity(t *testing.T) {
 			name:     "Region1 preference w2 penalized",
 			worker:   w2,
 			work:     singlePrefWork,
-			expected: 20,
+			expected: regionAffinityLoad,
 		},
 		{
 			name:     "Region1 preference w3 penalized",
@@ -398,7 +398,7 @@ func TestMultiRegionAffinity(t *testing.T) {
 			name:     "region1 and region2 preference w3 penalized",
 			worker:   w3,
 			work:     multiPrefWork,
-			expected: 20,
+			expected: regionAffinityLoad,
 		},
 	}
 

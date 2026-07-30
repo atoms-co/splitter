@@ -509,7 +509,7 @@ func TestCoordinator_NamedKeyDisconnectDropsNamedShardPenalty(t *testing.T) {
 
 		readFn(t, out2, isClusterSnapshot)
 		_, load = c.alloc.Load()
-		require.EqualValues(t, 20, load.Place, "matching shard should be marked as named")
+		require.EqualValues(t, namedShardsLoad, load.Place, "matching shard should be marked as named")
 
 		close(in2)
 		synctest.Wait()
