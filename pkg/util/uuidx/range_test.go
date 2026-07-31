@@ -6,8 +6,8 @@ import (
 	"github.com/google/uuid"
 
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
+	"go.atoms.co/slicex"
 	splitteruuidx "go.atoms.co/splitter/pkg/util/uuidx"
 )
 
@@ -106,6 +106,17 @@ func TestSplitWithCustomRanges(t *testing.T) {
 			name: "custom ranges with overlap",
 			customRanges: []uuidx.Range{
 				r("10000000-0000-0000-0000-000000000000", "30000000-0000-0000-0000-000000000000"),
+				r("20000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
+			},
+			baseRangeCount: 2,
+			expectedError:  "invalid custom ranges: ranges intersect: [10000000-0000-0000-0000-000000000000;30000000-0000-0000-0000-000000000000) and [20000000-0000-0000-0000-000000000000;40000000-0000-0000-0000-000000000000)",
+			expectedRanges: nil,
+		},
+		{
+			name: "unsorted custom ranges with non-adjacent overlap",
+			customRanges: []uuidx.Range{
+				r("10000000-0000-0000-0000-000000000000", "30000000-0000-0000-0000-000000000000"),
+				r("50000000-0000-0000-0000-000000000000", "60000000-0000-0000-0000-000000000000"),
 				r("20000000-0000-0000-0000-000000000000", "40000000-0000-0000-0000-000000000000"),
 			},
 			baseRangeCount: 2,

@@ -21,9 +21,9 @@ func RangesIntersect(ranges []uuidx.Range) error {
 		return uuidx.Less(sorted[i].From(), sorted[j].From())
 	})
 
-	for i := range len(ranges) - 1 {
-		if _, intersects := ranges[i].Intersects(ranges[i+1]); intersects {
-			return fmt.Errorf("ranges intersect: %v and %v", ranges[i], ranges[i+1])
+	for i := range len(sorted) - 1 {
+		if _, intersects := sorted[i].Intersects(sorted[i+1]); intersects {
+			return fmt.Errorf("ranges intersect: %v and %v", sorted[i], sorted[i+1])
 		}
 	}
 
