@@ -53,5 +53,7 @@ go_test(
         "@co_atoms_go_lib//testing/assertx",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",
+        "@org_golang_google_grpc//:grpc",
+        "@org_golang_google_grpc//stats",
     ],
 )

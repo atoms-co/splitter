@@ -6,13 +6,13 @@ import (
 	"sync"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/contextx"
-	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/iox"
-	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/splitter/lib/service/session"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 type DirectiveType string
@@ -62,8 +62,8 @@ type ResolvingManager struct {
 	factory Factory
 
 	remote splitterprivatepb.LeaderServiceClient // nil if local
-	local  Proxy                              // nil if remote
-	halt   iox.AsyncCloser                    // stop signal for local/remote re-creation if active
+	local  Proxy                                 // nil if remote
+	halt   iox.AsyncCloser                       // stop signal for local/remote re-creation if active
 	mu     sync.Mutex
 
 	drain iox.AsyncCloser
@@ -200,6 +200,7 @@ func (m *ResolvingManager) follow(ctx context.Context, halt iox.AsyncCloser, id,
 			time.Sleep(4 * time.Second)
 			continue
 		}
+		defer cc.Close()
 
 		log.Infof(ctx, "Connected to remote leader %v @%v", id, endpoint)
 
