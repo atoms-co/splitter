@@ -672,7 +672,9 @@ func (w *Writer) deleteAsync(ctx context.Context, del core.Delete) iox.AsyncClos
 }
 
 func (w *Writer) restoreAsync(ctx context.Context, res core.Restore) iox.AsyncCloser {
-	w.cache.Restore(res.Snapshot())
+	snapshot := res.Snapshot()
+	w.writer = storage.NewWriter(snapshot)
+	w.cache.Restore(snapshot)
 
 	done := iox.NewAsyncCloser()
 	w.pool.Chan() <- func() {

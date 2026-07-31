@@ -191,6 +191,33 @@ func TestLeader_Operations(t *testing.T) {
 	assert.Len(t, snap.GetSnapshot().GetTenants(), 2)
 }
 
+func TestLeader_RestoreResetsWriterState(t *testing.T) {
+	ctx := context.Background()
+	loc := location.New("centralus", "splitter-0")
+
+	l := leader.New(ctx, loc, memory.New(), leader.WithFastActivation())
+	defer l.Close()
+	<-l.Initialized().Closed()
+
+	response, err := l.Handle(ctx, leader.NewHandleTenantRequest(&splitterprivatepb.TenantRequest{
+		Req: &splitterprivatepb.TenantRequest_New{New: &splitterpb.NewTenantRequest{Name: string(tenant1)}},
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, response.GetTenant().GetNew())
+
+	response, err = l.Handle(ctx, leader.NewHandleOperationRequest(&splitterprivatepb.OperationRequest{
+		Req: &splitterprivatepb.OperationRequest_Restore{Restore: &splitterprivatepb.RestoreRequest{Nuke: true}},
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, response.GetOperation().GetRestore())
+
+	response, err = l.Handle(ctx, leader.NewHandleTenantRequest(&splitterprivatepb.TenantRequest{
+		Req: &splitterprivatepb.TenantRequest_New{New: &splitterpb.NewTenantRequest{Name: string(tenant1)}},
+	}))
+	require.NoError(t, err)
+	require.NotNil(t, response.GetTenant().GetNew())
+}
+
 func TestLeader_DoesNotAcknowledgeFailedUpdate(t *testing.T) {
 	ctx := context.Background()
 	loc := location.New("centralus", "splitter-0")
