@@ -19,8 +19,11 @@ import (
 )
 
 const (
-	ShardLoad     allocation.Load = 10
-	UnitShardLoad allocation.Load = 50
+	baseShardLoad      allocation.Load = 10
+	unitShardLoad      allocation.Load = 50
+	regionAffinityLoad allocation.Load = 20
+	namedShardsLoad    allocation.Load = 20
+	antiAffinityLoad   allocation.Load = 20
 )
 
 type (
@@ -64,7 +67,7 @@ func (r *NamedShards) TryPlace(worker Worker, work Work) (allocation.Load, bool)
 		if !namedShard {
 			return 0, true // do not penalize normal shards for workers without named keys
 		}
-		return 20, true // penalty on named shards for workers without named keys
+		return namedShardsLoad, true // penalty on named shards for workers without named keys
 	}
 
 	if !namedShard {
@@ -175,7 +178,7 @@ func (r *RegionAffinity) TryPlace(worker Worker, work Work) (allocation.Load, bo
 	if len(prefs) == 0 || slices.Contains(prefs, worker.Data.Instance().Location().Region) {
 		return 0, true
 	}
-	return 20, true
+	return regionAffinityLoad, true
 }
 
 // AntiAffinity handles domain anti-affinity.
@@ -214,16 +217,16 @@ func (r *AntiAffinity) Colocate(worker Worker, work map[model.Shard]Work) map[mo
 		}
 	}
 	for shard := range work {
-		load := 0
+		load := allocation.Load(0)
 		for _, target := range r.Domains[shard.Domain.Domain] { // (anti-affinity) domain * shard <= work
 			for _, s := range shards[target] {
 				if s.IntersectsRange(shard) {
-					load += 20
+					load += antiAffinityLoad
 				}
 			}
 		}
 		if load != 0 {
-			ret[shard] = allocation.Load(load)
+			ret[shard] = load
 		}
 	}
 	return ret
@@ -267,7 +270,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 					Type:   model.Unit,
 				},
 				Data: locations,
-				Load: UnitShardLoad, // use higher load for unit domains
+				Load: unitShardLoad, // use higher load for unit domains
 			}
 			ret = append(ret, w)
 
@@ -298,7 +301,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							To:     model.Key(shard.To()),
 						},
 						Data: slicex.New(location.Location{Region: region}),
-						Load: ShardLoad,
+						Load: baseShardLoad,
 					}
 					ret = append(ret, w)
 				}
@@ -317,7 +320,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							To:     model.Key(shard.To()),
 						},
 						Data: locations,
-						Load: ShardLoad,
+						Load: baseShardLoad,
 					}
 					ret = append(ret, w)
 				}
@@ -337,7 +340,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 							To:     model.Key(shard.To()),
 						},
 						Data: slicex.New(location.Location{Region: region}),
-						Load: ShardLoad,
+						Load: baseShardLoad,
 					})
 				}
 			}
