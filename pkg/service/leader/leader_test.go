@@ -2,6 +2,7 @@ package leader_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -9,17 +10,17 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"go.atoms.co/lib/chanx"
+	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/testing/assertx"
+	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
 	"go.atoms.co/splitter/pkg/storage"
 	"go.atoms.co/splitter/pkg/storage/memory"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
-	splitterpb "go.atoms.co/splitter/pb"
-	"go.atoms.co/lib/chanx"
 )
 
 const (
@@ -190,6 +191,22 @@ func TestLeader_Operations(t *testing.T) {
 	assert.Len(t, snap.GetSnapshot().GetTenants(), 2)
 }
 
+func TestLeader_DoesNotAcknowledgeFailedUpdate(t *testing.T) {
+	ctx := context.Background()
+	loc := location.New("centralus", "splitter-0")
+	db := failingUpdateStorage{Storage: memory.New()}
+
+	l := leader.New(ctx, loc, db, leader.WithFastActivation())
+	defer l.Close()
+	<-l.Initialized().Closed()
+
+	response, err := l.Handle(ctx, leader.NewHandleTenantRequest(&splitterprivatepb.TenantRequest{
+		Req: &splitterprivatepb.TenantRequest_New{New: &splitterpb.NewTenantRequest{Name: string(tenant1)}},
+	}))
+	require.ErrorIs(t, err, model.ErrNotOwned)
+	require.Nil(t, response)
+}
+
 func TestLeader_HandleUpdate(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
@@ -281,6 +298,14 @@ func setup(t *testing.T, ctx context.Context, services ...model.Service) storage
 		err = db.Update(ctx, core.NewServiceUpdate(serviceInfo))
 	}
 	return db
+}
+
+type failingUpdateStorage struct {
+	storage.Storage
+}
+
+func (failingUpdateStorage) Update(context.Context, core.Update) error {
+	return errors.New("apply failed")
 }
 
 func setupWithDomains(t *testing.T, ctx context.Context, service model.Service, domains ...model.Domain) storage.Storage {
