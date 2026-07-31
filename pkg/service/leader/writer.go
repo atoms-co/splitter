@@ -386,7 +386,7 @@ func (w *Writer) handleUpdateDomainRequest(ctx context.Context, req *splitterpb.
 	if !ok {
 		return nil, nil, fmt.Errorf("service %v not found: %w", name, model.ErrNotFound)
 	}
-	guard := service.Info().Version()
+	guard := model.Version(req.GetServiceVersion())
 
 	existing, ok := service.Domain(name.Domain)
 	if !ok {
