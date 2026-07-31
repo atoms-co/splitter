@@ -82,7 +82,8 @@ func TestLoadTracker_TryRotatePublishesMetrics(t *testing.T) {
 			tr.add(shard, model.Load(10))
 		}
 		require.Nil(t, tr.quantile)
-		tr.rotateIfNeeded(start.Add(defaultRotationInterval + time.Second))
+		require.True(t, tr.rotateIfNeeded(start.Add(defaultRotationInterval+time.Second)))
+		require.False(t, tr.rotateIfNeeded(start.Add(defaultRotationInterval+2*time.Second)))
 
 		require.NotNil(t, tr.quantile)
 		require.True(t, tr.snapshot().HasQuantileInfo())

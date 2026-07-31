@@ -20,6 +20,7 @@ import (
 	"go.atoms.co/splitter/lib/service/session"
 	splitterpb "go.atoms.co/splitter/pb"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 )
@@ -509,7 +510,7 @@ func TestCoordinator_NamedKeyDisconnectDropsNamedShardPenalty(t *testing.T) {
 
 		readFn(t, out2, isClusterSnapshot)
 		_, load = c.alloc.Load()
-		require.EqualValues(t, namedShardsLoad, load.Place, "matching shard should be marked as named")
+		require.Equal(t, namedShardsLoad, load.Place, "matching shard should be marked as named")
 
 		close(in2)
 		synctest.Wait()
@@ -1229,6 +1230,145 @@ func TestCoordinator_RestoresDomainLoadTrackers(t *testing.T) {
 	})
 }
 
+func TestCoordinator_ClearsLoadTrackersWhenTrackingDisabled(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		domainCfg := model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(1)))
+		domain, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(domainCfg))
+		require.NoError(t, err)
+
+		shardRange := findShards(domain)[0]
+		shard := model.Shard{
+			Domain: domainName,
+			Type:   model.Global,
+			From:   model.Key(shardRange.From()),
+			To:     model.Key(shardRange.To()),
+		}
+		tracker := newDomainLoadTracker(testStart(), domain1)
+		tracker.quantile = &domainQuantileInfo{
+			domainQuantile: 20,
+			shardQuantiles: map[core.Shard]float64{
+				core.NewShard(shard.From, shard.To, shard.Region): 60,
+			},
+		}
+
+		status := core.NewServiceStatus(core.NewServiceLoadInfo(serviceName, []core.DomainLoadInfo{tracker.snapshot()}))
+		cfg := model.NewServiceConfig(model.WithTrackLoad(true))
+		coord, _, updates := setupWithServiceConfigAndStatusesAndUpdates(ctx, t, []model.Domain{domain}, cfg, []core.ServiceStatus{status})
+		defer coord.Close()
+
+		c := coord.(*coordinator)
+		require.Contains(t, c.trackers, domainName)
+		work, ok := c.alloc.Unit(shard)
+		require.True(t, ok)
+		require.Equal(t, allocation.Load(75), work.Load)
+
+		updateTrackLoad := func(enabled bool, version model.Version) {
+			serviceCfg := model.NewServiceConfig(model.WithTrackLoad(enabled))
+			service, err := model.NewService(serviceName, time.Now(), model.WithServiceConfig(serviceCfg))
+			require.NoError(t, err)
+			updates <- core.NewServiceUpdate(model.NewServiceInfo(service, version, time.Now()))
+			synctest.Wait()
+		}
+
+		// disable TrackLoad
+		updateTrackLoad(false, 2)
+		require.Empty(t, c.trackers)
+		_, ok = c.cache.ServiceStatus(serviceName)
+		require.False(t, ok)
+		work, ok = c.alloc.Unit(shard)
+		require.True(t, ok)
+		require.Equal(t, defaultShardLoad, work.Load)
+
+		// enable TrackLoad again, allocation should start with default value.
+		updateTrackLoad(true, 3)
+		require.Empty(t, c.trackers)
+		work, ok = c.alloc.Unit(shard)
+		require.True(t, ok)
+		require.Equal(t, defaultShardLoad, work.Load)
+	})
+}
+
+func TestCoordinator_RestoredLoadScoreUsedByInitialAllocation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		domainCfg := model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))
+		domain, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(domainCfg))
+		require.NoError(t, err)
+
+		shardRange := findShards(domain)[0]
+		shard := model.Shard{
+			Domain: domainName,
+			Type:   model.Global,
+			From:   model.Key(shardRange.From()),
+			To:     model.Key(shardRange.To()),
+		}
+		expected := newDomainLoadTracker(testStart(), domain1)
+		for range 5 {
+			expected.add(shard, model.Load(20))
+		}
+		expected.quantile = &domainQuantileInfo{
+			domainQuantile: 20,
+			shardQuantiles: map[core.Shard]float64{
+				core.NewShard(shard.From, shard.To, shard.Region): 60,
+			},
+		}
+
+		status := core.NewServiceStatus(core.NewServiceLoadInfo(serviceName, []core.DomainLoadInfo{expected.snapshot()}))
+		cfg := model.NewServiceConfig(model.WithTrackLoad(true))
+		coord, _ := setupWithServiceConfigAndStatuses(ctx, t, []model.Domain{domain}, cfg, []core.ServiceStatus{status})
+		defer coord.Close()
+
+		c := coord.(*coordinator)
+		work, ok := c.alloc.Unit(shard)
+		require.True(t, ok)
+		require.Equal(t, allocation.Load(75), work.Load)
+	})
+}
+
+func TestCoordinator_AppliesLoadScoresAfterTrackerRotation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		domainCfg := model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))
+		domain, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(domainCfg))
+		require.NoError(t, err)
+
+		cfg := model.NewServiceConfig(model.WithTrackLoad(true))
+		coord, _ := setupWithServiceConfig(ctx, t, []model.Domain{domain}, cfg)
+		defer coord.Close()
+		c := coord.(*coordinator)
+
+		require.NoError(t, c.txn(ctx, func() error {
+			work := c.alloc.Work()
+			require.Len(t, work, 2)
+			require.Equal(t, allocation.Load(defaultShardScore), work[0].Load)
+			require.Equal(t, allocation.Load(defaultShardScore), work[1].Load)
+
+			now := time.Now()
+			tracker := newDomainLoadTracker(now.Add(-defaultRotationInterval-time.Second), domain1)
+			for range 10 {
+				tracker.add(work[0].Unit, model.Load(10))
+				tracker.add(work[1].Unit, model.Load(30))
+			}
+			c.trackers[domainName] = tracker
+
+			c.rotateTrackerAndRefreshIfNeeded(ctx, now)
+			updated := c.alloc.Work()
+			require.Len(t, updated, 2)
+
+			loads := []allocation.Load{updated[0].Load, updated[1].Load}
+			for _, oldWork := range work {
+				score := tracker.shardScoreOrDefault(core.NewShard(oldWork.Unit.From, oldWork.Unit.To, oldWork.Unit.Region))
+				require.Contains(t, loads, allocation.Load(score))
+			}
+			return nil
+		}))
+	})
+}
+
 // updateCreatedAt updates the createdAt of domainLoadTrackers to simulate time advancing and avoid a long sleep (24 hours).
 // With synctest, time.Sleep triggers all tickers to fire within the synctest bubble;
 // long sleeps slow the test.
@@ -1265,6 +1405,13 @@ func setupWithServiceConfig(ctx context.Context, t *testing.T, domains []model.D
 func setupWithServiceConfigAndStatuses(ctx context.Context, t *testing.T, domains []model.Domain, cfg model.ServiceConfig, statuses []core.ServiceStatus, opts ...Option) (Coordinator, <-chan core.ServiceStatusMessage) {
 	t.Helper()
 
+	c, out, _ := setupWithServiceConfigAndStatusesAndUpdates(ctx, t, domains, cfg, statuses, opts...)
+	return c, out
+}
+
+func setupWithServiceConfigAndStatusesAndUpdates(ctx context.Context, t *testing.T, domains []model.Domain, cfg model.ServiceConfig, statuses []core.ServiceStatus, opts ...Option) (Coordinator, <-chan core.ServiceStatusMessage, chan<- core.Update) {
+	t.Helper()
+
 	loc := location.New("centralus", "splitter-0")
 
 	tenant, err := model.NewTenant(tenant1, time.Now())
@@ -1285,7 +1432,7 @@ func setupWithServiceConfigAndStatuses(ctx context.Context, t *testing.T, domain
 	c, out := New(ctx, loc, serviceName, state, updates, opts...)
 	<-c.Initialized().Closed()
 
-	return c, out
+	return c, out, updates
 }
 
 func isAssign(msg model.ConsumerMessage) (model.AssignMessage, bool) {

@@ -7,19 +7,19 @@ import (
 
 	"github.com/google/uuid"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/mapx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
+	splitterpb "go.atoms.co/splitter/pb"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	splitteruuidx "go.atoms.co/splitter/pkg/util/uuidx"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
-	defaultShardLoad   = allocation.Load(50)
+	defaultShardLoad   = allocation.Load(defaultShardScore)
 	unitShardLoad      = defaultShardLoad * 5
 	regionAffinityLoad = defaultShardLoad * 2
 	namedShardsLoad    = defaultShardLoad * 2
@@ -39,12 +39,12 @@ type (
 
 // TODO(herohde) 11/12/2023: intra-domain anti-affinity to spread out domains evenly. Similar to general LB.
 
-func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, activation time.Time) *Allocation {
-	return allocation.New(id, findPlacements(tenant, info), findColocations(info), findWork(info, placements), activation)
+func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, trackers map[model.QualifiedDomainName]*domainLoadTracker, activation time.Time) *Allocation {
+	return allocation.New(id, findPlacements(tenant, info), findColocations(info), findWork(info, placements, trackers), activation)
 }
 
-func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, namedShards []model.Shard, placements []core.InternalPlacementInfo, activation time.Time) (*Allocation, []Grant) {
-	return allocation.Update(a, findPlacements(tenant, info, namedShards...), findColocations(info), findWork(info, placements), activation)
+func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, namedShards []model.Shard, placements []core.InternalPlacementInfo, trackers map[model.QualifiedDomainName]*domainLoadTracker, activation time.Time) (*Allocation, []Grant) {
+	return allocation.Update(a, findPlacements(tenant, info, namedShards...), findColocations(info), findWork(info, placements, trackers), activation)
 }
 
 // NamedShards handles named shard placement
@@ -248,7 +248,7 @@ func findColocations(info model.ServiceInfoEx) []Colocation {
 	return slicex.New[Colocation](a)
 }
 
-func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo) []Work {
+func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo, trackers map[model.QualifiedDomainName]*domainLoadTracker) []Work {
 	var ret []Work
 
 	m := mapx.New(placements, func(v core.InternalPlacementInfo) model.PlacementName {
@@ -260,6 +260,8 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 	for _, domain := range state.Domains() {
 		switch domain.Type() {
 		case model.Unit:
+			// TODO: (xuhui) 07/29/2026 Support load-aware allocation for unit domains.
+			// Unit domains currently use a fixed load and are excluded from load balancing.
 			locations := toLocations(domain.Regions()...)
 			if len(locations) == 0 {
 				locations = defaultLocations
@@ -293,15 +295,16 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 				for _, shard := range shards {
 					region := provider.Find(model.Key(shard.From()))
 
+					unit := model.Shard{
+						Domain: domain.Name(),
+						Type:   model.Global,
+						From:   model.Key(shard.From()),
+						To:     model.Key(shard.To()),
+					}
 					w := Work{
-						Unit: model.Shard{
-							Domain: domain.Name(),
-							Type:   model.Global,
-							From:   model.Key(shard.From()),
-							To:     model.Key(shard.To()),
-						},
+						Unit: unit,
 						Data: slicex.New(location.Location{Region: region}),
-						Load: defaultShardLoad,
+						Load: shardWorkLoad(state, trackers, unit),
 					}
 					ret = append(ret, w)
 				}
@@ -312,15 +315,16 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 					locations = defaultLocations
 				}
 				for _, shard := range shards {
+					unit := model.Shard{
+						Domain: domain.Name(),
+						Type:   model.Global,
+						From:   model.Key(shard.From()),
+						To:     model.Key(shard.To()),
+					}
 					w := Work{
-						Unit: model.Shard{
-							Domain: domain.Name(),
-							Type:   model.Global,
-							From:   model.Key(shard.From()),
-							To:     model.Key(shard.To()),
-						},
+						Unit: unit,
 						Data: locations,
-						Load: defaultShardLoad,
+						Load: shardWorkLoad(state, trackers, unit),
 					}
 					ret = append(ret, w)
 				}
@@ -331,16 +335,17 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 				shards := findShardsForRegion(domain, region)
 
 				for _, shard := range shards {
+					unit := model.Shard{
+						Region: region,
+						Type:   model.Regional,
+						Domain: domain.Name(),
+						From:   model.Key(shard.From()),
+						To:     model.Key(shard.To()),
+					}
 					ret = append(ret, Work{
-						Unit: model.Shard{
-							Region: region,
-							Type:   model.Regional,
-							Domain: domain.Name(),
-							From:   model.Key(shard.From()),
-							To:     model.Key(shard.To()),
-						},
+						Unit: unit,
 						Data: slicex.New(location.Location{Region: region}),
-						Load: defaultShardLoad,
+						Load: shardWorkLoad(state, trackers, unit),
 					})
 				}
 			}
@@ -351,6 +356,18 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 	}
 
 	return ret
+}
+
+func shardWorkLoad(state model.ServiceInfoEx, trackers map[model.QualifiedDomainName]*domainLoadTracker, shard model.Shard) allocation.Load {
+	if !state.Service().Config().TrackLoad() {
+		return defaultShardLoad
+	}
+
+	shardScore := defaultShardScore
+	if tracker, ok := trackers[shard.Domain]; ok {
+		shardScore = tracker.shardScoreOrDefault(core.NewShard(shard.From, shard.To, shard.Region))
+	}
+	return allocation.Load(max(1, shardScore))
 }
 
 func findShards(domain model.Domain) []uuidx.Range {

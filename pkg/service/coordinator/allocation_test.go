@@ -8,13 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
-	"go.atoms.co/splitter/pkg/allocation"
-	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
 	splitterpb "go.atoms.co/splitter/pb"
+	"go.atoms.co/splitter/pkg/allocation"
+	"go.atoms.co/splitter/pkg/core"
+	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/testing/prefab"
 )
 
@@ -141,6 +142,81 @@ func TestNamedShards(t *testing.T) {
 	load, ok = ctrl.TryPlace(w3, Work{Unit: namedShards[1]})
 	assert.True(t, ok)
 	assert.Equal(t, namedShardsLoad, load)
+}
+
+func TestFindWork_LoadScores(t *testing.T) {
+	serviceName := model.QualifiedServiceName{Tenant: "tenant", Service: "service"}
+
+	newInfo := func(t *testing.T, domainType model.DomainType, cfg model.ServiceConfig, domainOpts ...model.DomainOption) model.ServiceInfoEx {
+		t.Helper()
+
+		service, err := model.NewService(serviceName, time.Time{}, model.WithServiceConfig(cfg))
+		require.NoError(t, err)
+		domain, err := model.NewDomain(model.QualifiedDomainName{Service: serviceName, Domain: "domain"}, domainType, time.Time{}, domainOpts...)
+		require.NoError(t, err)
+		return model.NewServiceInfoEx(model.NewServiceInfo(service, 1, time.Time{}), []model.Domain{domain})
+	}
+
+	globalDomainOpts := []model.DomainOption{model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(1))))}
+
+	t.Run("tracking disabled", func(t *testing.T) {
+		info := newInfo(t, model.Global, model.NewServiceConfig(), globalDomainOpts...)
+		work := findWork(info, nil, nil)
+		require.Len(t, work, 1)
+		require.Equal(t, defaultShardLoad, work[0].Load)
+	})
+
+	t.Run("score unavailable", func(t *testing.T) {
+		info := newInfo(t, model.Global, model.NewServiceConfig(model.WithTrackLoad(true)), globalDomainOpts...)
+		work := findWork(info, nil, nil)
+		require.Len(t, work, 1)
+		require.Equal(t, allocation.Load(defaultShardScore), work[0].Load)
+	})
+
+	t.Run("published global score", func(t *testing.T) {
+		info := newInfo(t, model.Global, model.NewServiceConfig(model.WithTrackLoad(true)), globalDomainOpts...)
+		initial := findWork(info, nil, nil)
+		require.Len(t, initial, 1)
+		shard := initial[0].Unit
+		tracker := newDomainLoadTracker(time.Time{}, shard.Domain.Domain)
+		tracker.quantile = &domainQuantileInfo{
+			domainQuantile: 20,
+			shardQuantiles: map[core.Shard]float64{
+				core.NewShard(shard.From, shard.To, shard.Region): 60,
+			},
+		}
+
+		work := findWork(info, nil, map[model.QualifiedDomainName]*domainLoadTracker{shard.Domain: tracker})
+		require.Len(t, work, 1)
+		require.Equal(t, allocation.Load(75), work[0].Load)
+	})
+
+	t.Run("published regional score includes region", func(t *testing.T) {
+		domainCfg := model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(1)), model.WithDomainRegions("centralus"))
+		info := newInfo(t, model.Regional, model.NewServiceConfig(model.WithTrackLoad(true)), model.WithDomainConfig(domainCfg))
+		initial := findWork(info, nil, nil)
+		require.Len(t, initial, 1)
+		shard := initial[0].Unit
+		tracker := newDomainLoadTracker(time.Time{}, shard.Domain.Domain)
+		tracker.quantile = &domainQuantileInfo{
+			domainQuantile: 20,
+			shardQuantiles: map[core.Shard]float64{
+				core.NewShard(shard.From, shard.To, ""):           1,
+				core.NewShard(shard.From, shard.To, shard.Region): 60,
+			},
+		}
+
+		work := findWork(info, nil, map[model.QualifiedDomainName]*domainLoadTracker{shard.Domain: tracker})
+		require.Len(t, work, 1)
+		require.Equal(t, allocation.Load(75), work[0].Load)
+	})
+
+	t.Run("unit load unchanged", func(t *testing.T) {
+		info := newInfo(t, model.Unit, model.NewServiceConfig(model.WithTrackLoad(true)))
+		work := findWork(info, nil, nil)
+		require.Len(t, work, 1)
+		require.Equal(t, unitShardLoad, work[0].Load)
+	})
 }
 
 func TestDomainState(t *testing.T) {

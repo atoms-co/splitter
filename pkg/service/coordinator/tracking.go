@@ -9,17 +9,20 @@ import (
 	"go.atoms.co/splitter/pkg/util/p2quantile"
 )
 
+// score represents the load score of a shard. It is in range (0, 100)
+type score float64
+
 const (
 	// P50 quantile to track median value
 	median = 0.5
 	// Score is ranged in [0, scoreRange)
 	scoreRange = 100.0
+	// defaultShardScore is used until a shard has a published score.
+	// It is also used as defaultShardLoad by services that doesn't enable load tracking.
+	defaultShardScore score = scoreRange * median
 	// defaultRotationInterval defines the interval a domainLoadTracker lives before rotation.
 	defaultRotationInterval = 24 * time.Hour
 )
-
-// score represents the load score of a shard. It is in range (0, 100)
-type score float64
 
 // domainQuantileInfo holds published quantile values for a domain and its shards.
 // Mutable version of core.DomainQuantileInfo.
@@ -198,13 +201,17 @@ func newDomainLoadTracker(now time.Time, domain model.DomainName) *domainLoadTra
 }
 
 // rotateIfNeeded seals current load tracker and creates a new one if needed.
-func (t *domainLoadTracker) rotateIfNeeded(now time.Time) {
+// It returns whether new quantiles were published.
+func (t *domainLoadTracker) rotateIfNeeded(now time.Time) bool {
+	updated := false
 	if t.tracker.needsRotation(now) {
 		if q, ok := t.tracker.quantileInfo(); ok {
 			t.quantile = q
+			updated = true
 		}
 		t.tracker = newDomainTracker(now)
 	}
+	return updated
 }
 
 // add adds an observation of a shard load.
@@ -225,14 +232,13 @@ func (t *domainLoadTracker) shardLoad() map[core.Shard]model.Load {
 // shardScoreOrDefault returns score of a shard if it has been tracked.
 // Or, default score that equals to (scoreRange / 2).
 func (t *domainLoadTracker) shardScoreOrDefault(shard core.Shard) score {
-	defaultScore := score(scoreRange / 2)
 	if t.quantile == nil {
-		return defaultScore
+		return defaultShardScore
 	}
 
 	s, ok := t.quantile.score(shard)
 	if !ok {
-		return defaultScore
+		return defaultShardScore
 	}
 	return s
 }
