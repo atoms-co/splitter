@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"time"
 
-	"go.atoms.co/lib/log"
 	"go.atoms.co/iox"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/workqueue"
+	splitterpb "go.atoms.co/splitter/pb"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 const (
@@ -612,8 +612,6 @@ func (w *Writer) updateAsync(ctx context.Context, upd core.Update) iox.AsyncClos
 func (w *Writer) applyUpdateAsync(ctx context.Context, upd core.Update) iox.AsyncCloser {
 	done := iox.NewAsyncCloser()
 	w.pool.Chan() <- func() {
-		defer done.Close()
-
 		// Perform I/O async. If it fails, escalate.
 
 		if err := w.db.Update(ctx, upd); err != nil {
@@ -627,6 +625,7 @@ func (w *Writer) applyUpdateAsync(ctx context.Context, upd core.Update) iox.Asyn
 		case <-w.Closed():
 		}
 
+		done.Close()
 	}
 	return done
 }
@@ -654,8 +653,6 @@ func (w *Writer) deleteAsync(ctx context.Context, del core.Delete) iox.AsyncClos
 
 	done := iox.NewAsyncCloser()
 	w.pool.Chan() <- func() {
-		defer done.Close()
-
 		// Perform I/O async. If it fails, escalate.
 
 		if err := w.db.Delete(ctx, del); err != nil {
@@ -668,6 +665,8 @@ func (w *Writer) deleteAsync(ctx context.Context, del core.Delete) iox.AsyncClos
 		case w.del <- del:
 		case <-w.Closed():
 		}
+
+		done.Close()
 	}
 	return done
 }
@@ -677,8 +676,6 @@ func (w *Writer) restoreAsync(ctx context.Context, res core.Restore) iox.AsyncCl
 
 	done := iox.NewAsyncCloser()
 	w.pool.Chan() <- func() {
-		defer done.Close()
-
 		// Perform I/O async. If it fails, escalate.
 
 		if err := w.db.Restore(ctx, res); err != nil {
@@ -691,6 +688,8 @@ func (w *Writer) restoreAsync(ctx context.Context, res core.Restore) iox.AsyncCl
 		case w.res <- res:
 		case <-w.Closed():
 		}
+
+		done.Close()
 	}
 	return done
 }
