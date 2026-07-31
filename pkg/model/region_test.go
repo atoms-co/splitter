@@ -1,4 +1,4 @@
-package model_test
+package model
 
 import (
 	"context"
@@ -7,28 +7,27 @@ import (
 	"time"
 
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/splitter/pkg/model"
 )
 
 var (
-	A1 = model.MustParseKey("00000aaa-0000-0000-0000-000000000001")
-	A2 = model.MustParseKey("00000aaa-0000-0000-0000-000000000002")
-	A3 = model.MustParseKey("00000aaa-0000-0000-0000-000000000003")
-	B  = model.MustParseKey("00000bbb-0000-0000-0000-000000000000")
+	A1 = MustParseKey("00000aaa-0000-0000-0000-000000000001")
+	A2 = MustParseKey("00000aaa-0000-0000-0000-000000000002")
+	A3 = MustParseKey("00000aaa-0000-0000-0000-000000000003")
+	B  = MustParseKey("00000bbb-0000-0000-0000-000000000000")
 )
 
 func TestRegionProvider(t *testing.T) {
-	dist := model.NewDistribution("foo",
-		model.DistributionSplit{Key: A2, Region: "bar"},
-		model.DistributionSplit{Key: B, Region: "baz"},
+	dist := NewDistribution("foo",
+		DistributionSplit{Key: A2, Region: "bar"},
+		DistributionSplit{Key: B, Region: "baz"},
 	)
-	provider := model.NewRegionProvider(dist)
+	provider := NewRegionProvider(dist)
 
 	tests := []struct {
-		key    model.Key
-		region model.Region
+		key    Key
+		region Region
 	}{
-		{model.ZeroKey, "foo"},
+		{ZeroKey, "foo"},
 		{A1, "foo"},
 		{A2, "bar"},
 		{A3, "bar"},
@@ -45,11 +44,11 @@ func TestLiveRegionProvider(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 
-		name, _ := model.ParseQualifiedPlacementNameStr("foo/bar")
-		initial := model.NewPlacementInfo(model.NewPlacement(name, model.NewDistribution("foo")), 1, time.Now())
+		name, _ := ParseQualifiedPlacementNameStr("foo/bar")
+		initial := NewPlacementInfo(NewPlacement(name, NewDistribution("foo")), 1, time.Now())
 
-		ch := make(chan model.PlacementInfo, 10)
-		provider := model.NewLiveRegionProvider(ctx, initial, func() (model.PlacementInfo, error) {
+		ch := make(chan PlacementInfo, 10)
+		provider := NewLiveRegionProvider(ctx, initial, func() (PlacementInfo, error) {
 			return <-ch, nil
 		})
 
@@ -72,7 +71,7 @@ func TestLiveRegionProvider(t *testing.T) {
 
 		// (4) Placement change, but not yet picked up
 
-		ch <- model.NewPlacementInfo(model.NewPlacement(name, model.NewDistribution("bar")), 3, time.Now())
+		ch <- NewPlacementInfo(NewPlacement(name, NewDistribution("bar")), 3, time.Now())
 		time.Sleep(time.Minute)
 
 		assertx.Equal(t, provider.Find(B), "foo")

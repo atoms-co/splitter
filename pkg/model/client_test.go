@@ -1,4 +1,4 @@
-package model_test
+package model
 
 import (
 	"context"
@@ -8,14 +8,13 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"go.atoms.co/iox"
-	"go.atoms.co/splitter/pkg/model"
 )
 
 func TestClient_WaitForActive(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		active := iox.NewAsyncCloser()
 		active.Close()
-		err := model.WaitForActive(context.Background(), &testOwnership{
+		err := WaitForActive(context.Background(), &testOwnership{
 			active:          active,
 			revoked:         iox.NewAsyncCloser(),
 			revokeRequested: iox.NewAsyncCloser(),
@@ -27,7 +26,7 @@ func TestClient_WaitForActive(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		err := model.WaitForActive(ctx, &testOwnership{
+		err := WaitForActive(ctx, &testOwnership{
 			active:          iox.NewAsyncCloser(),
 			revoked:         iox.NewAsyncCloser(),
 			revokeRequested: iox.NewAsyncCloser(),
@@ -40,27 +39,27 @@ func TestClient_WaitForActive(t *testing.T) {
 	t.Run("revoked", func(t *testing.T) {
 		revoked := iox.NewAsyncCloser()
 		revoked.Close()
-		err := model.WaitForActive(context.Background(), &testOwnership{
+		err := WaitForActive(context.Background(), &testOwnership{
 			active:          iox.NewAsyncCloser(),
 			revoked:         revoked,
 			revokeRequested: iox.NewAsyncCloser(),
 			expired:         iox.NewAsyncCloser(),
 		})
 		assert.Error(t, err)
-		assert.Equal(t, err, model.ErrRevoked)
+		assert.Equal(t, err, ErrRevoked)
 	})
 
 	t.Run("expired", func(t *testing.T) {
 		expired := iox.NewAsyncCloser()
 		expired.Close()
-		err := model.WaitForActive(context.Background(), &testOwnership{
+		err := WaitForActive(context.Background(), &testOwnership{
 			active:          iox.NewAsyncCloser(),
 			revoked:         iox.NewAsyncCloser(),
 			revokeRequested: iox.NewAsyncCloser(),
 			expired:         expired,
 		})
 		assert.Error(t, err)
-		assert.Equal(t, err, model.ErrExpired)
+		assert.Equal(t, err, ErrExpired)
 	})
 }
 
@@ -68,7 +67,7 @@ func TestClient_WaitForRevoke(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		revoked := iox.NewAsyncCloser()
 		revoked.Close()
-		_, err := model.WaitForRevoke(context.Background(), &testOwnership{
+		_, err := WaitForRevoke(context.Background(), &testOwnership{
 			revoked:         revoked,
 			revokeRequested: iox.NewAsyncCloser(),
 			expired:         iox.NewAsyncCloser(),
@@ -79,7 +78,7 @@ func TestClient_WaitForRevoke(t *testing.T) {
 	t.Run("cancel", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
-		_, err := model.WaitForRevoke(ctx, &testOwnership{
+		_, err := WaitForRevoke(ctx, &testOwnership{
 			revoked:         iox.NewAsyncCloser(),
 			revokeRequested: iox.NewAsyncCloser(),
 			expired:         iox.NewAsyncCloser(),
@@ -91,13 +90,13 @@ func TestClient_WaitForRevoke(t *testing.T) {
 	t.Run("expired", func(t *testing.T) {
 		expired := iox.NewAsyncCloser()
 		expired.Close()
-		_, err := model.WaitForRevoke(context.Background(), &testOwnership{
+		_, err := WaitForRevoke(context.Background(), &testOwnership{
 			revoked:         iox.NewAsyncCloser(),
 			revokeRequested: iox.NewAsyncCloser(),
 			expired:         expired,
 		})
 		assert.Error(t, err)
-		assert.Equal(t, err, model.ErrExpired)
+		assert.Equal(t, err, ErrExpired)
 	})
 }
 
@@ -139,20 +138,7 @@ func (t *testOwnership) RequestRevoke() {
 	t.revokeRequested.Close()
 }
 
-type loader struct {
-	unloaded iox.AsyncCloser
-	load     iox.AsyncCloser
-}
-
-func (l *loader) Unloaded() iox.RAsyncCloser {
-	return l.unloaded
-}
-
-func (l *loader) Load() {
-	l.load.Close()
-}
-
-func (t *testOwnership) Loader() model.Loader {
+func (t *testOwnership) Loader() Loader {
 	if t.loader != nil {
 		return t.loader
 	}
@@ -162,20 +148,7 @@ func (t *testOwnership) Loader() model.Loader {
 	}
 }
 
-type unloader struct {
-	loaded iox.AsyncCloser
-	unload iox.AsyncCloser
-}
-
-func (u *unloader) Loaded() iox.RAsyncCloser {
-	return u.loaded
-}
-
-func (u *unloader) Unload() {
-	u.unload.Close()
-}
-
-func (t *testOwnership) Unloader() model.Unloader {
+func (t *testOwnership) Unloader() Unloader {
 	if t.unloader != nil {
 		return t.unloader
 	}

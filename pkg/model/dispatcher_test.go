@@ -1,4 +1,4 @@
-package model_test
+package model
 
 import (
 	"context"
@@ -7,10 +7,9 @@ import (
 
 	"google.golang.org/grpc"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/iox"
-	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/lib/testing/assertx"
+	"go.atoms.co/splitter/lib/service/location"
 )
 
 func TestDispatcher(t *testing.T) {
@@ -19,7 +18,7 @@ func TestDispatcher(t *testing.T) {
 	loc := location.New("us", "n1")
 	endpoint := "endpoint"
 
-	service := model.MustParseQualifiedServiceNameStr("tenant/service")
+	service := MustParseQualifiedServiceNameStr("tenant/service")
 
 	t.Run("join", func(t *testing.T) {
 		wctx, cancel := context.WithCancel(ctx)
@@ -28,7 +27,7 @@ func TestDispatcher(t *testing.T) {
 
 		// (1) Join passes information correctly.
 
-		dispatcher := model.NewDispatcher(wctx, client, loc, endpoint, service, nil)
+		dispatcher := NewDispatcher(wctx, client, loc, endpoint, service, nil)
 		assertx.Equal(t, client.Service, service)
 		assertx.Equal(t, client.Consumer.Location(), loc)
 		assertx.Equal(t, client.Consumer.Endpoint(), endpoint)
@@ -56,23 +55,23 @@ func TestDispatcher(t *testing.T) {
 
 		var counter int
 
-		dispatcher := model.NewDispatcher(ctx, client, loc, endpoint, service, []model.DispatchFilter{
-			filter(func(shard model.Shard) bool {
+		dispatcher := NewDispatcher(ctx, client, loc, endpoint, service, []DispatchFilter{
+			filter(func(shard Shard) bool {
 				counter += 1
 				return shard.Domain.Domain == "a"
 			}),
-			filter(func(shard model.Shard) bool {
+			filter(func(shard Shard) bool {
 				if shard.Domain.Domain == "a" {
 					t.Fatalf("selected shadowed filter")
 					return true // never selected
 				}
 				return false
 			}),
-			filter(func(shard model.Shard) bool {
+			filter(func(shard Shard) bool {
 				counter += 10
 				return shard.Domain.Domain == "b"
 			}),
-			filter(func(shard model.Shard) bool {
+			filter(func(shard Shard) bool {
 				counter += 100
 				return true
 			}),
@@ -81,7 +80,7 @@ func TestDispatcher(t *testing.T) {
 
 		// (1) Check that chain works as expected. Use digits XYZ for concise comparisons of what is evaluated
 
-		shard := model.Shard{Type: model.Unit, Domain: model.QualifiedDomainName{Service: service, Domain: "a"}}
+		shard := Shard{Type: Unit, Domain: QualifiedDomainName{Service: service, Domain: "a"}}
 
 		client.Handler(ctx, "1", shard, newTestOwnership())
 		assertx.Equal(t, counter, 1)
@@ -105,8 +104,8 @@ func TestProcessor(t *testing.T) {
 
 	remoteFn := func(connInterface grpc.ClientConnInterface) int { return 0 }
 
-	domain := model.MustParseQualifiedDomainNameStr("tenant/service/domain")
-	key := model.ZeroKey
+	domain := MustParseQualifiedDomainNameStr("tenant/service/domain")
+	key := ZeroKey
 
 	t.Run("handle", func(t *testing.T) {
 		pool := newFakePool()
@@ -114,7 +113,7 @@ func TestProcessor(t *testing.T) {
 		created := iox.NewAsyncCloser()
 		r := newFakeRange()
 
-		proc := model.NewProcessor(domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
+		proc := NewProcessor(domain.Domain, remoteFn, ToDomainKey[Key], func(ctx context.Context, grant GrantID, shard Shard, ownership Ownership) *fakeRange {
 			defer created.Close()
 			return r
 		})
@@ -128,7 +127,7 @@ func TestProcessor(t *testing.T) {
 		go func() {
 			defer returned.Close()
 
-			shard := model.Shard{Type: model.Global, Domain: domain, From: model.ZeroKey, To: model.MaxKey}
+			shard := Shard{Type: Global, Domain: domain, From: ZeroKey, To: MaxKey}
 			ok := proc.TryHandle(ctx, "1", shard, lease)
 			assertx.Equal(t, ok, true)
 		}()
@@ -192,7 +191,7 @@ func TestProcessor(t *testing.T) {
 		pool := newFakePool()
 
 		r := newFakeRange()
-		proc := model.NewProcessor(domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
+		proc := NewProcessor(domain.Domain, remoteFn, ToDomainKey[Key], func(ctx context.Context, grant GrantID, shard Shard, ownership Ownership) *fakeRange {
 			return r
 		})
 		proc.Init(domain.Service, pool)
@@ -205,7 +204,7 @@ func TestProcessor(t *testing.T) {
 		go func() {
 			defer returned.Close()
 
-			shard := model.Shard{Type: model.Global, Domain: domain, From: model.ZeroKey, To: model.MaxKey}
+			shard := Shard{Type: Global, Domain: domain, From: ZeroKey, To: MaxKey}
 			ok := proc.TryHandle(ctx, "1", shard, lease)
 			assertx.Equal(t, ok, true)
 		}()
@@ -226,7 +225,7 @@ func TestProcessor(t *testing.T) {
 		pool := newFakePool()
 
 		r := newFakeRange()
-		proc := model.NewProcessor(domain.Domain, remoteFn, model.ToDomainKey[model.Key], func(ctx context.Context, grant model.GrantID, shard model.Shard, ownership model.Ownership) *fakeRange {
+		proc := NewProcessor(domain.Domain, remoteFn, ToDomainKey[Key], func(ctx context.Context, grant GrantID, shard Shard, ownership Ownership) *fakeRange {
 			return r
 		})
 		proc.Init(domain.Service, pool)
@@ -239,7 +238,7 @@ func TestProcessor(t *testing.T) {
 		go func() {
 			defer returned.Close()
 
-			shard := model.Shard{Type: model.Global, Domain: domain, From: model.ZeroKey, To: model.MaxKey}
+			shard := Shard{Type: Global, Domain: domain, From: ZeroKey, To: MaxKey}
 			ok := proc.TryHandle(ctx, "1", shard, lease)
 			assertx.Equal(t, ok, true)
 		}()
@@ -291,33 +290,33 @@ func (f *fakeRange) Drain(ctx context.Context, timeout time.Duration) iox.RAsync
 
 // fakePool is manual connection pool. Not thread safe.
 type fakePool struct {
-	Current    model.Cluster
-	Resolution map[model.InstanceID]grpc.ClientConnInterface
-	Failed     map[model.InstanceID]error
+	Current    Cluster
+	Resolution map[InstanceID]grpc.ClientConnInterface
+	Failed     map[InstanceID]error
 }
 
 func newFakePool() *fakePool {
 	return &fakePool{
-		Resolution: map[model.InstanceID]grpc.ClientConnInterface{},
-		Failed:     map[model.InstanceID]error{},
+		Resolution: map[InstanceID]grpc.ClientConnInterface{},
+		Failed:     map[InstanceID]error{},
 	}
 }
 
-func (f *fakePool) Resolve(ctx context.Context, key model.Instance) (grpc.ClientConnInterface, error) {
+func (f *fakePool) Resolve(ctx context.Context, key Instance) (grpc.ClientConnInterface, error) {
 	if err, ok := f.Failed[key.ID()]; ok {
 		return nil, err
 	}
 	if cc, ok := f.Resolution[key.ID()]; ok {
 		return cc, nil
 	}
-	return nil, model.ErrNoResolution
+	return nil, ErrNoResolution
 }
 
-func (f *fakePool) Cluster() (model.Cluster, bool) {
+func (f *fakePool) Cluster() (Cluster, bool) {
 	return f.Current, f.Current != nil
 }
 
-func (f *fakePool) Location(key model.QualifiedDomainKey) (location.Location, bool) {
+func (f *fakePool) Location(key QualifiedDomainKey) (location.Location, bool) {
 	if c, ok := f.Cluster(); ok {
 		if consumer, _, ok := c.Lookup(key); ok {
 			return consumer.Location(), true
@@ -327,13 +326,13 @@ func (f *fakePool) Location(key model.QualifiedDomainKey) (location.Location, bo
 }
 
 // filter is a simple DispatchFilter for checking shards.
-type filter func(shard model.Shard) bool
+type filter func(shard Shard) bool
 
-func (f filter) Init(service model.QualifiedServiceName, pool model.ConnectionPool) {
+func (f filter) Init(service QualifiedServiceName, pool ConnectionPool) {
 
 }
 
-func (f filter) TryHandle(ctx context.Context, id model.GrantID, shard model.Shard, ownership model.Ownership) bool {
+func (f filter) TryHandle(ctx context.Context, id GrantID, shard Shard, ownership Ownership) bool {
 	return f(shard)
 }
 
@@ -343,10 +342,10 @@ type fakeClient struct {
 	iox.AsyncCloser
 	Drained iox.AsyncCloser
 
-	Consumer model.Consumer
-	Service  model.QualifiedServiceName
-	Handler  model.Handler
-	Clusters chan<- model.Cluster
+	Consumer Consumer
+	Service  QualifiedServiceName
+	Handler  Handler
+	Clusters chan<- Cluster
 }
 
 func newFakeClient() *fakeClient {
@@ -355,8 +354,8 @@ func newFakeClient() *fakeClient {
 	}
 }
 
-func (f *fakeClient) Join(ctx context.Context, consumer model.Consumer, service model.QualifiedServiceName, handler model.Handler, opts ...model.ConsumerOption) (<-chan model.Cluster, iox.RAsyncCloser) {
-	ch := make(chan model.Cluster)
+func (f *fakeClient) Join(ctx context.Context, consumer Consumer, service QualifiedServiceName, handler Handler, opts ...ConsumerOption) (<-chan Cluster, iox.RAsyncCloser) {
+	ch := make(chan Cluster)
 
 	f.Drained = iox.WithCancel(ctx, iox.NewAsyncCloser())
 	f.Consumer = consumer

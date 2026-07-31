@@ -1,4 +1,4 @@
-package model_test
+package model
 
 import (
 	"context"
@@ -9,19 +9,17 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/testing/prefab"
+	"go.atoms.co/splitter/lib/service/location"
 )
 
 var (
-	cid = model.NewClusterID(location.NewInstance(location.Location{}), time.Now())
+	cid = NewClusterID(location.NewInstance(location.Location{}), time.Now())
 )
 
 func TestHandle(t *testing.T) {
-	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", model.Global, "", "0", "a", model.LoadedGrantState)
+	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
 	key := prefab.NewQDK(t, "t/s/d", "", "1")
 	req := prefab.NewQDK(t, "t/s/d", "", "2")
 	resp := prefab.NewQDK(t, "t/s/d", "", "3")
@@ -34,7 +32,7 @@ func TestHandle(t *testing.T) {
 
 		proxy.grants.Activate(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.Handle(ctx, proxy, key, remoteInvalid, req, localSuccess(resp))
+		rt, err := Handle(ctx, proxy, key, remoteInvalid, req, localSuccess(resp))
 		require.NoError(t, err)
 		requirex.Equal(t, rt, resp)
 	})
@@ -44,39 +42,39 @@ func TestHandle(t *testing.T) {
 
 		proxy.grants.Activate(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.Handle(ctx, proxy, key, remoteSuccess(resp), req, localFailure)
-		requirex.Equal(t, err, model.ErrInvalid)
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := Handle(ctx, proxy, key, remoteSuccess(resp), req, localFailure)
+		requirex.Equal(t, err, ErrInvalid)
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("cluster not initialized", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		rt, err := model.Handle(ctx, proxy, key, remoteSuccess(resp), req, localSuccess(resp))
-		requirex.Equal(t, err.Error(), fmt.Sprintf("not initialized: %v", model.ErrNotOwned))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := Handle(ctx, proxy, key, remoteSuccess(resp), req, localSuccess(resp))
+		requirex.Equal(t, err.Error(), fmt.Sprintf("not initialized: %v", ErrNotOwned))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("no owner in cluster", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := model.NewClusterMap(cid, slicex.New(grant.Shard()))
+		cluster := NewClusterMap(cid, slicex.New(grant.Shard()))
 		proxy.pool.Current = cluster
 
-		rt, err := model.Handle(ctx, proxy, key, remoteSuccess(resp), req, localSuccess(resp))
-		requirex.Equal(t, err.Error(), fmt.Sprintf("no owner: %v", model.ErrNotOwned))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := Handle(ctx, proxy, key, remoteSuccess(resp), req, localSuccess(resp))
+		requirex.Equal(t, err.Error(), fmt.Sprintf("no owner: %v", ErrNotOwned))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("local non-active successful", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 
 		proxy.grants.Loaded(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.Handle(ctx, proxy, key, remoteInvalid, req, localSuccess(resp))
+		rt, err := Handle(ctx, proxy, key, remoteInvalid, req, localSuccess(resp))
 		require.NoError(t, err)
 		requirex.Equal(t, rt, resp)
 	})
@@ -84,36 +82,36 @@ func TestHandle(t *testing.T) {
 	t.Run("local non-active failing", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 
 		proxy.grants.Loaded(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.Handle(ctx, proxy, key, remoteSuccess(resp), req, localFailure)
-		requirex.Equal(t, err, model.ErrInvalid)
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := Handle(ctx, proxy, key, remoteSuccess(resp), req, localFailure)
+		requirex.Equal(t, err, ErrInvalid)
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("resolve failed", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
-		proxy.pool.Failed[prefab.Instance1.ID()] = model.ErrNotFound
+		proxy.pool.Failed[prefab.Instance1.ID()] = ErrNotFound
 
-		rt, err := model.Handle(ctx, proxy, key, remoteSuccess(resp), req, localSuccess(resp))
-		requirex.Equal(t, err, model.ErrNotFound)
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := Handle(ctx, proxy, key, remoteSuccess(resp), req, localSuccess(resp))
+		requirex.Equal(t, err, ErrNotFound)
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("remote successful", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 		proxy.pool.Resolution[prefab.Instance1.ID()] = &grpc.ClientConn{}
 
-		rt, err := model.Handle(ctx, proxy, key, remoteSuccess(resp), req, localFailure)
+		rt, err := Handle(ctx, proxy, key, remoteSuccess(resp), req, localFailure)
 		require.NoError(t, err)
 		requirex.Equal(t, rt, resp)
 	})
@@ -121,18 +119,18 @@ func TestHandle(t *testing.T) {
 	t.Run("remote failed", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 		proxy.pool.Resolution[prefab.Instance1.ID()] = &grpc.ClientConn{}
 
-		rt, err := model.Handle(ctx, proxy, key, remoteInvalid, req, localSuccess(resp))
-		requirex.Equal(t, err, model.ToGRPCError(model.ErrInvalid))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := Handle(ctx, proxy, key, remoteInvalid, req, localSuccess(resp))
+		requirex.Equal(t, err, ToGRPCError(ErrInvalid))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 }
 
 func TestHandleEx(t *testing.T) {
-	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", model.Global, "", "0", "a", model.LoadedGrantState)
+	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
 	key := prefab.NewQDK(t, "t/s/d", "", "1")
 	req := prefab.NewQDK(t, "t/s/d", "", "2")
 	resp := prefab.NewQDK(t, "t/s/d", "", "3")
@@ -145,7 +143,7 @@ func TestHandleEx(t *testing.T) {
 
 		proxy.grants.Activate(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.HandleEx(ctx, proxy, key, remoteInvalid, req, model.ToGRPCError, localSuccess(resp))
+		rt, err := HandleEx(ctx, proxy, key, remoteInvalid, req, ToGRPCError, localSuccess(resp))
 		require.NoError(t, err)
 		requirex.Equal(t, rt, resp)
 	})
@@ -155,39 +153,39 @@ func TestHandleEx(t *testing.T) {
 
 		proxy.grants.Activate(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.HandleEx(ctx, proxy, key, remoteSuccess(resp), req, model.ToGRPCError, localFailure)
-		requirex.Equal(t, err, model.ToGRPCError(model.ErrInvalid))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := HandleEx(ctx, proxy, key, remoteSuccess(resp), req, ToGRPCError, localFailure)
+		requirex.Equal(t, err, ToGRPCError(ErrInvalid))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("cluster not initialized", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		rt, err := model.HandleEx(ctx, proxy, key, remoteSuccess(resp), req, model.ToGRPCError, localSuccess(resp))
-		requirex.Equal(t, err, model.ToGRPCError(fmt.Errorf("not initialized: %w", model.ErrNotOwned)))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := HandleEx(ctx, proxy, key, remoteSuccess(resp), req, ToGRPCError, localSuccess(resp))
+		requirex.Equal(t, err, ToGRPCError(fmt.Errorf("not initialized: %w", ErrNotOwned)))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("no owner in cluster", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := model.NewClusterMap(cid, slicex.New(grant.Shard()))
+		cluster := NewClusterMap(cid, slicex.New(grant.Shard()))
 		proxy.pool.Current = cluster
 
-		rt, err := model.HandleEx(ctx, proxy, key, remoteSuccess(resp), req, model.ToGRPCError, localSuccess(resp))
-		requirex.Equal(t, err, model.ToGRPCError(fmt.Errorf("no owner: %w", model.ErrNotOwned)))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := HandleEx(ctx, proxy, key, remoteSuccess(resp), req, ToGRPCError, localSuccess(resp))
+		requirex.Equal(t, err, ToGRPCError(fmt.Errorf("no owner: %w", ErrNotOwned)))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("local non-active successful", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 
 		proxy.grants.Loaded(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.HandleEx(ctx, proxy, key, remoteInvalid, req, model.ToGRPCError, localSuccess(resp))
+		rt, err := HandleEx(ctx, proxy, key, remoteInvalid, req, ToGRPCError, localSuccess(resp))
 		require.NoError(t, err)
 		requirex.Equal(t, rt, resp)
 	})
@@ -195,36 +193,36 @@ func TestHandleEx(t *testing.T) {
 	t.Run("local non-active failing", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 
 		proxy.grants.Loaded(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.HandleEx(ctx, proxy, key, remoteSuccess(resp), req, model.ToGRPCError, localFailure)
-		requirex.Equal(t, err, model.ToGRPCError(model.ErrInvalid))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := HandleEx(ctx, proxy, key, remoteSuccess(resp), req, ToGRPCError, localFailure)
+		requirex.Equal(t, err, ToGRPCError(ErrInvalid))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("resolve failed", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
-		proxy.pool.Failed[prefab.Instance1.ID()] = model.ErrNotFound
+		proxy.pool.Failed[prefab.Instance1.ID()] = ErrNotFound
 
-		rt, err := model.HandleEx(ctx, proxy, key, remoteSuccess(resp), req, model.ToGRPCError, localSuccess(resp))
-		requirex.Equal(t, err, model.ToGRPCError(model.ErrNotFound))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := HandleEx(ctx, proxy, key, remoteSuccess(resp), req, ToGRPCError, localSuccess(resp))
+		requirex.Equal(t, err, ToGRPCError(ErrNotFound))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 
 	t.Run("remote successful", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 		proxy.pool.Resolution[prefab.Instance1.ID()] = &grpc.ClientConn{}
 
-		rt, err := model.HandleEx(ctx, proxy, key, remoteSuccess(resp), req, model.ToGRPCError, localFailure)
+		rt, err := HandleEx(ctx, proxy, key, remoteSuccess(resp), req, ToGRPCError, localFailure)
 		require.NoError(t, err)
 		requirex.Equal(t, rt, resp)
 	})
@@ -232,18 +230,18 @@ func TestHandleEx(t *testing.T) {
 	t.Run("remote failed", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 		proxy.pool.Resolution[prefab.Instance1.ID()] = &grpc.ClientConn{}
 
-		rt, err := model.HandleEx(ctx, proxy, key, remoteInvalid, req, model.ToGRPCError, localSuccess(resp))
-		requirex.Equal(t, err, model.ToGRPCError(model.ErrInvalid))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
+		rt, err := HandleEx(ctx, proxy, key, remoteInvalid, req, ToGRPCError, localSuccess(resp))
+		requirex.Equal(t, err, ToGRPCError(ErrInvalid))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
 	})
 }
 
 func TestHandleLocal(t *testing.T) {
-	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", model.Global, "", "0", "a", model.LoadedGrantState)
+	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
 	key := prefab.NewQDK(t, "t/s/d", "", "1")
 	req := prefab.NewQDK(t, "t/s/d", "", "2")
 	resp := prefab.NewQDK(t, "t/s/d", "", "3")
@@ -255,7 +253,7 @@ func TestHandleLocal(t *testing.T) {
 		resolver := newTestGrantResolver()
 		resolver.grants.Activate(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.HandleLocal(ctx, resolver, key, req, handler(resp))
+		rt, err := HandleLocal(ctx, resolver, key, req, localHandler(resp))
 		requirex.Equal(t, rt, resp)
 		require.NoError(t, err)
 	})
@@ -264,22 +262,22 @@ func TestHandleLocal(t *testing.T) {
 		resolver := newTestGrantResolver()
 		resolver.grants.Activate(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.HandleLocal(ctx, resolver, key, req, errHandler)
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
-		requirex.Equal(t, err, model.ErrInvalid)
+		rt, err := HandleLocal(ctx, resolver, key, req, errHandler)
+		requirex.Equal(t, rt, QualifiedDomainKey{})
+		requirex.Equal(t, err, ErrInvalid)
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		resolver := newTestGrantResolver()
 
-		rt, err := model.HandleLocal(ctx, resolver, key, req, handler(resp))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
-		requirex.Equal(t, err, model.ToGRPCError(model.ErrNotOwned))
+		rt, err := HandleLocal(ctx, resolver, key, req, localHandler(resp))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
+		requirex.Equal(t, err, ToGRPCError(ErrNotOwned))
 	})
 }
 
 func TestHandleLocalEx(t *testing.T) {
-	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", model.Global, "", "0", "a", model.LoadedGrantState)
+	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
 	key := prefab.NewQDK(t, "t/s/d", "", "1")
 	req := prefab.NewQDK(t, "t/s/d", "", "2")
 	resp := prefab.NewQDK(t, "t/s/d", "", "3")
@@ -291,7 +289,7 @@ func TestHandleLocalEx(t *testing.T) {
 		resolver := newTestGrantResolver()
 		resolver.grants.Activate(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.HandleLocalEx(ctx, resolver, key, req, model.ToGRPCError, handler(resp))
+		rt, err := HandleLocalEx(ctx, resolver, key, req, ToGRPCError, localHandler(resp))
 		requirex.Equal(t, rt, resp)
 		require.NoError(t, err)
 	})
@@ -300,75 +298,75 @@ func TestHandleLocalEx(t *testing.T) {
 		resolver := newTestGrantResolver()
 		resolver.grants.Activate(grant.ID(), grant.Shard(), r)
 
-		rt, err := model.HandleLocalEx(ctx, resolver, key, req, model.ToGRPCError, errHandler)
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
-		requirex.Equal(t, err, model.ToGRPCError(model.ErrInvalid))
+		rt, err := HandleLocalEx(ctx, resolver, key, req, ToGRPCError, errHandler)
+		requirex.Equal(t, rt, QualifiedDomainKey{})
+		requirex.Equal(t, err, ToGRPCError(ErrInvalid))
 	})
 
 	t.Run("not found", func(t *testing.T) {
 		resolver := newTestGrantResolver()
 
-		rt, err := model.HandleLocalEx(ctx, resolver, key, req, model.ToGRPCError, handler(resp))
-		requirex.Equal(t, rt, model.QualifiedDomainKey{})
-		requirex.Equal(t, err, model.ToGRPCError(model.ErrNotOwned))
+		rt, err := HandleLocalEx(ctx, resolver, key, req, ToGRPCError, localHandler(resp))
+		requirex.Equal(t, rt, QualifiedDomainKey{})
+		requirex.Equal(t, err, ToGRPCError(ErrNotOwned))
 	})
 }
 
 type testGrantResolver struct {
-	grants *model.GrantMap[*fakeRange]
+	grants *GrantMap[*fakeRange]
 }
 
 func newTestGrantResolver() *testGrantResolver {
 	return &testGrantResolver{
-		grants: model.NewGrantMap[*fakeRange](),
+		grants: NewGrantMap[*fakeRange](),
 	}
 }
 
-func (r *testGrantResolver) Lookup(key model.QualifiedDomainKey, grants ...model.GrantState) (*fakeRange, bool) {
+func (r *testGrantResolver) Lookup(key QualifiedDomainKey, grants ...GrantState) (*fakeRange, bool) {
 	return r.grants.Lookup(key, grants...)
 }
 
-func (r *testGrantResolver) DomainKey(key model.QualifiedDomainKey) model.QualifiedDomainKey {
+func (r *testGrantResolver) DomainKey(key QualifiedDomainKey) QualifiedDomainKey {
 	return key
 }
 
-func (r *testGrantResolver) Location(key model.QualifiedDomainKey) (location.Location, bool) {
+func (r *testGrantResolver) Location(key QualifiedDomainKey) (location.Location, bool) {
 	return location.Location{}, false
 }
 
-func handler(resp model.QualifiedDomainKey) func(r *fakeRange, ctx context.Context, key model.QualifiedDomainKey) (model.QualifiedDomainKey, error) {
-	return func(r *fakeRange, ctx context.Context, key model.QualifiedDomainKey) (model.QualifiedDomainKey, error) {
+func localHandler(resp QualifiedDomainKey) func(r *fakeRange, ctx context.Context, key QualifiedDomainKey) (QualifiedDomainKey, error) {
+	return func(r *fakeRange, ctx context.Context, key QualifiedDomainKey) (QualifiedDomainKey, error) {
 		return resp, nil
 	}
 }
 
-func errHandler(r *fakeRange, ctx context.Context, key model.QualifiedDomainKey) (model.QualifiedDomainKey, error) {
-	return model.QualifiedDomainKey{}, model.ErrInvalid
+func errHandler(r *fakeRange, ctx context.Context, key QualifiedDomainKey) (QualifiedDomainKey, error) {
+	return QualifiedDomainKey{}, ErrInvalid
 }
 
-func remoteSuccess(resp model.QualifiedDomainKey) func(r int, ctx context.Context, key model.QualifiedDomainKey, opts ...grpc.CallOption) (model.QualifiedDomainKey, error) {
-	return func(r int, ctx context.Context, key model.QualifiedDomainKey, opts ...grpc.CallOption) (model.QualifiedDomainKey, error) {
+func remoteSuccess(resp QualifiedDomainKey) func(r int, ctx context.Context, key QualifiedDomainKey, opts ...grpc.CallOption) (QualifiedDomainKey, error) {
+	return func(r int, ctx context.Context, key QualifiedDomainKey, opts ...grpc.CallOption) (QualifiedDomainKey, error) {
 		return resp, nil
 	}
 }
 
-func remoteInvalid(r int, ctx context.Context, key model.QualifiedDomainKey, opts ...grpc.CallOption) (model.QualifiedDomainKey, error) {
-	return model.QualifiedDomainKey{}, model.ToGRPCError(model.ErrInvalid)
+func remoteInvalid(r int, ctx context.Context, key QualifiedDomainKey, opts ...grpc.CallOption) (QualifiedDomainKey, error) {
+	return QualifiedDomainKey{}, ToGRPCError(ErrInvalid)
 }
 
-func localSuccess(resp model.QualifiedDomainKey) func(r *fakeRange) (model.QualifiedDomainKey, error) {
-	return func(r *fakeRange) (model.QualifiedDomainKey, error) {
+func localSuccess(resp QualifiedDomainKey) func(r *fakeRange) (QualifiedDomainKey, error) {
+	return func(r *fakeRange) (QualifiedDomainKey, error) {
 		return resp, nil
 	}
 }
 
-func localFailure(r *fakeRange) (model.QualifiedDomainKey, error) {
-	return model.QualifiedDomainKey{}, model.ErrInvalid
+func localFailure(r *fakeRange) (QualifiedDomainKey, error) {
+	return QualifiedDomainKey{}, ErrInvalid
 }
 
 type testProxy struct {
 	*testGrantResolver
-	model.Resolver[int, model.QualifiedDomainKey]
+	Resolver[int, QualifiedDomainKey]
 
 	pool *fakePool
 }
@@ -376,7 +374,7 @@ type testProxy struct {
 func newTestProxy() *testProxy {
 	grantResolver := newTestGrantResolver()
 	pool := newFakePool()
-	resolver := model.NewResolver(pool, func(connInterface grpc.ClientConnInterface) int { return 0 })
+	resolver := NewResolver(pool, func(connInterface grpc.ClientConnInterface) int { return 0 })
 
 	return &testProxy{
 		testGrantResolver: grantResolver,
@@ -386,14 +384,14 @@ func newTestProxy() *testProxy {
 	}
 }
 
-func (r *testProxy) Cluster() (model.Cluster, bool) {
+func (r *testProxy) Cluster() (Cluster, bool) {
 	return r.pool.Cluster()
 }
 
-func (r *testProxy) DomainKey(key model.QualifiedDomainKey) model.QualifiedDomainKey {
+func (r *testProxy) DomainKey(key QualifiedDomainKey) QualifiedDomainKey {
 	return key
 }
 
-func (r *testProxy) Location(key model.QualifiedDomainKey) (location.Location, bool) {
+func (r *testProxy) Location(key QualifiedDomainKey) (location.Location, bool) {
 	return r.Resolver.Location(key)
 }
