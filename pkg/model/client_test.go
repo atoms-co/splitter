@@ -100,6 +100,42 @@ func TestClient_WaitForRevoke(t *testing.T) {
 	})
 }
 
+func TestOwnershipReporter(t *testing.T) {
+	t.Run("reports load", func(t *testing.T) {
+		ownership := newOwnership(ActiveGrantState, func() time.Time {
+			return time.Now().Add(time.Minute)
+		}, newLoader(), newUnloader())
+		defer ownership.reporter.Close()
+		reporter := ownership.Reporter()
+
+		assert.NoError(t, reporter.ReportLoad(42))
+		assert.Equal(t, Load(42), <-ownership.reporter.loads())
+	})
+
+	t.Run("rejects load when full", func(t *testing.T) {
+		ownership := newOwnership(ActiveGrantState, func() time.Time {
+			return time.Now().Add(time.Minute)
+		}, newLoader(), newUnloader())
+		defer ownership.reporter.Close()
+		reporter := ownership.Reporter()
+
+		for range cap(ownership.reporter.loads()) {
+			assert.NoError(t, reporter.ReportLoad(1))
+		}
+		assert.ErrorIs(t, errBufferFull, reporter.ReportLoad(1))
+	})
+
+	t.Run("closes reporter", func(t *testing.T) {
+		ownership := newOwnership(ActiveGrantState, func() time.Time {
+			return time.Now().Add(time.Minute)
+		}, newLoader(), newUnloader())
+		reporter := ownership.Reporter()
+		ownership.reporter.Close()
+
+		assert.ErrorIs(t, errReporterClosed, reporter.ReportLoad(1))
+	})
+}
+
 type testOwnership struct {
 	active          iox.AsyncCloser
 	revoked         iox.AsyncCloser
@@ -107,6 +143,7 @@ type testOwnership struct {
 	expired         iox.AsyncCloser
 	loader          *loader
 	unloader        *unloader
+	reporter        StatusReporter
 }
 
 func newTestOwnership() *testOwnership {
@@ -123,6 +160,7 @@ func newTestOwnership() *testOwnership {
 			loaded: iox.NewAsyncCloser(),
 			unload: iox.NewAsyncCloser(),
 		},
+		reporter: newStatusReporter(),
 	}
 }
 
@@ -176,4 +214,8 @@ func (t *testOwnership) IsExpired() bool {
 
 func (t *testOwnership) Expiration() time.Time {
 	return time.Time{}
+}
+
+func (t *testOwnership) Reporter() StatusReporter {
+	return t.reporter
 }

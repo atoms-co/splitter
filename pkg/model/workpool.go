@@ -26,6 +26,7 @@ import (
 const (
 	statsDuration            = 15 * time.Second
 	consumerGrantLogInterval = 10 * time.Minute
+	reportLoadBatchSize      = 1000
 )
 
 var (
@@ -68,9 +69,10 @@ type workPool struct {
 	handler Handler
 	opts    Options
 
-	status *joinStatus            // coordinator connectivity status
-	in     <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
-	out    chan<- ConsumerMessage // coordinator outgoing messages (empty and not closed, if disconnected)
+	status   *joinStatus            // coordinator connectivity status
+	in       <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
+	out      chan<- ConsumerMessage // coordinator outgoing messages (empty and not closed, if disconnected)
+	loadChan chan ShardLoad         // range incoming loads (empty and not closed, if disconnected)
 
 	stats workPoolStats
 
@@ -103,6 +105,7 @@ func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []Qual
 		handler:       handlerFn,
 		opts:          opts,
 		poolOptions:   poolOpts,
+		loadChan:      make(chan ShardLoad, reportLoadBatchSize),
 		cluster:       NewClusterMap(NewClusterID(consumer.Instance(), time.Now()), nil), // empty self-origin map
 		clusters:      make(chan Cluster, 1),
 		grants:        map[GrantID]*grant{},
@@ -259,6 +262,19 @@ steady:
 			}
 			p.handleMessage(ctx, msg)
 			p.stopDisconnectTimer()
+
+		case shard := <-p.loadChan:
+
+			// batch forward loads to coordinator
+			shards := []ShardLoad{shard}
+
+			for _, elm := range read(p.loadChan, reportLoadBatchSize-1) {
+				shards = append(shards, elm)
+			}
+
+			if !p.trySend(ctx, NewShardLoadMessage(shards)) {
+				log.Warnf(ctx, "Failed to send load workpool: chan is full")
+			}
 
 		case <-p.expire:
 			p.checkExpiration(ctx)
@@ -485,6 +501,29 @@ func (p *workPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 					})
 				case <-p.Closed():
 					h.Close()
+				}
+			}()
+
+			go func() {
+				loads := h.ownership.reporter.loads()
+				for !h.IsClosed() {
+					select {
+					case load, ok := <-loads:
+						if !ok {
+							return
+						}
+
+						select {
+						case p.loadChan <- NewShardLoad(g.ID(), load):
+						default:
+							log.Warnf(ctx, "Failed to send load workpool: chan is full")
+						}
+
+					case <-h.Closed():
+						return
+					case <-ctx.Done():
+						return
+					}
 				}
 			}()
 
@@ -840,4 +879,21 @@ func (p *workPool) logGrants(ctx context.Context) {
 
 func newWorkPoolContext(ctx context.Context, consumer Consumer, service QualifiedServiceName) context.Context {
 	return log.NewContext(NewConsumerContext(ctx, consumer), log.String("tenant", service.Tenant), log.String("service", service.Service))
+}
+
+// read reads chan elements to a slice if any, up to count elements. Non-blocking.
+func read[T any](ch <-chan T, count int) []T {
+	var ret []T
+	for len(ret) < count {
+		select {
+		case elm, ok := <-ch:
+			if !ok {
+				return ret
+			}
+			ret = append(ret, elm)
+		default:
+			return ret
+		}
+	}
+	return ret
 }

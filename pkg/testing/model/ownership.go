@@ -19,6 +19,8 @@ type Ownership struct {
 	loader   splitter.Loader
 	unloader splitter.Unloader
 
+	reporter splitter.StatusReporter
+
 	expiration time.Time
 }
 
@@ -51,6 +53,8 @@ func NewOwnership(opts ...OwnershipOption) *Ownership {
 		waitingRevoked:  iox.NewAsyncCloser(),
 		expired:         iox.NewAsyncCloser(),
 		waitingExpired:  iox.NewAsyncCloser(),
+
+		reporter: &statusReporter{},
 	}
 	for _, opt := range opts {
 		opt(o)
@@ -115,4 +119,16 @@ func (o *Ownership) RequestRevoke() {
 
 func (o *Ownership) RevokeRequested() iox.RAsyncCloser {
 	return o.revokeRequested
+}
+
+func (o *Ownership) Reporter() splitter.StatusReporter {
+	return o.reporter
+}
+
+type statusReporter struct {
+}
+
+func (s *statusReporter) ReportLoad(_ splitter.Load) error {
+	// no-op
+	return nil
 }

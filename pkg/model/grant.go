@@ -2,11 +2,12 @@ package model
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
-	"go.atoms.co/lib/timex"
 	"go.atoms.co/iox"
+	"go.atoms.co/lib/timex"
 )
 
 // LeaseState represents the current state of a grant.
@@ -20,6 +21,11 @@ const (
 	// LeaseStale represents that the grant is active, but will lapse due to a coordinator disconnect. Most
 	// grants will go back to active, but that is the coordinator's decision.
 	LeaseStale LeaseState = "stale"
+)
+
+var (
+	errReporterClosed = errors.New("reporter closed")
+	errBufferFull     = errors.New("buffer full")
 )
 
 // grant holds a grant and its metadata and bookkeeping.
@@ -70,6 +76,7 @@ func newHandler(ctx context.Context, grant Grant, expiration func() time.Time, l
 
 		cancel()
 		h.ownership.expire()
+		h.ownership.reporter.Close()
 	}()
 
 	return h
@@ -91,6 +98,7 @@ type ownership struct {
 	loader          *loader
 	unloader        *unloader
 	expiration      func() time.Time
+	reporter        *statusReporter
 }
 
 func newOwnership(state GrantState, expiration func() time.Time, loader *loader, unloader *unloader) *ownership {
@@ -102,6 +110,7 @@ func newOwnership(state GrantState, expiration func() time.Time, loader *loader,
 		loader:          loader,
 		unloader:        unloader,
 		expiration:      expiration,
+		reporter:        newStatusReporter(),
 	}
 
 	// Initialize correct signals using GrantState
@@ -159,6 +168,10 @@ func (o *ownership) RequestRevoke() {
 	o.revokeRequested.Close()
 }
 
+func (o *ownership) Reporter() StatusReporter {
+	return o.reporter
+}
+
 type loader struct {
 	unloaded iox.AsyncCloser
 	load     iox.AsyncCloser
@@ -213,4 +226,33 @@ func (u *unloader) load() {
 
 func (u *unloader) unloaded() iox.RAsyncCloser {
 	return u.unload
+}
+
+type statusReporter struct {
+	iox.AsyncCloser
+	loadChan chan Load
+}
+
+func newStatusReporter() *statusReporter {
+	return &statusReporter{
+		AsyncCloser: iox.NewAsyncCloser(),
+		loadChan:    make(chan Load, 100),
+	}
+}
+
+func (s *statusReporter) ReportLoad(load Load) error {
+	if s.IsClosed() {
+		return errReporterClosed
+	}
+
+	select {
+	case s.loadChan <- load:
+		return nil
+	default:
+		return errBufferFull
+	}
+}
+
+func (s *statusReporter) loads() <-chan Load {
+	return s.loadChan
 }
