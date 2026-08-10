@@ -393,6 +393,7 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, origin locati
 	lease := now.Add(leaseDuration)
 	s.TrySend(ctx, model.NewExtend(lease)) // grants will be covered under this lease
 
+	//TODO: (xuhui) 07/27/2026 revisit impact to services that set capacity.
 	capacity := allocation.Load(int64(limit) * int64(defaultShardLoad)) // Set capacity shard limit * shard load (0 for no capacity)
 	if capacity > 0 {
 		log.Infof(ctx, "Consumer %v connected with non-zero capacity limit: %v", consumer, capacity)
@@ -542,11 +543,11 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	}
 
 	now := time.Now()
-	c.alloc = newAllocation(c.self.ID(), tenant, info, c.cache.Placements(c.name.Tenant), now.Add(delay))
+	c.restoreLoadTrackers(ctx)
+
+	c.alloc = newAllocation(c.self.ID(), tenant, info, c.cache.Placements(c.name.Tenant), c.trackers, now.Add(delay))
 	c.noLb = c.findUnitDomains()
 	c.cluster = model.NewClusterMap(model.NewClusterID(c.self, now), c.alloc.Units())
-
-	c.restoreLoadTrackers(ctx)
 
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.self, c.alloc.Size())
 	c.recordAction(ctx, "init", "ok")
@@ -629,6 +630,7 @@ steady:
 			// (1) Refresh allocation, (2) allocate, (3) broadcast cluster change
 
 			now := time.Now()
+			trackLoad := c.info.Service().Config().TrackLoad()
 
 			if err := c.cache.Update(upd, false); err != nil {
 				log.Errorf(ctx, "Internal: invalid state update %v", err)
@@ -648,6 +650,10 @@ steady:
 				return
 			}
 			c.info = info
+
+			if trackLoad && !info.Service().Config().TrackLoad() {
+				clear(c.trackers)
+			}
 
 			oldShards := c.alloc.Units()
 
@@ -707,9 +713,7 @@ steady:
 				break
 			}
 
-			for _, t := range c.trackers {
-				t.rotateIfNeeded(now)
-			}
+			c.rotateTrackerAndRefreshIfNeeded(ctx, now)
 
 			// (1) emit domain load and shard load metrics
 			c.emitLoadMetrics(ctx)
@@ -755,6 +759,19 @@ steady:
 	log.Infof(ctx, "Coordinator %v draining, #consumer=%v", c.self, len(c.consumers))
 }
 
+func (c *coordinator) rotateTrackerAndRefreshIfNeeded(ctx context.Context, now time.Time) {
+	var updated bool
+	for _, t := range c.trackers {
+		updated = t.rotateIfNeeded(now) || updated
+	}
+
+	if !updated {
+		return
+	}
+
+	c.refresh(ctx, c.refreshDelay)
+}
+
 func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	now := time.Now()
 
@@ -784,7 +801,7 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 		}
 	}
 
-	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, namedShards, c.cache.Placements(c.name.Tenant), now.Add(delay))
+	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, namedShards, c.cache.Placements(c.name.Tenant), c.trackers, now.Add(delay))
 	c.alloc = upd
 	c.noLb = c.findUnitDomains()
 
