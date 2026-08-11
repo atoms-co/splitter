@@ -14,8 +14,8 @@ import (
 )
 
 var (
-	d1 = prefab.QDN("t/s/d1")
-	d2 = prefab.QDN("t/s/d2")
+	d1 = qdn("t/s/d1")
+	d2 = qdn("t/s/d2")
 )
 
 func TestShardIntersectRange(t *testing.T) {

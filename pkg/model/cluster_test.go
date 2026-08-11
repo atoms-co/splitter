@@ -12,19 +12,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
+	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/lib/service/location"
+	splitterpb "go.atoms.co/splitter/pb"
 )
 
 var (
+	instance1     = newInstance("centralus", "node-1", "id1", time.Now())
+	instance2     = newInstance("northcentralus", "node-2", "id2", time.Now())
 	defaultDomain = "t/s/d"
-
-	id = ClusterID{Origin: prefab.Instance1.Instance(), Version: 1}
+	id            = ClusterID{Origin: instance1.Instance(), Version: 1}
 )
 
 const (
@@ -33,25 +37,25 @@ const (
 
 func TestCluster(t *testing.T) {
 	t.Run("domain shards", func(t *testing.T) {
-		g0A := prefab.NewGrantInfo(t, "g0A", "t/s/d", Global, "", "0", "a", ActiveGrantState)
-		gAD := prefab.NewGrantInfo(t, "gAD", "t/s/d", Global, "", "a", "d", ActiveGrantState)
-		g21 := prefab.NewGrantInfo(t, "g21", "t/s/d2", Global, "", "0", "a", ActiveGrantState)
-		g22 := prefab.NewGrantInfo(t, "g22", "t/s/d2", Global, "", "a", "d", ActiveGrantState)
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, g0A, gAD), NewAssignment(prefab.Instance2, g21, g22)), g0A.Shard(), gAD.Shard(), g21.Shard(), g22.Shard())
+		g0A := newGrantInfo(t, "g0A", "t/s/d", Global, "", "0", "a", ActiveGrantState)
+		gAD := newGrantInfo(t, "gAD", "t/s/d", Global, "", "a", "d", ActiveGrantState)
+		g21 := newGrantInfo(t, "g21", "t/s/d2", Global, "", "0", "a", ActiveGrantState)
+		g22 := newGrantInfo(t, "g22", "t/s/d2", Global, "", "a", "d", ActiveGrantState)
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, g0A, gAD), NewAssignment(instance2, g21, g22)), g0A.Shard(), gAD.Shard(), g21.Shard(), g22.Shard())
 
-		actual := DomainShards(cluster, prefab.QDN("t/s/d"))
+		actual := DomainShards(cluster, qdn("t/s/d"))
 		sort.Slice(actual, func(i, j int) bool {
 			return actual[i].From.Less(actual[j].From)
 		})
 		assertx.Equal(t, actual, slicex.New(g0A.Shard(), gAD.Shard()))
 
-		actual = DomainShards(cluster, prefab.QDN("t/s/d2"))
+		actual = DomainShards(cluster, qdn("t/s/d2"))
 		sort.Slice(actual, func(i, j int) bool {
 			return actual[i].From.Less(actual[j].From)
 		})
 		assertx.Equal(t, actual, slicex.New(g21.Shard(), g22.Shard()))
 
-		require.Empty(t, DomainShards(cluster, prefab.QDN("t/s/d3")))
+		require.Empty(t, DomainShards(cluster, qdn("t/s/d3")))
 	})
 }
 
@@ -175,7 +179,7 @@ func (a Action) id(c *ClusterMap) ClusterID {
 
 func (a Action) compare(t *testing.T, c *ClusterMap) {
 	requirex.Equal(t, c.ID().Version, a.Version, "cluster ID mismatch")
-	requirex.EqualProtobuf(t, location.UnwrapInstance(c.ID().Origin), location.UnwrapInstance(prefab.Instance1.Instance()), "cluster origin mismatch")
+	requirex.EqualProtobuf(t, location.UnwrapInstance(c.ID().Origin), location.UnwrapInstance(instance1.Instance()), "cluster origin mismatch")
 
 	// Compare shard grants
 	var expectedShards []Shard
@@ -298,7 +302,7 @@ type ConsumerDescription struct {
 }
 
 func (c ConsumerDescription) Consumer() Consumer {
-	return prefab.NewInstance("centralus", location.Node(fmt.Sprintf("node-%v", c.ID)), c.ID, time.Time{})
+	return newInstance("centralus", location.Node(fmt.Sprintf("node-%v", c.ID)), c.ID, time.Time{})
 }
 
 func (c ConsumerDescription) Assignment(t *testing.T) Assignment {
@@ -391,8 +395,8 @@ func (s ShardDescription) Shard(t *testing.T) Shard {
 		Region: Region(region),
 		Domain: qdn,
 		Type:   dt,
-		To:     Key(prefab.PadToUUID(t, rangeParts[1])),
-		From:   Key(prefab.PadToUUID(t, rangeParts[0])),
+		To:     Key(padToUUID(t, rangeParts[1])),
+		From:   Key(padToUUID(t, rangeParts[0])),
 	}
 }
 
@@ -414,7 +418,7 @@ func (l Lookup) DomainKey(t *testing.T) QualifiedDomainKey {
 
 	return QualifiedDomainKey{
 		Domain: qdn,
-		Key:    DomainKey{Region: l.Region, Key: Key(prefab.PadToUUID(t, l.Key))},
+		Key:    DomainKey{Region: l.Region, Key: Key(padToUUID(t, l.Key))},
 	}
 }
 
@@ -452,4 +456,29 @@ func requireConsumersEqual(t *testing.T, c1, c2 Consumer, args ...any) {
 
 func requireGrantsEqual(t *testing.T, g1, g2 GrantInfo, args ...any) {
 	requirex.EqualProtobuf(t, UnwrapGrantInfo(g1), UnwrapGrantInfo(g2), args...)
+}
+
+func newGrantInfo(t *testing.T, id, domain string, domainType DomainType, region Region, from, to string, state GrantState) GrantInfo {
+	return WrapGrantInfo(&splitterpb.ClusterMessage_GrantInfo{
+		Id:    id,
+		Shard: newShard(t, domain, domainType, region, from, to).ToProto(),
+		State: state,
+	})
+}
+
+func padToUUID(t *testing.T, value string) uuid.UUID {
+	t.Helper()
+
+	parsed, err := uuid.Parse(fmt.Sprintf("%v%v", value, uuidx.Min.String()[len(value):]))
+	require.NoError(t, err)
+	return parsed
+}
+
+func qdn(name string) QualifiedDomainName {
+	return MustParseQualifiedDomainNameStr(name)
+}
+
+func newInstance(region location.Region, node location.Node, id InstanceID, createdAt time.Time) Instance {
+	instance := location.NewInstance(location.New(region, node), location.WithInstanceID(id), location.WithInstanceCreatedAt(createdAt))
+	return NewInstance(instance, fmt.Sprintf("%v:50051", node))
 }

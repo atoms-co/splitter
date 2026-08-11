@@ -19,10 +19,10 @@ var (
 )
 
 func TestHandle(t *testing.T) {
-	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
-	key := prefab.NewQDK(t, "t/s/d", "", "1")
-	req := prefab.NewQDK(t, "t/s/d", "", "2")
-	resp := prefab.NewQDK(t, "t/s/d", "", "3")
+	grant := newGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
+	key := newQDK(t, "t/s/d", "", "1")
+	req := newQDK(t, "t/s/d", "", "2")
+	resp := newQDK(t, "t/s/d", "", "3")
 
 	ctx := context.Background()
 	r := newFakeRange()
@@ -69,7 +69,7 @@ func TestHandle(t *testing.T) {
 	t.Run("local non-active successful", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 
 		proxy.grants.Loaded(grant.ID(), grant.Shard(), r)
@@ -82,7 +82,7 @@ func TestHandle(t *testing.T) {
 	t.Run("local non-active failing", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 
 		proxy.grants.Loaded(grant.ID(), grant.Shard(), r)
@@ -95,9 +95,9 @@ func TestHandle(t *testing.T) {
 	t.Run("resolve failed", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
-		proxy.pool.Failed[prefab.Instance1.ID()] = ErrNotFound
+		proxy.pool.Failed[instance1.ID()] = ErrNotFound
 
 		rt, err := Handle(ctx, proxy, key, remoteSuccess(resp), req, localSuccess(resp))
 		requirex.Equal(t, err, ErrNotFound)
@@ -107,9 +107,9 @@ func TestHandle(t *testing.T) {
 	t.Run("remote successful", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
-		proxy.pool.Resolution[prefab.Instance1.ID()] = &grpc.ClientConn{}
+		proxy.pool.Resolution[instance1.ID()] = &grpc.ClientConn{}
 
 		rt, err := Handle(ctx, proxy, key, remoteSuccess(resp), req, localFailure)
 		require.NoError(t, err)
@@ -119,9 +119,9 @@ func TestHandle(t *testing.T) {
 	t.Run("remote failed", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
-		proxy.pool.Resolution[prefab.Instance1.ID()] = &grpc.ClientConn{}
+		proxy.pool.Resolution[instance1.ID()] = &grpc.ClientConn{}
 
 		rt, err := Handle(ctx, proxy, key, remoteInvalid, req, localSuccess(resp))
 		requirex.Equal(t, err, ToGRPCError(ErrInvalid))
@@ -130,10 +130,10 @@ func TestHandle(t *testing.T) {
 }
 
 func TestHandleEx(t *testing.T) {
-	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
-	key := prefab.NewQDK(t, "t/s/d", "", "1")
-	req := prefab.NewQDK(t, "t/s/d", "", "2")
-	resp := prefab.NewQDK(t, "t/s/d", "", "3")
+	grant := newGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
+	key := newQDK(t, "t/s/d", "", "1")
+	req := newQDK(t, "t/s/d", "", "2")
+	resp := newQDK(t, "t/s/d", "", "3")
 
 	ctx := context.Background()
 	r := newFakeRange()
@@ -180,7 +180,7 @@ func TestHandleEx(t *testing.T) {
 	t.Run("local non-active successful", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 
 		proxy.grants.Loaded(grant.ID(), grant.Shard(), r)
@@ -193,7 +193,7 @@ func TestHandleEx(t *testing.T) {
 	t.Run("local non-active failing", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
 
 		proxy.grants.Loaded(grant.ID(), grant.Shard(), r)
@@ -206,9 +206,9 @@ func TestHandleEx(t *testing.T) {
 	t.Run("resolve failed", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
-		proxy.pool.Failed[prefab.Instance1.ID()] = ErrNotFound
+		proxy.pool.Failed[instance1.ID()] = ErrNotFound
 
 		rt, err := HandleEx(ctx, proxy, key, remoteSuccess(resp), req, ToGRPCError, localSuccess(resp))
 		requirex.Equal(t, err, ToGRPCError(ErrNotFound))
@@ -218,9 +218,9 @@ func TestHandleEx(t *testing.T) {
 	t.Run("remote successful", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
-		proxy.pool.Resolution[prefab.Instance1.ID()] = &grpc.ClientConn{}
+		proxy.pool.Resolution[instance1.ID()] = &grpc.ClientConn{}
 
 		rt, err := HandleEx(ctx, proxy, key, remoteSuccess(resp), req, ToGRPCError, localFailure)
 		require.NoError(t, err)
@@ -230,9 +230,9 @@ func TestHandleEx(t *testing.T) {
 	t.Run("remote failed", func(t *testing.T) {
 		proxy := newTestProxy()
 
-		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, grant)), grant.Shard())
+		cluster := newCluster(t, slicex.New(NewAssignment(instance1, grant)), grant.Shard())
 		proxy.pool.Current = cluster
-		proxy.pool.Resolution[prefab.Instance1.ID()] = &grpc.ClientConn{}
+		proxy.pool.Resolution[instance1.ID()] = &grpc.ClientConn{}
 
 		rt, err := HandleEx(ctx, proxy, key, remoteInvalid, req, ToGRPCError, localSuccess(resp))
 		requirex.Equal(t, err, ToGRPCError(ErrInvalid))
@@ -241,10 +241,10 @@ func TestHandleEx(t *testing.T) {
 }
 
 func TestHandleLocal(t *testing.T) {
-	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
-	key := prefab.NewQDK(t, "t/s/d", "", "1")
-	req := prefab.NewQDK(t, "t/s/d", "", "2")
-	resp := prefab.NewQDK(t, "t/s/d", "", "3")
+	grant := newGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
+	key := newQDK(t, "t/s/d", "", "1")
+	req := newQDK(t, "t/s/d", "", "2")
+	resp := newQDK(t, "t/s/d", "", "3")
 
 	ctx := context.Background()
 	r := newFakeRange()
@@ -277,10 +277,10 @@ func TestHandleLocal(t *testing.T) {
 }
 
 func TestHandleLocalEx(t *testing.T) {
-	grant := prefab.NewGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
-	key := prefab.NewQDK(t, "t/s/d", "", "1")
-	req := prefab.NewQDK(t, "t/s/d", "", "2")
-	resp := prefab.NewQDK(t, "t/s/d", "", "3")
+	grant := newGrantInfo(t, "g1", "t/s/d", Global, "", "0", "a", LoadedGrantState)
+	key := newQDK(t, "t/s/d", "", "1")
+	req := newQDK(t, "t/s/d", "", "2")
+	resp := newQDK(t, "t/s/d", "", "3")
 
 	ctx := context.Background()
 	r := newFakeRange()
@@ -394,4 +394,11 @@ func (r *testProxy) DomainKey(key QualifiedDomainKey) QualifiedDomainKey {
 
 func (r *testProxy) Location(key QualifiedDomainKey) (location.Location, bool) {
 	return r.Resolver.Location(key)
+}
+
+func newQDK(t *testing.T, domain string, region Region, id string) QualifiedDomainKey {
+	return QualifiedDomainKey{
+		Domain: qdn(domain),
+		Key:    DomainKey{Region: region, Key: Key(padToUUID(t, id))},
+	}
 }
