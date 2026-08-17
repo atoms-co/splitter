@@ -23,31 +23,31 @@ func New(ctx context.Context, name string, cutoff log.Severity) hclog.Logger {
 	return &logger{name: name, ctx: ctx, cutoff: cutoff}
 }
 
-func (l *logger) Log(level hclog.Level, msg string, args ...interface{}) {
+func (l *logger) Log(level hclog.Level, msg string, args ...any) {
 	l.log(level, msg, args)
 }
 
-func (l *logger) Trace(msg string, args ...interface{}) {
+func (l *logger) Trace(msg string, args ...any) {
 	l.log(hclog.Trace, msg, args...)
 }
 
-func (l *logger) Debug(msg string, args ...interface{}) {
+func (l *logger) Debug(msg string, args ...any) {
 	l.log(hclog.Debug, msg, args...)
 }
 
-func (l *logger) Info(msg string, args ...interface{}) {
+func (l *logger) Info(msg string, args ...any) {
 	l.log(hclog.Info, msg, args...)
 }
 
-func (l *logger) Warn(msg string, args ...interface{}) {
+func (l *logger) Warn(msg string, args ...any) {
 	l.log(hclog.Warn, msg, args...)
 }
 
-func (l *logger) Error(msg string, args ...interface{}) {
+func (l *logger) Error(msg string, args ...any) {
 	l.log(hclog.Error, msg, args...)
 }
 
-func (l *logger) log(level hclog.Level, msg string, args ...interface{}) {
+func (l *logger) log(level hclog.Level, msg string, args ...any) {
 	log.Output(toFields(l.ctx, args), toSeverity(level), 2, fmt.Sprintf("%s %v", l.name, msg))
 }
 
@@ -71,11 +71,11 @@ func (l *logger) IsError() bool {
 	return l.cutoff <= log.SevError
 }
 
-func (l *logger) ImpliedArgs() []interface{} {
+func (l *logger) ImpliedArgs() []any {
 	return fromFields(l.ctx)
 }
 
-func (l *logger) With(args ...interface{}) hclog.Logger {
+func (l *logger) With(args ...any) hclog.Logger {
 	return New(toFields(l.ctx, args), l.name, l.cutoff)
 }
 
@@ -113,7 +113,7 @@ func (l *logger) StandardWriter(opts *hclog.StandardLoggerOptions) io.Writer {
 }
 
 // Expect alternating key(string),value(any) pairs https://github.com/hashicorp/go-hclog/blob/main/logger.go#L149
-func toFields(ctx context.Context, args []interface{}) context.Context {
+func toFields(ctx context.Context, args []any) context.Context {
 	var fields []log.Field
 	for i := 0; i < len(args)/2; i++ {
 		idx := i * 2
@@ -129,9 +129,9 @@ func toFields(ctx context.Context, args []interface{}) context.Context {
 	return log.NewContext(ctx, fields...)
 }
 
-func fromFields(ctx context.Context) []interface{} {
+func fromFields(ctx context.Context) []any {
 	fields := log.FromContext(ctx)
-	args := make([]interface{}, len(fields))
+	args := make([]any, len(fields))
 	for _, field := range fields {
 		if field.Type == log.SkipType || field.Type == log.UnknownType {
 			continue

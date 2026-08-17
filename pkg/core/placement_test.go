@@ -91,7 +91,7 @@ func TestDivide(t *testing.T) {
 	assert.Equal(t, middle, half)
 
 	ranges, err := uuidx.Split(uuidx.Domain, 1024)
-	for i := 0; i < 1024; i++ {
+	for i := range 1024 {
 		actual, err := core.Divide(int64(i), 1024)
 		assert.NoError(t, err)
 		assert.Equal(t, ranges[i].From(), actual)

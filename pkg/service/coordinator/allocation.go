@@ -74,10 +74,8 @@ func (r *NamedShards) TryPlace(worker Worker, work Work) (allocation.Load, bool)
 		return 0, false // do not schedule normal shards on a workers with named keys
 	}
 
-	for _, key := range worker.Data.Keys() {
-		if work.Unit.Contains(key) {
-			return 0, true // no penalty if shard contains a requested named key
-		}
+	if slices.ContainsFunc(worker.Data.Keys(), work.Unit.Contains) {
+		return 0, true // no penalty if shard contains a requested named key
 	}
 
 	return 0, false // do not schedule non-matching named shards on a worker with named keys

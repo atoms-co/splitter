@@ -136,7 +136,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			assign := readFn(t, out, isAssign)
 			assert.Len(t, assign.Grants(), 1)
 		}
@@ -219,7 +219,7 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 
 		time.Sleep(300 * time.Millisecond) // 2x Broadcast interval
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			promote = readFn(t, out2, isPromote)
 			assert.Len(t, promote.Grants(), 1)
 		}
@@ -274,7 +274,7 @@ func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 		snapshot := readFn(t, out, isClusterSnapshot)
 		assert.Len(t, snapshot.Assignments(), 0)
 
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			assign := readFn(t, out, isAssign)
 			assert.Len(t, assign.Grants(), 1)
 		}
@@ -494,7 +494,7 @@ func TestCoordinator_NamedKeyDisconnectDropsNamedShardPenalty(t *testing.T) {
 		}()
 
 		readFn(t, out, isClusterSnapshot)
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			assign := readFn(t, out, isAssign)
 			require.Len(t, assign.Grants(), 1)
 		}
@@ -696,7 +696,7 @@ func TestCoordinator_CustomShards(t *testing.T) {
 		readFn(t, out1, isClusterSnapshot)
 
 		var receivedGrants []model.Grant
-		for i := 0; i < 2; i++ {
+		for range 2 {
 			assign := readFn(t, out1, isAssign)
 			assert.Len(t, assign.Grants(), 1, "Expected a single grant in each assign message")
 			receivedGrants = append(receivedGrants, assign.Grants()[0])
@@ -777,7 +777,7 @@ func TestCoordinator_RegionSpecificShards(t *testing.T) {
 		readFn(t, out1, isClusterSnapshot)
 
 		var allGrants []model.Grant
-		for i := 0; i < 7; i++ {
+		for range 7 {
 			assign := readFn(t, out1, isAssign)
 			allGrants = append(allGrants, assign.Grants()[0])
 		}
@@ -794,7 +794,7 @@ func TestCoordinator_RegionSpecificShards(t *testing.T) {
 		time.Sleep(70 * time.Second)
 
 		var eastusGrants []model.Grant
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			assign := readFn(t, out2, isAssign)
 			eastusGrants = append(eastusGrants, assign.Grants()[0])
 		}
@@ -1136,12 +1136,10 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 		grantId := assign.Grants()[0].ID()
 
 		wg := sync.WaitGroup{}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			// out now contains lease extend message, drain and ignore
 			chanx.Drain(out)
-		}()
+		})
 		defer func() {
 			coord.Close()
 			assertx.Closed(t, out)

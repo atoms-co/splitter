@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/testing/requirex"
 )
 
 func TestClient_Establish(t *testing.T) {
@@ -40,7 +40,7 @@ func TestClient_Heartbeat(t *testing.T) {
 		client.Observe(ctx, session.NewEstablishedMessage(time.Now().Add(30*time.Second), location.NewInstance(location.New("us-west2", "pod2"))))
 		time.Sleep(100 * time.Millisecond)
 
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			time.Sleep(5 * time.Second)
 			msg := requirex.Element(t, out)
 			heartbeat, ok := msg.Heartbeat()
@@ -61,7 +61,7 @@ func TestClient_HeartbeatWithOption(t *testing.T) {
 
 		client.Observe(ctx, session.NewEstablishedMessage(time.Now().Add(60*time.Second), location.NewInstance(location.New("us-west2", "pod2"))))
 
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			time.Sleep(30 * time.Second)
 			msg := requirex.Element(t, out)
 			heartbeat, ok := msg.Heartbeat()
