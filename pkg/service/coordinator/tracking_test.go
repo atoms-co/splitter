@@ -69,7 +69,7 @@ func TestLoadTracker_TryRotatePublishesMetrics(t *testing.T) {
 
 	t.Run("before rotate interval", func(t *testing.T) {
 		tr := newDomainLoadTracker(start, "domain")
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			tr.add(shard, model.Load(10))
 		}
 		require.Nil(t, tr.quantile)
@@ -78,7 +78,7 @@ func TestLoadTracker_TryRotatePublishesMetrics(t *testing.T) {
 
 	t.Run("after rotate interval", func(t *testing.T) {
 		tr := newDomainLoadTracker(start, "domain")
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			tr.add(shard, model.Load(10))
 		}
 		require.Nil(t, tr.quantile)
@@ -127,10 +127,10 @@ func TestQuantileTracker_MultiShardLoadAndScore(t *testing.T) {
 	key2 := core.NewShard(shard2.From, shard2.To, shard2.Region)
 
 	const n = 10
-	for i := 0; i < n; i++ {
+	for range n {
 		qt.add(shard1, model.Load(10))
 	}
-	for i := 0; i < n; i++ {
+	for range n {
 		qt.add(shard2, model.Load(30))
 	}
 
@@ -175,11 +175,11 @@ func TestLoadTracker_MessageRoundTrip(t *testing.T) {
 	shard := testShard()
 
 	original := newDomainLoadTracker(start, "domain")
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		original.add(shard, model.Load(20))
 	}
 	original.rotateIfNeeded(start.Add(defaultRotationInterval + time.Second))
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		original.add(shard, model.Load(8))
 	}
 

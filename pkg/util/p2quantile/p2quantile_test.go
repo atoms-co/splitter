@@ -50,7 +50,7 @@ func TestP2Quantile_DataPoints(t *testing.T) {
 
 	for i, dp := range dataPoints {
 		q.Add(dp.data)
-		for j := 0; j < 5; j++ {
+		for j := range 5 {
 			require.Equal(t, dp.markerPos[j], q.markerPos[j], "Added data point[%v] %v, expected markerPos[%v]=%v, got markerPos[%v]=%v", i, dp.data, j, dp.markerPos[j], j, q.markerPos[j])
 			require.Equal(t, dp.desiredMarkerPos[j], q.desiredMarkerPos[j], "Added data point[%v] %v, expected desiredMarkerPos[%v]=%v, got desiredMarkerPos[%v]=%v", i, dp.data, j, dp.desiredMarkerPos[j], j, q.desiredMarkerPos[j])
 			require.InDeltaf(t, dp.height[j], q.height[j], tolerance, "Added data point[%v] %v, expected height[%v]=%v, got height[%v]=%v", i, dp.data, j, dp.height[j], j, q.height[j])

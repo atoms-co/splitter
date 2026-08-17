@@ -62,7 +62,7 @@ func (f *FSM) Read() core.Snapshot {
 	return f.db.Snapshot()
 }
 
-func (f *FSM) Apply(l *raft.Log) interface{} {
+func (f *FSM) Apply(l *raft.Log) any {
 	now := time.Now()
 
 	f.mu.Lock()

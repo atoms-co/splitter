@@ -3,14 +3,14 @@ package model
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
 )
 
 // ClusterID identifies cluster version and origin information.
@@ -526,7 +526,7 @@ func grantCanBeAssignedToShard(shardGrants map[GrantID]bool, grants func(GrantID
 		}
 	default:
 		ids := append(mapx.Keys(shardGrants), grant.ID())
-		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		slices.Sort(ids)
 		return fmt.Errorf("shard %v has too many assigned grants: %v", grant.Shard(), ids)
 	}
 	return nil

@@ -9,8 +9,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/lib/testing/requirex"
-	"go.atoms.co/splitter/pkg/model"
 	splitterpb "go.atoms.co/splitter/pb"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 func TestValidateDomain(t *testing.T) {
@@ -88,7 +88,7 @@ func TestValidateDomain(t *testing.T) {
 			},
 		}
 
-		for i := 0; i < model.MaxNamedKeysPerDomain+1; i++ {
+		for i := range model.MaxNamedKeysPerDomain + 1 {
 			pb.Config.Named[i] = &splitterpb.NamedDomainKey{
 				Name: "name" + string(rune(i)),
 				Key: &splitterpb.DomainKey{

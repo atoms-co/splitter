@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -792,11 +793,8 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 	var namedShards []model.Shard
 	if isKeys {
 		for _, work := range c.alloc.Work() {
-			for _, key := range keys {
-				if work.Unit.Contains(key) {
-					namedShards = append(namedShards, work.Unit)
-					break
-				}
+			if slices.ContainsFunc(keys, work.Unit.Contains) {
+				namedShards = append(namedShards, work.Unit)
 			}
 		}
 	}

@@ -13,13 +13,13 @@ import (
 	boltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/spf13/cobra"
 
-	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/iox"
+	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/service/metricsx"
 	"go.atoms.co/lib/service/pprofx"
-	"go.atoms.co/lib/contextx"
-	"go.atoms.co/iox"
 	"go.atoms.co/lib/signalx"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/pkg/cluster"
 	"go.atoms.co/splitter/pkg/server"
 	"go.atoms.co/splitter/pkg/service/leader"
@@ -138,9 +138,7 @@ func makeStartCommand() *cobra.Command {
 
 		var wg sync.WaitGroup
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer quit.Close()
 
 			listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", *port))
@@ -152,11 +150,9 @@ func makeStartCommand() *cobra.Command {
 			if err := s.Serve(wctx, listener); err != nil {
 				log.Errorf(ctx, "Server exited: %v", err)
 			}
-		}()
+		})
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			defer quit.Close()
 
 			listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%v", *splitterPort))
@@ -168,7 +164,7 @@ func makeStartCommand() *cobra.Command {
 			if err := s.ServeInternal(wctx, listener); err != nil {
 				log.Errorf(ctx, "Server exited: %v", err)
 			}
-		}()
+		})
 
 		go func() {
 			defer quit.Close()

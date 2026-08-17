@@ -9,12 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/lib/testing/synctestx"
-	"go.atoms.co/lib/mapx"
 	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/pkg/allocation"
 )
 
@@ -1150,7 +1150,7 @@ func newGrantMap[T, K comparable](list ...allocation.Grant[T, K]) map[T]allocati
 }
 
 func loadBalanceIterations(t *testing.T, alloc *allocation.Allocation[string, location.Location, string, location.Location], ignore map[string]bool, numItr int, now time.Time) (map[string]allocation.AdjustedLoad, bool) {
-	for i := 0; i < numItr; i++ {
+	for range numItr {
 		var move allocation.Move[string, string]
 		var ok bool
 		if move, _, ok = alloc.LoadBalance(now, ignore); !ok {

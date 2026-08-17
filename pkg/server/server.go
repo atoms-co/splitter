@@ -141,9 +141,7 @@ func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 	var merr error
 	for _, l := range listeners {
 		listener := l
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			err := grpcx.Serve(ctx, gs, listener)
 			mu.Lock()
 			defer mu.Unlock()
@@ -155,7 +153,7 @@ func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 				}
 				merr = multierr.Append(merr, l2.Close())
 			}
-		}()
+		})
 	}
 
 	wg.Wait()
@@ -174,8 +172,7 @@ func (s *Server) ServeInternal(ctx context.Context, listeners ...net.Listener) e
 	var merr error
 	for _, l := range listeners {
 		listener := l
-		wg.Add(1)
-		go func() {
+		wg.Go(func() {
 			err := grpcx.Serve(ctx, gs, listener)
 			mu.Lock()
 			defer mu.Unlock()
@@ -187,8 +184,7 @@ func (s *Server) ServeInternal(ctx context.Context, listeners ...net.Listener) e
 				}
 				merr = multierr.Append(merr, l2.Close())
 			}
-			wg.Done()
-		}()
+		})
 	}
 
 	wg.Wait()
