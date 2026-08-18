@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 	"sync"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/lib/stringx"
 	"go.atoms.co/lib/syncx"
+	"go.atoms.co/lib/workqueue"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/lib/service/session"
@@ -28,6 +28,7 @@ import (
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/storage"
+	"go.atoms.co/splitter/pkg/util/logging"
 	"go.atoms.co/splitter/pkg/util/sessionx"
 )
 
@@ -41,16 +42,11 @@ const (
 	maxLoad                    = model.Load(1 << 31)
 	// loadTickerInterval defines the interval between load-related actions.
 	loadTickerInterval = 10 * time.Minute
+	// grantLogInterval defines how often grant state snapshots are logged.
+	grantLogInterval = 5 * time.Minute
 )
 
 var (
-	logEventAssign  = log.String("event_type", "assign")
-	logEventPromote = log.String("event_type", "promote")
-	logEventRevoke  = log.String("event_type", "revoke")
-	logEventRelease = log.String("event_type", "release")
-	logEventExpire  = log.String("event_type", "expire")
-	logEventUpdate  = log.String("event_type", "update")
-
 	numConsumers = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
 	)
@@ -155,7 +151,8 @@ type coordinator struct {
 
 	trackers map[model.QualifiedDomainName]*domainLoadTracker
 
-	inject chan func()
+	inject        chan func()
+	grantLogQueue *workqueue.WorkQueue
 
 	drain, initialized iox.AsyncCloser
 }
@@ -174,9 +171,10 @@ func New(ctx context.Context, loc location.Location, service model.QualifiedServ
 
 		trackers: map[model.QualifiedDomainName]*domainLoadTracker{},
 
-		inject:      make(chan func()),
-		initialized: iox.NewAsyncCloser(),
-		drain:       iox.NewAsyncCloser(),
+		inject:        make(chan func()),
+		grantLogQueue: workqueue.New(1, 1),
+		initialized:   iox.NewAsyncCloser(),
+		drain:         iox.NewAsyncCloser(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -519,6 +517,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	defer c.Close()
 	defer c.drain.Close()
 	defer c.initialized.Close()
+	defer c.grantLogQueue.Close()
 
 	start := time.Now()
 
@@ -553,6 +552,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.self, c.alloc.Size())
 	c.recordAction(ctx, "init", "ok")
 	c.recordActionLatency(ctx, "init", start)
+	c.logGrants(ctx)
 	c.initialized.Close()
 
 	c.process(ctx, updates)
@@ -606,6 +606,9 @@ func (c *coordinator) process(ctx context.Context, updates <-chan core.Update) {
 
 	loadTicker := time.NewTicker(loadTickerInterval + randx.Duration(10*time.Second))
 	defer loadTicker.Stop()
+
+	grantLogTicker := time.NewTicker(grantLogInterval + randx.Duration(time.Second))
+	defer grantLogTicker.Stop()
 
 	var broadcast bool
 
@@ -734,6 +737,9 @@ steady:
 			// (3) Record action latency
 			c.recordActionLatency(ctx, "tick/load", now)
 
+		case <-grantLogTicker.C:
+			c.logGrants(ctx)
+
 		case <-cluster.C:
 			// (1) Broadcast cluster changes
 
@@ -805,7 +811,7 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 
 	for _, g := range rejected {
 		s := c.consumers[g.Worker]
-		logGrantEvent(ctx, log.SevInfo, "Grant released during allocation refresh", g, s, logEventRelease, logReason("refresh"))
+		logGrantEvent(ctx, log.SevInfo, "Grant released during allocation refresh", g, logging.EventRelease, toGrantState(g.State, g.Mod).Enum(), nil, s, logReason("refresh"))
 		c.mustSend(ctx, s, model.NewRevoke(toGrant(g)))
 	}
 }
@@ -824,7 +830,11 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	promoted, expired := c.alloc.Expire(now)
 	c.recordDeletedGrants(ctx, now, expired...)
 	for _, grant := range expired {
-		logGrantEvent(ctx, log.SevWarn, "Grant expired", grant, nil, logEventExpire)
+		grantCtx := ctx
+		if consumer, _, ok := c.cluster.Grant(grant.ID); ok {
+			grantCtx = model.NewConsumerContext(grantCtx, consumer)
+		}
+		logGrantEvent(grantCtx, log.SevWarn, "Grant expired", grant, logging.EventExpire, toGrantState(grant.State, grant.Mod).Enum(), nil, nil)
 	}
 
 	// record expirations. In steady state, they should not happen.
@@ -845,22 +855,22 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 		if move, load, ok := c.loadBalance(ctx, now); ok {
 			// Revoke from source worker, on failure, lease will run out
 			from := c.consumers[move.From.Worker]
-			logGrantEvent(ctx, log.SevInfo, "Revoked grant", move.From, from, logEventRevoke, logReason("move"))
+			logGrantEvent(ctx, log.SevInfo, "Revoked grant", move.From, logging.EventRevoke, model.ActiveGrantState.Enum(), toGrantState(move.From.State, move.From.Mod).Enum(), from, logReason("move"))
 			if !c.mustSend(ctx, from, model.NewRevoke(toGrant(move.From))) {
 				log.Errorf(ctx, "Failed to send revoke for move %v to consumer: %v. Disconnected", move, from)
 			}
 
 			// Allocate to destination worker, on failure, release allocation
 			to := c.consumers[move.To.Worker]
-			logGrantEvent(ctx, log.SevInfo, "Assigned new grant", move.To, to, logEventAssign, logReason("move"))
+			logGrantEvent(ctx, log.SevInfo, "Assigned new grant", move.To, logging.EventAssign, nil, toGrantState(move.To.State, move.To.Mod).Enum(), to, logReason("move"))
 			if !c.mustSend(ctx, to, model.NewAssign(toGrant(move.To))) {
 				log.Errorf(ctx, "Failed to send allocate for move %v to consumer: %v. Disconnected", move, to)
 				if released, ok, _, _ := c.alloc.Release(move.To, now); ok {
-					logGrantEvent(ctx, log.SevInfo, "Released grant after failed assignment", released, to, logEventRelease, logReason("move"))
+					logGrantEvent(ctx, log.SevInfo, "Released grant after failed assignment", released, logging.EventRelease, toGrantState(released.State, released.Mod).Enum(), nil, to, logReason("move"))
 				}
 			}
 
-			logGrantEvent(ctx, log.SevInfo, "Initiated grant move", move.From, from, log.String("from_worker", string(move.From.Worker)), log.String("to_worker", string(move.To.Worker)), log.String("from_grant", string(move.From.ID)), log.String("to_grant", string(move.To.ID)), log.Stringer("load", load))
+			logGrantEvent(ctx, log.SevInfo, "Initiated grant move", move.From, "", model.ActiveGrantState.Enum(), toGrantState(move.From.State, move.From.Mod).Enum(), from, log.String("from_worker", string(move.From.Worker)), log.String("to_worker", string(move.To.Worker)), log.String("from_grant", string(move.From.ID)), log.String("to_grant", string(move.To.ID)), log.Stringer("load", load))
 			c.recordAction(ctx, "move", "ok")
 		}
 	}
@@ -887,10 +897,10 @@ func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant
 
 	for _, grant := range grants {
 		s, ok := c.consumers[grant.Worker]
-		logGrantEvent(ctx, log.SevInfo, "Assigned new grant", grant, s, logEventAssign)
+		logGrantEvent(ctx, log.SevInfo, "Assigned new grant", grant, logging.EventAssign, nil, toGrantState(grant.State, grant.Mod).Enum(), s)
 		if !ok {
 			if released, ok, _, _ := c.alloc.Release(grant, now); ok {
-				logGrantEvent(ctx, log.SevInfo, "Released grant after failed assignment", released, s, logEventRelease)
+				logGrantEvent(ctx, log.SevInfo, "Released grant after failed assignment", released, logging.EventRelease, toGrantState(released.State, released.Mod).Enum(), nil, s)
 			}
 			continue
 		}
@@ -899,7 +909,7 @@ func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant
 			log.Errorf(ctx, "Failed to send assignment for grant %v to consumer: %v. Disconnected", grant, s)
 
 			if released, ok, _, _ := c.alloc.Release(grant, now); ok {
-				logGrantEvent(ctx, log.SevInfo, "Released grant after failed assignment", released, s, logEventRelease)
+				logGrantEvent(ctx, log.SevInfo, "Released grant after failed assignment", released, logging.EventRelease, toGrantState(released.State, released.Mod).Enum(), nil, s)
 			}
 			c.recordAction(ctx, "assign", "failed")
 			continue
@@ -917,7 +927,8 @@ func (c *coordinator) promote(ctx context.Context, grants ...Grant) {
 
 	for _, grant := range grants {
 		s, ok := c.consumers[grant.Worker]
-		logGrantEvent(ctx, log.SevInfo, "Promoted new grant", grant, s, logEventPromote)
+		fromState := toGrantState(allocation.Allocated, grant.Mod)
+		logGrantEvent(ctx, log.SevInfo, "Promoted new grant", grant, logging.EventPromote, fromState.Enum(), toGrantState(grant.State, grant.Mod).Enum(), s)
 		if !ok {
 			continue
 		}
@@ -981,14 +992,14 @@ func (c *coordinator) handleDeregister(ctx context.Context, s *consumerSession, 
 	assigned := c.alloc.Assigned(s.consumer.ID())
 	for _, g := range assigned.Allocated {
 		if released, ok, _, _ := c.alloc.Release(g, now); ok {
-			logGrantEvent(ctx, log.SevInfo, "Release allocated grant", released, s, logEventRelease, logReason("deregister"))
+			logGrantEvent(ctx, log.SevInfo, "Release allocated grant", released, logging.EventRelease, toGrantState(released.State, released.Mod).Enum(), nil, s, logReason("deregister"))
 			c.recordDeletedGrants(ctx, now, released)
 		}
 	}
 	if len(assigned.Active) > 0 {
 		revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
 		for _, g := range revoked {
-			logGrantEvent(ctx, log.SevInfo, "Grant revoked", g, s, logEventRevoke, logReason("deregister"))
+			logGrantEvent(ctx, log.SevInfo, "Grant revoked", g, logging.EventRevoke, model.ActiveGrantState.Enum(), toGrantState(g.State, g.Mod).Enum(), s, logReason("deregister"))
 		}
 		if !c.mustSend(ctx, s, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
 			log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnected", len(assigned.Active), s)
@@ -1036,7 +1047,7 @@ func (c *coordinator) handleReleased(ctx context.Context, s *consumerSession, re
 		}
 		r, isReleased, promo, isPromoted := c.alloc.Release(grant, now)
 		if isReleased {
-			logGrantEvent(ctx, log.SevInfo, "Grant released", r, s, logEventRelease)
+			logGrantEvent(ctx, log.SevInfo, "Grant released", r, logging.EventRelease, toGrantState(r.State, r.Mod).Enum(), nil, s)
 			c.recordDeletedGrants(ctx, now, r)
 		}
 		if isPromoted {
@@ -1067,12 +1078,17 @@ func (c *coordinator) handleUpdate(ctx context.Context, s *consumerSession, upda
 		return
 	}
 
+	var fromState *model.GrantState
+	if current, ok := findAssignedGrant(c.alloc, g); ok {
+		fromState = toGrantState(current.State, current.Mod).Enum()
+	}
+
 	if !c.alloc.Modify(s.consumer.ID(), g) {
 		log.Warnf(ctx, "Unable to modify grant %v", g)
 		return
 	}
 
-	logGrantEvent(ctx, log.SevInfo, "Grant state updated", g, s, logEventUpdate)
+	logGrantEvent(ctx, log.SevInfo, "Grant state updated", g, logging.EventUpdate, fromState, toGrantState(g.State, g.Mod).Enum(), s)
 
 	id, transition, ok := c.alloc.Transition(g)
 	if !ok {
@@ -1302,7 +1318,7 @@ func (c *coordinator) revokeGrants(ctx context.Context, grants map[model.Instanc
 		for _, g := range assigned.Allocated {
 			if gs[g.ID] {
 				if released, ok, _, _ := c.alloc.Release(g, now); ok {
-					logGrantEvent(ctx, log.SevInfo, "Release allocated grant", released, c.consumers[cid], logEventRelease)
+					logGrantEvent(ctx, log.SevInfo, "Release allocated grant", released, logging.EventRelease, toGrantState(released.State, released.Mod).Enum(), nil, c.consumers[cid])
 					c.recordDeletedGrants(ctx, now, released)
 				}
 			}
@@ -1316,7 +1332,7 @@ func (c *coordinator) revokeGrants(ctx context.Context, grants map[model.Instanc
 		if r, ok := c.alloc.Revoke(cid, now, toRevoke...); ok && len(r) > 0 {
 			s := c.consumers[cid]
 			for _, g := range r {
-				logGrantEvent(ctx, log.SevInfo, "Revoked active grant", g, s, logEventRevoke)
+				logGrantEvent(ctx, log.SevInfo, "Revoked active grant", g, logging.EventRevoke, model.ActiveGrantState.Enum(), toGrantState(g.State, g.Mod).Enum(), s)
 			}
 			if !c.mustSend(ctx, s, model.NewRevoke(slicex.Map(r, toGrant)...)) {
 				log.Errorf(ctx, "Failed to send revoke message to consumer %v", cid)
@@ -1431,14 +1447,14 @@ func (c *coordinator) handleConsumerDrainRequest(ctx context.Context, id model.I
 		assigned := c.alloc.Assigned(s.consumer.ID())
 		for _, g := range assigned.Allocated {
 			if r, released, _, _ := c.alloc.Release(g, now); released {
-				logGrantEvent(ctx, log.SevInfo, "Release allocated grant", r, s, logEventRelease, logReason("drain"))
+				logGrantEvent(ctx, log.SevInfo, "Release allocated grant", r, logging.EventRelease, toGrantState(r.State, r.Mod).Enum(), nil, s, logReason("drain"))
 				c.recordDeletedGrants(ctx, now, r)
 			}
 		}
 		if len(assigned.Active) > 0 {
 			revoked, _ := c.alloc.Revoke(s.consumer.ID(), now, assigned.Active...)
 			for _, g := range revoked {
-				logGrantEvent(ctx, log.SevInfo, "Grant revoked", g, s, logEventRevoke, logReason("drain"))
+				logGrantEvent(ctx, log.SevInfo, "Grant revoked", g, logging.EventRevoke, model.ActiveGrantState.Enum(), toGrantState(g.State, g.Mod).Enum(), s, logReason("drain"))
 			}
 			if !c.mustSend(ctx, s, model.NewRevoke(slicex.Map(revoked, toGrant)...)) {
 				log.Errorf(ctx, "Failed to revoke %v grants for worker: %v. Disconnected", len(assigned.Active), s)
@@ -1696,23 +1712,68 @@ func shardLogFields(s model.Shard) []log.Field {
 	return []log.Field{log.String("domain", string(s.Domain.Domain)), log.String("shard_region", string(s.Region)), log.String("shard_from", s.From.String()), log.String("shard_to", s.To.String()), log.Stringer("shard", s)}
 }
 
-func consumerLogFields(consumer model.Instance) []log.Field {
-	loc := consumer.Location()
-	return []log.Field{log.String("consumer_region", string(loc.Region)), log.String("consumer_node", string(loc.Node))}
-}
-
 func logReason(reason string) log.Field {
 	return log.String("reason", reason)
 }
 
-func logGrantEvent(ctx context.Context, severity log.Severity, message string, grant Grant, consumer *consumerSession, fields ...log.Field) {
-	grantFields := append(shardLogFields(grant.Unit), log.String("worker", string(grant.Worker)))
-	grantFields = append(grantFields, log.String("grant", string(grant.ID)))
-	grantFields = append(grantFields, log.String("state", strings.ToLower(toGrantState(grant.State, grant.Mod).String())))
-	if consumer != nil {
-		grantFields = append(grantFields, consumerLogFields(consumer.consumer.Instance())...)
-		grantFields = append(grantFields, log.Stringer("consumer", consumer))
+func grantsByShard(cluster *model.ClusterMap) []logging.ShardSnapshot {
+	grouped := make(map[model.Shard][]logging.GrantSnapshot)
+	for _, assignment := range cluster.Assignments() {
+		consumer := assignment.Consumer()
+		location := consumer.Location()
+		for _, grant := range assignment.Grants() {
+			shard := grant.Shard()
+			grantSnapshot := logging.GrantSnapshot{
+				Grant:          string(grant.ID()),
+				Worker:         string(consumer.ID()),
+				ConsumerRegion: string(location.Region),
+				ConsumerNode:   string(location.Node),
+				State:          grant.State(),
+			}
+			grouped[shard] = append(grouped[shard], grantSnapshot)
+		}
 	}
-	grantFields = append(grantFields, fields...)
-	log.Output(log.NewContext(ctx, grantFields...), severity, 1, message)
+
+	shards := mapx.MapToSlice(grouped, func(shard model.Shard, grants []logging.GrantSnapshot) logging.ShardSnapshot {
+		return logging.ShardSnapshot{
+			Domain:      string(shard.Domain.Domain),
+			ShardRegion: string(shard.Region),
+			ShardFrom:   shard.From.String(),
+			ShardTo:     shard.To.String(),
+			Grants:      grants,
+		}
+	})
+	return shards
+}
+
+func (c *coordinator) logGrants(ctx context.Context) {
+	cluster := c.cluster
+	at := time.Now()
+	select {
+	case c.grantLogQueue.Chan() <- func() {
+		logging.OutputGrants(ctx, log.SevInfo, "Grant states", logging.GrantEvent{Source: logging.SourceCoordinator}, at, grantsByShard(cluster))
+	}:
+	default:
+		log.Warnf(ctx, "Skipping grant log: queue busy")
+	}
+}
+
+func findAssignedGrant(alloc *Allocation, target Grant) (Grant, bool) {
+	assigned := alloc.Assigned(target.Worker)
+	for _, grants := range [][]Grant{assigned.Active, assigned.Allocated, assigned.Revoked} {
+		if grant, ok := slicex.First(grants, func(grant Grant) bool { return grant.ID == target.ID }); ok {
+			return grant, true
+		}
+	}
+	return Grant{}, false
+}
+
+func logGrantEvent(ctx context.Context, severity log.Severity, message string, grant Grant, eventType logging.EventType, fromState, toState *model.GrantState, consumer *consumerSession, fields ...log.Field) {
+	if consumer != nil {
+		ctx = model.NewConsumerContext(ctx, consumer.consumer.Instance())
+		fields = append(fields, log.Stringer("consumer", consumer))
+	}
+
+	event := logging.GrantEvent{Source: logging.SourceCoordinator, Type: eventType, Shard: grant.Unit.ToProto(), Grant: grant.ID, Worker: grant.Worker, FromState: fromState, ToState: toState}
+	logging.OutputGrantEvent(ctx, severity, message, event, fields...)
 }
