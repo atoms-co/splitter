@@ -2,13 +2,14 @@ package allocation
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/container"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/mathx"
+	"go.atoms.co/splitter/lib/service/location"
 )
 
 const (
@@ -926,6 +927,7 @@ func (a *Allocation[T, W, K, V]) move(from *worker[T, W, K, V], grant live[T, W]
 	allocated := NewGrant(a.newGrantID(), Allocated, None, work.Unit, to.info.Instance.ID, now, to.info.Lease)
 	if a.tryAssign(to, allocated) {
 		delete(a.unassigned, work.Unit)
+		to.load.Colo, to.colo = a.colo.Colocate(to.info.Instance, to.Live())
 	}
 	return Move[T, K]{From: revoked, To: allocated}
 }
@@ -1050,6 +1052,11 @@ func (a *Allocation[T, W, K, V]) Check() error {
 		}
 		if load != w.load {
 			return fmt.Errorf("inconsistent load for %v: %v <> %v", w.info, w.load, load)
+		}
+
+		colo, colocations := a.colo.Colocate(w.info.Instance, w.Live())
+		if colo != w.load.Colo || !maps.Equal(colocations, w.colo) {
+			return fmt.Errorf("inconsistent colocation for %v: %v@%v <> %v@%v", w.info, w.load.Colo, w.colo, colo, colocations)
 		}
 	}
 

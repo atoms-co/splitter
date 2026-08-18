@@ -49,6 +49,25 @@ func (r regionBan) TryPlace(worker allocation.Worker[string, location.Location],
 	return 0, true
 }
 
+type pairColocation struct {
+	first, second string
+	penalty       allocation.Load
+}
+
+func (p pairColocation) ID() allocation.Rule {
+	return "pair-colocation"
+}
+
+func (p pairColocation) Colocate(_ allocation.Worker[string, location.Location], work map[string]allocation.Work[string, location.Location]) map[string]allocation.Load {
+	if _, ok := work[p.first]; !ok {
+		return nil
+	}
+	if _, ok := work[p.second]; !ok {
+		return nil
+	}
+	return map[string]allocation.Load{p.first: p.penalty}
+}
+
 func TestAllocation(t *testing.T) {
 	work := []allocation.Work[string, location.Location]{
 		{Unit: "a", Load: 20, Data: us},
@@ -772,6 +791,40 @@ func TestAllocation(t *testing.T) {
 		require.True(t, ok)
 		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3"), []allocation.Load{50, 10, 10})
 
+		require.NoError(t, alloc.Check())
+	})
+
+	synctestx.Run(t, "load-balance/colocation", func(t *testing.T) {
+		work := []allocation.Work[string, location.Location]{
+			{Unit: "a", Load: 10, Data: eu},
+			{Unit: "b", Load: 10, Data: eu},
+		}
+		region := allocation.NewPreference("region-affinity", 50, hasRegionAffinity)
+		colocation := pairColocation{first: "a", second: "b", penalty: 20}
+		alloc := allocation.New[string, location.Location, string, location.Location]("id", []allocation.Placement[string, location.Location, string, location.Location]{region}, []allocation.Colocation[string, location.Location, string, location.Location]{colocation}, work, time.Now())
+
+		now := time.Now()
+		lease := now.Add(time.Minute)
+		source := allocation.Worker[string, location.Location]{ID: "source", Data: us}
+		destination := allocation.Worker[string, location.Location]{ID: "destination", Data: eu}
+		sourceGrant := allocation.NewGrant[string, string]("source-a", allocation.Active, allocation.None, "a", source.ID, now, lease)
+		destinationGrant := allocation.NewGrant[string, string]("destination-b", allocation.Active, allocation.None, "b", destination.ID, now, lease)
+
+		_, ok := alloc.Attach(source, allocation.NoCapacityLimit, lease, sourceGrant)
+		require.True(t, ok)
+		_, ok = alloc.Attach(destination, allocation.NoCapacityLimit, lease, destinationGrant)
+		require.True(t, ok)
+
+		move, diff, ok := alloc.LoadBalance(now, nil)
+		require.True(t, ok)
+		require.Equal(t, "a", move.From.Unit)
+		require.Equal(t, source.ID, move.From.Worker)
+		require.Equal(t, destination.ID, move.To.Worker)
+		require.Equal(t, allocation.AdjustedLoad{Place: -50, Colo: 20}, diff)
+
+		load, ok := alloc.LoadByWorker(destination.ID)
+		require.True(t, ok)
+		require.Equal(t, allocation.AdjustedLoad{Load: 20, Colo: 20}, load)
 		require.NoError(t, alloc.Check())
 	})
 

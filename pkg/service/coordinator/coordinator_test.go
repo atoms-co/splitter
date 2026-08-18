@@ -525,6 +525,55 @@ func TestCoordinator_NamedKeyDisconnectDropsNamedShardPenalty(t *testing.T) {
 	})
 }
 
+func TestCoordinator_AntiAffinityColocation(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		domainA, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(1)), model.WithDomainAntiAffinity(domain2))))
+		require.NoError(t, err)
+		domainB, err := model.NewDomain(domainName2, model.Global, time.Now(), model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(1)))))
+		require.NoError(t, err)
+
+		coord, _ := setup(ctx, t, []model.Domain{domainA, domainB}, WithFastActivation())
+		c := coord.(*coordinator)
+
+		consumer := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		in := make(chan model.ConsumerMessage, 1)
+		in <- newRegister(consumer, serviceName, nil, nil)
+		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
+		require.NoError(t, err, "consumer failed to join coordinator")
+		defer func() {
+			coord.Close()
+			assertx.Closed(t, out)
+		}()
+
+		readFn(t, out, isClusterSnapshot)
+		for range 2 {
+			assign := readFn(t, out, isAssign)
+			require.Len(t, assign.Grants(), 1)
+		}
+
+		assigned := c.alloc.Assigned(consumer.ID()).All()
+		require.Len(t, assigned, 2)
+		var shardA, shardB model.Shard
+		for _, grant := range assigned {
+			switch grant.Unit.Domain {
+			case domainName:
+				shardA = grant.Unit
+			case domainName2:
+				shardB = grant.Unit
+			}
+		}
+		require.Equal(t, domainName, shardA.Domain)
+		require.Equal(t, domainName2, shardB.Domain)
+		require.True(t, shardA.IntersectsRange(shardB))
+
+		load, ok := c.alloc.LoadByWorker(consumer.ID())
+		require.True(t, ok)
+		assert.Equal(t, antiAffinityLoad, load.Colo)
+	})
+}
+
 func TestCoordinator_RevokeGrant(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 
