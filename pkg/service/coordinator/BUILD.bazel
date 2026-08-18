@@ -15,7 +15,6 @@ go_library(
         "//pkg/core",
         "//pkg/model",
         "//pkg/storage",
-        "//pkg/util/logging",
         "//pkg/util/p2quantile",
         "//pkg/util/sessionx",
         "//pkg/util/uuidx",
