@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,12 +18,14 @@ import (
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/lib/timex"
+	"go.atoms.co/lib/workqueue"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/lib/service/location"
 )
 
 const (
-	statsDuration = 15 * time.Second
+	statsDuration            = 15 * time.Second
+	consumerGrantLogInterval = 10 * time.Minute
 )
 
 var (
@@ -83,6 +86,8 @@ type workPool struct {
 	quit   iox.AsyncCloser
 	drain  iox.AsyncCloser
 
+	grantLogQueue *workqueue.WorkQueue
+
 	poolOptions     *workPoolOptions
 	disconnectTimer *time.Timer
 }
@@ -90,32 +95,33 @@ type workPool struct {
 func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn workPoolJoinFn, handlerFn Handler, poolOpts *workPoolOptions, opts Options) (*workPool, <-chan Cluster) {
 	quit := iox.NewAsyncCloser()
 	p := &workPool{
-		RAsyncCloser: quit,
-		self:         consumer,
-		service:      service,
-		domains:      domains,
-		joinFn:       joinFn,
-		handler:      handlerFn,
-		opts:         opts,
-		poolOptions:  poolOpts,
-		cluster:      NewClusterMap(NewClusterID(consumer.Instance(), time.Now()), nil), // empty self-origin map
-		clusters:     make(chan Cluster, 1),
-		grants:       map[GrantID]*grant{},
-		shards:       map[Shard]GrantID{},
-		expire:       make(chan bool, 1),
-		inject:       make(chan func()),
-		quit:         quit,
-		drain:        iox.WithQuit(quit.Closed(), iox.NewAsyncCloser()),
+		RAsyncCloser:  quit,
+		self:          consumer,
+		service:       service,
+		domains:       domains,
+		joinFn:        joinFn,
+		handler:       handlerFn,
+		opts:          opts,
+		poolOptions:   poolOpts,
+		cluster:       NewClusterMap(NewClusterID(consumer.Instance(), time.Now()), nil), // empty self-origin map
+		clusters:      make(chan Cluster, 1),
+		grants:        map[GrantID]*grant{},
+		shards:        map[Shard]GrantID{},
+		expire:        make(chan bool, 1),
+		inject:        make(chan func()),
+		quit:          quit,
+		drain:         iox.WithQuit(quit.Closed(), iox.NewAsyncCloser()),
+		grantLogQueue: workqueue.New(1, 1),
 	}
 
-	ctx := NewConsumerContext(context.Background(), consumer)
+	ctx := newWorkPoolContext(context.Background(), consumer, service)
 	go p.join(ctx)
 	go p.process(ctx)
 	return p, p.clusters
 }
 
 func (p *workPool) Drain() {
-	ctx := NewConsumerContext(context.Background(), p.self)
+	ctx := newWorkPoolContext(context.Background(), p.self, p.service)
 	o := p.poolOptions
 	log.Infof(ctx, "Draining WorkPool with timeout %v", o.drainTimeout)
 	now := time.Now()
@@ -235,9 +241,12 @@ func (p *workPool) process(ctx context.Context) {
 	defer func() {
 		log.Infof(ctx, "Finishing WorkPool processing")
 	}()
+	defer p.grantLogQueue.Close()
 
 	statsTimer := time.NewTicker(statsDuration)
 	defer statsTimer.Stop()
+	grantLogTicker := time.NewTicker(consumerGrantLogInterval + randx.Duration(time.Second))
+	defer grantLogTicker.Stop()
 
 steady:
 	for {
@@ -261,6 +270,9 @@ steady:
 			// record metrics
 			p.emitStatus(ctx)
 			p.emitMetrics(ctx)
+
+		case <-grantLogTicker.C:
+			p.logGrants(ctx)
 
 		case <-p.drain.Closed():
 			break steady
@@ -435,8 +447,9 @@ func (p *workPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				case <-h.ownership.loader.loaded().Closed():
 					syncx.Txn0(ctx, p.txn, func() {
 						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == AllocatedGrantState {
+							fromState := grant.Grant.State()
 							grant.Grant = grant.ToState(LoadedGrantState)
-							log.Infof(ctx, "Informing the coordinator of grant load %v", grant.Grant)
+							p.logGrantEvent(ctx, "Consumer grant loaded", grant, GrantUpdated, fromState.Enum(), grant.Grant.State().Enum())
 							p.mustSend(ctx, NewUpdate(grant.Grant))
 						}
 					})
@@ -452,8 +465,9 @@ func (p *workPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 				case <-h.ownership.unloader.unloaded().Closed(): // client closed ownership.Unloader.Unload()
 					syncx.Txn0(ctx, p.txn, func() {
 						if grant, ok := p.grants[g.ID()]; ok && grant.Grant.State() == RevokedGrantState {
+							fromState := grant.Grant.State()
 							grant.Grant = grant.ToState(UnloadedGrantState)
-							log.Infof(ctx, "Informing the coordinator of grant unload %v", grant.Grant)
+							p.logGrantEvent(ctx, "Consumer grant unloaded", grant, GrantUpdated, fromState.Enum(), grant.Grant.State().Enum())
 							p.mustSend(ctx, NewUpdate(grant.Grant))
 						}
 					})
@@ -475,6 +489,7 @@ func (p *workPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 			}()
 
 			log.Infof(ctx, "Created handler for grant %v", g)
+			p.logGrantEvent(ctx, "Consumer grant assigned", gr, GrantAssigned, nil, gr.Grant.State().Enum())
 		}
 
 	case msg.IsPromote():
@@ -552,10 +567,11 @@ func (p *workPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 }
 
 func (p *workPool) activateGrant(ctx context.Context, grant *grant, active Grant) {
+	fromState := grant.Grant.State()
 	grant.Grant = active               // Overwrite allocated grant with active grant
 	grant.Handler.ownership.activate() // Signal consumer that grant is activated
 
-	log.Infof(ctx, "Promoted grant to active: %v", active)
+	p.logGrantEvent(ctx, "Consumer grant promoted", grant, GrantPromoted, fromState.Enum(), grant.Grant.State().Enum())
 }
 
 func (p *workPool) revokeGrant(ctx context.Context, leases map[time.Time]*timex.Timer, grant *grant, revoked Grant) {
@@ -566,6 +582,7 @@ func (p *workPool) revokeGrant(ctx context.Context, leases map[time.Time]*timex.
 	if _, ok := leases[ttl]; !ok {
 		leases[ttl] = timex.AfterFunc(time.Until(ttl), p.emitExpirationCheck)
 	}
+	fromState := grant.Grant.State()
 	grant.Lease = leases[ttl]
 	grant.LeaseState = LeaseRevoked
 	grant.Grant = revoked            // Overwrite activated grant with revoked grant
@@ -573,7 +590,7 @@ func (p *workPool) revokeGrant(ctx context.Context, leases map[time.Time]*timex.
 
 	// (2) Revoke async. If the Revoke unexpectedly arrives before Assign, the lease still expires.
 
-	log.Infof(ctx, "Revoking grant %v, ttl=%v", revoked, ttl)
+	p.logGrantEvent(ctx, "Consumer grant revoked", grant, GrantRevoked, fromState.Enum(), grant.Grant.State().Enum())
 
 	grant.Handler.Drain(time.Until(ttl))
 }
@@ -667,7 +684,7 @@ func (p *workPool) removeGrant(ctx context.Context, gid GrantID) {
 
 	grantsDuration.Observe(ctx, time.Now().Sub(grant.Grant.Assigned()), slicex.CopyAppend(qualifiedDomainTags(grant.Grant.Shard().Domain), sourceTag(), sourceVersionTag(ClientVersion), leaseStateTag(grant.LeaseState))...)
 
-	log.Infof(ctx, "Removed grant %v", grant)
+	p.logGrantEvent(ctx, "Consumer grant removed", grant, GrantRemoved, grant.Grant.State().Enum(), nil)
 }
 
 func (p *workPool) releaseGrant(ctx context.Context, gid GrantID) {
@@ -763,4 +780,64 @@ func (p *workPool) txn(ctx context.Context, fn func() error) error {
 	case <-p.Closed():
 		return ErrDraining
 	}
+}
+
+func (p *workPool) logGrantEvent(ctx context.Context, message string, grant *grant, eventType GrantEventType, fromState, toState *GrantState) {
+	event := grantEvent{
+		source:    grantLogSourceConsumer,
+		eventType: eventType,
+		shard:     grant.Grant.Shard(),
+		grant:     grant.Grant.ID(),
+		worker:    p.self.ID(),
+		fromState: fromState,
+		toState:   toState,
+	}
+	logGrantEvent(ctx, log.SevInfo, message, event, 2, log.Time("assigned_at", grant.Grant.Assigned()), log.String("client_language", "go"), log.String("client_version", ClientVersion))
+}
+
+func (p *workPool) logGrants(ctx context.Context) {
+	location := p.self.Location()
+	grants := mapx.MapToSlice(p.grants, func(_ GrantID, grant *grant) Grant { return grant.Grant })
+	worker := string(p.self.ID())
+	consumerRegion := string(location.Region)
+	consumerNode := string(location.Node)
+	coordinatorConnected := p.status != nil
+	draining := p.drain.IsClosed()
+	at := time.Now()
+
+	select {
+	case p.grantLogQueue.Chan() <- func() {
+		grouped := make(map[Shard][]grantLogSnapshot, len(grants))
+		for _, grant := range grants {
+			shard := grant.Shard()
+			assignedAt := grant.Assigned()
+			grouped[shard] = append(grouped[shard], grantLogSnapshot{
+				Grant:          string(grant.ID()),
+				Worker:         worker,
+				ConsumerRegion: consumerRegion,
+				ConsumerNode:   consumerNode,
+				State:          strings.ToLower(grant.State().String()),
+				AssignedAt:     &assignedAt,
+			})
+		}
+
+		shards := mapx.MapToSlice(grouped, func(shard Shard, grants []grantLogSnapshot) shardLogSnapshot {
+			return shardLogSnapshot{
+				Domain:      string(shard.Domain.Domain),
+				ShardRegion: string(shard.Region),
+				ShardFrom:   shard.From.String(),
+				ShardTo:     shard.To.String(),
+				Grants:      grants,
+			}
+		})
+
+		logGrants(ctx, log.SevInfo, "Consumer grant states", grantLogSourceConsumer, at, shards, 2, log.String("worker", worker), log.Bool("coordinator_connected", coordinatorConnected), log.Bool("draining", draining), log.String("client_language", "go"), log.String("client_version", ClientVersion))
+	}:
+	default:
+		log.Warnf(ctx, "Skipping consumer grant log: queue busy")
+	}
+}
+
+func newWorkPoolContext(ctx context.Context, consumer Consumer, service QualifiedServiceName) context.Context {
+	return log.NewContext(NewConsumerContext(ctx, consumer), log.String("tenant", service.Tenant), log.String("service", service.Service))
 }

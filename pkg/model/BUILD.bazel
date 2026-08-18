@@ -28,6 +28,7 @@ go_library(
         "@co_atoms_go_lib//syncx",
         "@co_atoms_go_lib//timex",
         "@co_atoms_go_lib//uuidx",
+        "@co_atoms_go_lib//workqueue",
         "@co_atoms_go_slicex//:slicex",
         "@com_github_google_uuid//:uuid",
         "@org_golang_google_grpc//:grpc",
