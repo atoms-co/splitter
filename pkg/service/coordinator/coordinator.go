@@ -398,6 +398,9 @@ func (c *coordinator) connect(ctx context.Context, sid session.ID, origin locati
 	}
 
 	if assigned, ok := c.alloc.Attach(allocation.NewWorker(consumer.instance.ID(), consumer), capacity, lease, active...); ok {
+		for _, grant := range slices.Concat(assigned.Active, assigned.Allocated) {
+			logGrantEvent(ctx, log.SevInfo, "Grant attached", grant, model.GrantAttached, nil, toGrantState(grant.State, grant.Mod).Enum(), s)
+		}
 		if len(assigned.Active) > 0 {
 			s.TrySend(ctx, model.NewAssign(slicex.Map(assigned.Active, toGrant)...))
 		}
@@ -548,6 +551,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	c.noLb = c.findUnitDomains()
 	c.cluster = model.NewClusterMap(model.NewClusterID(c.self, now), c.alloc.Units())
 
+	model.LogCoordinatorStarted(ctx, log.SevInfo, "Coordinator started")
 	log.Infof(ctx, "Coordinator %v/%v initialized, #shards=%v", c.name, c.self, c.alloc.Size())
 	c.recordAction(ctx, "init", "ok")
 	c.recordActionLatency(ctx, "init", start)
