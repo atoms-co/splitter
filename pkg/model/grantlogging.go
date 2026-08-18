@@ -11,7 +11,7 @@ import (
 	"go.atoms.co/lib/mapx"
 )
 
-// GrantEventType identifies the transition of a grant (by an event). Used in logging of grant events.
+// GrantEventType identifies an event in structured grant logging.
 type GrantEventType string
 
 type grantLogSource string
@@ -31,8 +31,12 @@ const (
 	GrantExpired GrantEventType = "expire"
 	// GrantRemoved records a grant removed from a consumer.
 	GrantRemoved GrantEventType = "remove"
+	// GrantAttached records a grant accepted from a reconnecting consumer.
+	GrantAttached GrantEventType = "attach"
 	// GrantCheckpoint records current grants grouped by shard.
 	GrantCheckpoint GrantEventType = "checkpoint"
+	// CoordinatorStarted records the beginning of a coordinator allocation epoch.
+	CoordinatorStarted GrantEventType = "coordinator_start"
 
 	grantLogSourceCoordinator grantLogSource = "coordinator"
 	grantLogSourceConsumer    grantLogSource = "consumer"
@@ -76,7 +80,7 @@ func grantEventFields(event grantEvent) []log.Field {
 	if event.eventType != "" {
 		fields = append(fields, log.String("event_type", string(event.eventType)))
 	}
-	if event.eventType == GrantCheckpoint {
+	if event.eventType == GrantCheckpoint || event.eventType == CoordinatorStarted {
 		return fields
 	}
 	fields = append(fields, log.String("domain", string(event.shard.Domain.Domain)), log.String("shard_region", string(event.shard.Region)))
@@ -94,6 +98,11 @@ func grantEventFields(event grantEvent) []log.Field {
 func logGrantEvent(ctx context.Context, severity log.Severity, message string, event grantEvent, calldepth int, fields ...log.Field) {
 	fields = append(grantEventFields(event), fields...)
 	log.Output(log.NewContext(ctx, fields...), severity, calldepth, message)
+}
+
+// LogCoordinatorStarted records the beginning of a coordinator allocation epoch.
+func LogCoordinatorStarted(ctx context.Context, severity log.Severity, message string) {
+	logGrantEvent(ctx, severity, message, grantEvent{source: grantLogSourceCoordinator, eventType: CoordinatorStarted}, 3)
 }
 
 // LogCoordinatorGrantEvent emits structured fields for a coordinator grant event.
