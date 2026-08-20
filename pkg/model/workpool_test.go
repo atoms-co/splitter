@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
@@ -631,6 +632,129 @@ func TestWorkpool(t *testing.T) {
 		done.Close()
 	})
 
+}
+
+func TestWorkpoolReportsLoad(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		loads []Load
+	}{
+		{
+			name:  "reports grant load",
+			loads: []Load{42},
+		},
+		{
+			name:  "reports consecutive grant loads",
+			loads: []Load{10, 20, 30},
+		},
+	} {
+		synctestx.Run(t, tc.name, func(t *testing.T) {
+			coordinatorCon := newFakeCon[ConsumerMessage]()
+			defer coordinatorCon.Close()
+
+			ownerships := make(chan Ownership, 1)
+			consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+			w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+				func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
+					return coordinatorCon.connect(ctx, handler)
+				},
+				func(ctx context.Context, id GrantID, shard Shard, ownership Ownership) {
+					ownerships <- ownership
+					<-ctx.Done()
+				},
+				&workPoolOptions{drainTimeout: time.Second},
+			)
+			defer func() {
+				w.Drain()
+				<-w.Closed()
+			}()
+
+			<-coordinatorCon.Connected.Closed()
+			requirex.Element(t, coordinatorCon.In)                       // register
+			coordinatorCon.Out <- NewExtend(time.Now().Add(time.Minute)) // initial extend
+
+			shard := Shard{Domain: domain1, Type: Unit}
+			grant := NewGrant("grant1", shard, ActiveGrantState, time.Now().Add(time.Minute), time.Now())
+			coordinatorCon.Out <- NewAssign(grant)
+			ownership := requirex.Element(t, ownerships)
+
+			for _, load := range tc.loads {
+				assert.NoError(t, ownership.Reporter().ReportLoad(load))
+			}
+
+			reported := make([]ShardLoad, 0, len(tc.loads))
+			for len(reported) < len(tc.loads) {
+				msg := requirex.Element(t, coordinatorCon.In)
+				clientMsg, ok := msg.ClientMessage()
+				require.True(t, ok)
+				status, ok := clientMsg.Status()
+				require.True(t, ok)
+				require.True(t, status.HasLoad())
+				reported = append(reported, status.Load().Shards()...)
+			}
+
+			assert.Len(t, reported, len(tc.loads))
+			for i, load := range tc.loads {
+				assert.Equal(t, grant.ID(), reported[i].ID())
+				assert.Equal(t, load, reported[i].Load())
+			}
+		})
+	}
+}
+
+func TestRead(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		ch := make(chan int)
+
+		require.Empty(t, read(ch, 1))
+	})
+
+	t.Run("available", func(t *testing.T) {
+		ch := make(chan int, 3)
+		ch <- 1
+		ch <- 2
+
+		require.Equal(t, []int{1, 2}, read(ch, 3))
+	})
+
+	t.Run("limit", func(t *testing.T) {
+		ch := make(chan int, 3)
+		ch <- 1
+		ch <- 2
+		ch <- 3
+
+		require.Equal(t, []int{1, 2}, read(ch, 2))
+		require.Len(t, ch, 1)
+		require.Equal(t, 3, <-ch)
+	})
+
+	t.Run("closed", func(t *testing.T) {
+		ch := make(chan int, 2)
+		ch <- 1
+		ch <- 2
+		close(ch)
+
+		require.Equal(t, []int{1, 2}, read(ch, 3))
+	})
+
+	t.Run("non-positive count", func(t *testing.T) {
+		for _, tc := range []struct {
+			name  string
+			count int
+		}{
+			{name: "negative", count: -1},
+			{name: "zero", count: 0},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				ch := make(chan int, 1)
+				ch <- 1
+
+				require.Empty(t, read(ch, tc.count))
+				require.Len(t, ch, 1)
+				require.Equal(t, 1, <-ch)
+			})
+		}
+	})
 }
 
 type fakeCon[T any] struct {

@@ -25,7 +25,7 @@ var (
 	ErrExpired = errors.New("grant expired")
 
 	// ClientVersion of the client library.
-	ClientVersion = "1.2.0"
+	ClientVersion = "1.2.1"
 )
 
 // Ownership holds information about the grant state and expiration, as well as signals for
@@ -79,6 +79,9 @@ type Ownership interface {
 	// normal circumstances. When the expiration time is past the current moment the grant is no longer assigned
 	// to the current consumer and the consumer must abort processing immediately.
 	Expiration() time.Time
+
+	// Reporter returns StatusReporter used by Range to report status to coordinator.
+	Reporter() StatusReporter
 }
 
 // Loader is used during the loading phase of a grant to coordinate transfer of ownership. It
@@ -100,6 +103,12 @@ type Unloader interface {
 	// Loaded returns a closer for when the counterpart transitions to Loaded, usually in response to
 	// the Unload signal. It may never happen.
 	Loaded() iox.RAsyncCloser
+}
+
+// StatusReporter provides a bridge between Range and workpool to report grant-scoped status to the coordinator.
+type StatusReporter interface {
+	// ReportLoad reports load
+	ReportLoad(load Load) error
 }
 
 // WaitForUnload blocks on prior counterpart Grant unloading. Typically, this signals that the handler
