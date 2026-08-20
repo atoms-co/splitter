@@ -1,4 +1,4 @@
-package model_test
+package model
 
 import (
 	"testing"
@@ -6,22 +6,20 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/testing/prefab"
 )
 
 func TestShardMap(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
-		m := model.NewShardMap[int, int]()
+		m := NewShardMap[int, int]()
 
 		assert.Len(t, m.Domains(), 0)
 		assert.Len(t, m.Lookup(prefab.NewQDK(t, "t/s/d", "", "0")), 0)
 	})
 
 	t.Run("unit", func(t *testing.T) {
-		m := model.NewShardMap[int, int]()
+		m := NewShardMap[int, int]()
 
-		unit1 := model.Shard{Domain: prefab.QDN("t/s/d"), Type: model.Unit}
+		unit1 := Shard{Domain: prefab.QDN("t/s/d"), Type: Unit}
 		m.Write(unit1, 1, 1)
 
 		// (1) All keys for that domain match the unit
@@ -41,11 +39,11 @@ func TestShardMap(t *testing.T) {
 	})
 
 	t.Run("global", func(t *testing.T) {
-		global1 := prefab.NewShard(t, "t/s/d", model.Global, "", "0", "1")
-		global2 := prefab.NewShard(t, "t/s/d", model.Global, "", "1", "2")
-		global3 := prefab.NewShard(t, "t/s/d", model.Global, "", "2", "4")
+		global1 := prefab.NewShard(t, "t/s/d", Global, "", "0", "1")
+		global2 := prefab.NewShard(t, "t/s/d", Global, "", "1", "2")
+		global3 := prefab.NewShard(t, "t/s/d", Global, "", "2", "4")
 
-		m := model.NewShardMap[int, int]()
+		m := NewShardMap[int, int]()
 
 		// (1) Two disjoint shards
 
@@ -95,11 +93,11 @@ func TestShardMap(t *testing.T) {
 	})
 
 	t.Run("regional", func(t *testing.T) {
-		us1 := prefab.NewShard(t, "t/s/d", model.Regional, "us", "0", "1")
-		us2 := prefab.NewShard(t, "t/s/d", model.Regional, "us", "1", "2")
-		eu1 := prefab.NewShard(t, "t/s/d", model.Regional, "eu", "0", "1")
+		us1 := prefab.NewShard(t, "t/s/d", Regional, "us", "0", "1")
+		us2 := prefab.NewShard(t, "t/s/d", Regional, "us", "1", "2")
+		eu1 := prefab.NewShard(t, "t/s/d", Regional, "eu", "0", "1")
 
-		m := model.NewShardMap[int, int]()
+		m := NewShardMap[int, int]()
 
 		// (1) Regions are disjoint, like different domains
 
@@ -120,12 +118,12 @@ func TestShardMap(t *testing.T) {
 	})
 
 	t.Run("sparse", func(t *testing.T) {
-		global1 := prefab.NewShard(t, "t/s/d", model.Global, "", "0", "1")
-		global2 := prefab.NewShard(t, "t/s/d", model.Global, "", "2", "3")
-		global3 := prefab.NewShard(t, "t/s/d", model.Global, "", "3", "4")
-		global4 := prefab.NewShard(t, "t/s/d", model.Global, "", "7", "9")
+		global1 := prefab.NewShard(t, "t/s/d", Global, "", "0", "1")
+		global2 := prefab.NewShard(t, "t/s/d", Global, "", "2", "3")
+		global3 := prefab.NewShard(t, "t/s/d", Global, "", "3", "4")
+		global4 := prefab.NewShard(t, "t/s/d", Global, "", "7", "9")
 
-		m := model.NewShardMap[int, int]()
+		m := NewShardMap[int, int]()
 
 		// (1) Two disjoint shards
 

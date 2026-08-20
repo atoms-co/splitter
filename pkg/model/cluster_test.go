@@ -1,4 +1,4 @@
-package model_test
+package model
 
 import (
 	"bytes"
@@ -19,14 +19,12 @@ import (
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/slicex"
 	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/testing/prefab"
 )
 
 var (
 	defaultDomain = "t/s/d"
 
-	id = model.ClusterID{Origin: prefab.Instance1.Instance(), Version: 1}
+	id = ClusterID{Origin: prefab.Instance1.Instance(), Version: 1}
 )
 
 const (
@@ -35,25 +33,25 @@ const (
 
 func TestCluster(t *testing.T) {
 	t.Run("domain shards", func(t *testing.T) {
-		g0A := prefab.NewGrantInfo(t, "g0A", "t/s/d", model.Global, "", "0", "a", model.ActiveGrantState)
-		gAD := prefab.NewGrantInfo(t, "gAD", "t/s/d", model.Global, "", "a", "d", model.ActiveGrantState)
-		g21 := prefab.NewGrantInfo(t, "g21", "t/s/d2", model.Global, "", "0", "a", model.ActiveGrantState)
-		g22 := prefab.NewGrantInfo(t, "g22", "t/s/d2", model.Global, "", "a", "d", model.ActiveGrantState)
-		cluster := newCluster(t, slicex.New(model.NewAssignment(prefab.Instance1, g0A, gAD), model.NewAssignment(prefab.Instance2, g21, g22)), g0A.Shard(), gAD.Shard(), g21.Shard(), g22.Shard())
+		g0A := prefab.NewGrantInfo(t, "g0A", "t/s/d", Global, "", "0", "a", ActiveGrantState)
+		gAD := prefab.NewGrantInfo(t, "gAD", "t/s/d", Global, "", "a", "d", ActiveGrantState)
+		g21 := prefab.NewGrantInfo(t, "g21", "t/s/d2", Global, "", "0", "a", ActiveGrantState)
+		g22 := prefab.NewGrantInfo(t, "g22", "t/s/d2", Global, "", "a", "d", ActiveGrantState)
+		cluster := newCluster(t, slicex.New(NewAssignment(prefab.Instance1, g0A, gAD), NewAssignment(prefab.Instance2, g21, g22)), g0A.Shard(), gAD.Shard(), g21.Shard(), g22.Shard())
 
-		actual := model.DomainShards(cluster, prefab.QDN("t/s/d"))
+		actual := DomainShards(cluster, prefab.QDN("t/s/d"))
 		sort.Slice(actual, func(i, j int) bool {
 			return actual[i].From.Less(actual[j].From)
 		})
 		assertx.Equal(t, actual, slicex.New(g0A.Shard(), gAD.Shard()))
 
-		actual = model.DomainShards(cluster, prefab.QDN("t/s/d2"))
+		actual = DomainShards(cluster, prefab.QDN("t/s/d2"))
 		sort.Slice(actual, func(i, j int) bool {
 			return actual[i].From.Less(actual[j].From)
 		})
 		assertx.Equal(t, actual, slicex.New(g21.Shard(), g22.Shard()))
 
-		require.Empty(t, model.DomainShards(cluster, prefab.QDN("t/s/d3")))
+		require.Empty(t, DomainShards(cluster, prefab.QDN("t/s/d3")))
 	})
 }
 
@@ -87,7 +85,7 @@ func runTestFromTestcase(t *testing.T, testcase []byte) {
 	err := decoder.Decode(&actions)
 	require.NoError(t, err)
 
-	var c *model.ClusterMap
+	var c *ClusterMap
 	for _, action := range actions.Actions {
 		c = action.Execute(t, c)
 	}
@@ -100,22 +98,22 @@ type Actions struct {
 // Action represents a single action in a test case. A test case involves a single cluster and a series of actions
 // that are executed on the cluster in the order they are defined.
 type Action struct {
-	Action      string             `yaml:"action"`
-	Version     int                `yaml:"version"`
-	Shards      []ShardInfo        `yaml:"shards"`
-	Assignments []Consumer         `yaml:"assignments"`
-	Lookups     []Lookup           `yaml:"lookups"`
-	Updated     []Grant            `yaml:"updated"`
-	Unassigned  []model.GrantID    `yaml:"unassigned"`
-	Removed     []model.ConsumerID `yaml:"removed"`
-	Error       string             `yaml:"expected_error"`
+	Action      string                `yaml:"action"`
+	Version     int                   `yaml:"version"`
+	Shards      []ShardInfo           `yaml:"shards"`
+	Assignments []ConsumerDescription `yaml:"assignments"`
+	Lookups     []Lookup              `yaml:"lookups"`
+	Updated     []GrantDescription    `yaml:"updated"`
+	Unassigned  []GrantID             `yaml:"unassigned"`
+	Removed     []ConsumerID          `yaml:"removed"`
+	Error       string                `yaml:"expected_error"`
 }
 
-func (a Action) GetShards(t *testing.T) []model.Shard {
-	return slicex.Map(a.Shards, func(s ShardInfo) model.Shard { return s.ShardDescription.Shard(t) })
+func (a Action) GetShards(t *testing.T) []Shard {
+	return slicex.Map(a.Shards, func(s ShardInfo) Shard { return s.ShardDescription.Shard(t) })
 }
 
-func (a Action) Execute(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
+func (a Action) Execute(t *testing.T, c *ClusterMap) *ClusterMap {
 	t.Logf("Executing action %v", a.Action)
 	switch a.Action {
 	case "create":
@@ -136,14 +134,14 @@ func (a Action) Execute(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 	return c
 }
 
-func (a Action) create(t *testing.T) *model.ClusterMap {
-	return model.NewClusterMap(id, a.GetShards(t))
+func (a Action) create(t *testing.T) *ClusterMap {
+	return NewClusterMap(id, a.GetShards(t))
 }
 
-func (a Action) snapshot(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
-	assignments := slicex.Map(a.Assignments, func(c Consumer) model.Assignment { return c.Assignment(t) })
-	snapshot := model.NewClusterSnapshot(a.id(c), assignments, a.GetShards(t))
-	upd, err := model.UpdateClusterMap(context.Background(), c, snapshot)
+func (a Action) snapshot(t *testing.T, c *ClusterMap) *ClusterMap {
+	assignments := slicex.Map(a.Assignments, func(c ConsumerDescription) Assignment { return c.Assignment(t) })
+	snapshot := NewClusterSnapshot(a.id(c), assignments, a.GetShards(t))
+	upd, err := UpdateClusterMap(context.Background(), c, snapshot)
 	if a.Error != "" {
 		require.EqualError(t, err, a.Error, "expected error")
 	} else {
@@ -153,11 +151,11 @@ func (a Action) snapshot(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 	return c
 }
 
-func (a Action) change(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
-	assignments := slicex.Map(a.Assignments, func(c Consumer) model.Assignment { return c.Assignment(t) })
-	updated := slicex.Map(a.Updated, func(g Grant) model.GrantInfo { return g.Grant(t) })
-	change := model.NewClusterChange(a.id(c), assignments, updated, a.Unassigned, a.Removed)
-	upd, err := model.UpdateClusterMap(context.Background(), c, change)
+func (a Action) change(t *testing.T, c *ClusterMap) *ClusterMap {
+	assignments := slicex.Map(a.Assignments, func(c ConsumerDescription) Assignment { return c.Assignment(t) })
+	updated := slicex.Map(a.Updated, func(g GrantDescription) GrantInfo { return g.Grant(t) })
+	change := NewClusterChange(a.id(c), assignments, updated, a.Unassigned, a.Removed)
+	upd, err := UpdateClusterMap(context.Background(), c, change)
 	if a.Error != "" {
 		require.EqualError(t, err, a.Error, "expected error")
 	} else {
@@ -167,7 +165,7 @@ func (a Action) change(t *testing.T, c *model.ClusterMap) *model.ClusterMap {
 	return c
 }
 
-func (a Action) id(c *model.ClusterMap) model.ClusterID {
+func (a Action) id(c *ClusterMap) ClusterID {
 	id := c.ID().Next(time.Time{})
 	if a.Version > 0 {
 		id.Version = a.Version
@@ -175,13 +173,13 @@ func (a Action) id(c *model.ClusterMap) model.ClusterID {
 	return id
 }
 
-func (a Action) compare(t *testing.T, c *model.ClusterMap) {
+func (a Action) compare(t *testing.T, c *ClusterMap) {
 	requirex.Equal(t, c.ID().Version, a.Version, "cluster ID mismatch")
 	requirex.EqualProtobuf(t, location.UnwrapInstance(c.ID().Origin), location.UnwrapInstance(prefab.Instance1.Instance()), "cluster origin mismatch")
 
 	// Compare shard grants
-	var expectedShards []model.Shard
-	domains := map[model.QualifiedDomainName][]model.Shard{}
+	var expectedShards []Shard
+	domains := map[QualifiedDomainName][]Shard{}
 	for _, s := range a.Shards {
 		expectedShard := s.ShardDescription.Shard(t)
 		expectedShards = append(expectedShards, expectedShard)
@@ -197,13 +195,13 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 
 	// Check domain shards
 	for domain, shards := range domains {
-		actualShards := model.DomainShards(c, domain)
+		actualShards := DomainShards(c, domain)
 		requirex.Equal(t, slicex.NewSet(actualShards...), slicex.NewSet(shards...), "shards mismatch for domain %v", domain)
 	}
 
 	// Compare consumers and their assignments
-	var expectedConsumers []model.Consumer
-	var expectedAssignments []model.Assignment
+	var expectedConsumers []Consumer
+	var expectedAssignments []Assignment
 	for _, consumer := range a.Assignments {
 		expectedConsumer := consumer.Consumer()
 		expectedConsumers = append(expectedConsumers, expectedConsumer)
@@ -213,7 +211,7 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 		requireConsumersEqual(t, actualConsumer, expectedConsumer, "consumer mismatch: %v", consumer.ID)
 		requirex.Equal(t, len(actualGrants), len(consumer.Grants), "total grants mismatch for consumer: %v", consumer.ID)
 
-		version, _ := model.ConsumerRetainedVersion(c, consumer.ID)
+		version, _ := ConsumerRetainedVersion(c, consumer.ID)
 		require.Equal(t, version, consumer.Version, "version mismatch for consumer: %v", consumer.ID)
 
 		sort.Slice(actualGrants, func(i, j int) bool {
@@ -223,7 +221,7 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 			return consumer.Grants[i].ID < consumer.Grants[j].ID
 		})
 
-		var expectedGrants []model.GrantInfo
+		var expectedGrants []GrantInfo
 		for i, grant := range consumer.Grants {
 			expectedGrant := grant.Grant(t)
 			expectedGrants = append(expectedGrants, expectedGrant)
@@ -234,11 +232,11 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 			requireGrantsEqual(t, actualGrant, expectedGrant, "grant mismatch: %v", grant.ID)
 			requireConsumersEqual(t, grantConsumer, expectedConsumer, "consumer mismatch for grant %v: %v", grant.ID, consumer.ID)
 
-			version, _ := model.GrantRetainedVersion(c, grant.ID)
+			version, _ := GrantRetainedVersion(c, grant.ID)
 			require.Equal(t, version, grant.Version, "version mismatch for grant: %v", grant.ID)
 		}
 
-		expectedAssignments = append(expectedAssignments, model.NewAssignment(expectedConsumer, expectedGrants...))
+		expectedAssignments = append(expectedAssignments, NewAssignment(expectedConsumer, expectedGrants...))
 	}
 
 	// Compare consumers
@@ -277,7 +275,7 @@ func (a Action) compare(t *testing.T, c *model.ClusterMap) {
 	}
 }
 
-func (a Action) lookup(t *testing.T, c *model.ClusterMap) {
+func (a Action) lookup(t *testing.T, c *ClusterMap) {
 	for _, lookup := range a.Lookups {
 		key := lookup.DomainKey(t)
 		t.Logf("Looking up key %v and states %v", key, lookup.LookupStates)
@@ -293,66 +291,66 @@ func (a Action) lookup(t *testing.T, c *model.ClusterMap) {
 	}
 }
 
-type Consumer struct {
-	ID      model.ConsumerID `yaml:"consumer"`
-	Grants  []Grant          `yaml:"grants"`
-	Version int              `yaml:"origin_cluster_version"`
+type ConsumerDescription struct {
+	ID      ConsumerID         `yaml:"consumer"`
+	Grants  []GrantDescription `yaml:"grants"`
+	Version int                `yaml:"origin_cluster_version"`
 }
 
-func (c Consumer) Consumer() model.Consumer {
+func (c ConsumerDescription) Consumer() Consumer {
 	return prefab.NewInstance("centralus", location.Node(fmt.Sprintf("node-%v", c.ID)), c.ID, time.Time{})
 }
 
-func (c Consumer) Assignment(t *testing.T) model.Assignment {
-	grants := slicex.Map(c.Grants, func(g Grant) model.GrantInfo { return g.Grant(t) })
-	return model.NewAssignment(c.Consumer(), grants...)
+func (c ConsumerDescription) Assignment(t *testing.T) Assignment {
+	grants := slicex.Map(c.Grants, func(g GrantDescription) GrantInfo { return g.Grant(t) })
+	return NewAssignment(c.Consumer(), grants...)
 }
 
 type ShardInfo struct {
 	ShardDescription ShardDescription `yaml:"shard"`
-	Grants           []model.GrantID  `yaml:"grants"`
+	Grants           []GrantID        `yaml:"grants"`
 }
 
-type GrantState string
+type GrantStateDescription string
 
-func (s GrantState) State(t *testing.T) model.GrantState {
+func (s GrantStateDescription) State(t *testing.T) GrantState {
 	switch s {
 	case "allocated":
-		return model.AllocatedGrantState
+		return AllocatedGrantState
 	case "loaded":
-		return model.LoadedGrantState
+		return LoadedGrantState
 	case "active":
-		return model.ActiveGrantState
+		return ActiveGrantState
 	case "revoked":
-		return model.RevokedGrantState
+		return RevokedGrantState
 	case "unloaded":
-		return model.UnloadedGrantState
+		return UnloadedGrantState
 	default:
 		require.Failf(t, "unknown grant state", "unknown grant state: %v", s)
-		return model.InvalidGrantState
+		return InvalidGrantState
 	}
 }
 
-type Grant struct {
-	ID               model.GrantID    `yaml:"id"`
-	ShardDescription ShardDescription `yaml:"shard"`
-	State            GrantState       `yaml:"state"`
-	Version          int              `yaml:"origin_cluster_version"`
+type GrantDescription struct {
+	ID               GrantID               `yaml:"id"`
+	ShardDescription ShardDescription      `yaml:"shard"`
+	State            GrantStateDescription `yaml:"state"`
+	Version          int                   `yaml:"origin_cluster_version"`
 }
 
-func (g Grant) Grant(t *testing.T) model.GrantInfo {
-	return model.NewGrantInfo(g.ID, g.ShardDescription.Shard(t), g.State.State(t))
+func (g GrantDescription) Grant(t *testing.T) GrantInfo {
+	return NewGrantInfo(g.ID, g.ShardDescription.Shard(t), g.State.State(t))
 }
 
 // ShardDescription represents a shard description in the format domain=domain,type=type,range=(from:to),region=region
 type ShardDescription string
 
-func (s ShardDescription) Shard(t *testing.T) model.Shard {
+func (s ShardDescription) Shard(t *testing.T) Shard {
 	t.Helper()
 
 	domain := defaultDomain
 	var shardRange, region string
-	var dt model.DomainType
+	var dt DomainType
 	for part := range strings.SplitSeq(string(s), ",") {
 		props := strings.Split(part, "=")
 		require.Len(t, props, 2, "invalid shard property: %v", part)
@@ -363,11 +361,11 @@ func (s ShardDescription) Shard(t *testing.T) model.Shard {
 		case "type":
 			switch strings.TrimSpace(props[1]) {
 			case "G":
-				dt = model.Global
+				dt = Global
 			case "R":
-				dt = model.Regional
+				dt = Regional
 			case "U":
-				dt = model.Unit
+				dt = Unit
 			default:
 				require.Failf(t, "unknown domain type", "unknown domain type: %v", props[1])
 			}
@@ -386,72 +384,72 @@ func (s ShardDescription) Shard(t *testing.T) model.Shard {
 	rangeParts := strings.Split(shardRange[1:len(shardRange)-1], ":")
 	require.Len(t, rangeParts, 2, "range must be in format (from:to)")
 
-	qdn, ok := model.ParseQualifiedDomainNameStr(domain)
+	qdn, ok := ParseQualifiedDomainNameStr(domain)
 	require.True(t, ok, "invalid domain: %v", domain)
 
-	return model.Shard{
-		Region: model.Region(region),
+	return Shard{
+		Region: Region(region),
 		Domain: qdn,
 		Type:   dt,
-		To:     model.Key(prefab.PadToUUID(t, rangeParts[1])),
-		From:   model.Key(prefab.PadToUUID(t, rangeParts[0])),
+		To:     Key(prefab.PadToUUID(t, rangeParts[1])),
+		From:   Key(prefab.PadToUUID(t, rangeParts[0])),
 	}
 }
 
 type Lookup struct {
 	Key          string       `yaml:"key"`
-	Region       model.Region `yaml:"region"`
+	Region       Region       `yaml:"region"`
 	Domain       string       `yaml:"domain"`
 	LookupStates string       `yaml:"states"`
 	Result       LookupResult `yaml:"expected"`
 }
 
-func (l Lookup) DomainKey(t *testing.T) model.QualifiedDomainKey {
+func (l Lookup) DomainKey(t *testing.T) QualifiedDomainKey {
 	if l.Domain == "" {
 		l.Domain = defaultDomain
 	}
 
-	qdn, ok := model.ParseQualifiedDomainNameStr(l.Domain)
+	qdn, ok := ParseQualifiedDomainNameStr(l.Domain)
 	require.True(t, ok, "invalid domain: %v", l.Domain)
 
-	return model.QualifiedDomainKey{
+	return QualifiedDomainKey{
 		Domain: qdn,
-		Key:    model.DomainKey{Region: l.Region, Key: model.Key(prefab.PadToUUID(t, l.Key))},
+		Key:    DomainKey{Region: l.Region, Key: Key(prefab.PadToUUID(t, l.Key))},
 	}
 }
 
-func (l Lookup) States(t *testing.T) []model.GrantState {
+func (l Lookup) States(t *testing.T) []GrantState {
 	if l.LookupStates == "" {
 		return nil
 	}
-	return slicex.Map(strings.Split(l.LookupStates, ","), func(s string) model.GrantState {
-		return GrantState(strings.TrimSpace(s)).State(t)
+	return slicex.Map(strings.Split(l.LookupStates, ","), func(s string) GrantState {
+		return GrantStateDescription(strings.TrimSpace(s)).State(t)
 	})
 }
 
 type LookupResult struct {
-	Found    *bool            `yaml:"found"`
-	Grant    model.GrantID    `yaml:"grant"`
-	Consumer model.ConsumerID `yaml:"consumer"`
+	Found    *bool      `yaml:"found"`
+	Grant    GrantID    `yaml:"grant"`
+	Consumer ConsumerID `yaml:"consumer"`
 }
 
-func newCluster(t *testing.T, assignments []model.Assignment, shards ...model.Shard) *model.ClusterMap {
+func newCluster(t *testing.T, assignments []Assignment, shards ...Shard) *ClusterMap {
 	t.Helper()
-	cluster := model.NewClusterMap(id, nil)
+	cluster := NewClusterMap(id, nil)
 	return applySnapshot(t, cluster, assignments, shards...)
 }
 
-func applySnapshot(t *testing.T, c *model.ClusterMap, assignments []model.Assignment, shards ...model.Shard) *model.ClusterMap {
+func applySnapshot(t *testing.T, c *ClusterMap, assignments []Assignment, shards ...Shard) *ClusterMap {
 	t.Helper()
-	cluster, err := model.UpdateClusterMap(context.Background(), c, model.NewClusterSnapshot(id.Next(time.Now()), assignments, shards))
+	cluster, err := UpdateClusterMap(context.Background(), c, NewClusterSnapshot(id.Next(time.Now()), assignments, shards))
 	require.NoError(t, err)
 	return cluster
 }
 
-func requireConsumersEqual(t *testing.T, c1, c2 model.Consumer, args ...any) {
-	requirex.EqualProtobuf(t, model.UnwrapInstance(c1), model.UnwrapInstance(c2), args...)
+func requireConsumersEqual(t *testing.T, c1, c2 Consumer, args ...any) {
+	requirex.EqualProtobuf(t, UnwrapInstance(c1), UnwrapInstance(c2), args...)
 }
 
-func requireGrantsEqual(t *testing.T, g1, g2 model.GrantInfo, args ...any) {
-	requirex.EqualProtobuf(t, model.UnwrapGrantInfo(g1), model.UnwrapGrantInfo(g2), args...)
+func requireGrantsEqual(t *testing.T, g1, g2 GrantInfo, args ...any) {
+	requirex.EqualProtobuf(t, UnwrapGrantInfo(g1), UnwrapGrantInfo(g2), args...)
 }

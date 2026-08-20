@@ -1,4 +1,4 @@
-package model_test
+package model
 
 import (
 	"fmt"
@@ -9,10 +9,8 @@ import (
 
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
-	"go.atoms.co/splitter/pkg/model"
-	"go.atoms.co/splitter/testing/prefab"
+	"go.atoms.co/slicex"
 )
 
 var (
@@ -25,23 +23,23 @@ func TestShardIntersectRange(t *testing.T) {
 	b := uuid.MustParse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 	c := uuid.MustParse("cccccccc-cccc-cccc-cccc-cccccccccccc")
 
-	unit1 := model.Shard{Domain: d1, Type: model.Unit}
-	unit2 := model.Shard{Domain: d2, Type: model.Unit}
+	unit1 := Shard{Domain: d1, Type: Unit}
+	unit2 := Shard{Domain: d2, Type: Unit}
 
-	globalAB := model.Shard{Domain: d1, Type: model.Global, From: model.Key(a), To: model.Key(b)}
-	globalBC := model.Shard{Domain: d2, Type: model.Global, From: model.Key(b), To: model.Key(c)}
-	globalAC := model.Shard{Domain: d2, Type: model.Global, From: model.Key(a), To: model.Key(c)}
+	globalAB := Shard{Domain: d1, Type: Global, From: Key(a), To: Key(b)}
+	globalBC := Shard{Domain: d2, Type: Global, From: Key(b), To: Key(c)}
+	globalAC := Shard{Domain: d2, Type: Global, From: Key(a), To: Key(c)}
 
-	region1 := model.Region("centralus")
-	region2 := model.Region("eastus")
-	region1AB := model.Shard{Domain: d1, Type: model.Regional, Region: region1, From: model.Key(a), To: model.Key(b)}
-	region1BC := model.Shard{Domain: d2, Type: model.Regional, Region: region1, From: model.Key(b), To: model.Key(c)}
-	region1AC := model.Shard{Domain: d2, Type: model.Regional, Region: region1, From: model.Key(a), To: model.Key(c)}
-	region2AB := model.Shard{Domain: d2, Type: model.Regional, Region: region2, From: model.Key(a), To: model.Key(b)}
-	region2AC := model.Shard{Domain: d2, Type: model.Regional, Region: region2, From: model.Key(a), To: model.Key(c)}
+	region1 := Region("centralus")
+	region2 := Region("eastus")
+	region1AB := Shard{Domain: d1, Type: Regional, Region: region1, From: Key(a), To: Key(b)}
+	region1BC := Shard{Domain: d2, Type: Regional, Region: region1, From: Key(b), To: Key(c)}
+	region1AC := Shard{Domain: d2, Type: Regional, Region: region1, From: Key(a), To: Key(c)}
+	region2AB := Shard{Domain: d2, Type: Regional, Region: region2, From: Key(a), To: Key(b)}
+	region2AC := Shard{Domain: d2, Type: Regional, Region: region2, From: Key(a), To: Key(c)}
 
 	tests := []struct {
-		s1, s2     model.Shard
+		s1, s2     Shard
 		intersects bool
 	}{
 		{unit1, unit2, true},
@@ -68,79 +66,79 @@ func TestShardIntersectRange(t *testing.T) {
 func TestShard_String(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
-		shard model.Shard
+		shard Shard
 		want  string
 	}{
 		{
 			name: "empty min",
-			shard: model.Shard{
+			shard: Shard{
 				Domain: d1,
-				Type:   model.Global,
-				From:   model.Key(uuidx.Domain.From()),
-				To:     model.Key(uuidx.Domain.From()),
+				Type:   Global,
+				From:   Key(uuidx.Domain.From()),
+				To:     Key(uuidx.Domain.From()),
 			},
 			want: "t/s/d1[0000-0000)",
 		},
 		{
 			name: "empty max",
-			shard: model.Shard{
+			shard: Shard{
 				Domain: d1,
-				Type:   model.Global,
-				From:   model.Key(uuidx.Domain.To()),
-				To:     model.Key(uuidx.Domain.To()),
+				Type:   Global,
+				From:   Key(uuidx.Domain.To()),
+				To:     Key(uuidx.Domain.To()),
 			},
 			want: "t/s/d1[ffff-ffff)",
 		},
 		{
 			name: "full",
-			shard: model.Shard{
+			shard: Shard{
 				Domain: d1,
-				Type:   model.Global,
-				From:   model.Key(uuidx.Domain.From()),
-				To:     model.Key(uuidx.Domain.To()),
+				Type:   Global,
+				From:   Key(uuidx.Domain.From()),
+				To:     Key(uuidx.Domain.To()),
 			},
 			want: "t/s/d1[0000-ffff)",
 		},
 		{
 			name: "nil",
-			shard: model.Shard{
+			shard: Shard{
 				Domain: d1,
-				Type:   model.Global,
+				Type:   Global,
 			},
 			want: "t/s/d1[0000-0000)",
 		},
 		{
 			name: "global",
-			shard: model.Shard{
+			shard: Shard{
 				Domain: d1,
-				Type:   model.Global,
-				From:   model.Key(uuid.MustParse("12300000-0000-0000-0000-000000000000")),
-				To:     model.Key(uuid.MustParse("45600000-0000-0000-0000-000000000000")),
+				Type:   Global,
+				From:   Key(uuid.MustParse("12300000-0000-0000-0000-000000000000")),
+				To:     Key(uuid.MustParse("45600000-0000-0000-0000-000000000000")),
 			},
 			want: "t/s/d1[1230-4560)",
 		},
 		{
 			name: "region",
-			shard: model.Shard{
+			shard: Shard{
 				Domain: d1,
-				Type:   model.Regional,
+				Type:   Regional,
 				Region: "region1",
-				From:   model.Key(uuid.MustParse("12300000-0000-0000-0000-000000000000")),
-				To:     model.Key(uuid.MustParse("45600000-0000-0000-0000-000000000000")),
+				From:   Key(uuid.MustParse("12300000-0000-0000-0000-000000000000")),
+				To:     Key(uuid.MustParse("45600000-0000-0000-0000-000000000000")),
 			},
 			want: "t/s/d1@region1[1230-4560)",
 		},
 		{
 			name: "unit",
-			shard: model.Shard{
+			shard: Shard{
 				Domain: d1,
-				Type:   model.Unit,
+				Type:   Unit,
 			},
 			want: "t/s/d1",
 		},
 		{
 			name: "invalid",
-			shard: model.Shard{
+			shard: Shard{
 				Domain: d1,
 			},
 			want: "invalid-shard",
@@ -158,13 +156,13 @@ func TestShard_String(t *testing.T) {
 }
 
 func TestGrantStateCanAdvanceTo(t *testing.T) {
-	states := slicex.New(model.AllocatedGrantState, model.LoadedGrantState, model.ActiveGrantState, model.RevokedGrantState, model.UnloadedGrantState)
+	states := slicex.New(AllocatedGrantState, LoadedGrantState, ActiveGrantState, RevokedGrantState, UnloadedGrantState)
 
 	for _, from := range states {
 		canAdvance := false
 		for _, to := range states {
 			t.Run(fmt.Sprintf("%v to %v", from, to), func(t *testing.T) {
-				requirex.Equal(t, model.GrantStateCanAdvanceTo(from, to), canAdvance)
+				requirex.Equal(t, GrantStateCanAdvanceTo(from, to), canAdvance)
 			})
 			if from == to {
 				canAdvance = true
@@ -173,13 +171,13 @@ func TestGrantStateCanAdvanceTo(t *testing.T) {
 	}
 }
 
-func firstShardOf12Split(t *testing.T) model.Shard {
+func firstShardOf12Split(t *testing.T) Shard {
 	ranges, err := uuidx.Split(uuidx.Domain, 12)
 	assert.Nil(t, err)
-	return model.Shard{
+	return Shard{
 		Domain: d1,
-		Type:   model.Global,
-		From:   model.Key(ranges[0].From()),
-		To:     model.Key(ranges[0].To()),
+		Type:   Global,
+		From:   Key(ranges[0].From()),
+		To:     Key(ranges[0].To()),
 	}
 }

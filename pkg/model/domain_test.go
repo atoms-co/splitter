@@ -1,4 +1,4 @@
-package model_test
+package model
 
 import (
 	"testing"
@@ -10,7 +10,6 @@ import (
 
 	"go.atoms.co/lib/testing/requirex"
 	splitterpb "go.atoms.co/splitter/pb"
-	"go.atoms.co/splitter/pkg/model"
 )
 
 func TestValidateDomain(t *testing.T) {
@@ -18,9 +17,9 @@ func TestValidateDomain(t *testing.T) {
 
 	t.Run("validate unit domain with shards", func(t *testing.T) {
 		pb := &splitterpb.Domain{
-			Name:    model.MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
-			Type:    model.Unit,
-			State:   model.DomainActive,
+			Name:    MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
+			Type:    Unit,
+			State:   DomainActive,
 			Created: timestamppb.New(testTime),
 			Config: &splitterpb.Domain_Config{
 				ShardingPolicy: &splitterpb.ShardingPolicy{
@@ -29,28 +28,28 @@ func TestValidateDomain(t *testing.T) {
 			},
 		}
 
-		_, err := model.ParseDomain(pb)
+		_, err := ParseDomain(pb)
 		requirex.Equal(t, err.Error(), "invalid domain: shards cannot be specified for unit domain")
 	})
 
 	t.Run("validate global domain without shards", func(t *testing.T) {
 		pb := &splitterpb.Domain{
-			Name:    model.MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
-			Type:    model.Global,
-			State:   model.DomainActive,
+			Name:    MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
+			Type:    Global,
+			State:   DomainActive,
 			Created: timestamppb.New(testTime),
 			Config:  &splitterpb.Domain_Config{},
 		}
 
-		_, err := model.ParseDomain(pb)
+		_, err := ParseDomain(pb)
 		requirex.Equal(t, err.Error(), "invalid domain: shard count must be >= 1, given: 0")
 	})
 
 	t.Run("validate global domain with named key having region", func(t *testing.T) {
 		pb := &splitterpb.Domain{
-			Name:    model.MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
-			Type:    model.Global,
-			State:   model.DomainActive,
+			Name:    MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
+			Type:    Global,
+			State:   DomainActive,
 			Created: timestamppb.New(testTime),
 			Config: &splitterpb.Domain_Config{
 				ShardingPolicy: &splitterpb.ShardingPolicy{
@@ -68,27 +67,27 @@ func TestValidateDomain(t *testing.T) {
 			},
 		}
 
-		_, err := model.ParseDomain(pb)
+		_, err := ParseDomain(pb)
 		requirex.Equal(t, err.Error(), "invalid domain: region of a named key must be empty for global domain, got non-empty value for \"named1\"")
 
 	})
 
 	t.Run("validate regional domain with too many named keys", func(t *testing.T) {
 		pb := &splitterpb.Domain{
-			Name:    model.MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
-			Type:    model.Regional,
-			State:   model.DomainActive,
+			Name:    MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
+			Type:    Regional,
+			State:   DomainActive,
 			Created: timestamppb.New(testTime),
 			Config: &splitterpb.Domain_Config{
 				ShardingPolicy: &splitterpb.ShardingPolicy{
 					Shards: 4,
 				},
 				Regions: []string{"us-west-2"},
-				Named:   make([]*splitterpb.NamedDomainKey, model.MaxNamedKeysPerDomain+1),
+				Named:   make([]*splitterpb.NamedDomainKey, MaxNamedKeysPerDomain+1),
 			},
 		}
 
-		for i := range model.MaxNamedKeysPerDomain + 1 {
+		for i := range MaxNamedKeysPerDomain + 1 {
 			pb.Config.Named[i] = &splitterpb.NamedDomainKey{
 				Name: "name" + string(rune(i)),
 				Key: &splitterpb.DomainKey{
@@ -98,16 +97,16 @@ func TestValidateDomain(t *testing.T) {
 			}
 		}
 
-		_, err := model.ParseDomain(pb)
+		_, err := ParseDomain(pb)
 		requirex.Equal(t, err.Error(), "invalid domain: number of named keys cannot exceed 12, got 13")
 
 	})
 
 	t.Run("validate regional domain with invalid region in named key", func(t *testing.T) {
 		pb := &splitterpb.Domain{
-			Name:    model.MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
-			Type:    model.Regional,
-			State:   model.DomainActive,
+			Name:    MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
+			Type:    Regional,
+			State:   DomainActive,
 			Created: timestamppb.New(testTime),
 			Config: &splitterpb.Domain_Config{
 				ShardingPolicy: &splitterpb.ShardingPolicy{
@@ -126,16 +125,16 @@ func TestValidateDomain(t *testing.T) {
 			},
 		}
 
-		_, err := model.ParseDomain(pb)
+		_, err := ParseDomain(pb)
 		requirex.Equal(t, err.Error(), "invalid domain: invalid region for named key, us-east-1, allowed regions [us-west-2]")
 	})
 
 	t.Run("validate successful regional domain", func(t *testing.T) {
 		key := uuid.New().String()
 		pb := &splitterpb.Domain{
-			Name:    model.MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
-			Type:    model.Regional,
-			State:   model.DomainActive,
+			Name:    MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
+			Type:    Regional,
+			State:   DomainActive,
 			Created: timestamppb.New(testTime),
 			Config: &splitterpb.Domain_Config{
 				ShardingPolicy: &splitterpb.ShardingPolicy{
@@ -154,11 +153,11 @@ func TestValidateDomain(t *testing.T) {
 			},
 		}
 
-		domain, err := model.ParseDomain(pb)
+		domain, err := ParseDomain(pb)
 		require.NoError(t, err)
 
-		requirex.Equal(t, model.Regional, domain.Type())
-		requirex.Equal(t, model.DomainActive, domain.State())
+		requirex.Equal(t, Regional, domain.Type())
+		requirex.Equal(t, DomainActive, domain.State())
 		requirex.Equal(t, "tenant1/service1/domain1", domain.Name().String())
 
 		config := domain.Config()
@@ -173,9 +172,9 @@ func TestValidateDomain(t *testing.T) {
 	t.Run("validate successful global domain", func(t *testing.T) {
 		key := uuid.New().String()
 		pb := &splitterpb.Domain{
-			Name:    model.MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
-			Type:    model.Global,
-			State:   model.DomainActive,
+			Name:    MustParseQualifiedDomainNameStr("tenant1/service1/domain1").ToProto(),
+			Type:    Global,
+			State:   DomainActive,
 			Created: timestamppb.New(testTime),
 			Config: &splitterpb.Domain_Config{
 				ShardingPolicy: &splitterpb.ShardingPolicy{
@@ -192,11 +191,11 @@ func TestValidateDomain(t *testing.T) {
 			},
 		}
 
-		domain, err := model.ParseDomain(pb)
+		domain, err := ParseDomain(pb)
 		require.NoError(t, err)
 
-		requirex.Equal(t, model.Global, domain.Type())
-		requirex.Equal(t, model.DomainActive, domain.State())
+		requirex.Equal(t, Global, domain.Type())
+		requirex.Equal(t, DomainActive, domain.State())
 		requirex.Equal(t, "tenant1/service1/domain1", domain.Name().String())
 
 		config := domain.Config()

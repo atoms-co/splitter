@@ -1,4 +1,4 @@
-package model_test
+package model
 
 import (
 	"context"
@@ -9,30 +9,29 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/synctestx"
-	"go.atoms.co/iox"
-	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/splitter/lib/service/location"
 )
 
 func TestPeeredConnectionCache(t *testing.T) {
-	self := model.NewInstance(location.NewInstance(location.New("us", "a")), "self")
-	foo := model.NewInstance(location.NewInstance(location.New("us", "a")), "foo")
-	bar := model.NewInstance(location.NewInstance(location.New("us", "b")), "bar")
-	baz := model.NewInstance(location.NewInstance(location.New("us", "c")), "baz")
+	self := NewInstance(location.NewInstance(location.New("us", "a")), "self")
+	foo := NewInstance(location.NewInstance(location.New("us", "a")), "foo")
+	bar := NewInstance(location.NewInstance(location.New("us", "b")), "bar")
+	baz := NewInstance(location.NewInstance(location.New("us", "c")), "baz")
 
 	synctestx.Run(t, "peered", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		dialer := newFakeDialer()
-		cache := model.NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
+		cache := NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
 
 		assertx.Equal(t, dialer.count, 0)
 
 		// (1) Connections are delayed, not immediately dialed (excluding self).
 
-		cache.Update(ctx, []model.Instance{self, foo, bar})
+		cache.Update(ctx, []Instance{self, foo, bar})
 
 		assertx.Equal(t, dialer.count, 0)
 
@@ -41,7 +40,7 @@ func TestPeeredConnectionCache(t *testing.T) {
 		assertx.Equal(t, dialer.count, 2)
 
 		_, err := cache.Resolve(ctx, self)
-		assertx.Equal(t, err, model.ErrNoResolution)
+		assertx.Equal(t, err, ErrNoResolution)
 		_, err = cache.Resolve(ctx, foo)
 		assert.NoError(t, err)
 		_, err = cache.Resolve(ctx, bar)
@@ -61,11 +60,11 @@ func TestPeeredConnectionCache(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		dialer := newFakeDialer()
-		cache := model.NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
+		cache := NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
 
 		// (1) Peered connections live indefinitely
 
-		cache.Update(ctx, []model.Instance{foo})
+		cache.Update(ctx, []Instance{foo})
 		assertx.Equal(t, dialer.count, 0)
 
 		time.Sleep(40 * time.Second)
@@ -82,7 +81,7 @@ func TestPeeredConnectionCache(t *testing.T) {
 
 		// (2) If removed, they are cleared after 2 min
 
-		cache.Update(ctx, []model.Instance{})
+		cache.Update(ctx, []Instance{})
 		assertx.Equal(t, dialer.count, 1)
 
 		time.Sleep(time.Minute)
@@ -106,7 +105,7 @@ func TestPeeredConnectionCache(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		dialer := newFakeDialer()
-		cache := model.NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
+		cache := NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
 
 		assertx.Equal(t, dialer.count, 0)
 

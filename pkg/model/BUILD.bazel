@@ -52,7 +52,6 @@ go_test(
     deps = [
         "//lib/service/location",
         "//proto/atoms/splitter:splitter_go_proto",
-        "//testing/prefab",
         "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//chanx",
         "@co_atoms_go_lib//net/grpcx",
