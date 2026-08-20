@@ -112,19 +112,19 @@ func (q DomainQuantileInfo) String() string {
 }
 
 type P2QuantileSnapshot struct {
-	pb *splitterprivatepb.DomainTrackerSnapshot_P2QuantileSnapshot
+	pb *splitterprivatepb.P2QuantileSnapshot
 }
 
-func WrapP2QuantileSnapshot(pb *splitterprivatepb.DomainTrackerSnapshot_P2QuantileSnapshot) P2QuantileSnapshot {
+func WrapP2QuantileSnapshot(pb *splitterprivatepb.P2QuantileSnapshot) P2QuantileSnapshot {
 	return P2QuantileSnapshot{pb: pb}
 }
 
-func UnwrapP2QuantileSnapshot(q P2QuantileSnapshot) *splitterprivatepb.DomainTrackerSnapshot_P2QuantileSnapshot {
+func UnwrapP2QuantileSnapshot(q P2QuantileSnapshot) *splitterprivatepb.P2QuantileSnapshot {
 	return q.pb
 }
 
 func NewP2QuantileSnapshot(percentile float64, height []float64, markerPos []uint64, desiredMarkerPos []float64) P2QuantileSnapshot {
-	return P2QuantileSnapshot{pb: &splitterprivatepb.DomainTrackerSnapshot_P2QuantileSnapshot{
+	return P2QuantileSnapshot{pb: &splitterprivatepb.P2QuantileSnapshot{
 		Percentile:       percentile,
 		Height:           height,
 		MarkerPos:        markerPos,
