@@ -27,6 +27,11 @@ message ClientMessage {
       uint64 capacity_limit = 2;
     }
     Options options = 5;
+
+    message Metadata {
+      string version = 1;
+    }
+    Metadata metadata = 6;
   }
 
   // Deregister indicates that the consumer will soon disappear, usually restarted in ~30s. The server should initiate a
