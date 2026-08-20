@@ -44,6 +44,12 @@ func OwnershipWithExpiration(expiration time.Time) OwnershipOption {
 	}
 }
 
+func OwnershipWithReporter(reporter splitter.StatusReporter) OwnershipOption {
+	return func(o *Ownership) {
+		o.reporter = reporter
+	}
+}
+
 func NewOwnership(opts ...OwnershipOption) *Ownership {
 	o := &Ownership{
 		active:          iox.NewAsyncCloser(),
