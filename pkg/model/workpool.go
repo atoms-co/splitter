@@ -62,12 +62,13 @@ type workPoolOptions struct {
 type workPool struct {
 	iox.RAsyncCloser
 
-	self    Consumer
-	service QualifiedServiceName
-	domains []QualifiedDomainName
-	joinFn  workPoolJoinFn
-	handler Handler
-	opts    Options
+	self     Consumer
+	service  QualifiedServiceName
+	domains  []QualifiedDomainName
+	joinFn   workPoolJoinFn
+	handler  Handler
+	opts     Options
+	metadata ConsumerMetadata
 
 	status   *joinStatus            // coordinator connectivity status
 	in       <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
@@ -94,7 +95,7 @@ type workPool struct {
 	disconnectTimer *time.Timer
 }
 
-func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn workPoolJoinFn, handlerFn Handler, poolOpts *workPoolOptions, opts Options) (*workPool, <-chan Cluster) {
+func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn workPoolJoinFn, handlerFn Handler, poolOpts *workPoolOptions, opts Options, metadata ConsumerMetadata) (*workPool, <-chan Cluster) {
 	quit := iox.NewAsyncCloser()
 	p := &workPool{
 		RAsyncCloser:  quit,
@@ -104,6 +105,7 @@ func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []Qual
 		joinFn:        joinFn,
 		handler:       handlerFn,
 		opts:          opts,
+		metadata:      metadata,
 		poolOptions:   poolOpts,
 		loadChan:      make(chan ShardLoad, reportLoadBatchSize),
 		cluster:       NewClusterMap(NewClusterID(consumer.Instance(), time.Now()), nil), // empty self-origin map
@@ -196,7 +198,7 @@ func (p *workPool) joinCoordinator(ctx context.Context, in <-chan ConsumerMessag
 	log.Infof(ctx, "Connected to coordinator, #grants=%v, #active=%v", len(p.grants), len(active))
 
 	out := make(chan ConsumerMessage, 2_000)
-	out <- NewRegister(p.self, p.service, p.domains, active, p.opts)
+	out <- NewRegister(p.self, p.service, p.domains, active, p.opts, p.metadata)
 
 	p.in = in
 	p.out = out
