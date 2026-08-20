@@ -45,12 +45,26 @@ func newRegister(consumer model.Consumer, service model.QualifiedServiceName, do
 	if len(opts) > 0 {
 		options = opts[0]
 	}
-	return model.NewRegister(consumer, service, domains, grants, options)
+	return model.NewRegister(consumer, service, domains, grants, options, model.NewConsumerMetadata(""))
 }
 
 func capacityLimitOptions(limit int) model.Options {
 	return model.WrapOptions(&splitterpb.ClientMessage_Register_Options{
 		CapacityLimit: uint64(limit),
+	})
+}
+
+func newRegisterWithMetadata(consumer model.Consumer, service model.QualifiedServiceName, domains []model.QualifiedDomainName, grants []model.Grant, metadata model.ConsumerMetadata, opts ...model.Options) model.ConsumerMessage {
+	options := model.NewOptions()
+	if len(opts) > 0 {
+		options = opts[0]
+	}
+	return model.NewRegister(consumer, service, domains, grants, options, metadata)
+}
+
+func registerMetadata(version string) model.ConsumerMetadata {
+	return model.WrapConsumerMetadata(&splitterpb.ClientMessage_Register_Metadata{
+		Version: version,
 	})
 }
 
@@ -234,6 +248,49 @@ func TestCoordinator_TwoConsumers(t *testing.T) {
 
 		revoke2 := readFn(t, out2, isRevoke)
 		assert.Len(t, revoke2.Grants(), 4)
+
+		coord.Close()
+		assertx.Closed(t, out)
+		assertx.Closed(t, out2)
+	})
+}
+
+func TestCoordinator_DisableLoadBalanceDuringDeploy(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		domain, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(4)))))
+		require.NoError(t, err)
+
+		coord, _ := setupWithServiceConfig(ctx, t, []model.Domain{domain}, model.NewServiceConfig(), WithFastActivation())
+
+		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		in := make(chan model.ConsumerMessage, 1)
+		in <- newRegisterWithMetadata(w, serviceName, nil, nil, registerMetadata("generation-a"))
+
+		out, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in)
+		require.NoError(t, err)
+
+		readFn(t, out, isClusterSnapshot)
+		for i := 0; i < 4; i++ {
+			require.Len(t, readFn(t, out, isAssign).Grants(), 1)
+		}
+		readFn(t, out, isClusterChange)
+
+		w2 := model.NewInstance(location.NewInstance(location.New("centralus", "pod2")), "endpoint")
+		in2 := make(chan model.ConsumerMessage, 1)
+		in2 <- newRegisterWithMetadata(w2, serviceName, nil, nil, registerMetadata("generation-b"))
+
+		out2, err := coord.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter1")), in2)
+		require.NoError(t, err)
+		readFn(t, out2, isClusterSnapshot)
+
+		time.Sleep(15 * time.Second)
+
+		for _, msg := range append(assertx.Drain(out), assertx.Drain(out2)...) {
+			_, ok := isRevoke(msg)
+			assert.False(t, ok, "load balance should not revoke grants during a multi-generation deploy")
+		}
 
 		coord.Close()
 		assertx.Closed(t, out)

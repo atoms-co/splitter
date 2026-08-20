@@ -275,6 +275,7 @@ type Client interface {
 
 type ConsumerOptions struct {
 	options         Options
+	metadata        ConsumerMetadata
 	workPoolOptions *workPoolOptions
 }
 
@@ -289,6 +290,12 @@ func WithKeyNames(names ...DomainKeyName) ConsumerOption {
 func WithCapacityLimit(limit int) ConsumerOption {
 	return func(opts ConsumerOptions) {
 		opts.options.pb.CapacityLimit = uint64(limit)
+	}
+}
+
+func WithConsumerMetadataVersion(version string) ConsumerOption {
+	return func(opts ConsumerOptions) {
+		opts.metadata.pb.Version = version
 	}
 }
 
@@ -356,7 +363,8 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 		})
 	}
 	co := ConsumerOptions{
-		options: NewOptions(),
+		options:  NewOptions(),
+		metadata: NewConsumerMetadata(ClientVersion),
 		workPoolOptions: &workPoolOptions{
 			drainTimeout: poolDrainTimeout,
 		},
@@ -364,7 +372,7 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 	for _, opt := range opts {
 		opt(co)
 	}
-	pool, clusters := newWorkPool(consumer, service, nil, joinFn, handler, co.workPoolOptions, co.options)
+	pool, clusters := newWorkPool(consumer, service, nil, joinFn, handler, co.workPoolOptions, co.options, co.metadata)
 
 	go func() {
 		defer quit.Close()
