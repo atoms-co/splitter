@@ -350,7 +350,7 @@ func (s ShardDescription) Shard(t *testing.T) Shard {
 
 	domain := defaultDomain
 	var shardRange, region string
-	var dt model.DomainType
+	var dt DomainType
 	for part := range strings.SplitSeq(string(s), ",") {
 		props := strings.Split(part, "=")
 		require.Len(t, props, 2, "invalid shard property: %v", part)

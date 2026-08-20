@@ -10,7 +10,6 @@ import (
 
 	"go.atoms.co/lib/testing/requirex"
 	splitterpb "go.atoms.co/splitter/pb"
-	"go.atoms.co/splitter/pkg/model"
 )
 
 func TestValidateDomain(t *testing.T) {
@@ -88,7 +87,7 @@ func TestValidateDomain(t *testing.T) {
 			},
 		}
 
-		for i := range model.MaxNamedKeysPerDomain + 1 {
+		for i := range MaxNamedKeysPerDomain + 1 {
 			pb.Config.Named[i] = &splitterpb.NamedDomainKey{
 				Name: "name" + string(rune(i)),
 				Key: &splitterpb.DomainKey{
