@@ -1210,7 +1210,11 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 		require.Equal(t, expected, dl)
 
 		// update createdAt for trackers to simulate time advancing.
-		updateCreatedAt(c.trackers, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
+		// Run inside the coordinator's event loop to avoid racing with the load ticker.
+		require.NoError(t, c.txn(ctx, func() error {
+			updateCreatedAt(c.trackers, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
+			return nil
+		}))
 		time.Sleep(loadTickerInterval + 10*time.Second)
 		synctest.Wait()
 
