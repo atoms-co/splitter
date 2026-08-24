@@ -44,7 +44,7 @@ Feature requests are welcome! Please provide:
 4. **Write tests** for new functionality
 5. **Run the test suite** to ensure nothing is broken:
    ```bash
-   GOEXPERIMENT=synctest go test -v ./...
+   go test -race -v ./...
    bazel test //...
    ```
 6. **Commit your changes** with a clear commit message
@@ -54,15 +54,15 @@ Feature requests are welcome! Please provide:
 
 ### Prerequisites
 
-- Go 1.24.12
-- Bazel 9.0.0 or higher
+- Go 1.26.2 or higher
+- Bazel 9.1.1 (see `.bazelversion`)
 
 ### Building
 
 ```bash
 # Build all modules
 bazel build //...
-GOEXPERIMENT=synctest go build -v ./...
+go build -v ./...
 ```
 
 ### Running Tests
@@ -70,13 +70,13 @@ GOEXPERIMENT=synctest go build -v ./...
 ```bash
 # Run all tests
 bazel test //...
-GOEXPERIMENT=synctest go test -v ./...
+go test -race -v ./...
 ```
 
 ### Updating Generated Protobuf Files
 
 ```bash
-./bin/update-go-protos.sh
+./tools/update-go-protos.sh
 ```
 
 ## Code Style Guidelines
