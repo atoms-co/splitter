@@ -27,17 +27,17 @@ func TestPeeredConnectionCache(t *testing.T) {
 		dialer := newFakeDialer()
 		cache := NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
 
-		assertx.Equal(t, dialer.count, 0)
+		assertx.Equal(t, dialer.dialCount(), 0)
 
 		// (1) Connections are delayed, not immediately dialed (excluding self).
 
 		cache.Update(ctx, []Instance{self, foo, bar})
 
-		assertx.Equal(t, dialer.count, 0)
+		assertx.Equal(t, dialer.dialCount(), 0)
 
 		time.Sleep(40 * time.Second)
 
-		assertx.Equal(t, dialer.count, 2)
+		assertx.Equal(t, dialer.dialCount(), 2)
 
 		_, err := cache.Resolve(ctx, self)
 		assertx.Equal(t, err, ErrNoResolution)
@@ -46,14 +46,14 @@ func TestPeeredConnectionCache(t *testing.T) {
 		_, err = cache.Resolve(ctx, bar)
 		assert.NoError(t, err)
 
-		assertx.Equal(t, dialer.count, 2)
+		assertx.Equal(t, dialer.dialCount(), 2)
 
 		// (2) Additional lookup create ad-hoc connection.
 
 		_, err = cache.Resolve(ctx, baz)
 		assert.NoError(t, err)
 
-		assertx.Equal(t, dialer.count, 3)
+		assertx.Equal(t, dialer.dialCount(), 3)
 	})
 
 	synctestx.Run(t, "gc", func(t *testing.T) {
@@ -65,40 +65,40 @@ func TestPeeredConnectionCache(t *testing.T) {
 		// (1) Peered connections live indefinitely
 
 		cache.Update(ctx, []Instance{foo})
-		assertx.Equal(t, dialer.count, 0)
+		assertx.Equal(t, dialer.dialCount(), 0)
 
 		time.Sleep(40 * time.Second)
 
-		assertx.Equal(t, dialer.count, 1)
+		assertx.Equal(t, dialer.dialCount(), 1)
 
 		time.Sleep(5 * time.Minute)
 
 		_, err := cache.Resolve(ctx, foo)
 		assert.NoError(t, err)
 
-		assertx.Equal(t, dialer.count, 1)
-		assert.False(t, dialer.con[foo.Endpoint()].IsClosed())
+		assertx.Equal(t, dialer.dialCount(), 1)
+		assert.False(t, dialer.isClosed(foo.Endpoint()))
 
 		// (2) If removed, they are cleared after 2 min
 
 		cache.Update(ctx, []Instance{})
-		assertx.Equal(t, dialer.count, 1)
+		assertx.Equal(t, dialer.dialCount(), 1)
 
 		time.Sleep(time.Minute)
 
 		_, err = cache.Resolve(ctx, foo)
 		assert.NoError(t, err)
-		assertx.Equal(t, dialer.count, 1)
+		assertx.Equal(t, dialer.dialCount(), 1)
 
 		time.Sleep(5 * time.Minute)
 
-		assert.True(t, dialer.con[foo.Endpoint()].IsClosed())
+		assert.True(t, dialer.isClosed(foo.Endpoint()))
 
 		// (3) It then reverts to ad-hoc status
 
 		_, err = cache.Resolve(ctx, foo)
 		assert.NoError(t, err)
-		assertx.Equal(t, dialer.count, 2)
+		assertx.Equal(t, dialer.dialCount(), 2)
 	})
 
 	synctestx.Run(t, "adhoc context", func(t *testing.T) {
@@ -107,21 +107,21 @@ func TestPeeredConnectionCache(t *testing.T) {
 		dialer := newFakeDialer()
 		cache := NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
 
-		assertx.Equal(t, dialer.count, 0)
+		assertx.Equal(t, dialer.dialCount(), 0)
 
 		wctx, wcancel := context.WithCancel(ctx)
 
 		_, err := cache.Resolve(wctx, foo)
 		assert.NoError(t, err)
 
-		assertx.Equal(t, dialer.count, 1)
-		assert.False(t, dialer.con[foo.Endpoint()].IsClosed())
+		assertx.Equal(t, dialer.dialCount(), 1)
+		assert.False(t, dialer.isClosed(foo.Endpoint()))
 
 		wcancel()
 
 		time.Sleep(50 * time.Millisecond)
 
-		assert.False(t, dialer.con[foo.Endpoint()].IsClosed())
+		assert.False(t, dialer.isClosed(foo.Endpoint()))
 	})
 }
 
@@ -146,6 +146,20 @@ func (d *fakeDialer) dial(endpoint string) (io.Closer, int, error) {
 	d.count++
 
 	return closerShim{c: c}, d.count, nil
+}
+
+func (d *fakeDialer) dialCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return d.count
+}
+
+func (d *fakeDialer) isClosed(endpoint string) bool {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	return d.con[endpoint].IsClosed()
 }
 
 type closerShim struct {
