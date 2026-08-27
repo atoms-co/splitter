@@ -108,7 +108,7 @@ type Unloader interface {
 // StatusReporter provides a bridge between Range and workpool to report grant-scoped status to the coordinator.
 type StatusReporter interface {
 	// ReportLoad reports load
-	ReportLoad(load Load) error
+	ReportLoad(load Load)
 }
 
 // WaitForUnload blocks on prior counterpart Grant unloading. Typically, this signals that the handler

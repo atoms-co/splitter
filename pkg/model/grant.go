@@ -2,8 +2,8 @@ package model
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"go.atoms.co/iox"
@@ -21,11 +21,6 @@ const (
 	// LeaseStale represents that the grant is active, but will lapse due to a coordinator disconnect. Most
 	// grants will go back to active, but that is the coordinator's decision.
 	LeaseStale LeaseState = "stale"
-)
-
-var (
-	errReporterClosed = errors.New("reporter closed")
-	errBufferFull     = errors.New("buffer full")
 )
 
 // grant holds a grant and its metadata and bookkeeping.
@@ -76,7 +71,6 @@ func newHandler(ctx context.Context, grant Grant, expiration func() time.Time, l
 
 		cancel()
 		h.ownership.expire()
-		h.ownership.reporter.Close()
 	}()
 
 	return h
@@ -110,7 +104,7 @@ func newOwnership(state GrantState, expiration func() time.Time, loader *loader,
 		loader:          loader,
 		unloader:        unloader,
 		expiration:      expiration,
-		reporter:        newStatusReporter(),
+		reporter:        &statusReporter{},
 	}
 
 	// Initialize correct signals using GrantState
@@ -229,30 +223,17 @@ func (u *unloader) unloaded() iox.RAsyncCloser {
 }
 
 type statusReporter struct {
-	iox.AsyncCloser
-	loadChan chan Load
+	latest atomic.Pointer[Load]
 }
 
-func newStatusReporter() *statusReporter {
-	return &statusReporter{
-		AsyncCloser: iox.NewAsyncCloser(),
-		loadChan:    make(chan Load, 100),
-	}
+func (s *statusReporter) ReportLoad(load Load) {
+	s.latest.Store(&load)
 }
 
-func (s *statusReporter) ReportLoad(load Load) error {
-	if s.IsClosed() {
-		return errReporterClosed
+func (s *statusReporter) load() (Load, bool) {
+	load := s.latest.Load()
+	if load == nil {
+		return 0, false
 	}
-
-	select {
-	case s.loadChan <- load:
-		return nil
-	default:
-		return errBufferFull
-	}
-}
-
-func (s *statusReporter) loads() <-chan Load {
-	return s.loadChan
+	return *load, true
 }

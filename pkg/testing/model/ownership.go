@@ -134,7 +134,6 @@ func (o *Ownership) Reporter() splitter.StatusReporter {
 type statusReporter struct {
 }
 
-func (s *statusReporter) ReportLoad(_ splitter.Load) error {
+func (s *statusReporter) ReportLoad(_ splitter.Load) {
 	// no-op
-	return nil
 }
