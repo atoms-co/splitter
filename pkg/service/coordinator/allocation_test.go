@@ -158,6 +158,14 @@ func TestFindWork_LoadScores(t *testing.T) {
 	}
 
 	globalDomainOpts := []model.DomainOption{model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(1))))}
+	newTracker := func(domain model.QualifiedDomainName, domainTracker *domainLoadTracker, serviceTracker *serviceLoadTracker) *loadTracker {
+		tracker := newLoadTracker(time.Time{})
+		tracker.domains[domain] = domainTracker
+		if serviceTracker != nil {
+			tracker.service = serviceTracker
+		}
+		return tracker
+	}
 
 	t.Run("tracking disabled", func(t *testing.T) {
 		info := newInfo(t, model.Global, model.NewServiceConfig(), globalDomainOpts...)
@@ -185,8 +193,11 @@ func TestFindWork_LoadScores(t *testing.T) {
 				core.NewShard(shard.From, shard.To, shard.Region): 60,
 			},
 		}
+		serviceTracker := newServiceLoadTracker(time.Time{})
+		serviceQuantile := float64(20)
+		serviceTracker.quantile = &serviceQuantile
 
-		work := findWork(info, nil, map[model.QualifiedDomainName]*domainLoadTracker{shard.Domain: tracker})
+		work := findWork(info, nil, newTracker(shard.Domain, tracker, serviceTracker))
 		require.Len(t, work, 1)
 		require.Equal(t, allocation.Load(75), work[0].Load)
 	})
@@ -205,10 +216,34 @@ func TestFindWork_LoadScores(t *testing.T) {
 				core.NewShard(shard.From, shard.To, shard.Region): 60,
 			},
 		}
+		serviceTracker := newServiceLoadTracker(time.Time{})
+		serviceQuantile := float64(20)
+		serviceTracker.quantile = &serviceQuantile
 
-		work := findWork(info, nil, map[model.QualifiedDomainName]*domainLoadTracker{shard.Domain: tracker})
+		work := findWork(info, nil, newTracker(shard.Domain, tracker, serviceTracker))
 		require.Len(t, work, 1)
 		require.Equal(t, allocation.Load(75), work[0].Load)
+	})
+
+	t.Run("published score uses service quantile", func(t *testing.T) {
+		info := newInfo(t, model.Global, model.NewServiceConfig(model.WithTrackLoad(true)), globalDomainOpts...)
+		initial := findWork(info, nil, nil)
+		require.Len(t, initial, 1)
+		shard := initial[0].Unit
+		tracker := newDomainLoadTracker(time.Time{}, shard.Domain.Domain)
+		tracker.quantile = &domainQuantileInfo{
+			domainQuantile: 10_000,
+			shardQuantiles: map[core.Shard]float64{
+				core.NewShard(shard.From, shard.To, shard.Region): 10_000,
+			},
+		}
+		serviceTracker := newServiceLoadTracker(time.Time{})
+		serviceQuantile := float64(100)
+		serviceTracker.quantile = &serviceQuantile
+
+		work := findWork(info, nil, newTracker(shard.Domain, tracker, serviceTracker))
+		require.Len(t, work, 1)
+		require.Equal(t, allocation.Load(99), work[0].Load)
 	})
 
 	t.Run("unit load unchanged", func(t *testing.T) {

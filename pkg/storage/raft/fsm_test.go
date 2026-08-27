@@ -55,10 +55,12 @@ func TestStorage_UpdateServiceStatusThroughRaft(t *testing.T) {
 			[]float64{1, 2, 3, 4, 10},
 		)
 		tracker := core.NewDomainTrackerSnapshot(now, snap, nil)
+		serviceTracker := core.NewServiceTrackerSnapshot(now, snap)
+		serviceQuantile := core.NewServiceQuantileInfo(42)
 		domainLoadInfo := core.NewDomainLoadInfo(domainName.Domain, tracker, nil)
 		status := core.NewServiceStatus(core.NewServiceLoadInfo(serviceName, []core.DomainLoadInfo{
 			domainLoadInfo,
-		}))
+		}, core.WithServiceTrackerSnapshot(serviceTracker), core.WithServiceQuantileInfo(serviceQuantile)))
 		require.NoError(t, db.Update(ctx, core.NewServiceStatusUpdate(status)))
 
 		// require ServiceStatus in raft log

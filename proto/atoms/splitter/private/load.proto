@@ -18,7 +18,7 @@ This file defines protobuf messages that are used to track load of consumer serv
 Here is how load tracking works:
 1. Each range (shard owner) collects and reports its load to the coordinator.
 2. The coordinator
-  - maintains load trackers for its domains and adds load observations to the corresponding trackers.
+  - maintains load trackers for its domains and service and adds load observations to the corresponding trackers.
   - periodically (e.g., every 24 hours) finalizes recorded observations by transferring quantile values
     from the current tracker to immutable quantile values stored separately and creates a new active tracker.
   - while allocating work to a worker, uses quantile values to calculate load score for each shard instead
@@ -138,9 +138,25 @@ message DomainLoadInfo {
   DomainQuantileInfo quantile_info = 3;
 }
 
+// ServiceTrackerSnapshot represents a snapshot of the active service load tracker.
+message ServiceTrackerSnapshot {
+  // Time when the tracker was created.
+  google.protobuf.Timestamp created_at = 1;
+  P2QuantileSnapshot snapshot = 2;
+}
+
+// ServiceQuantileInfo contains the published service load quantile used to calculate service-scoped shard scores.
+message ServiceQuantileInfo {
+  double quantile = 1;
+}
+
 // ServiceLoadInfo contains information about load of all domains of a service.
 // Used by coordinators to report service load to the leader and leader to snapshot current status of tenants
 message ServiceLoadInfo {
   atoms.splitter.QualifiedServiceName service = 1;
   repeated DomainLoadInfo info = 2;
+  // Snapshot of the active service tracker. Optional for compatibility with previously persisted status.
+  ServiceTrackerSnapshot service_tracker = 3;
+  // Quantile calculated from the sealed service tracker and used to calculate shard scores. Optional.
+  ServiceQuantileInfo service_quantile = 4;
 }

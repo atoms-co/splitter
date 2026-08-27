@@ -1261,13 +1261,16 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 		in <- model.NewShardLoadMessage(msg)
 		synctest.Wait()
 
-		require.Contains(t, c.trackers, domainName)
-		dl, ok := c.trackers[domainName].domainLoad()
+		require.Contains(t, c.tracker.domains, domainName)
+		dl, ok := c.tracker.domains[domainName].domainLoad()
 		require.True(t, ok)
 		require.Equal(t, expected, dl)
+		serviceLoad, ok := c.tracker.service.serviceLoad()
+		require.True(t, ok)
+		require.Equal(t, expected, serviceLoad)
 
 		// update createdAt for trackers to simulate time advancing.
-		updateCreatedAt(c.trackers, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
+		updateCreatedAt(c.tracker, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
 		time.Sleep(loadTickerInterval + 10*time.Second)
 		synctest.Wait()
 
@@ -1276,11 +1279,47 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 		require.Equal(t, c.name.String(), statusMsg.Load().Service().String())
 
 		// tracker should be empty after rotation
-		dl, ok = c.trackers[domainName].domainLoad()
+		dl, ok = c.tracker.domains[domainName].domainLoad()
 		require.False(t, ok, "empty tracker should not have domain load")
 		sps := core.NewShard(shard.From, shard.To, shard.Region)
-		sl := c.trackers[domainName].shardScoreOrDefault(sps)
+		sl := c.tracker.shardScore(domainName, sps)
 		require.Equal(t, score(50.0), sl)
+	})
+}
+
+func TestCoordinator_ConsumerShardLoadTracksService(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		sp := model.NewShardingPolicy(1)
+		opt := model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(sp)))
+		domain, err := model.NewDomain(domainName, model.Global, time.Now(), opt)
+		require.NoError(t, err)
+
+		cfg := model.NewServiceConfig(model.WithTrackLoad(true))
+		coord, _ := setupWithServiceConfig(ctx, t, []model.Domain{domain}, cfg, WithFastActivation())
+		c := coord.(*coordinator)
+
+		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		in, out := connectConsumer(ctx, t, coord, w)
+		assign := readFn(t, out, isAssign)
+		require.Len(t, assign.Grants(), 1)
+
+		wg := sync.WaitGroup{}
+		wg.Go(func() {
+			chanx.Drain(out)
+		})
+		defer func() {
+			coord.Close()
+			assertx.Closed(t, out)
+			wg.Wait()
+		}()
+
+		in <- model.NewShardLoadMessage([]model.ShardLoad{model.NewShardLoad(assign.Grants()[0].ID(), model.Load(150))})
+		synctest.Wait()
+
+		load, ok := c.tracker.service.serviceLoad()
+		require.True(t, ok)
+		require.Equal(t, model.Load(150), load)
 	})
 }
 
@@ -1301,7 +1340,7 @@ func TestCoordinator_RestoresDomainLoadTrackers(t *testing.T) {
 		for range 10 {
 			expected.add(shard, model.Load(20))
 		}
-		expected.rotateIfNeeded(start.Add(defaultRotationInterval + time.Second))
+		expected.rotate(start.Add(defaultRotationInterval + time.Second))
 		for range 5 {
 			expected.add(shard, model.Load(8))
 		}
@@ -1309,18 +1348,27 @@ func TestCoordinator_RestoresDomainLoadTrackers(t *testing.T) {
 		for range 10 {
 			stale.add(shard, model.Load(20))
 		}
+		expectedService := newServiceLoadTracker(start)
+		for range 10 {
+			expectedService.add(model.Load(20))
+		}
+		expectedService.rotate(start.Add(defaultRotationInterval + time.Second))
+		for range 5 {
+			expectedService.add(model.Load(8))
+		}
+		serviceSnapshot, serviceQuantile := expectedService.snapshot()
 
 		status := core.NewServiceStatus(core.NewServiceLoadInfo(serviceName, []core.DomainLoadInfo{
 			expected.snapshot(),
 			stale.snapshot(),
-		}))
+		}, core.WithServiceTrackerSnapshot(serviceSnapshot), core.WithServiceQuantileInfo(*serviceQuantile)))
 		cfg := model.NewServiceConfig(model.WithTrackLoad(true))
 		coord, _ := setupWithServiceConfigAndStatuses(ctx, t, []model.Domain{domain}, cfg, []core.ServiceStatus{status})
 		defer coord.Close()
 
 		c := coord.(*coordinator)
-		require.NotContains(t, c.trackers, domainName2, "tracker for missing domain should not be restored")
-		restored, ok := c.trackers[domainName]
+		require.NotContains(t, c.tracker.domains, domainName2, "tracker for missing domain should not be restored")
+		restored, ok := c.tracker.domains[domainName]
 		require.True(t, ok)
 		require.Equal(t, expected.domain, restored.domain)
 		require.Equal(t, expected.tracker.createdAt, restored.tracker.createdAt)
@@ -1329,8 +1377,13 @@ func TestCoordinator_RestoresDomainLoadTrackers(t *testing.T) {
 		require.True(t, ok)
 		require.InDelta(t, 8, float64(load), epsilon)
 
-		shardSnapshot := core.NewShard(shard.From, shard.To, shard.Region)
-		require.Equal(t, expected.shardScoreOrDefault(shardSnapshot), restored.shardScoreOrDefault(shardSnapshot))
+		require.Equal(t, expected.quantile, restored.quantile)
+		require.Equal(t, expectedService.tracker.createdAt, c.tracker.service.tracker.createdAt)
+		require.NotNil(t, c.tracker.service.quantile)
+		require.InDelta(t, *expectedService.quantile, *c.tracker.service.quantile, epsilon)
+		serviceLoad, ok := c.tracker.service.serviceLoad()
+		require.True(t, ok)
+		require.InDelta(t, 8, float64(serviceLoad), epsilon)
 	})
 }
 
@@ -1363,10 +1416,10 @@ func TestCoordinator_ClearsLoadTrackersWhenTrackingDisabled(t *testing.T) {
 		defer coord.Close()
 
 		c := coord.(*coordinator)
-		require.Contains(t, c.trackers, domainName)
+		require.Contains(t, c.tracker.domains, domainName)
 		work, ok := c.alloc.Unit(shard)
 		require.True(t, ok)
-		require.Equal(t, allocation.Load(75), work.Load)
+		require.Equal(t, allocation.Load(defaultShardScore), work.Load)
 
 		updateTrackLoad := func(enabled bool, version model.Version) {
 			serviceCfg := model.NewServiceConfig(model.WithTrackLoad(enabled))
@@ -1378,7 +1431,7 @@ func TestCoordinator_ClearsLoadTrackersWhenTrackingDisabled(t *testing.T) {
 
 		// disable TrackLoad
 		updateTrackLoad(false, 2)
-		require.Empty(t, c.trackers)
+		require.Empty(t, c.tracker.domains)
 		_, ok = c.cache.ServiceStatus(serviceName)
 		require.False(t, ok)
 		work, ok = c.alloc.Unit(shard)
@@ -1387,14 +1440,55 @@ func TestCoordinator_ClearsLoadTrackersWhenTrackingDisabled(t *testing.T) {
 
 		// enable TrackLoad again, allocation should start with default value.
 		updateTrackLoad(true, 3)
-		require.Empty(t, c.trackers)
+		require.Empty(t, c.tracker.domains)
 		work, ok = c.alloc.Unit(shard)
 		require.True(t, ok)
 		require.Equal(t, defaultShardLoad, work.Load)
 	})
 }
 
-func TestCoordinator_RestoredLoadScoreUsedByInitialAllocation(t *testing.T) {
+func TestCoordinator_DomainChangesPreserveLoadTrackers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
+		require.NoError(t, err)
+
+		cfg := model.NewServiceConfig(model.WithTrackLoad(true))
+		coord, _, updates := setupWithServiceConfigAndStatusesAndUpdates(ctx, t, []model.Domain{domain}, cfg, nil)
+		defer coord.Close()
+		c := coord.(*coordinator)
+
+		shard := model.Shard{Domain: domainName, Type: model.Unit}
+		for range 10 {
+			c.tracker.add(testStart(), shard, model.Load(20))
+		}
+		serviceTracker := c.tracker.service.tracker
+		domainTracker := c.tracker.domains[domainName].tracker
+
+		added, err := model.NewDomain(domainName2, model.Unit, time.Now())
+		require.NoError(t, err)
+		serviceInfo := model.NewServiceInfo(c.info.Service(), c.info.Info().Version()+1, time.Now())
+		updates <- core.NewDomainUpdate(serviceInfo, added)
+		synctest.Wait()
+
+		require.Same(t, serviceTracker, c.tracker.service.tracker, "adding a domain must not reset the service tracker")
+		require.Same(t, domainTracker, c.tracker.domains[domainName].tracker, "adding a domain must not reset existing domain trackers")
+		require.NotContains(t, c.tracker.domains, domainName2, "a new domain tracker must be created lazily from load observations")
+
+		serviceInfo = model.NewServiceInfo(c.info.Service(), c.info.Info().Version()+1, time.Now())
+		updates <- core.NewDomainRemoval(serviceInfo, domainName)
+		synctest.Wait()
+
+		require.Contains(t, c.tracker.domains, domainName, "domain tracker cleanup is deferred to the load ticker")
+		time.Sleep(loadTickerInterval + time.Minute)
+		synctest.Wait()
+
+		require.NotContains(t, c.tracker.domains, domainName)
+		require.Same(t, serviceTracker, c.tracker.service.tracker, "removing a domain must not reset the service tracker")
+	})
+}
+
+func TestCoordinator_RestoredLegacyLoadUsesDefaultScore(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()
 
@@ -1426,9 +1520,12 @@ func TestCoordinator_RestoredLoadScoreUsedByInitialAllocation(t *testing.T) {
 		defer coord.Close()
 
 		c := coord.(*coordinator)
+		require.Nil(t, c.tracker.service.quantile)
+		_, ok := c.tracker.domains[domainName].domainLoad()
+		require.False(t, ok, "legacy active domain tracker should restart with the service tracker")
 		work, ok := c.alloc.Unit(shard)
 		require.True(t, ok)
-		require.Equal(t, allocation.Load(75), work.Load)
+		require.Equal(t, allocation.Load(defaultShardScore), work.Load)
 	})
 }
 
@@ -1453,11 +1550,14 @@ func TestCoordinator_AppliesLoadScoresAfterTrackerRotation(t *testing.T) {
 
 			now := time.Now()
 			tracker := newDomainLoadTracker(now.Add(-defaultRotationInterval-time.Second), domain1)
+			c.tracker.service.tracker.createdAt = now.Add(-defaultRotationInterval - time.Second)
 			for range 10 {
 				tracker.add(work[0].Unit, model.Load(10))
 				tracker.add(work[1].Unit, model.Load(30))
+				c.tracker.service.add(model.Load(10))
+				c.tracker.service.add(model.Load(30))
 			}
-			c.trackers[domainName] = tracker
+			c.tracker.domains[domainName] = tracker
 
 			c.rotateTrackerAndRefreshIfNeeded(ctx, now)
 			updated := c.alloc.Work()
@@ -1465,7 +1565,10 @@ func TestCoordinator_AppliesLoadScoresAfterTrackerRotation(t *testing.T) {
 
 			loads := []allocation.Load{updated[0].Load, updated[1].Load}
 			for _, oldWork := range work {
-				score := tracker.shardScoreOrDefault(core.NewShard(oldWork.Unit.From, oldWork.Unit.To, oldWork.Unit.Region))
+				score := c.tracker.shardScore(
+					oldWork.Unit.Domain,
+					core.NewShard(oldWork.Unit.From, oldWork.Unit.To, oldWork.Unit.Region),
+				)
 				require.Contains(t, loads, allocation.Load(score))
 			}
 			return nil
@@ -1476,9 +1579,10 @@ func TestCoordinator_AppliesLoadScoresAfterTrackerRotation(t *testing.T) {
 // updateCreatedAt updates the createdAt of domainLoadTrackers to simulate time advancing and avoid a long sleep (24 hours).
 // With synctest, time.Sleep triggers all tickers to fire within the synctest bubble;
 // long sleeps slow the test.
-func updateCreatedAt(trackers map[model.QualifiedDomainName]*domainLoadTracker, createdAt time.Time) {
-	for _, tracker := range trackers {
-		tracker.tracker.createdAt = createdAt
+func updateCreatedAt(tracker *loadTracker, createdAt time.Time) {
+	tracker.service.tracker.createdAt = createdAt
+	for _, domainTracker := range tracker.domains {
+		domainTracker.tracker.createdAt = createdAt
 	}
 }
 func connectConsumer(ctx context.Context, t *testing.T, coord Coordinator, w model.Instance) (chan model.ConsumerMessage, <-chan model.ConsumerMessage) {
