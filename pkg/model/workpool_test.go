@@ -2,7 +2,9 @@ package model
 
 import (
 	"context"
+	"fmt"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -670,90 +672,176 @@ func TestWorkpoolReportsLoad(t *testing.T) {
 			}()
 
 			<-coordinatorCon.Connected.Closed()
-			requirex.Element(t, coordinatorCon.In)                       // register
-			coordinatorCon.Out <- NewExtend(time.Now().Add(time.Minute)) // initial extend
+			requirex.Element(t, coordinatorCon.In)                                   // register
+			coordinatorCon.Out <- NewExtend(time.Now().Add(10 * reportLoadInterval)) // initial extend
 
 			shard := Shard{Domain: domain1, Type: Unit}
-			grant := NewGrant("grant1", shard, ActiveGrantState, time.Now().Add(time.Minute), time.Now())
+			grant := NewGrant("grant1", shard, ActiveGrantState, time.Now().Add(10*reportLoadInterval), time.Now())
 			coordinatorCon.Out <- NewAssign(grant)
 			ownership := requirex.Element(t, ownerships)
 
 			for _, load := range tc.loads {
-				assert.NoError(t, ownership.Reporter().ReportLoad(load))
+				ownership.Reporter().ReportLoad(load)
 			}
 
-			reported := make([]ShardLoad, 0, len(tc.loads))
-			for len(reported) < len(tc.loads) {
+			assertLatestLoadReported := func() {
+				time.Sleep(reportLoadInterval)
+				synctest.Wait()
+
 				msg := requirex.Element(t, coordinatorCon.In)
+				requirex.ChanEmpty(t, coordinatorCon.In)
 				clientMsg, ok := msg.ClientMessage()
 				require.True(t, ok)
 				status, ok := clientMsg.Status()
 				require.True(t, ok)
 				require.True(t, status.HasLoad())
-				reported = append(reported, status.Load().Shards()...)
+				reported := status.Load().Shards()
+
+				assert.Len(t, reported, 1)
+				assert.Equal(t, grant.ID(), reported[0].ID())
+				assert.Equal(t, tc.loads[len(tc.loads)-1], reported[0].Load())
 			}
 
-			assert.Len(t, reported, len(tc.loads))
-			for i, load := range tc.loads {
-				assert.Equal(t, grant.ID(), reported[i].ID())
-				assert.Equal(t, load, reported[i].Load())
-			}
+			// The latest load is retained and sent on every report interval.
+			assertLatestLoadReported()
+			assertLatestLoadReported()
 		})
 	}
-}
 
-func TestRead(t *testing.T) {
-	t.Run("empty", func(t *testing.T) {
-		ch := make(chan int)
+	synctestx.Run(t, "batches grant loads", func(t *testing.T) {
+		coordinatorCon := newFakeCon[ConsumerMessage]()
+		defer coordinatorCon.Close()
 
-		require.Empty(t, read(ch, 1))
-	})
+		grantCount := reportLoadBatchSize + 1
+		ownerships := make(chan Ownership, grantCount)
+		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
+				return coordinatorCon.connect(ctx, handler)
+			},
+			func(ctx context.Context, id GrantID, shard Shard, ownership Ownership) {
+				ownerships <- ownership
+				<-ctx.Done()
+			},
+			&workPoolOptions{drainTimeout: time.Second},
+		)
+		defer func() {
+			w.Drain()
+			<-w.Closed()
+		}()
 
-	t.Run("available", func(t *testing.T) {
-		ch := make(chan int, 3)
-		ch <- 1
-		ch <- 2
+		<-coordinatorCon.Connected.Closed()
+		requirex.Element(t, coordinatorCon.In) // register
+		coordinatorCon.Out <- NewExtend(time.Now().Add(10 * reportLoadInterval))
 
-		require.Equal(t, []int{1, 2}, read(ch, 3))
-	})
-
-	t.Run("limit", func(t *testing.T) {
-		ch := make(chan int, 3)
-		ch <- 1
-		ch <- 2
-		ch <- 3
-
-		require.Equal(t, []int{1, 2}, read(ch, 2))
-		require.Len(t, ch, 1)
-		require.Equal(t, 3, <-ch)
-	})
-
-	t.Run("closed", func(t *testing.T) {
-		ch := make(chan int, 2)
-		ch <- 1
-		ch <- 2
-		close(ch)
-
-		require.Equal(t, []int{1, 2}, read(ch, 3))
-	})
-
-	t.Run("non-positive count", func(t *testing.T) {
-		for _, tc := range []struct {
-			name  string
-			count int
-		}{
-			{name: "negative", count: -1},
-			{name: "zero", count: 0},
-		} {
-			t.Run(tc.name, func(t *testing.T) {
-				ch := make(chan int, 1)
-				ch <- 1
-
-				require.Empty(t, read(ch, tc.count))
-				require.Len(t, ch, 1)
-				require.Equal(t, 1, <-ch)
-			})
+		shard := Shard{Domain: domain1, Type: Unit}
+		grants := make([]Grant, 0, grantCount)
+		for i := range grantCount {
+			grants = append(grants, NewGrant(GrantID(fmt.Sprintf("grant%d", i)), shard, ActiveGrantState, time.Now().Add(time.Minute), time.Now()))
 		}
+		coordinatorCon.Out <- NewAssign(grants...)
+
+		for range grantCount {
+			requirex.Element(t, ownerships).Reporter().ReportLoad(42)
+		}
+
+		time.Sleep(reportLoadInterval)
+		synctest.Wait()
+
+		reported := map[GrantID]int{}
+		for len(reported) < grantCount {
+			msg := requirex.Element(t, coordinatorCon.In)
+			clientMsg, ok := msg.ClientMessage()
+			require.True(t, ok)
+			status, ok := clientMsg.Status()
+			require.True(t, ok)
+			require.True(t, status.HasLoad())
+			for _, load := range status.Load().Shards() {
+				reported[load.ID()]++
+			}
+		}
+
+		require.Len(t, reported, grantCount)
+		for _, count := range reported {
+			assert.Equal(t, 1, count)
+		}
+		requirex.ChanEmpty(t, coordinatorCon.In)
+	})
+
+	synctestx.Run(t, "retries load after reconnect", func(t *testing.T) {
+		connections := make(chan *fakeCon[ConsumerMessage], 2)
+		firstCon := newFakeCon[ConsumerMessage]()
+		secondCon := newFakeCon[ConsumerMessage]()
+		connections <- firstCon
+
+		ownerships := make(chan Ownership, 1)
+		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		w, _ := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
+				select {
+				case con := <-connections:
+					return con.connect(ctx, handler)
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			},
+			func(ctx context.Context, id GrantID, shard Shard, ownership Ownership) {
+				ownerships <- ownership
+				<-ctx.Done()
+			},
+			&workPoolOptions{disconnectTimeout: 10 * time.Second, drainTimeout: 2 * time.Second},
+		)
+		defer func() {
+			firstCon.Close()
+			secondCon.Close()
+			w.Drain()
+			<-w.Closed()
+		}()
+
+		requirex.Closed(t, firstCon.Connected.Closed())
+		requirex.Element(t, firstCon.In) // register
+		firstCon.Out <- NewExtend(time.Now().Add(10 * reportLoadInterval))
+
+		shard := Shard{Domain: domain1, Type: Unit}
+		grant := NewGrant("grant1", shard, ActiveGrantState, time.Now().Add(10*reportLoadInterval), time.Now())
+		firstCon.Out <- NewAssign(grant)
+		owned := requirex.Element(t, ownerships)
+		owned.Reporter().ReportLoad(42)
+
+		// Fill the outbound channel so the first report fails and disconnects.
+		for range cap(w.out) {
+			w.out <- NewDeregister()
+		}
+		time.Sleep(reportLoadInterval)
+		synctest.Wait()
+
+		_, hasLoad := owned.(*ownership).reporter.load()
+		require.True(t, hasLoad)
+
+		firstCon.Close()
+		connections <- secondCon
+		time.Sleep(2 * time.Second)
+		requirex.Closed(t, secondCon.Connected.Closed())
+		requirex.Element(t, secondCon.In) // register
+		secondCon.Out <- NewExtend(time.Now().Add(10 * reportLoadInterval))
+
+		time.Sleep(reportLoadInterval)
+		synctest.Wait()
+
+		msg := requirex.Element(t, secondCon.In)
+		clientMsg, ok := msg.ClientMessage()
+		require.True(t, ok)
+		status, ok := clientMsg.Status()
+		require.True(t, ok)
+		require.True(t, status.HasLoad())
+		reported := status.Load().Shards()
+		require.Len(t, reported, 1)
+		assert.Equal(t, grant.ID(), reported[0].ID())
+		assert.Equal(t, Load(42), reported[0].Load())
+
+		load, hasLoad := owned.(*ownership).reporter.load()
+		assert.True(t, hasLoad)
+		assert.Equal(t, Load(42), load)
 	})
 }
 

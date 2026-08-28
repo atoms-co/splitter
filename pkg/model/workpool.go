@@ -25,8 +25,9 @@ import (
 
 const (
 	statsDuration            = 15 * time.Second
+	reportLoadInterval       = 1 * time.Minute
+	reportLoadBatchSize      = 100
 	consumerGrantLogInterval = 10 * time.Minute
-	reportLoadBatchSize      = 1000
 )
 
 var (
@@ -70,10 +71,9 @@ type workPool struct {
 	opts     Options
 	metadata ConsumerMetadata
 
-	status   *joinStatus            // coordinator connectivity status
-	in       <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
-	out      chan<- ConsumerMessage // coordinator outgoing messages (empty and not closed, if disconnected)
-	loadChan chan ShardLoad         // range incoming loads (empty and not closed, if disconnected)
+	status *joinStatus            // coordinator connectivity status
+	in     <-chan ConsumerMessage // coordinator incoming messages (empty and not closed, if disconnected)
+	out    chan<- ConsumerMessage // coordinator outgoing messages (empty and not closed, if disconnected)
 
 	stats workPoolStats
 
@@ -107,7 +107,6 @@ func newWorkPool(consumer Consumer, service QualifiedServiceName, domains []Qual
 		opts:          opts,
 		metadata:      metadata,
 		poolOptions:   poolOpts,
-		loadChan:      make(chan ShardLoad, reportLoadBatchSize),
 		cluster:       NewClusterMap(NewClusterID(consumer.Instance(), time.Now()), nil), // empty self-origin map
 		clusters:      make(chan Cluster, 1),
 		grants:        map[GrantID]*grant{},
@@ -253,6 +252,9 @@ func (p *workPool) process(ctx context.Context) {
 	grantLogTicker := time.NewTicker(consumerGrantLogInterval + randx.Duration(time.Second))
 	defer grantLogTicker.Stop()
 
+	reportTicker := time.NewTicker(reportLoadInterval)
+	defer reportTicker.Stop()
+
 steady:
 	for {
 		select {
@@ -265,18 +267,8 @@ steady:
 			p.handleMessage(ctx, msg)
 			p.stopDisconnectTimer()
 
-		case shard := <-p.loadChan:
-
-			// batch forward loads to coordinator
-			shards := []ShardLoad{shard}
-
-			for _, elm := range read(p.loadChan, reportLoadBatchSize-1) {
-				shards = append(shards, elm)
-			}
-
-			if !p.trySend(ctx, NewShardLoadMessage(shards)) {
-				log.Warnf(ctx, "Failed to send load workpool: chan is full")
-			}
+		case <-reportTicker.C:
+			p.sendLoad(ctx)
 
 		case <-p.expire:
 			p.checkExpiration(ctx)
@@ -503,29 +495,6 @@ func (p *workPool) handleClientMessage(ctx context.Context, msg ClientMessage) {
 					})
 				case <-p.Closed():
 					h.Close()
-				}
-			}()
-
-			go func() {
-				loads := h.ownership.reporter.loads()
-				for !h.IsClosed() {
-					select {
-					case load, ok := <-loads:
-						if !ok {
-							return
-						}
-
-						select {
-						case p.loadChan <- NewShardLoad(g.ID(), load):
-						default:
-							log.Warnf(ctx, "Failed to send load workpool: chan is full")
-						}
-
-					case <-h.Closed():
-						return
-					case <-ctx.Done():
-						return
-					}
 				}
 			}()
 
@@ -883,19 +852,30 @@ func newWorkPoolContext(ctx context.Context, consumer Consumer, service Qualifie
 	return log.NewContext(NewConsumerContext(ctx, consumer), log.String("tenant", service.Tenant), log.String("service", service.Service))
 }
 
-// read reads chan elements to a slice if any, up to count elements. Non-blocking.
-func read[T any](ch <-chan T, count int) []T {
-	var ret []T
-	for len(ret) < count {
-		select {
-		case elm, ok := <-ch:
-			if !ok {
-				return ret
+// sendLoad sends the latest reported load for every shard to the coordinator in batches.
+func (p *workPool) sendLoad(ctx context.Context) {
+	var loads []ShardLoad
+	send := func(loads []ShardLoad) {
+		if len(loads) == 0 {
+			return
+		}
+
+		p.mustSend(ctx, NewShardLoadMessage(loads))
+	}
+
+	for _, g := range p.grants {
+		reporter := g.Handler.ownership.reporter
+		load, reported := reporter.load()
+		if reported {
+			loads = append(loads, NewShardLoad(g.Grant.ID(), load))
+			if len(loads) >= reportLoadBatchSize {
+				send(loads)
+				loads = loads[:0]
 			}
-			ret = append(ret, elm)
-		default:
-			return ret
 		}
 	}
-	return ret
+
+	if len(loads) > 0 {
+		send(loads)
+	}
 }
