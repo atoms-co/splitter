@@ -287,6 +287,53 @@ type ServiceLoadInfo struct {
 	pb *splitterprivatepb.ServiceLoadInfo
 }
 
+type ServiceTrackerSnapshot struct {
+	pb *splitterprivatepb.ServiceTrackerSnapshot
+}
+
+func WrapServiceTrackerSnapshot(pb *splitterprivatepb.ServiceTrackerSnapshot) ServiceTrackerSnapshot {
+	return ServiceTrackerSnapshot{pb: pb}
+}
+
+func UnwrapServiceTrackerSnapshot(s ServiceTrackerSnapshot) *splitterprivatepb.ServiceTrackerSnapshot {
+	return s.pb
+}
+
+func NewServiceTrackerSnapshot(createdAt time.Time, snapshot P2QuantileSnapshot) ServiceTrackerSnapshot {
+	return ServiceTrackerSnapshot{pb: &splitterprivatepb.ServiceTrackerSnapshot{
+		CreatedAt: timestamppb.New(createdAt),
+		Snapshot:  UnwrapP2QuantileSnapshot(snapshot),
+	}}
+}
+
+func (s ServiceTrackerSnapshot) CreatedAt() time.Time {
+	return s.pb.GetCreatedAt().AsTime()
+}
+
+func (s ServiceTrackerSnapshot) Snapshot() P2QuantileSnapshot {
+	return WrapP2QuantileSnapshot(s.pb.GetSnapshot())
+}
+
+type ServiceQuantileInfo struct {
+	pb *splitterprivatepb.ServiceQuantileInfo
+}
+
+func WrapServiceQuantileInfo(pb *splitterprivatepb.ServiceQuantileInfo) ServiceQuantileInfo {
+	return ServiceQuantileInfo{pb: pb}
+}
+
+func UnwrapServiceQuantileInfo(q ServiceQuantileInfo) *splitterprivatepb.ServiceQuantileInfo {
+	return q.pb
+}
+
+func NewServiceQuantileInfo(quantile float64) ServiceQuantileInfo {
+	return ServiceQuantileInfo{pb: &splitterprivatepb.ServiceQuantileInfo{Quantile: quantile}}
+}
+
+func (q ServiceQuantileInfo) Quantile() float64 {
+	return q.pb.GetQuantile()
+}
+
 func WrapServiceLoadInfo(pb *splitterprivatepb.ServiceLoadInfo) ServiceLoadInfo {
 	return ServiceLoadInfo{pb: pb}
 }
@@ -295,11 +342,29 @@ func UnwrapServiceLoadInfo(s ServiceLoadInfo) *splitterprivatepb.ServiceLoadInfo
 	return s.pb
 }
 
-func NewServiceLoadInfo(service model.QualifiedServiceName, info []DomainLoadInfo) ServiceLoadInfo {
-	return ServiceLoadInfo{pb: &splitterprivatepb.ServiceLoadInfo{
+type ServiceLoadInfoOption func(*splitterprivatepb.ServiceLoadInfo)
+
+func WithServiceTrackerSnapshot(snapshot ServiceTrackerSnapshot) ServiceLoadInfoOption {
+	return func(pb *splitterprivatepb.ServiceLoadInfo) {
+		pb.ServiceTracker = UnwrapServiceTrackerSnapshot(snapshot)
+	}
+}
+
+func WithServiceQuantileInfo(quantile ServiceQuantileInfo) ServiceLoadInfoOption {
+	return func(pb *splitterprivatepb.ServiceLoadInfo) {
+		pb.ServiceQuantile = UnwrapServiceQuantileInfo(quantile)
+	}
+}
+
+func NewServiceLoadInfo(service model.QualifiedServiceName, info []DomainLoadInfo, opts ...ServiceLoadInfoOption) ServiceLoadInfo {
+	pb := &splitterprivatepb.ServiceLoadInfo{
 		Service: service.ToProto(),
 		Info:    slicex.Map(info, UnwrapDomainLoadInfo),
-	}}
+	}
+	for _, opt := range opts {
+		opt(pb)
+	}
+	return ServiceLoadInfo{pb: pb}
 }
 
 func (t ServiceLoadInfo) Service() model.QualifiedServiceName {
@@ -312,6 +377,22 @@ func (t ServiceLoadInfo) Service() model.QualifiedServiceName {
 
 func (t ServiceLoadInfo) Domains() []DomainLoadInfo {
 	return slicex.Map(t.pb.GetInfo(), WrapDomainLoadInfo)
+}
+
+func (t ServiceLoadInfo) HasTrackerSnapshot() bool {
+	return t.pb.GetServiceTracker() != nil
+}
+
+func (t ServiceLoadInfo) TrackerSnapshot() ServiceTrackerSnapshot {
+	return WrapServiceTrackerSnapshot(t.pb.GetServiceTracker())
+}
+
+func (t ServiceLoadInfo) HasQuantileInfo() bool {
+	return t.pb.GetServiceQuantile() != nil
+}
+
+func (t ServiceLoadInfo) QuantileInfo() ServiceQuantileInfo {
+	return WrapServiceQuantileInfo(t.pb.GetServiceQuantile())
 }
 
 func (t ServiceLoadInfo) String() string {

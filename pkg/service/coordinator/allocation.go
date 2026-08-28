@@ -39,12 +39,12 @@ type (
 
 // TODO(herohde) 11/12/2023: intra-domain anti-affinity to spread out domains evenly. Similar to general LB.
 
-func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, trackers map[model.QualifiedDomainName]*domainLoadTracker, activation time.Time) *Allocation {
-	return allocation.New(id, findPlacements(tenant, info), findColocations(info), findWork(info, placements, trackers), activation)
+func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, tracker *loadTracker, activation time.Time) *Allocation {
+	return allocation.New(id, findPlacements(tenant, info), findColocations(info), findWork(info, placements, tracker), activation)
 }
 
-func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, namedShards []model.Shard, placements []core.InternalPlacementInfo, trackers map[model.QualifiedDomainName]*domainLoadTracker, activation time.Time) (*Allocation, []Grant) {
-	return allocation.Update(a, findPlacements(tenant, info, namedShards...), findColocations(info), findWork(info, placements, trackers), activation)
+func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, namedShards []model.Shard, placements []core.InternalPlacementInfo, tracker *loadTracker, activation time.Time) (*Allocation, []Grant) {
+	return allocation.Update(a, findPlacements(tenant, info, namedShards...), findColocations(info), findWork(info, placements, tracker), activation)
 }
 
 // NamedShards handles named shard placement
@@ -246,7 +246,7 @@ func findColocations(info model.ServiceInfoEx) []Colocation {
 	return slicex.New[Colocation](a)
 }
 
-func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo, trackers map[model.QualifiedDomainName]*domainLoadTracker) []Work {
+func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo, tracker *loadTracker) []Work {
 	var ret []Work
 
 	m := mapx.New(placements, func(v core.InternalPlacementInfo) model.PlacementName {
@@ -302,7 +302,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 					w := Work{
 						Unit: unit,
 						Data: slicex.New(location.Location{Region: region}),
-						Load: shardWorkLoad(state, trackers, unit),
+						Load: shardWorkLoad(state, tracker, unit),
 					}
 					ret = append(ret, w)
 				}
@@ -322,7 +322,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 					w := Work{
 						Unit: unit,
 						Data: locations,
-						Load: shardWorkLoad(state, trackers, unit),
+						Load: shardWorkLoad(state, tracker, unit),
 					}
 					ret = append(ret, w)
 				}
@@ -343,7 +343,7 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 					ret = append(ret, Work{
 						Unit: unit,
 						Data: slicex.New(location.Location{Region: region}),
-						Load: shardWorkLoad(state, trackers, unit),
+						Load: shardWorkLoad(state, tracker, unit),
 					})
 				}
 			}
@@ -356,14 +356,15 @@ func findWork(state model.ServiceInfoEx, placements []core.InternalPlacementInfo
 	return ret
 }
 
-func shardWorkLoad(state model.ServiceInfoEx, trackers map[model.QualifiedDomainName]*domainLoadTracker, shard model.Shard) allocation.Load {
+func shardWorkLoad(state model.ServiceInfoEx, tracker *loadTracker, shard model.Shard) allocation.Load {
 	if !state.Service().Config().TrackLoad() {
 		return defaultShardLoad
 	}
 
 	shardScore := defaultShardScore
-	if tracker, ok := trackers[shard.Domain]; ok {
-		shardScore = tracker.shardScoreOrDefault(core.NewShard(shard.From, shard.To, shard.Region))
+	if tracker != nil {
+		coreShard := core.NewShard(shard.From, shard.To, shard.Region)
+		shardScore = tracker.shardScore(shard.Domain, coreShard)
 	}
 	return allocation.Load(max(1, shardScore))
 }

@@ -61,6 +61,9 @@ var (
 	domainLoad = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
 	)
+	serviceLoadMetric = metrics.NewTrackedGauge(
+		metrics.NewGauge("go.atoms.co/splitter/coordinator_service_load", "Service load", core.QualifiedServiceKeys...),
+	)
 	shardLoad = metrics.NewTrackedGauge(
 		metrics.NewGauge("go.atoms.co/splitter/coordinator_shard_load", "Shard load", core.QualifiedShardKeys...),
 	)
@@ -148,7 +151,7 @@ type coordinator struct {
 	messages  chan *sessionx.Message[model.ConsumerMessage]
 	out       chan core.ServiceStatusMessage
 
-	trackers map[model.QualifiedDomainName]*domainLoadTracker
+	tracker *loadTracker
 
 	inject        chan func()
 	grantLogQueue *workqueue.WorkQueue
@@ -168,7 +171,7 @@ func New(ctx context.Context, loc location.Location, service model.QualifiedServ
 		messages:     make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 		out:          make(chan core.ServiceStatusMessage, 100),
 
-		trackers: map[model.QualifiedDomainName]*domainLoadTracker{},
+		tracker: newLoadTracker(time.Now()),
 
 		inject:        make(chan func()),
 		grantLogQueue: workqueue.New(1, 1),
@@ -545,9 +548,9 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	}
 
 	now := time.Now()
-	c.restoreLoadTrackers(ctx)
+	c.restoreLoadTrackers(ctx, now)
 
-	c.alloc = newAllocation(c.self.ID(), tenant, info, c.cache.Placements(c.name.Tenant), c.trackers, now.Add(delay))
+	c.alloc = newAllocation(c.self.ID(), tenant, info, c.cache.Placements(c.name.Tenant), c.tracker, now.Add(delay))
 	c.noLb = c.findUnitDomains()
 	c.cluster = model.NewClusterMap(model.NewClusterID(c.self, now), c.alloc.Units())
 
@@ -573,7 +576,7 @@ func (c *coordinator) init(ctx context.Context, state core.State, updates <-chan
 	log.Infof(ctx, "Coordinator %v/%v closed", c.name, c.self)
 }
 
-func (c *coordinator) restoreLoadTrackers(ctx context.Context) {
+func (c *coordinator) restoreLoadTrackers(ctx context.Context, now time.Time) {
 	service, ok := c.cache.Service(c.name)
 	if !ok || !service.Service().Config().TrackLoad() {
 		return
@@ -582,6 +585,15 @@ func (c *coordinator) restoreLoadTrackers(ctx context.Context) {
 	status, ok := c.cache.ServiceStatus(c.name)
 	if !ok {
 		return
+	}
+	resetActive := !status.Load().HasTrackerSnapshot()
+	serviceTracker, err := restoreServiceLoadTracker(now, status.Load())
+	if err != nil {
+		log.Warnf(ctx, "Failed to restore service load tracker for service %v, err=%v", c.name, err)
+		c.tracker.service = newServiceLoadTracker(now)
+		resetActive = true
+	} else {
+		c.tracker.service = serviceTracker
 	}
 
 	for _, info := range status.Load().Domains() {
@@ -592,8 +604,11 @@ func (c *coordinator) restoreLoadTrackers(ctx context.Context) {
 		}
 		qdn := model.QualifiedDomainName{Service: c.name, Domain: info.DomainName()}
 		if _, ok := c.cache.Domain(qdn); ok {
-			c.trackers[qdn] = tracker
+			c.tracker.domains[qdn] = tracker
 		}
+	}
+	if resetActive {
+		c.tracker.resetActive(now)
 	}
 }
 
@@ -658,8 +673,9 @@ steady:
 			}
 			c.info = info
 
-			if trackLoad && !info.Service().Config().TrackLoad() {
-				clear(c.trackers)
+			if trackLoad != info.Service().Config().TrackLoad() {
+				// TrackLoad changed
+				c.tracker = newLoadTracker(now)
 			}
 
 			oldShards := c.alloc.Units()
@@ -726,10 +742,7 @@ steady:
 			c.emitLoadMetrics(ctx)
 
 			// (2) report load to leader to persist information
-			load := mapx.MapValues(c.trackers, func(v *domainLoadTracker) core.DomainLoadInfo {
-				return v.snapshot()
-			})
-			serviceLoad := core.NewServiceLoadInfo(c.name, load)
+			serviceLoad := c.tracker.snapshot(c.name)
 			serviceStatus := core.NewServiceStatusMessage(serviceLoad)
 			select {
 			case c.out <- serviceStatus:
@@ -770,12 +783,7 @@ steady:
 }
 
 func (c *coordinator) rotateTrackerAndRefreshIfNeeded(ctx context.Context, now time.Time) {
-	var updated bool
-	for _, t := range c.trackers {
-		updated = t.rotateIfNeeded(now) || updated
-	}
-
-	if !updated {
+	if !c.tracker.rotateIfNeeded(now) {
 		return
 	}
 
@@ -808,7 +816,7 @@ func (c *coordinator) refresh(ctx context.Context, delay time.Duration) {
 		}
 	}
 
-	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, namedShards, c.cache.Placements(c.name.Tenant), c.trackers, now.Add(delay))
+	upd, rejected := updateAllocation(c.alloc, c.tenant, c.info, namedShards, c.cache.Placements(c.name.Tenant), c.tracker, now.Add(delay))
 	c.alloc = upd
 	c.noLb = c.findUnitDomains()
 
@@ -1162,13 +1170,7 @@ func (c *coordinator) handleStatus(ctx context.Context, status model.StatusMessa
 				continue
 			}
 
-			now := time.Now()
-			tracker, ok := c.trackers[shard.Domain]
-			if !ok {
-				tracker = newDomainLoadTracker(now, shard.Domain.Domain)
-				c.trackers[shard.Domain] = tracker
-			}
-			tracker.add(shard, load.Load())
+			c.tracker.add(time.Now(), shard, load.Load())
 		}
 
 	default:
@@ -1650,6 +1652,7 @@ func (c *coordinator) emitMetrics(ctx context.Context) {
 }
 
 func (c *coordinator) resetMetrics(ctx context.Context) {
+	serviceLoadMetric.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numConsumers.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numObservers.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	numShards.Reset(ctx, core.QualifiedServiceTags(c.name)...)
@@ -1661,23 +1664,27 @@ func (c *coordinator) resetMetrics(ctx context.Context) {
 	numColocationByLocation.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 }
 
-// Remove tracker if domain was removed
+// removeTrackerIfDomainRemoved removes trackers whose domains no longer exist.
 func (c *coordinator) removeTrackerIfDomainRemoved(ctx context.Context) {
-	for domain := range c.trackers {
+	for domain := range c.tracker.domains {
 		if _, ok := c.cache.Domain(domain); !ok {
 			log.Infof(ctx, "Domain %v was removed, delete from tracker.", domain)
-			delete(c.trackers, domain)
-			continue
+			delete(c.tracker.domains, domain)
 		}
 	}
 }
 
 func (c *coordinator) emitLoadMetrics(ctx context.Context) {
+	serviceLoadMetric.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	domainLoad.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	shardLoad.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 	shardScore.Reset(ctx, core.QualifiedServiceTags(c.name)...)
 
-	for domain, tracker := range c.trackers {
+	if load, ok := c.tracker.service.serviceLoad(); ok {
+		serviceLoadMetric.Set(ctx, float64(load), core.QualifiedServiceTags(c.name)...)
+	}
+
+	for domain, tracker := range c.tracker.domains {
 		load, ok := tracker.domainLoad()
 		if !ok {
 			continue
@@ -1689,7 +1696,7 @@ func (c *coordinator) emitLoadMetrics(ctx context.Context) {
 		for shard, load := range shardLoads {
 			shardTags := slicex.CopyAppend(core.QualifiedDomainTags(domain), core.ShardTag(shard))
 			shardLoad.Set(ctx, float64(load), shardTags...)
-			score := tracker.shardScoreOrDefault(shard)
+			score := c.tracker.shardScore(domain, shard)
 			shardScore.Set(ctx, float64(score), shardTags...)
 		}
 	}
