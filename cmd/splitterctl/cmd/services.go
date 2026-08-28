@@ -129,6 +129,7 @@ func makeUpdateServiceCmd() *cobra.Command {
 	region := cmd.Flags().String("region", "", "Region")
 	regions := cmd.Flags().StringSlice("regions", []string{}, "Coordinator region preferences")
 	overrides := cmd.Flags().StringSlice("locality-overrides", []string{}, "locality overrides. e.g. us-west1:centralus")
+	trackLoad := cmd.Flags().Bool("track-load", false, "track shard load")
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
 	locked := cmd.Flags().Bool("locked", false, "locked operational state")
 	disableLB := cmd.Flags().Bool("disable-load-balance", true, "disable load balance")
@@ -175,6 +176,9 @@ func makeUpdateServiceCmd() *cobra.Command {
 		}
 		if cmd.Flag("verbose-logging").Changed {
 			opOpts = append(opOpts, model.WithServiceOperationalVerboseLogging(*verboseLogging))
+		}
+		if cmd.Flag("track-load").Changed {
+			cfgOpts = append(cfgOpts, model.WithTrackLoad(*trackLoad))
 		}
 
 		if len(cfgOpts) == 0 && len(opOpts) == 0 {
