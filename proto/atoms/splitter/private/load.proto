@@ -71,6 +71,14 @@ message DomainQuantileInfo {
   repeated ShardQuantileInfo shard_quantiles = 2;
 }
 
+// P2QuantileSnapshot represents snapshot of a pkg/util/p2quantile/p2quantile.
+message P2QuantileSnapshot {
+  double percentile = 1;
+  repeated double height = 2;
+  repeated uint64 marker_pos = 3;
+  repeated double desired_marker_pos = 4;
+}
+
 // DomainTrackerSnapshot represents a snapshot of a domain load tracker for a domain and its shards.
 // For example, the observations above generate the following snapshot:
 // {
@@ -108,14 +116,6 @@ message DomainQuantileInfo {
 //   }]
 // }
 message DomainTrackerSnapshot {
-  // P2QuantileSnapshot represents snapshot of a pkg/util/p2quantile/p2quantile.
-  message P2QuantileSnapshot {
-    double percentile = 1;
-    repeated double height = 2;
-    repeated uint64 marker_pos = 3;
-    repeated double desired_marker_pos = 4;
-  }
-
   // ShardP2QuantileSnapshot represents a pair of Shard and P2QuantileSnapshot.
   message ShardP2QuantileSnapshot {
     Shard shard = 1;

@@ -135,10 +135,78 @@ func (x *DomainQuantileInfo) GetShardQuantiles() []*DomainQuantileInfo_ShardQuan
 	return nil
 }
 
+type P2QuantileSnapshot struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Percentile       float64                `protobuf:"fixed64,1,opt,name=percentile,proto3" json:"percentile,omitempty"`
+	Height           []float64              `protobuf:"fixed64,2,rep,packed,name=height,proto3" json:"height,omitempty"`
+	MarkerPos        []uint64               `protobuf:"varint,3,rep,packed,name=marker_pos,json=markerPos,proto3" json:"marker_pos,omitempty"`
+	DesiredMarkerPos []float64              `protobuf:"fixed64,4,rep,packed,name=desired_marker_pos,json=desiredMarkerPos,proto3" json:"desired_marker_pos,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *P2QuantileSnapshot) Reset() {
+	*x = P2QuantileSnapshot{}
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *P2QuantileSnapshot) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*P2QuantileSnapshot) ProtoMessage() {}
+
+func (x *P2QuantileSnapshot) ProtoReflect() protoreflect.Message {
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use P2QuantileSnapshot.ProtoReflect.Descriptor instead.
+func (*P2QuantileSnapshot) Descriptor() ([]byte, []int) {
+	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *P2QuantileSnapshot) GetPercentile() float64 {
+	if x != nil {
+		return x.Percentile
+	}
+	return 0
+}
+
+func (x *P2QuantileSnapshot) GetHeight() []float64 {
+	if x != nil {
+		return x.Height
+	}
+	return nil
+}
+
+func (x *P2QuantileSnapshot) GetMarkerPos() []uint64 {
+	if x != nil {
+		return x.MarkerPos
+	}
+	return nil
+}
+
+func (x *P2QuantileSnapshot) GetDesiredMarkerPos() []float64 {
+	if x != nil {
+		return x.DesiredMarkerPos
+	}
+	return nil
+}
+
 type DomainTrackerSnapshot struct {
 	state          protoimpl.MessageState                           `protogen:"open.v1"`
 	CreatedAt      *timestamppb.Timestamp                           `protobuf:"bytes,1,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	DomainSnapshot *DomainTrackerSnapshot_P2QuantileSnapshot        `protobuf:"bytes,2,opt,name=domain_snapshot,json=domainSnapshot,proto3" json:"domain_snapshot,omitempty"`
+	DomainSnapshot *P2QuantileSnapshot                              `protobuf:"bytes,2,opt,name=domain_snapshot,json=domainSnapshot,proto3" json:"domain_snapshot,omitempty"`
 	ShardSnapshot  []*DomainTrackerSnapshot_ShardP2QuantileSnapshot `protobuf:"bytes,3,rep,name=shard_snapshot,json=shardSnapshot,proto3" json:"shard_snapshot,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
@@ -146,7 +214,7 @@ type DomainTrackerSnapshot struct {
 
 func (x *DomainTrackerSnapshot) Reset() {
 	*x = DomainTrackerSnapshot{}
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[2]
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -158,7 +226,7 @@ func (x *DomainTrackerSnapshot) String() string {
 func (*DomainTrackerSnapshot) ProtoMessage() {}
 
 func (x *DomainTrackerSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[2]
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -171,7 +239,7 @@ func (x *DomainTrackerSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DomainTrackerSnapshot.ProtoReflect.Descriptor instead.
 func (*DomainTrackerSnapshot) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{2}
+	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *DomainTrackerSnapshot) GetCreatedAt() *timestamppb.Timestamp {
@@ -181,7 +249,7 @@ func (x *DomainTrackerSnapshot) GetCreatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-func (x *DomainTrackerSnapshot) GetDomainSnapshot() *DomainTrackerSnapshot_P2QuantileSnapshot {
+func (x *DomainTrackerSnapshot) GetDomainSnapshot() *P2QuantileSnapshot {
 	if x != nil {
 		return x.DomainSnapshot
 	}
@@ -206,7 +274,7 @@ type DomainLoadInfo struct {
 
 func (x *DomainLoadInfo) Reset() {
 	*x = DomainLoadInfo{}
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[3]
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -218,7 +286,7 @@ func (x *DomainLoadInfo) String() string {
 func (*DomainLoadInfo) ProtoMessage() {}
 
 func (x *DomainLoadInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[3]
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -231,7 +299,7 @@ func (x *DomainLoadInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DomainLoadInfo.ProtoReflect.Descriptor instead.
 func (*DomainLoadInfo) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{3}
+	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *DomainLoadInfo) GetDomainName() string {
@@ -265,7 +333,7 @@ type ServiceLoadInfo struct {
 
 func (x *ServiceLoadInfo) Reset() {
 	*x = ServiceLoadInfo{}
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[4]
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -277,7 +345,7 @@ func (x *ServiceLoadInfo) String() string {
 func (*ServiceLoadInfo) ProtoMessage() {}
 
 func (x *ServiceLoadInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[4]
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -290,7 +358,7 @@ func (x *ServiceLoadInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ServiceLoadInfo.ProtoReflect.Descriptor instead.
 func (*ServiceLoadInfo) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{4}
+	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ServiceLoadInfo) GetService() *pb.QualifiedServiceName {
@@ -317,7 +385,7 @@ type DomainQuantileInfo_ShardQuantileInfo struct {
 
 func (x *DomainQuantileInfo_ShardQuantileInfo) Reset() {
 	*x = DomainQuantileInfo_ShardQuantileInfo{}
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[5]
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -329,7 +397,7 @@ func (x *DomainQuantileInfo_ShardQuantileInfo) String() string {
 func (*DomainQuantileInfo_ShardQuantileInfo) ProtoMessage() {}
 
 func (x *DomainQuantileInfo_ShardQuantileInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[5]
+	mi := &file_atoms_splitter_private_load_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -359,78 +427,10 @@ func (x *DomainQuantileInfo_ShardQuantileInfo) GetQuantile() float64 {
 	return 0
 }
 
-type DomainTrackerSnapshot_P2QuantileSnapshot struct {
-	state            protoimpl.MessageState `protogen:"open.v1"`
-	Percentile       float64                `protobuf:"fixed64,1,opt,name=percentile,proto3" json:"percentile,omitempty"`
-	Height           []float64              `protobuf:"fixed64,2,rep,packed,name=height,proto3" json:"height,omitempty"`
-	MarkerPos        []uint64               `protobuf:"varint,3,rep,packed,name=marker_pos,json=markerPos,proto3" json:"marker_pos,omitempty"`
-	DesiredMarkerPos []float64              `protobuf:"fixed64,4,rep,packed,name=desired_marker_pos,json=desiredMarkerPos,proto3" json:"desired_marker_pos,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
-}
-
-func (x *DomainTrackerSnapshot_P2QuantileSnapshot) Reset() {
-	*x = DomainTrackerSnapshot_P2QuantileSnapshot{}
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *DomainTrackerSnapshot_P2QuantileSnapshot) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*DomainTrackerSnapshot_P2QuantileSnapshot) ProtoMessage() {}
-
-func (x *DomainTrackerSnapshot_P2QuantileSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_atoms_splitter_private_load_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use DomainTrackerSnapshot_P2QuantileSnapshot.ProtoReflect.Descriptor instead.
-func (*DomainTrackerSnapshot_P2QuantileSnapshot) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{2, 0}
-}
-
-func (x *DomainTrackerSnapshot_P2QuantileSnapshot) GetPercentile() float64 {
-	if x != nil {
-		return x.Percentile
-	}
-	return 0
-}
-
-func (x *DomainTrackerSnapshot_P2QuantileSnapshot) GetHeight() []float64 {
-	if x != nil {
-		return x.Height
-	}
-	return nil
-}
-
-func (x *DomainTrackerSnapshot_P2QuantileSnapshot) GetMarkerPos() []uint64 {
-	if x != nil {
-		return x.MarkerPos
-	}
-	return nil
-}
-
-func (x *DomainTrackerSnapshot_P2QuantileSnapshot) GetDesiredMarkerPos() []float64 {
-	if x != nil {
-		return x.DesiredMarkerPos
-	}
-	return nil
-}
-
 type DomainTrackerSnapshot_ShardP2QuantileSnapshot struct {
-	state         protoimpl.MessageState                    `protogen:"open.v1"`
-	Shard         *Shard                                    `protobuf:"bytes,1,opt,name=shard,proto3" json:"shard,omitempty"`
-	Snapshot      *DomainTrackerSnapshot_P2QuantileSnapshot `protobuf:"bytes,2,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Shard         *Shard                 `protobuf:"bytes,1,opt,name=shard,proto3" json:"shard,omitempty"`
+	Snapshot      *P2QuantileSnapshot    `protobuf:"bytes,2,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -462,7 +462,7 @@ func (x *DomainTrackerSnapshot_ShardP2QuantileSnapshot) ProtoReflect() protorefl
 
 // Deprecated: Use DomainTrackerSnapshot_ShardP2QuantileSnapshot.ProtoReflect.Descriptor instead.
 func (*DomainTrackerSnapshot_ShardP2QuantileSnapshot) Descriptor() ([]byte, []int) {
-	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{2, 1}
+	return file_atoms_splitter_private_load_proto_rawDescGZIP(), []int{3, 0}
 }
 
 func (x *DomainTrackerSnapshot_ShardP2QuantileSnapshot) GetShard() *Shard {
@@ -472,7 +472,7 @@ func (x *DomainTrackerSnapshot_ShardP2QuantileSnapshot) GetShard() *Shard {
 	return nil
 }
 
-func (x *DomainTrackerSnapshot_ShardP2QuantileSnapshot) GetSnapshot() *DomainTrackerSnapshot_P2QuantileSnapshot {
+func (x *DomainTrackerSnapshot_ShardP2QuantileSnapshot) GetSnapshot() *P2QuantileSnapshot {
 	if x != nil {
 		return x.Snapshot
 	}
@@ -493,12 +493,7 @@ const file_atoms_splitter_private_load_proto_rawDesc = "" +
 	"\x0fshard_quantiles\x18\x02 \x03(\v2<.atoms.splitter.private.DomainQuantileInfo.ShardQuantileInfoR\x0eshardQuantiles\x1ad\n" +
 	"\x11ShardQuantileInfo\x123\n" +
 	"\x05shard\x18\x01 \x01(\v2\x1d.atoms.splitter.private.ShardR\x05shard\x12\x1a\n" +
-	"\bquantile\x18\x02 \x01(\x01R\bquantile\"\xf6\x04\n" +
-	"\x15DomainTrackerSnapshot\x129\n" +
-	"\n" +
-	"created_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12i\n" +
-	"\x0fdomain_snapshot\x18\x02 \x01(\v2@.atoms.splitter.private.DomainTrackerSnapshot.P2QuantileSnapshotR\x0edomainSnapshot\x12l\n" +
-	"\x0eshard_snapshot\x18\x03 \x03(\v2E.atoms.splitter.private.DomainTrackerSnapshot.ShardP2QuantileSnapshotR\rshardSnapshot\x1a\x99\x01\n" +
+	"\bquantile\x18\x02 \x01(\x01R\bquantile\"\x99\x01\n" +
 	"\x12P2QuantileSnapshot\x12\x1e\n" +
 	"\n" +
 	"percentile\x18\x01 \x01(\x01R\n" +
@@ -506,10 +501,15 @@ const file_atoms_splitter_private_load_proto_rawDesc = "" +
 	"\x06height\x18\x02 \x03(\x01R\x06height\x12\x1d\n" +
 	"\n" +
 	"marker_pos\x18\x03 \x03(\x04R\tmarkerPos\x12,\n" +
-	"\x12desired_marker_pos\x18\x04 \x03(\x01R\x10desiredMarkerPos\x1a\xac\x01\n" +
+	"\x12desired_marker_pos\x18\x04 \x03(\x01R\x10desiredMarkerPos\"\xae\x03\n" +
+	"\x15DomainTrackerSnapshot\x129\n" +
+	"\n" +
+	"created_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12S\n" +
+	"\x0fdomain_snapshot\x18\x02 \x01(\v2*.atoms.splitter.private.P2QuantileSnapshotR\x0edomainSnapshot\x12l\n" +
+	"\x0eshard_snapshot\x18\x03 \x03(\v2E.atoms.splitter.private.DomainTrackerSnapshot.ShardP2QuantileSnapshotR\rshardSnapshot\x1a\x96\x01\n" +
 	"\x17ShardP2QuantileSnapshot\x123\n" +
-	"\x05shard\x18\x01 \x01(\v2\x1d.atoms.splitter.private.ShardR\x05shard\x12\\\n" +
-	"\bsnapshot\x18\x02 \x01(\v2@.atoms.splitter.private.DomainTrackerSnapshot.P2QuantileSnapshotR\bsnapshot\"\xdc\x01\n" +
+	"\x05shard\x18\x01 \x01(\v2\x1d.atoms.splitter.private.ShardR\x05shard\x12F\n" +
+	"\bsnapshot\x18\x02 \x01(\v2*.atoms.splitter.private.P2QuantileSnapshotR\bsnapshot\"\xdc\x01\n" +
 	"\x0eDomainLoadInfo\x12\x1f\n" +
 	"\vdomain_name\x18\x01 \x01(\tR\n" +
 	"domainName\x12X\n" +
@@ -535,27 +535,27 @@ var file_atoms_splitter_private_load_proto_msgTypes = make([]protoimpl.MessageIn
 var file_atoms_splitter_private_load_proto_goTypes = []any{
 	(*Shard)(nil),                                         // 0: atoms.splitter.private.Shard
 	(*DomainQuantileInfo)(nil),                            // 1: atoms.splitter.private.DomainQuantileInfo
-	(*DomainTrackerSnapshot)(nil),                         // 2: atoms.splitter.private.DomainTrackerSnapshot
-	(*DomainLoadInfo)(nil),                                // 3: atoms.splitter.private.DomainLoadInfo
-	(*ServiceLoadInfo)(nil),                               // 4: atoms.splitter.private.ServiceLoadInfo
-	(*DomainQuantileInfo_ShardQuantileInfo)(nil),          // 5: atoms.splitter.private.DomainQuantileInfo.ShardQuantileInfo
-	(*DomainTrackerSnapshot_P2QuantileSnapshot)(nil),      // 6: atoms.splitter.private.DomainTrackerSnapshot.P2QuantileSnapshot
+	(*P2QuantileSnapshot)(nil),                            // 2: atoms.splitter.private.P2QuantileSnapshot
+	(*DomainTrackerSnapshot)(nil),                         // 3: atoms.splitter.private.DomainTrackerSnapshot
+	(*DomainLoadInfo)(nil),                                // 4: atoms.splitter.private.DomainLoadInfo
+	(*ServiceLoadInfo)(nil),                               // 5: atoms.splitter.private.ServiceLoadInfo
+	(*DomainQuantileInfo_ShardQuantileInfo)(nil),          // 6: atoms.splitter.private.DomainQuantileInfo.ShardQuantileInfo
 	(*DomainTrackerSnapshot_ShardP2QuantileSnapshot)(nil), // 7: atoms.splitter.private.DomainTrackerSnapshot.ShardP2QuantileSnapshot
 	(*timestamppb.Timestamp)(nil),                         // 8: google.protobuf.Timestamp
 	(*pb.QualifiedServiceName)(nil),                       // 9: atoms.splitter.QualifiedServiceName
 }
 var file_atoms_splitter_private_load_proto_depIdxs = []int32{
-	5,  // 0: atoms.splitter.private.DomainQuantileInfo.shard_quantiles:type_name -> atoms.splitter.private.DomainQuantileInfo.ShardQuantileInfo
+	6,  // 0: atoms.splitter.private.DomainQuantileInfo.shard_quantiles:type_name -> atoms.splitter.private.DomainQuantileInfo.ShardQuantileInfo
 	8,  // 1: atoms.splitter.private.DomainTrackerSnapshot.created_at:type_name -> google.protobuf.Timestamp
-	6,  // 2: atoms.splitter.private.DomainTrackerSnapshot.domain_snapshot:type_name -> atoms.splitter.private.DomainTrackerSnapshot.P2QuantileSnapshot
+	2,  // 2: atoms.splitter.private.DomainTrackerSnapshot.domain_snapshot:type_name -> atoms.splitter.private.P2QuantileSnapshot
 	7,  // 3: atoms.splitter.private.DomainTrackerSnapshot.shard_snapshot:type_name -> atoms.splitter.private.DomainTrackerSnapshot.ShardP2QuantileSnapshot
-	2,  // 4: atoms.splitter.private.DomainLoadInfo.tracker_snapshot:type_name -> atoms.splitter.private.DomainTrackerSnapshot
+	3,  // 4: atoms.splitter.private.DomainLoadInfo.tracker_snapshot:type_name -> atoms.splitter.private.DomainTrackerSnapshot
 	1,  // 5: atoms.splitter.private.DomainLoadInfo.quantile_info:type_name -> atoms.splitter.private.DomainQuantileInfo
 	9,  // 6: atoms.splitter.private.ServiceLoadInfo.service:type_name -> atoms.splitter.QualifiedServiceName
-	3,  // 7: atoms.splitter.private.ServiceLoadInfo.info:type_name -> atoms.splitter.private.DomainLoadInfo
+	4,  // 7: atoms.splitter.private.ServiceLoadInfo.info:type_name -> atoms.splitter.private.DomainLoadInfo
 	0,  // 8: atoms.splitter.private.DomainQuantileInfo.ShardQuantileInfo.shard:type_name -> atoms.splitter.private.Shard
 	0,  // 9: atoms.splitter.private.DomainTrackerSnapshot.ShardP2QuantileSnapshot.shard:type_name -> atoms.splitter.private.Shard
-	6,  // 10: atoms.splitter.private.DomainTrackerSnapshot.ShardP2QuantileSnapshot.snapshot:type_name -> atoms.splitter.private.DomainTrackerSnapshot.P2QuantileSnapshot
+	2,  // 10: atoms.splitter.private.DomainTrackerSnapshot.ShardP2QuantileSnapshot.snapshot:type_name -> atoms.splitter.private.P2QuantileSnapshot
 	11, // [11:11] is the sub-list for method output_type
 	11, // [11:11] is the sub-list for method input_type
 	11, // [11:11] is the sub-list for extension type_name
