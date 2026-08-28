@@ -61,13 +61,24 @@ message Service {
 
   message Operational {
     repeated string banned_regions = 1;
-    bool disable_load_balance = 2;
+    reserved 2;
     // Used by external tools to indicate that user-initiated actions on this domain are not allowed
     // (such as changing the Domain State from ACTIVE to SUSPENDED).
     // Has precedence over the Domain Operational locked setting.
     bool locked = 3;
     // Enable verbose logging for cluster messages
     bool verbose_logging = 4;
+
+    enum LoadBalanceMode {
+      // Allows the coordinator to move shards to balance load. This is the default mode.
+      ENABLED = 0;
+      // Prevents the coordinator from moving shards to balance load.
+      DISABLED = 1;
+      // Prevents the coordinator from moving shards to balance load when connected
+      // consumers report more than one deployment version.
+      DISABLED_DURING_DEPLOYMENT = 2;
+    }
+    LoadBalanceMode load_balancing = 5;
   }
   // Operational controls on Service (manually controlled)
   Operational operational = 4;

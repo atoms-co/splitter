@@ -7,9 +7,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
+	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/pkg/model"
 )
 
@@ -131,7 +131,7 @@ func makeUpdateServiceCmd() *cobra.Command {
 	overrides := cmd.Flags().StringSlice("locality-overrides", []string{}, "locality overrides. e.g. us-west1:centralus")
 	banned := cmd.Flags().StringSlice("banned-regions", []string{}, "banned regions")
 	locked := cmd.Flags().Bool("locked", false, "locked operational state")
-	disableLB := cmd.Flags().Bool("disable-load-balance", true, "disable load balance")
+	loadBalanceMode := cmd.Flags().String("load-balance-mode", "", "load balance mode: enabled, disabled, or disabled-during-deployment")
 	verboseLogging := cmd.Flags().Bool("verbose-logging", false, "enable verbose logging for cluster messages")
 
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
@@ -170,8 +170,12 @@ func makeUpdateServiceCmd() *cobra.Command {
 		if cmd.Flag("locked").Changed {
 			opOpts = append(opOpts, model.WithServiceOperationalLocked(*locked))
 		}
-		if cmd.Flag("disable-load-balance").Changed {
-			opOpts = append(opOpts, model.WithServiceOperationalDisableLoadBalance(*disableLB))
+		if cmd.Flag("load-balance-mode").Changed {
+			mode, ok := model.ParseLoadBalanceMode(*loadBalanceMode)
+			if !ok {
+				return fmt.Errorf("invalid load balance mode: %v", *loadBalanceMode)
+			}
+			opOpts = append(opOpts, model.WithServiceOperationalLoadBalanceMode(mode))
 		}
 		if cmd.Flag("verbose-logging").Changed {
 			opOpts = append(opOpts, model.WithServiceOperationalVerboseLogging(*verboseLogging))
