@@ -23,7 +23,7 @@ var (
 )
 
 func newTestWorkPool(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, joinFn workPoolJoinFn, handlerFn Handler, poolOpts *workPoolOptions) (*workPool, <-chan Cluster) {
-	return newWorkPool(consumer, service, domains, joinFn, handlerFn, poolOpts, NewOptions())
+	return newWorkPool(consumer, service, domains, joinFn, handlerFn, poolOpts, NewOptions(), NewConsumerMetadata(""))
 }
 
 func TestWorkpool(t *testing.T) {

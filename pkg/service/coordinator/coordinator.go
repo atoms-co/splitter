@@ -354,7 +354,7 @@ func (c *coordinator) handleOperationRequest(ctx context.Context, op *splitterpr
 func (c *coordinator) connect(ctx context.Context, sid session.ID, origin location.Instance, register model.RegisterMessage, limit int, keys []qualifiedDomainKeyWithName, in <-chan model.ConsumerMessage) (*consumerSession, <-chan model.ConsumerMessage) {
 	now := time.Now()
 
-	consumer := NewConsumer(register.Consumer(), now, WithLimit(limit), withKeys(keys...))
+	consumer := NewConsumer(register.Consumer(), now, WithLimit(limit), withKeys(keys...), withMetadata(register.Metadata()))
 
 	// Parse returning grants, active grants will be retained by the consumer
 	var active []Grant
@@ -852,7 +852,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	c.assign(ctx, now, grants...)
 	c.promote(ctx, promoted...)
 
-	if loadbalance && !c.info.Service().Operational().DisableLoadBalance() {
+	if loadbalance && !c.info.Service().Operational().DisableLoadBalance() && !c.disableLoadBalanceInDeployment(ctx) {
 		// Revoke and allocate
 
 		if move, load, ok := c.loadBalance(ctx, now); ok {
@@ -889,6 +889,18 @@ func (c *coordinator) loadBalance(ctx context.Context, now time.Time) (allocatio
 
 	// TODO(jump.c) 8/30/2024: Besides unit domains, load balancing should not move shards that have been recently assigned
 	return c.alloc.LoadBalance(now, c.noLb)
+}
+
+func (c *coordinator) disableLoadBalanceInDeployment(ctx context.Context) bool {
+	versions := mapx.MapToSlice(c.consumers, func(k model.InstanceID, v *consumerSession) string {
+		return v.consumer.metadata.Version()
+	})
+	if len(slicex.NewSet(versions...)) > 1 {
+		c.recordAction(ctx, "lb-disabled", "ok")
+		return true
+	}
+	c.recordAction(ctx, "lb-enabled", "ok")
+	return false
 }
 
 func (c *coordinator) assign(ctx context.Context, now time.Time, grants ...Grant) {

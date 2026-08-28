@@ -68,13 +68,14 @@ func NewClusterMessage(m ClusterMessage) ConsumerMessage {
 	}}
 }
 
-func NewRegister(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant, opts Options) ConsumerMessage {
+func NewRegister(consumer Consumer, service QualifiedServiceName, domains []QualifiedDomainName, grants []Grant, opts Options, metadata ConsumerMetadata) ConsumerMessage {
 	register := &splitterpb.ClientMessage_Register{
 		Consumer: UnwrapInstance(consumer),
 		Service:  service.ToProto(),
 		Domains:  slicex.Map(domains, QualifiedDomainName.ToProto),
 		Active:   slicex.Map(grants, UnwrapGrant),
 		Options:  UnwrapOptions(opts),
+		Metadata: UnwrapConsumerMetadata(metadata),
 	}
 
 	return NewClientMessage(ClientMessage{pb: &splitterpb.ClientMessage{
@@ -491,6 +492,30 @@ func (o Options) CapacityLimit() int {
 
 func (m RegisterMessage) Options() Options {
 	return WrapOptions(m.pb.GetOptions())
+}
+
+type ConsumerMetadata struct {
+	pb *splitterpb.ClientMessage_Register_Metadata
+}
+
+func NewConsumerMetadata(version string) ConsumerMetadata {
+	return WrapConsumerMetadata(&splitterpb.ClientMessage_Register_Metadata{Version: version})
+}
+
+func WrapConsumerMetadata(pb *splitterpb.ClientMessage_Register_Metadata) ConsumerMetadata {
+	return ConsumerMetadata{pb: pb}
+}
+
+func UnwrapConsumerMetadata(metadata ConsumerMetadata) *splitterpb.ClientMessage_Register_Metadata {
+	return metadata.pb
+}
+
+func (m ConsumerMetadata) Version() string {
+	return m.pb.GetVersion()
+}
+
+func (m RegisterMessage) Metadata() ConsumerMetadata {
+	return WrapConsumerMetadata(m.pb.GetMetadata())
 }
 
 func (m RegisterMessage) String() string {

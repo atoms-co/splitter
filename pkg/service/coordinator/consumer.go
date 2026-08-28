@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/slicex"
+	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/sessionx"
@@ -23,6 +23,7 @@ type Consumer struct {
 	joined   time.Time
 	keys     []qualifiedDomainKeyWithName
 	limit    int
+	metadata model.ConsumerMetadata
 }
 
 type NewConsumerOption func(*Consumer)
@@ -36,6 +37,12 @@ func withKeys(keys ...qualifiedDomainKeyWithName) NewConsumerOption {
 func WithLimit(limit int) NewConsumerOption {
 	return func(c *Consumer) {
 		c.limit = limit
+	}
+}
+
+func withMetadata(metadata model.ConsumerMetadata) NewConsumerOption {
+	return func(c *Consumer) {
+		c.metadata = metadata
 	}
 }
 
@@ -76,7 +83,7 @@ func (c *Consumer) Joined() time.Time {
 }
 
 func (c *Consumer) String() string {
-	return fmt.Sprintf("%v[joined=%v, keys=%v]", c.instance, c.joined, c.keys)
+	return fmt.Sprintf("%v[joined=%v, keys=%v, metadata=%v]", c.instance, c.joined, c.keys, c.metadata)
 }
 
 type consumerSession struct {
