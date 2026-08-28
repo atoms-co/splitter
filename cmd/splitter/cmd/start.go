@@ -47,6 +47,7 @@ func makeStartCommand() *cobra.Command {
 	raftPort := cmd.PersistentFlags().Int("raft_port", 50053, "Tcp port for raft traffic")
 	raftFastBootstrap := cmd.PersistentFlags().Bool("raft_fast_bootstrap", false, "Fast Raft bootstrap for testing")
 	raftJoinPeers := cmd.PersistentFlags().StringSlice("raft_join_peers", []string{}, "Raft peers to join including self")
+	raftSnapshotThreshold := cmd.PersistentFlags().Uint64("raft_snapshot_threshold", raft.DefaultConfig().SnapshotThreshold, "Number of outstanding Raft logs required before taking a snapshot")
 
 	cmd.Run = func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
@@ -102,6 +103,7 @@ func makeStartCommand() *cobra.Command {
 		raftConf := raft.DefaultConfig()
 		raftConf.LocalID = raft.ServerID(*raftID)
 		raftConf.Logger = hclogger
+		raftConf.SnapshotThreshold = *raftSnapshotThreshold
 
 		fsm := raftstorage.NewFSM()
 
