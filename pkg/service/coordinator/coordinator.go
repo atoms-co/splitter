@@ -860,7 +860,7 @@ func (c *coordinator) allocate(ctx context.Context, now time.Time, loadbalance b
 	c.assign(ctx, now, grants...)
 	c.promote(ctx, promoted...)
 
-	if loadbalance && !c.info.Service().Operational().DisableLoadBalance() && !c.disableLoadBalanceInDeployment(ctx) {
+	if loadbalance && !c.disableLoadBalance(ctx) {
 		// Revoke and allocate
 
 		if move, load, ok := c.loadBalance(ctx, now); ok {
@@ -899,15 +899,19 @@ func (c *coordinator) loadBalance(ctx context.Context, now time.Time) (allocatio
 	return c.alloc.LoadBalance(now, c.noLb)
 }
 
-func (c *coordinator) disableLoadBalanceInDeployment(ctx context.Context) bool {
-	versions := mapx.MapToSlice(c.consumers, func(k model.InstanceID, v *consumerSession) string {
-		return v.consumer.metadata.Version()
-	})
-	if len(slicex.NewSet(versions...)) > 1 {
-		c.recordAction(ctx, "lb-disabled", "ok")
+func (c *coordinator) disableLoadBalance(ctx context.Context) bool {
+	switch c.info.Service().Operational().LoadBalanceMode() {
+	case model.LoadBalanceModeDisabled:
 		return true
+	case model.LoadBalanceModeDisabledDuringDeployment:
+		versions := mapx.MapToSlice(c.consumers, func(k model.InstanceID, v *consumerSession) string {
+			return v.consumer.metadata.Version()
+		})
+		if len(slicex.NewSet(versions...)) > 1 {
+			c.recordAction(ctx, "lb-disabled", "ok")
+			return true
+		}
 	}
-	c.recordAction(ctx, "lb-enabled", "ok")
 	return false
 }
 

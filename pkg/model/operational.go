@@ -1,6 +1,8 @@
 package model
 
 import (
+	"strings"
+
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
 	splitterpb "go.atoms.co/splitter/pb"
@@ -63,6 +65,14 @@ func (t TenantOperational) String() string {
 
 type ServiceOperationalOption func(*splitterpb.Service_Operational)
 
+type LoadBalanceMode = splitterpb.Service_Operational_LoadBalanceMode
+
+const (
+	LoadBalanceModeEnabled                  = splitterpb.Service_Operational_ENABLED
+	LoadBalanceModeDisabled                 = splitterpb.Service_Operational_DISABLED
+	LoadBalanceModeDisabledDuringDeployment = splitterpb.Service_Operational_DISABLED_DURING_DEPLOYMENT
+)
+
 func WithServiceOperationalLocked(locked bool) ServiceOperationalOption {
 	return func(s *splitterpb.Service_Operational) {
 		s.Locked = locked
@@ -77,9 +87,14 @@ func WithServiceOperationalBannedRegions(regions ...Region) ServiceOperationalOp
 	}
 }
 
-func WithServiceOperationalDisableLoadBalance(disable bool) ServiceOperationalOption {
+func ParseLoadBalanceMode(mode string) (LoadBalanceMode, bool) {
+	v, ok := splitterpb.Service_Operational_LoadBalanceMode_value[strings.ToUpper(strings.ReplaceAll(mode, "-", "_"))]
+	return LoadBalanceMode(v), ok
+}
+
+func WithServiceOperationalLoadBalanceMode(mode LoadBalanceMode) ServiceOperationalOption {
 	return func(t *splitterpb.Service_Operational) {
-		t.DisableLoadBalance = disable
+		t.LoadBalancing = mode
 	}
 }
 
@@ -130,8 +145,8 @@ func (t ServiceOperational) BannedRegions() []Region {
 	})
 }
 
-func (t ServiceOperational) DisableLoadBalance() bool {
-	return t.pb.GetDisableLoadBalance()
+func (t ServiceOperational) LoadBalanceMode() LoadBalanceMode {
+	return t.pb.GetLoadBalancing()
 }
 
 func (t ServiceOperational) VerboseLogging() bool {

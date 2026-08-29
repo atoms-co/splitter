@@ -158,19 +158,21 @@ func makeCoordinatorRevokeCmd() *cobra.Command {
 		return withInternalClient(func(ctx context.Context, client core.Client) error {
 			// Disable load balance before retrieving snapshot if specified
 			resetLB := false
+			var prevLBMode model.LoadBalanceMode
 			if disableLb && !dryRun {
-				wasDisabled, err := coerceLoadBalanceOperational(service, true)
+				prevMode, err := coerceLoadBalanceOperational(service, model.LoadBalanceModeDisabled)
 				if err != nil {
 					return err
 				}
-				resetLB = !wasDisabled
+				prevLBMode = prevMode
+				resetLB = prevMode != model.LoadBalanceModeDisabled
 				if resetLB {
 					sigCh := signalx.InterruptChan()
 					go func() {
 						if _, ok := <-sigCh; ok {
 							fmt.Println("\nCommand interrupted, re-enabling load balance...")
-							if _, err := coerceLoadBalanceOperational(service, false); err != nil {
-								fmt.Printf("failed to re-enable load balance: %v\n", err)
+							if _, err := coerceLoadBalanceOperational(service, prevLBMode); err != nil {
+								fmt.Printf("failed to restore load balance mode: %v\n", err)
 							}
 							os.Exit(1)
 						}
@@ -182,8 +184,8 @@ func makeCoordinatorRevokeCmd() *cobra.Command {
 
 			// Restore load balance operational config
 			if resetLB {
-				if _, err := coerceLoadBalanceOperational(service, false); err != nil {
-					return errors.Join(revokeErr, fmt.Errorf("failed to re-enable load balance: %w", err))
+				if _, err := coerceLoadBalanceOperational(service, prevLBMode); err != nil {
+					return errors.Join(revokeErr, fmt.Errorf("failed to restore load balance mode: %w", err))
 				}
 			}
 
@@ -268,32 +270,37 @@ type consumerGrant struct {
 	domain     model.QualifiedDomainName
 }
 
-func coerceLoadBalanceOperational(service model.QualifiedServiceName, disableLB bool) (bool, error) {
-	var prev bool
+func coerceLoadBalanceOperational(service model.QualifiedServiceName, mode model.LoadBalanceMode) (model.LoadBalanceMode, error) {
+	var prev model.LoadBalanceMode
 	err := withClient(func(ctx context.Context, client model.Client) error {
 		var err error
 		b := backoffx.NewLimited(10*time.Second, backoffx.WithMaxRetries(5))
-		prev, err = backoffx.Retry1(b, func() (bool, error) {
+		prev, err = backoffx.Retry1(b, func() (model.LoadBalanceMode, error) {
 			info, err := client.InfoService(ctx, service)
 			if err != nil {
-				return false, err
+				return model.LoadBalanceModeEnabled, err
 			}
 			version := info.Info().Version()
-			prev := info.Info().Service().Operational().DisableLoadBalance()
+			prev := info.Info().Service().Operational().LoadBalanceMode()
 
-			if prev == disableLB {
+			if prev == mode {
 				return prev, nil
 			}
 
-			op := model.WithUpdateServiceOperational(model.NewServiceOperational(model.WithServiceOperationalDisableLoadBalance(disableLB)))
+			operational, err := model.UpdateServiceOperational(info.Info().Service(), model.WithServiceOperationalLoadBalanceMode(mode))
+			if err != nil {
+				return prev, err
+			}
+
+			op := model.WithUpdateServiceOperational(operational)
 			_, err = client.UpdateService(ctx, service, version, op)
 			return prev, err
 		})
 		if err != nil {
 			return err
 		}
-		if prev != disableLB {
-			fmt.Printf("Updated %v disable load balance operational to '%v'\n", service, disableLB)
+		if prev != mode {
+			fmt.Printf("Updated %v load balance mode to '%v'\n", service, mode)
 		}
 		return nil
 	})

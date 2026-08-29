@@ -22,6 +22,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type Service_Operational_LoadBalanceMode int32
+
+const (
+	Service_Operational_ENABLED                    Service_Operational_LoadBalanceMode = 0
+	Service_Operational_DISABLED                   Service_Operational_LoadBalanceMode = 1
+	Service_Operational_DISABLED_DURING_DEPLOYMENT Service_Operational_LoadBalanceMode = 2
+)
+
+// Enum value maps for Service_Operational_LoadBalanceMode.
+var (
+	Service_Operational_LoadBalanceMode_name = map[int32]string{
+		0: "ENABLED",
+		1: "DISABLED",
+		2: "DISABLED_DURING_DEPLOYMENT",
+	}
+	Service_Operational_LoadBalanceMode_value = map[string]int32{
+		"ENABLED":                    0,
+		"DISABLED":                   1,
+		"DISABLED_DURING_DEPLOYMENT": 2,
+	}
+)
+
+func (x Service_Operational_LoadBalanceMode) Enum() *Service_Operational_LoadBalanceMode {
+	p := new(Service_Operational_LoadBalanceMode)
+	*p = x
+	return p
+}
+
+func (x Service_Operational_LoadBalanceMode) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Service_Operational_LoadBalanceMode) Descriptor() protoreflect.EnumDescriptor {
+	return file_atoms_splitter_management_proto_enumTypes[0].Descriptor()
+}
+
+func (Service_Operational_LoadBalanceMode) Type() protoreflect.EnumType {
+	return &file_atoms_splitter_management_proto_enumTypes[0]
+}
+
+func (x Service_Operational_LoadBalanceMode) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Service_Operational_LoadBalanceMode.Descriptor instead.
+func (Service_Operational_LoadBalanceMode) EnumDescriptor() ([]byte, []int) {
+	return file_atoms_splitter_management_proto_rawDescGZIP(), []int{2, 1, 0}
+}
+
 type Domain_State int32
 
 const (
@@ -55,11 +104,11 @@ func (x Domain_State) String() string {
 }
 
 func (Domain_State) Descriptor() protoreflect.EnumDescriptor {
-	return file_atoms_splitter_management_proto_enumTypes[0].Descriptor()
+	return file_atoms_splitter_management_proto_enumTypes[1].Descriptor()
 }
 
 func (Domain_State) Type() protoreflect.EnumType {
-	return &file_atoms_splitter_management_proto_enumTypes[0]
+	return &file_atoms_splitter_management_proto_enumTypes[1]
 }
 
 func (x Domain_State) Number() protoreflect.EnumNumber {
@@ -672,13 +721,13 @@ func (x *Service_Config) GetTrackLoad() bool {
 }
 
 type Service_Operational struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	BannedRegions      []string               `protobuf:"bytes,1,rep,name=banned_regions,json=bannedRegions,proto3" json:"banned_regions,omitempty"`
-	DisableLoadBalance bool                   `protobuf:"varint,2,opt,name=disable_load_balance,json=disableLoadBalance,proto3" json:"disable_load_balance,omitempty"`
-	Locked             bool                   `protobuf:"varint,3,opt,name=locked,proto3" json:"locked,omitempty"`
-	VerboseLogging     bool                   `protobuf:"varint,4,opt,name=verbose_logging,json=verboseLogging,proto3" json:"verbose_logging,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state          protoimpl.MessageState              `protogen:"open.v1"`
+	BannedRegions  []string                            `protobuf:"bytes,1,rep,name=banned_regions,json=bannedRegions,proto3" json:"banned_regions,omitempty"`
+	Locked         bool                                `protobuf:"varint,3,opt,name=locked,proto3" json:"locked,omitempty"`
+	VerboseLogging bool                                `protobuf:"varint,4,opt,name=verbose_logging,json=verboseLogging,proto3" json:"verbose_logging,omitempty"`
+	LoadBalancing  Service_Operational_LoadBalanceMode `protobuf:"varint,5,opt,name=load_balancing,json=loadBalancing,proto3,enum=atoms.splitter.Service_Operational_LoadBalanceMode" json:"load_balancing,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Service_Operational) Reset() {
@@ -718,13 +767,6 @@ func (x *Service_Operational) GetBannedRegions() []string {
 	return nil
 }
 
-func (x *Service_Operational) GetDisableLoadBalance() bool {
-	if x != nil {
-		return x.DisableLoadBalance
-	}
-	return false
-}
-
 func (x *Service_Operational) GetLocked() bool {
 	if x != nil {
 		return x.Locked
@@ -737,6 +779,13 @@ func (x *Service_Operational) GetVerboseLogging() bool {
 		return x.VerboseLogging
 	}
 	return false
+}
+
+func (x *Service_Operational) GetLoadBalancing() Service_Operational_LoadBalanceMode {
+	if x != nil {
+		return x.LoadBalancing
+	}
+	return Service_Operational_ENABLED
 }
 
 type Service_Config_LocalityOverride struct {
@@ -996,7 +1045,7 @@ const file_atoms_splitter_management_proto_rawDesc = "" +
 	"TenantInfo\x12.\n" +
 	"\x06tenant\x18\x01 \x01(\v2\x16.atoms.splitter.TenantR\x06tenant\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x03R\aversion\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x85\x06\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x83\a\n" +
 	"\aService\x128\n" +
 	"\x04name\x18\x01 \x01(\v2$.atoms.splitter.QualifiedServiceNameR\x04name\x126\n" +
 	"\x06config\x18\x02 \x01(\v2\x1e.atoms.splitter.Service.ConfigR\x06config\x124\n" +
@@ -1011,12 +1060,16 @@ const file_atoms_splitter_management_proto_rawDesc = "" +
 	"track_load\x18\x05 \x01(\bR\ttrackLoad\x1a^\n" +
 	"\x10LocalityOverride\x12!\n" +
 	"\fshard_region\x18\x01 \x01(\tR\vshardRegion\x12'\n" +
-	"\x0fconsumer_region\x18\x02 \x01(\tR\x0econsumerRegion\x1a\xa7\x01\n" +
+	"\x0fconsumer_region\x18\x02 \x01(\tR\x0econsumerRegion\x1a\xa5\x02\n" +
 	"\vOperational\x12%\n" +
-	"\x0ebanned_regions\x18\x01 \x03(\tR\rbannedRegions\x120\n" +
-	"\x14disable_load_balance\x18\x02 \x01(\bR\x12disableLoadBalance\x12\x16\n" +
+	"\x0ebanned_regions\x18\x01 \x03(\tR\rbannedRegions\x12\x16\n" +
 	"\x06locked\x18\x03 \x01(\bR\x06locked\x12'\n" +
-	"\x0fverbose_logging\x18\x04 \x01(\bR\x0everboseLogging\"\x94\x01\n" +
+	"\x0fverbose_logging\x18\x04 \x01(\bR\x0everboseLogging\x12Z\n" +
+	"\x0eload_balancing\x18\x05 \x01(\x0e23.atoms.splitter.Service.Operational.LoadBalanceModeR\rloadBalancing\"L\n" +
+	"\x0fLoadBalanceMode\x12\v\n" +
+	"\aENABLED\x10\x00\x12\f\n" +
+	"\bDISABLED\x10\x01\x12\x1e\n" +
+	"\x1aDISABLED_DURING_DEPLOYMENT\x10\x02J\x04\b\x02\x10\x03\"\x94\x01\n" +
 	"\vServiceInfo\x121\n" +
 	"\aservice\x18\x01 \x01(\v2\x17.atoms.splitter.ServiceR\aservice\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x03R\aversion\x128\n" +
@@ -1066,61 +1119,63 @@ func file_atoms_splitter_management_proto_rawDescGZIP() []byte {
 	return file_atoms_splitter_management_proto_rawDescData
 }
 
-var file_atoms_splitter_management_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_atoms_splitter_management_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_atoms_splitter_management_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_atoms_splitter_management_proto_goTypes = []any{
-	(Domain_State)(0),                       // 0: atoms.splitter.Domain.State
-	(*Tenant)(nil),                          // 1: atoms.splitter.Tenant
-	(*TenantInfo)(nil),                      // 2: atoms.splitter.TenantInfo
-	(*Service)(nil),                         // 3: atoms.splitter.Service
-	(*ServiceInfo)(nil),                     // 4: atoms.splitter.ServiceInfo
-	(*ServiceInfoEx)(nil),                   // 5: atoms.splitter.ServiceInfoEx
-	(*Domain)(nil),                          // 6: atoms.splitter.Domain
-	(*ShardingPolicy)(nil),                  // 7: atoms.splitter.ShardingPolicy
-	(*Tenant_Config)(nil),                   // 8: atoms.splitter.Tenant.Config
-	(*Tenant_Operational)(nil),              // 9: atoms.splitter.Tenant.Operational
-	(*Service_Config)(nil),                  // 10: atoms.splitter.Service.Config
-	(*Service_Operational)(nil),             // 11: atoms.splitter.Service.Operational
-	(*Service_Config_LocalityOverride)(nil), // 12: atoms.splitter.Service.Config.LocalityOverride
-	(*Domain_Config)(nil),                   // 13: atoms.splitter.Domain.Config
-	(*Domain_Operational)(nil),              // 14: atoms.splitter.Domain.Operational
-	(*ShardingPolicy_Shard)(nil),            // 15: atoms.splitter.ShardingPolicy.Shard
-	(*timestamppb.Timestamp)(nil),           // 16: google.protobuf.Timestamp
-	(*QualifiedServiceName)(nil),            // 17: atoms.splitter.QualifiedServiceName
-	(*QualifiedDomainName)(nil),             // 18: atoms.splitter.QualifiedDomainName
-	(DomainType)(0),                         // 19: atoms.splitter.DomainType
-	(*NamedDomainKey)(nil),                  // 20: atoms.splitter.NamedDomainKey
+	(Service_Operational_LoadBalanceMode)(0), // 0: atoms.splitter.Service.Operational.LoadBalanceMode
+	(Domain_State)(0),                        // 1: atoms.splitter.Domain.State
+	(*Tenant)(nil),                           // 2: atoms.splitter.Tenant
+	(*TenantInfo)(nil),                       // 3: atoms.splitter.TenantInfo
+	(*Service)(nil),                          // 4: atoms.splitter.Service
+	(*ServiceInfo)(nil),                      // 5: atoms.splitter.ServiceInfo
+	(*ServiceInfoEx)(nil),                    // 6: atoms.splitter.ServiceInfoEx
+	(*Domain)(nil),                           // 7: atoms.splitter.Domain
+	(*ShardingPolicy)(nil),                   // 8: atoms.splitter.ShardingPolicy
+	(*Tenant_Config)(nil),                    // 9: atoms.splitter.Tenant.Config
+	(*Tenant_Operational)(nil),               // 10: atoms.splitter.Tenant.Operational
+	(*Service_Config)(nil),                   // 11: atoms.splitter.Service.Config
+	(*Service_Operational)(nil),              // 12: atoms.splitter.Service.Operational
+	(*Service_Config_LocalityOverride)(nil),  // 13: atoms.splitter.Service.Config.LocalityOverride
+	(*Domain_Config)(nil),                    // 14: atoms.splitter.Domain.Config
+	(*Domain_Operational)(nil),               // 15: atoms.splitter.Domain.Operational
+	(*ShardingPolicy_Shard)(nil),             // 16: atoms.splitter.ShardingPolicy.Shard
+	(*timestamppb.Timestamp)(nil),            // 17: google.protobuf.Timestamp
+	(*QualifiedServiceName)(nil),             // 18: atoms.splitter.QualifiedServiceName
+	(*QualifiedDomainName)(nil),              // 19: atoms.splitter.QualifiedDomainName
+	(DomainType)(0),                          // 20: atoms.splitter.DomainType
+	(*NamedDomainKey)(nil),                   // 21: atoms.splitter.NamedDomainKey
 }
 var file_atoms_splitter_management_proto_depIdxs = []int32{
-	8,  // 0: atoms.splitter.Tenant.config:type_name -> atoms.splitter.Tenant.Config
-	16, // 1: atoms.splitter.Tenant.created:type_name -> google.protobuf.Timestamp
-	9,  // 2: atoms.splitter.Tenant.operational:type_name -> atoms.splitter.Tenant.Operational
-	1,  // 3: atoms.splitter.TenantInfo.tenant:type_name -> atoms.splitter.Tenant
-	16, // 4: atoms.splitter.TenantInfo.timestamp:type_name -> google.protobuf.Timestamp
-	17, // 5: atoms.splitter.Service.name:type_name -> atoms.splitter.QualifiedServiceName
-	10, // 6: atoms.splitter.Service.config:type_name -> atoms.splitter.Service.Config
-	16, // 7: atoms.splitter.Service.created:type_name -> google.protobuf.Timestamp
-	11, // 8: atoms.splitter.Service.operational:type_name -> atoms.splitter.Service.Operational
-	3,  // 9: atoms.splitter.ServiceInfo.service:type_name -> atoms.splitter.Service
-	16, // 10: atoms.splitter.ServiceInfo.timestamp:type_name -> google.protobuf.Timestamp
-	4,  // 11: atoms.splitter.ServiceInfoEx.service:type_name -> atoms.splitter.ServiceInfo
-	6,  // 12: atoms.splitter.ServiceInfoEx.domains:type_name -> atoms.splitter.Domain
-	18, // 13: atoms.splitter.Domain.name:type_name -> atoms.splitter.QualifiedDomainName
-	19, // 14: atoms.splitter.Domain.type:type_name -> atoms.splitter.DomainType
-	0,  // 15: atoms.splitter.Domain.state:type_name -> atoms.splitter.Domain.State
-	13, // 16: atoms.splitter.Domain.config:type_name -> atoms.splitter.Domain.Config
-	16, // 17: atoms.splitter.Domain.created:type_name -> google.protobuf.Timestamp
-	14, // 18: atoms.splitter.Domain.operational:type_name -> atoms.splitter.Domain.Operational
-	15, // 19: atoms.splitter.ShardingPolicy.custom_shards:type_name -> atoms.splitter.ShardingPolicy.Shard
-	7,  // 20: atoms.splitter.Service.Config.default_sharding_policy:type_name -> atoms.splitter.ShardingPolicy
-	12, // 21: atoms.splitter.Service.Config.overrides:type_name -> atoms.splitter.Service.Config.LocalityOverride
-	7,  // 22: atoms.splitter.Domain.Config.sharding_policy:type_name -> atoms.splitter.ShardingPolicy
-	20, // 23: atoms.splitter.Domain.Config.named:type_name -> atoms.splitter.NamedDomainKey
-	24, // [24:24] is the sub-list for method output_type
-	24, // [24:24] is the sub-list for method input_type
-	24, // [24:24] is the sub-list for extension type_name
-	24, // [24:24] is the sub-list for extension extendee
-	0,  // [0:24] is the sub-list for field type_name
+	9,  // 0: atoms.splitter.Tenant.config:type_name -> atoms.splitter.Tenant.Config
+	17, // 1: atoms.splitter.Tenant.created:type_name -> google.protobuf.Timestamp
+	10, // 2: atoms.splitter.Tenant.operational:type_name -> atoms.splitter.Tenant.Operational
+	2,  // 3: atoms.splitter.TenantInfo.tenant:type_name -> atoms.splitter.Tenant
+	17, // 4: atoms.splitter.TenantInfo.timestamp:type_name -> google.protobuf.Timestamp
+	18, // 5: atoms.splitter.Service.name:type_name -> atoms.splitter.QualifiedServiceName
+	11, // 6: atoms.splitter.Service.config:type_name -> atoms.splitter.Service.Config
+	17, // 7: atoms.splitter.Service.created:type_name -> google.protobuf.Timestamp
+	12, // 8: atoms.splitter.Service.operational:type_name -> atoms.splitter.Service.Operational
+	4,  // 9: atoms.splitter.ServiceInfo.service:type_name -> atoms.splitter.Service
+	17, // 10: atoms.splitter.ServiceInfo.timestamp:type_name -> google.protobuf.Timestamp
+	5,  // 11: atoms.splitter.ServiceInfoEx.service:type_name -> atoms.splitter.ServiceInfo
+	7,  // 12: atoms.splitter.ServiceInfoEx.domains:type_name -> atoms.splitter.Domain
+	19, // 13: atoms.splitter.Domain.name:type_name -> atoms.splitter.QualifiedDomainName
+	20, // 14: atoms.splitter.Domain.type:type_name -> atoms.splitter.DomainType
+	1,  // 15: atoms.splitter.Domain.state:type_name -> atoms.splitter.Domain.State
+	14, // 16: atoms.splitter.Domain.config:type_name -> atoms.splitter.Domain.Config
+	17, // 17: atoms.splitter.Domain.created:type_name -> google.protobuf.Timestamp
+	15, // 18: atoms.splitter.Domain.operational:type_name -> atoms.splitter.Domain.Operational
+	16, // 19: atoms.splitter.ShardingPolicy.custom_shards:type_name -> atoms.splitter.ShardingPolicy.Shard
+	8,  // 20: atoms.splitter.Service.Config.default_sharding_policy:type_name -> atoms.splitter.ShardingPolicy
+	13, // 21: atoms.splitter.Service.Config.overrides:type_name -> atoms.splitter.Service.Config.LocalityOverride
+	0,  // 22: atoms.splitter.Service.Operational.load_balancing:type_name -> atoms.splitter.Service.Operational.LoadBalanceMode
+	8,  // 23: atoms.splitter.Domain.Config.sharding_policy:type_name -> atoms.splitter.ShardingPolicy
+	21, // 24: atoms.splitter.Domain.Config.named:type_name -> atoms.splitter.NamedDomainKey
+	25, // [25:25] is the sub-list for method output_type
+	25, // [25:25] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_atoms_splitter_management_proto_init() }
@@ -1134,7 +1189,7 @@ func file_atoms_splitter_management_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_atoms_splitter_management_proto_rawDesc), len(file_atoms_splitter_management_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   0,

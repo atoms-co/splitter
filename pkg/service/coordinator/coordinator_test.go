@@ -262,7 +262,7 @@ func TestCoordinator_DisableLoadBalanceDuringDeploy(t *testing.T) {
 		domain, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(4)))))
 		require.NoError(t, err)
 
-		coord, _ := setupWithServiceConfig(ctx, t, []model.Domain{domain}, model.NewServiceConfig(), WithFastActivation())
+		coord, _ := setupWithServiceOperational(ctx, t, []model.Domain{domain}, model.NewServiceOperational(model.WithServiceOperationalLoadBalanceMode(model.LoadBalanceModeDisabledDuringDeployment)), WithFastActivation())
 
 		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
 		in := make(chan model.ConsumerMessage, 1)
@@ -272,7 +272,7 @@ func TestCoordinator_DisableLoadBalanceDuringDeploy(t *testing.T) {
 		require.NoError(t, err)
 
 		readFn(t, out, isClusterSnapshot)
-		for i := 0; i < 4; i++ {
+		for range 4 {
 			require.Len(t, readFn(t, out, isAssign).Grants(), 1)
 		}
 		readFn(t, out, isClusterChange)
@@ -1620,12 +1620,25 @@ func setupWithServiceConfigAndStatuses(ctx context.Context, t *testing.T, domain
 func setupWithServiceConfigAndStatusesAndUpdates(ctx context.Context, t *testing.T, domains []model.Domain, cfg model.ServiceConfig, statuses []core.ServiceStatus, opts ...Option) (Coordinator, <-chan core.ServiceStatusMessage, chan<- core.Update) {
 	t.Helper()
 
+	return setupWithService(ctx, t, domains, statuses, []model.ServiceOption{model.WithServiceConfig(cfg)}, opts...)
+}
+
+func setupWithServiceOperational(ctx context.Context, t *testing.T, domains []model.Domain, operational model.ServiceOperational, opts ...Option) (Coordinator, <-chan core.ServiceStatusMessage) {
+	t.Helper()
+
+	c, out, _ := setupWithService(ctx, t, domains, nil, []model.ServiceOption{model.WithServiceOperational(operational)}, opts...)
+	return c, out
+}
+
+func setupWithService(ctx context.Context, t *testing.T, domains []model.Domain, statuses []core.ServiceStatus, serviceOpts []model.ServiceOption, opts ...Option) (Coordinator, <-chan core.ServiceStatusMessage, chan<- core.Update) {
+	t.Helper()
+
 	loc := location.New("centralus", "splitter-0")
 
 	tenant, err := model.NewTenant(tenant1, time.Now())
 	require.NoError(t, err)
 
-	service, err := model.NewService(serviceName, time.Now(), model.WithServiceConfig(cfg))
+	service, err := model.NewService(serviceName, time.Now(), serviceOpts...)
 	require.NoError(t, err)
 
 	state := core.NewState(
