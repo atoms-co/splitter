@@ -9,6 +9,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/lib/testing/requirex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

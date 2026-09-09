@@ -13,9 +13,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"go.atoms.co/lib/net/location/go/location"
-	"gopkg.in/yaml.v3"
+	yaml "gopkg.in/yaml.v3"
 
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/slicex"

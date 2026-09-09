@@ -12,6 +12,7 @@ import (
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"

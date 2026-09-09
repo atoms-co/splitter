@@ -17,6 +17,7 @@ import (
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/allocation"

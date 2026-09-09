@@ -19,6 +19,7 @@ import (
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/syncx"
+
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"

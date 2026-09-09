@@ -9,9 +9,10 @@ import (
 
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/log"
+
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/storage"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 var (

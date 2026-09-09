@@ -11,12 +11,13 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/container"
-	"go.atoms.co/slicex"
+	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/uuidx"
-	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/slicex"
+
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 // Block is a block number in the range [0;1023].

@@ -14,6 +14,7 @@ import (
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/lib/stringx"
 	"go.atoms.co/slicex"
+
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 )

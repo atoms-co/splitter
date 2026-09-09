@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"go.atoms.co/lib/timex"
+
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 )

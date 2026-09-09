@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.atoms.co/lib/uuidx"
+
 	"go.atoms.co/splitter/pkg/core"
 )
 

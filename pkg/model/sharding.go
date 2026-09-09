@@ -12,6 +12,7 @@ import (
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	splitteruuidx "go.atoms.co/splitter/pkg/util/uuidx"
 )

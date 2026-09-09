@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"go.atoms.co/slicex"
+
 	"go.atoms.co/splitter/pkg/model"
 )
 
@@ -137,6 +138,7 @@ func makeUpdateTenantCmd() *cobra.Command {
 
 	return cmd
 }
+
 func makeDeleteTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "delete <tenant>",

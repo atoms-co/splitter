@@ -19,6 +19,7 @@ import (
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/lib/timex"
 	"go.atoms.co/slicex"
+
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"

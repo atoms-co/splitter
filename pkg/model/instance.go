@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"go.atoms.co/lib/net/location/go/location"
+
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

@@ -8,13 +8,14 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.atoms.co/lib/net/location/go/location"
 
 	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/net/session/go/session"
 	"go.atoms.co/lib/testing/assertx"
+
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -195,6 +196,7 @@ func (f *fakeCoordinator) Connect(ctx context.Context, sid session.ID, consumer 
 func (f *fakeCoordinator) Drain(timeout time.Duration) {
 	f.Close()
 }
+
 func (f *fakeCoordinator) Observe(ctx context.Context, sid session.ID, observer location.Instance, in <-chan core.ObserverClientMessage) (<-chan core.ObserverServerMessage, error) {
 	return nil, nil
 }

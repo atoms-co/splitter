@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"go.atoms.co/lib/mapx"
+
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/p2quantile"
