@@ -3,7 +3,7 @@ syntax = "proto3";
 package atoms.splitter;
 
 import "google/protobuf/timestamp.proto";
-import "atoms/splitter/lib/service/session/session.proto";
+import "atoms/lib/net/session/session.proto";
 import "atoms/splitter/cluster.proto";
 import "atoms/splitter/model.proto";
 
@@ -125,7 +125,7 @@ message ConsumerMessage {
 // JoinMessage is a message sent from a consumer to a coordinator
 message JoinMessage {
   oneof msg {
-    atoms.splitter.lib.service.session.Message session = 1;
+    atoms.lib.net.session.Message session = 1;
     ConsumerMessage consumer = 2;
   }
 }

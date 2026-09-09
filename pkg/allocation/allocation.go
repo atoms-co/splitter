@@ -9,7 +9,7 @@ import (
 	"go.atoms.co/lib/container"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/mathx"
-	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/lib/net/location/go/location"
 )
 
 const (

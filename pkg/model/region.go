@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/backoffx"
+	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/randx"
 )
 

@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"go.atoms.co/lib/net/location/go/location"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/backoffx"
 	"go.atoms.co/lib/contextx"
-	"go.atoms.co/iox"
 )
 
 var (

@@ -3,7 +3,7 @@ syntax = "proto3";
 package atoms.splitter;
 
 import "google/protobuf/timestamp.proto";
-import "atoms/splitter/lib/service/location/location.proto";
+import "atoms/lib/net/location/location.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
@@ -68,7 +68,7 @@ message Shard {
 
 // Instance defines an addressable dynamic component instance. Immutable.
 message Instance {
-  atoms.splitter.lib.service.location.Instance instance = 1;
+  atoms.lib.net.location.Instance instance = 1;
   string endpoint = 2;
 }
 

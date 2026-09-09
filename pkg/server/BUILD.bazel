@@ -9,8 +9,6 @@ go_library(
     importpath = "go.atoms.co/splitter/pkg/server",
     visibility = ["//visibility:public"],
     deps = [
-        "//lib/service/location",
-        "//lib/service/session",
         "//pkg/cluster",
         "//pkg/core",
         "//pkg/model",
@@ -26,6 +24,8 @@ go_library(
         "@co_atoms_go_lib//log",
         "@co_atoms_go_lib//net/grpcx",
         "@co_atoms_go_lib//statshandlerx",
+        "@co_atoms_go_lib_net_location//go/location",
+        "@co_atoms_go_lib_net_session//go/session",
         "@org_golang_google_grpc//:grpc",
         "@org_uber_go_multierr//:multierr",
     ],

@@ -12,9 +12,9 @@ import (
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/lib/net/location/go/location"
+	"go.atoms.co/lib/net/session/go/session"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

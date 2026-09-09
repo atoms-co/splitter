@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/signalx"
 	"go.atoms.co/splitter/pkg/model"
 )

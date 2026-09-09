@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"go.atoms.co/lib/net/location/go/location"
 
 	"go.atoms.co/iox"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/synctestx"
-	"go.atoms.co/splitter/lib/service/location"
 )
 
 func TestPeeredConnectionCache(t *testing.T) {

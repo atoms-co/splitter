@@ -9,10 +9,10 @@ go_library(
     importpath = "go.atoms.co/splitter/pkg/allocation",
     visibility = ["//visibility:public"],
     deps = [
-        "//lib/service/location",
         "@co_atoms_go_lib//container",
         "@co_atoms_go_lib//mapx",
         "@co_atoms_go_lib//mathx",
+        "@co_atoms_go_lib_net_location//go/location",
         "@co_atoms_go_slicex//:slicex",
     ],
 )
@@ -22,11 +22,11 @@ go_test(
     srcs = glob(["*_test.go"]),
     deps = [
         ":allocation",
-        "//lib/service/location",
         "@co_atoms_go_lib//mapx",
         "@co_atoms_go_lib//testing/assertx",
         "@co_atoms_go_lib//testing/requirex",
         "@co_atoms_go_lib//testing/synctestx",
+        "@co_atoms_go_lib_net_location//go/location",
         "@co_atoms_go_slicex//:slicex",
         "@com_github_stretchr_testify//assert",
         "@com_github_stretchr_testify//require",

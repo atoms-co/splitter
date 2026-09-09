@@ -2,11 +2,11 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
+import "atoms/lib/net/session/session.proto";
 import "atoms/splitter/consumer.proto";
 import "atoms/splitter/model.proto";
 import "atoms/splitter/private/operation.proto";
 import "atoms/splitter/private/observer.proto";
-import "atoms/splitter/lib/service/session/session.proto";
 
 option go_package = "go.atoms.co/splitter/pb/private";
 
@@ -51,7 +51,7 @@ message CoordinatorHandleResponse {
 
 message ConnectMessage {
   oneof msg {
-    atoms.splitter.lib.service.session.Message session = 1;
+    atoms.lib.net.session.Message session = 1;
     atoms.splitter.ConsumerMessage consumer = 2;
   }
 }

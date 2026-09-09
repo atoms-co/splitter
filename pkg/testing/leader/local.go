@@ -4,11 +4,11 @@ import (
 	"context"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/iox"
+	"go.atoms.co/lib/net/session/go/session"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 // LocalManager is a leader manager that always uses local leader. Useful for testing.

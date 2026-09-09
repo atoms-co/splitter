@@ -17,8 +17,8 @@ proto_library(
     visibility = ["//visibility:public"],
     deps = [
         "//proto/atoms/splitter:splitter_proto",
-        "//proto/atoms/splitter/lib/service/location:location_proto",
-        "//proto/atoms/splitter/lib/service/session:session_proto",
+        "@co_atoms_go_lib_net_location//proto/atoms/lib/net/location:location_proto",
+        "@co_atoms_go_lib_net_session//proto/atoms/lib/net/session:session_proto",
         "@com_google_protobuf//:timestamp_proto",
     ],
 )
@@ -34,7 +34,7 @@ go_proto_library(
     visibility = ["//visibility:public"],
     deps = [
         "//proto/atoms/splitter:splitter_go_proto",
-        "//proto/atoms/splitter/lib/service/location:location_go_proto",
-        "//proto/atoms/splitter/lib/service/session:session_go_proto",
+        "@co_atoms_go_lib_net_location//proto/atoms/lib/net/location:location_go_proto",
+        "@co_atoms_go_lib_net_session//proto/atoms/lib/net/session:session_go_proto",
     ],
 )

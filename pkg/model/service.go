@@ -9,9 +9,9 @@ import (
 
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/stringx"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/lib/service/location"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

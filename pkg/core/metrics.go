@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/hashicorp/raft"
+	"go.atoms.co/lib/net/location/go/location"
 
 	"go.atoms.co/lib/metrics"
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/pkg/model"
 )
 

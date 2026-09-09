@@ -8,8 +8,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/uuidx"
-	"go.atoms.co/splitter/lib/service/location"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

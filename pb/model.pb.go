@@ -7,7 +7,7 @@
 package pb
 
 import (
-	pb "go.atoms.co/splitter/lib/service/location/pb"
+	pb "go.atoms.co/lib/net/location/go/location/pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -653,7 +653,7 @@ var File_atoms_splitter_model_proto protoreflect.FileDescriptor
 
 const file_atoms_splitter_model_proto_rawDesc = "" +
 	"\n" +
-	"\x1aatoms/splitter/model.proto\x12\x0eatoms.splitter\x1a\x1fgoogle/protobuf/timestamp.proto\x1a2atoms/splitter/lib/service/location/location.proto\"H\n" +
+	"\x1aatoms/splitter/model.proto\x12\x0eatoms.splitter\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%atoms/lib/net/location/location.proto\"H\n" +
 	"\x14QualifiedServiceName\x12\x16\n" +
 	"\x06tenant\x18\x01 \x01(\tR\x06tenant\x12\x18\n" +
 	"\aservice\x18\x02 \x01(\tR\aservice\"i\n" +
@@ -677,9 +677,9 @@ const file_atoms_splitter_model_proto_rawDesc = "" +
 	"\x04type\x18\x02 \x01(\x0e2\x1a.atoms.splitter.DomainTypeR\x04type\x12\x16\n" +
 	"\x06region\x18\x03 \x01(\tR\x06region\x12\x12\n" +
 	"\x04from\x18\x04 \x01(\tR\x04from\x12\x0e\n" +
-	"\x02to\x18\x05 \x01(\tR\x02to\"q\n" +
-	"\bInstance\x12I\n" +
-	"\binstance\x18\x01 \x01(\v2-.atoms.splitter.lib.service.location.InstanceR\binstance\x12\x1a\n" +
+	"\x02to\x18\x05 \x01(\tR\x02to\"d\n" +
+	"\bInstance\x12<\n" +
+	"\binstance\x18\x01 \x01(\v2 .atoms.lib.net.location.InstanceR\binstance\x12\x1a\n" +
 	"\bendpoint\x18\x02 \x01(\tR\bendpoint\"\xe0\x01\n" +
 	"\x05Grant\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12+\n" +
@@ -731,7 +731,7 @@ var file_atoms_splitter_model_proto_goTypes = []any{
 	(*Shard)(nil),                 // 8: atoms.splitter.Shard
 	(*Instance)(nil),              // 9: atoms.splitter.Instance
 	(*Grant)(nil),                 // 10: atoms.splitter.Grant
-	(*pb.Instance)(nil),           // 11: atoms.splitter.lib.service.location.Instance
+	(*pb.Instance)(nil),           // 11: atoms.lib.net.location.Instance
 	(*timestamppb.Timestamp)(nil), // 12: google.protobuf.Timestamp
 }
 var file_atoms_splitter_model_proto_depIdxs = []int32{
@@ -741,7 +741,7 @@ var file_atoms_splitter_model_proto_depIdxs = []int32{
 	4,  // 3: atoms.splitter.QualifiedDomainKey.key:type_name -> atoms.splitter.DomainKey
 	3,  // 4: atoms.splitter.Shard.domain:type_name -> atoms.splitter.QualifiedDomainName
 	0,  // 5: atoms.splitter.Shard.type:type_name -> atoms.splitter.DomainType
-	11, // 6: atoms.splitter.Instance.instance:type_name -> atoms.splitter.lib.service.location.Instance
+	11, // 6: atoms.splitter.Instance.instance:type_name -> atoms.lib.net.location.Instance
 	8,  // 7: atoms.splitter.Grant.shard:type_name -> atoms.splitter.Shard
 	1,  // 8: atoms.splitter.Grant.state:type_name -> atoms.splitter.GrantState
 	12, // 9: atoms.splitter.Grant.lease:type_name -> google.protobuf.Timestamp

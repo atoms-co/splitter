@@ -3,7 +3,7 @@ package model
 import (
 	"fmt"
 
-	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/lib/net/location/go/location"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

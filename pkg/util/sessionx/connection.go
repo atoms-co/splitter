@@ -6,9 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
 	"go.atoms.co/iox"
+	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/net/session/go/session"
 	"go.atoms.co/splitter/pkg/model"
 )
 

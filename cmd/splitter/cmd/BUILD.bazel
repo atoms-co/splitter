@@ -9,7 +9,6 @@ go_library(
     importpath = "go.atoms.co/splitter/cmd/splitter/cmd",
     visibility = ["//visibility:public"],
     deps = [
-        "//lib/service/location",
         "//pkg/cluster",
         "//pkg/server",
         "//pkg/service/leader",
@@ -22,6 +21,7 @@ go_library(
         "@co_atoms_go_lib//service/metricsx",
         "@co_atoms_go_lib//service/pprofx",
         "@co_atoms_go_lib//signalx",
+        "@co_atoms_go_lib_net_location//go/location",
         "@com_github_hashicorp_raft//:raft",
         "@com_github_hashicorp_raft_boltdb_v2//:raft-boltdb",
         "@com_github_spf13_cobra//:cobra",

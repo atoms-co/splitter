@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"go.atoms.co/lib/net/location/go/location"
 	"google.golang.org/grpc/status"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/slicex"
 )

@@ -10,9 +10,9 @@ import (
 
 	"google.golang.org/grpc"
 
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/lib/net/location/go/location"
 )
 
 const (

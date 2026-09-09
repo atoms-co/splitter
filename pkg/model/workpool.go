@@ -15,12 +15,12 @@ import (
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/randx"
 	"go.atoms.co/lib/syncx"
 	"go.atoms.co/lib/timex"
 	"go.atoms.co/lib/workqueue"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/lib/service/location"
 )
 
 const (

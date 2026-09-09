@@ -9,8 +9,8 @@ import (
 
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/mapx"
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/lib/service/location"
 )
 
 // ClusterID identifies cluster version and origin information.

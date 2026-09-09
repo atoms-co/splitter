@@ -4,17 +4,17 @@ import (
 	"context"
 	"fmt"
 
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/iox"
+	"go.atoms.co/lib/net/session/go/session"
+	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/coordinator"
 	"go.atoms.co/splitter/pkg/service/worker"
-	splitterprivatepb "go.atoms.co/splitter/pb/private"
 )
 
 // CoordinatorService is a grpc frontend for the internal coordinator api.
