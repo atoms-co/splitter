@@ -8,6 +8,7 @@ import (
 	"go.atoms.co/iox"
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/workqueue"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"

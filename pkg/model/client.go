@@ -15,6 +15,7 @@ import (
 	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/net/session/go/session"
 	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

@@ -3,6 +3,7 @@ package core
 import (
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/model"
@@ -231,9 +232,11 @@ func WrapServiceUpdate(pb *splitterprivatepb.ServiceUpdate) ServiceUpdate {
 func UnwrapServiceUpdate(t ServiceUpdate) *splitterprivatepb.ServiceUpdate {
 	return t.pb
 }
+
 func (s ServiceUpdate) Service() model.ServiceInfo {
 	return model.WrapServiceInfo(s.pb.GetService())
 }
+
 func (s ServiceUpdate) DomainsUpdated() []model.Domain {
 	return slicex.Map(s.pb.GetUpdated(), model.WrapDomain)
 }
@@ -274,6 +277,7 @@ func NewDelete(name model.TenantName) Delete {
 		Tenant: string(name),
 	})
 }
+
 func WrapDelete(pb *splitterprivatepb.Delete) Delete {
 	return Delete{pb: pb}
 }
@@ -304,6 +308,7 @@ func NewRestore(snapshot Snapshot) Restore {
 		Snapshot: UnwrapSnapshot(snapshot),
 	})
 }
+
 func WrapRestore(pb *splitterprivatepb.Restore) Restore {
 	return Restore{pb: pb}
 }

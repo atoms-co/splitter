@@ -9,8 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/stringx"
+	"go.atoms.co/slicex"
+
 	"go.atoms.co/splitter/pkg/model"
 )
 

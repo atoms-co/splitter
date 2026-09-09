@@ -13,6 +13,7 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/net/session/go/session"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/consumer"

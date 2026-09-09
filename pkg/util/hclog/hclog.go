@@ -7,7 +7,7 @@ import (
 	"io"
 	stdlog "log"
 
-	"github.com/hashicorp/go-hclog"
+	hclog "github.com/hashicorp/go-hclog"
 
 	"go.atoms.co/lib/log"
 )

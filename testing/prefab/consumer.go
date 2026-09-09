@@ -10,6 +10,7 @@ import (
 
 	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/uuidx"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	"go.atoms.co/splitter/pkg/model"
 )

@@ -7,8 +7,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"go.atoms.co/splitter/pkg/model"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 // ServiceResolver resolves a gRPC connection to an instance with service's coordinator. Uses model.ErrNoResolution

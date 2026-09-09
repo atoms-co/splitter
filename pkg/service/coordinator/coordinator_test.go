@@ -18,6 +18,7 @@ import (
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/allocation"
@@ -1585,6 +1586,7 @@ func updateCreatedAt(tracker *loadTracker, createdAt time.Time) {
 		domainTracker.tracker.createdAt = createdAt
 	}
 }
+
 func connectConsumer(ctx context.Context, t *testing.T, coord Coordinator, w model.Instance) (chan model.ConsumerMessage, <-chan model.ConsumerMessage) {
 	t.Helper()
 

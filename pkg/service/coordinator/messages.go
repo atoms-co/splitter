@@ -3,6 +3,7 @@ package coordinator
 import (
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/net/session/go/session"
+
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/model"
 )

@@ -9,6 +9,7 @@ import (
 	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/net/session/go/session"
 	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"
@@ -81,6 +82,7 @@ func NewRegister(worker model.Instance, grants ...core.Grant) Message {
 		},
 	}})
 }
+
 func NewDeregister() Message {
 	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
 		Msg: &splitterprivatepb.WorkerMessage_Deregister_{
@@ -88,6 +90,7 @@ func NewDeregister() Message {
 		},
 	}})
 }
+
 func NewLeaseUpdate(ttl time.Time) Message {
 	return NewWorkerMessage(WorkerMessage{pb: &splitterprivatepb.WorkerMessage{
 		Msg: &splitterprivatepb.WorkerMessage_Lease{
@@ -308,6 +311,7 @@ func (m WorkerMessage) Update() (UpdateMessage, bool) {
 	}
 	return UpdateMessage{pb: m.pb.GetUpdate()}, true
 }
+
 func (m WorkerMessage) IsRevoke() bool {
 	return m.pb.GetRevoke() != nil
 }

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"go.atoms.co/lib/net/location/go/location"
 	"google.golang.org/grpc"
 
 	"go.atoms.co/iox"
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/testing/assertx"
 )
 

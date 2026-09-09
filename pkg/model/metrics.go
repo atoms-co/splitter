@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"go.atoms.co/lib/net/location/go/location"
 	"google.golang.org/grpc/status"
 
 	"go.atoms.co/lib/metrics"
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/slicex"
 )
 

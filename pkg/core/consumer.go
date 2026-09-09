@@ -6,8 +6,9 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/pkg/model"
+
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 type ConsumerInfo struct {

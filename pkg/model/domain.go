@@ -11,8 +11,9 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/lib/encoding/protox"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
+	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

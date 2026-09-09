@@ -14,6 +14,7 @@ import (
 	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/net/session/go/session"
 	"go.atoms.co/lib/testing/assertx"
+
 	splitterpb "go.atoms.co/splitter/pb"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/core"

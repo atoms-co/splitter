@@ -8,6 +8,7 @@ import (
 
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
+
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/util/p2quantile"

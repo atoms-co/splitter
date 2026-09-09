@@ -11,6 +11,7 @@ import (
 
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

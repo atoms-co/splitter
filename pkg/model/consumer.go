@@ -10,13 +10,15 @@ import (
 
 	"go.atoms.co/lib/encoding/protox"
 	"go.atoms.co/lib/log"
-	"go.atoms.co/slicex"
 	"go.atoms.co/lib/uuidx"
-	"go.atoms.co/splitter/pkg/allocation"
+	"go.atoms.co/slicex"
+
 	splitterpb "go.atoms.co/splitter/pb"
+	"go.atoms.co/splitter/pkg/allocation"
 )
 
 type ConsumerID = InstanceID
+
 type Consumer = Instance
 
 func NewConsumerContext(ctx context.Context, consumer Consumer) context.Context {

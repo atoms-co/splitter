@@ -70,3 +70,13 @@ require (
 )
 
 require go.atoms.co/lib/net/location v1.0.2
+
+require (
+	github.com/incu6us/goimports-reviser/v3 v3.13.2 // indirect
+	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac // indirect
+	golang.org/x/mod v0.29.0 // indirect
+	golang.org/x/sync v0.18.0 // indirect
+	golang.org/x/tools v0.38.0 // indirect
+)
+
+tool github.com/incu6us/goimports-reviser/v3

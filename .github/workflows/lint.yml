@@ -21,3 +21,6 @@ jobs:
             echo "Error: found reference to css in repository"
             exit 1
           fi
+
+      - name: Format source code
+        run: ./tools/format.sh && git diff --exit-code

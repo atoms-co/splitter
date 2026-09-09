@@ -6,6 +6,7 @@ import (
 
 	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/slicex"
+
 	"go.atoms.co/splitter/pkg/allocation"
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"

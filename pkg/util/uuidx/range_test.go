@@ -8,6 +8,7 @@ import (
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/slicex"
+
 	splitteruuidx "go.atoms.co/splitter/pkg/util/uuidx"
 )
 

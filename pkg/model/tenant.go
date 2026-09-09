@@ -7,6 +7,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/lib/encoding/protox"
+
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

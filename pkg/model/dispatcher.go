@@ -160,6 +160,7 @@ func (d *Dispatcher) String() string {
 }
 
 type RangeFactory[V Range] func(ctx context.Context, grant GrantID, shard Shard, ownership Ownership) V
+
 type RangeFactoryEx[V Range] func(shard Shard) (RangeFactory[V], bool)
 
 // Range is a lifecycle interface to participate in graceful Grant state transitions, used by a

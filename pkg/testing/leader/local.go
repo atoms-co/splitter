@@ -6,6 +6,7 @@ import (
 
 	"go.atoms.co/iox"
 	"go.atoms.co/lib/net/session/go/session"
+
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/leader"
