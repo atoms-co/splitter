@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"go.atoms.co/lib/chanx"
+	"go.atoms.co/lib/net/location/go/location"
+	"go.atoms.co/lib/net/session/go/session"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/uuidx"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
 	splitterpb "go.atoms.co/splitter/pb"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
 	"go.atoms.co/splitter/pkg/allocation"

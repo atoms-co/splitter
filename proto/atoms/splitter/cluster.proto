@@ -3,7 +3,7 @@ syntax = "proto3";
 package atoms.splitter;
 
 import "google/protobuf/timestamp.proto";
-import "atoms/splitter/lib/service/location/location.proto";
+import "atoms/lib/net/location/location.proto";
 import "atoms/splitter/model.proto";
 
 option java_multiple_files = true;
@@ -29,7 +29,7 @@ message ClusterMessage {
   // Snapshot contains assignments for all known consumers, including consumers without grants.
   message Snapshot {
     repeated Assignment assignments = 1;
-    atoms.splitter.lib.service.location.Instance origin = 2; // coordinator instance (for debugging)
+    atoms.lib.net.location.Instance origin = 2; // coordinator instance (for debugging)
     repeated Shard shards = 3; // All known shards in the cluster. Some shards may not have assigned grants.
   }
 

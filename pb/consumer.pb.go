@@ -7,7 +7,7 @@
 package pb
 
 import (
-	pb "go.atoms.co/splitter/lib/service/session/pb"
+	pb "go.atoms.co/lib/net/session/go/session/pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -1095,7 +1095,7 @@ var File_atoms_splitter_consumer_proto protoreflect.FileDescriptor
 
 const file_atoms_splitter_consumer_proto_rawDesc = "" +
 	"\n" +
-	"\x1datoms/splitter/consumer.proto\x12\x0eatoms.splitter\x1a\x1fgoogle/protobuf/timestamp.proto\x1a0atoms/splitter/lib/service/session/session.proto\x1a\x1catoms/splitter/cluster.proto\x1a\x1aatoms/splitter/model.proto\"\xf0\x0e\n" +
+	"\x1datoms/splitter/consumer.proto\x12\x0eatoms.splitter\x1a\x1fgoogle/protobuf/timestamp.proto\x1a#atoms/lib/net/session/session.proto\x1a\x1catoms/splitter/cluster.proto\x1a\x1aatoms/splitter/model.proto\"\xf0\x0e\n" +
 	"\rClientMessage\x12D\n" +
 	"\bregister\x18\x01 \x01(\v2&.atoms.splitter.ClientMessage.RegisterH\x00R\bregister\x12J\n" +
 	"\n" +
@@ -1151,9 +1151,9 @@ const file_atoms_splitter_consumer_proto_rawDesc = "" +
 	"\x0fConsumerMessage\x127\n" +
 	"\x06client\x18\x01 \x01(\v2\x1d.atoms.splitter.ClientMessageH\x00R\x06client\x12:\n" +
 	"\acluster\x18\x02 \x01(\v2\x1e.atoms.splitter.ClusterMessageH\x00R\aclusterB\x05\n" +
-	"\x03msg\"\x9c\x01\n" +
-	"\vJoinMessage\x12G\n" +
-	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.session.MessageH\x00R\asession\x12=\n" +
+	"\x03msg\"\x8f\x01\n" +
+	"\vJoinMessage\x12:\n" +
+	"\asession\x18\x01 \x01(\v2\x1e.atoms.lib.net.session.MessageH\x00R\asession\x12=\n" +
 	"\bconsumer\x18\x02 \x01(\v2\x1f.atoms.splitter.ConsumerMessageH\x00R\bconsumerB\x05\n" +
 	"\x03msgB1\n" +
 	"\x14co.atoms.splitter.pbP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
@@ -1190,7 +1190,7 @@ var file_atoms_splitter_consumer_proto_goTypes = []any{
 	(*ClientMessage_Status_Load)(nil),           // 15: atoms.splitter.ClientMessage.Status.Load
 	(*ClientMessage_Status_Load_ShardLoad)(nil), // 16: atoms.splitter.ClientMessage.Status.Load.ShardLoad
 	(*ClusterMessage)(nil),                      // 17: atoms.splitter.ClusterMessage
-	(*pb.Message)(nil),                          // 18: atoms.splitter.lib.service.session.Message
+	(*pb.Message)(nil),                          // 18: atoms.lib.net.session.Message
 	(*Instance)(nil),                            // 19: atoms.splitter.Instance
 	(*QualifiedServiceName)(nil),                // 20: atoms.splitter.QualifiedServiceName
 	(*QualifiedDomainName)(nil),                 // 21: atoms.splitter.QualifiedDomainName
@@ -1211,7 +1211,7 @@ var file_atoms_splitter_consumer_proto_depIdxs = []int32{
 	12, // 9: atoms.splitter.ClientMessage.status:type_name -> atoms.splitter.ClientMessage.Status
 	0,  // 10: atoms.splitter.ConsumerMessage.client:type_name -> atoms.splitter.ClientMessage
 	17, // 11: atoms.splitter.ConsumerMessage.cluster:type_name -> atoms.splitter.ClusterMessage
-	18, // 12: atoms.splitter.JoinMessage.session:type_name -> atoms.splitter.lib.service.session.Message
+	18, // 12: atoms.splitter.JoinMessage.session:type_name -> atoms.lib.net.session.Message
 	1,  // 13: atoms.splitter.JoinMessage.consumer:type_name -> atoms.splitter.ConsumerMessage
 	19, // 14: atoms.splitter.ClientMessage.Register.consumer:type_name -> atoms.splitter.Instance
 	20, // 15: atoms.splitter.ClientMessage.Register.service:type_name -> atoms.splitter.QualifiedServiceName

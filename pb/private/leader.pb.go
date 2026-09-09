@@ -7,8 +7,8 @@
 package private
 
 import (
-	pb2 "go.atoms.co/splitter/lib/service/location/pb"
-	pb1 "go.atoms.co/splitter/lib/service/session/pb"
+	pb2 "go.atoms.co/lib/net/location/go/location/pb"
+	pb1 "go.atoms.co/lib/net/session/go/session/pb"
 	pb "go.atoms.co/splitter/pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -2553,7 +2553,7 @@ var File_atoms_splitter_private_leader_proto protoreflect.FileDescriptor
 
 const file_atoms_splitter_private_leader_proto_rawDesc = "" +
 	"\n" +
-	"#atoms/splitter/private/leader.proto\x12\x16atoms.splitter.private\x1a\x1aatoms/splitter/model.proto\x1a\"atoms/splitter/managementapi.proto\x1a!atoms/splitter/private/load.proto\x1a&atoms/splitter/private/operation.proto\x1a&atoms/splitter/private/placement.proto\x1a\"atoms/splitter/private/state.proto\x1a0atoms/splitter/lib/service/session/session.proto\x1a2atoms/splitter/lib/service/location/location.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbd\x02\n" +
+	"#atoms/splitter/private/leader.proto\x12\x16atoms.splitter.private\x1a%atoms/lib/net/location/location.proto\x1a#atoms/lib/net/session/session.proto\x1a\x1aatoms/splitter/model.proto\x1a\"atoms/splitter/managementapi.proto\x1a!atoms/splitter/private/load.proto\x1a&atoms/splitter/private/operation.proto\x1a&atoms/splitter/private/placement.proto\x1a\"atoms/splitter/private/state.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbd\x02\n" +
 	"\rTenantRequest\x128\n" +
 	"\x04list\x18\x01 \x01(\v2\".atoms.splitter.ListTenantsRequestH\x00R\x04list\x124\n" +
 	"\x03new\x18\x02 \x01(\v2 .atoms.splitter.NewTenantRequestH\x00R\x03new\x127\n" +
@@ -2666,7 +2666,7 @@ const file_atoms_splitter_private_leader_proto_rawDesc = "" +
 	"\x06grants\x18\x01 \x03(\v2\x1d.atoms.splitter.private.GrantR\x06grants\x1aL\n" +
 	"\rServiceStatus\x12;\n" +
 	"\x04load\x18\x01 \x01(\v2'.atoms.splitter.private.ServiceLoadInfoR\x04loadB\x05\n" +
-	"\x03msg\"\xa7\x06\n" +
+	"\x03msg\"\x9a\x06\n" +
 	"\x0eClusterMessage\x12M\n" +
 	"\bsnapshot\x18\x01 \x01(\v2/.atoms.splitter.private.ClusterMessage.SnapshotH\x00R\bsnapshot\x12G\n" +
 	"\x06update\x18\x02 \x01(\v2-.atoms.splitter.private.ClusterMessage.UpdateH\x00R\x06update\x12G\n" +
@@ -2677,10 +2677,10 @@ const file_atoms_splitter_private_leader_proto_rawDesc = "" +
 	"\n" +
 	"Assignment\x120\n" +
 	"\x06worker\x18\x01 \x01(\v2\x18.atoms.splitter.InstanceR\x06worker\x125\n" +
-	"\x06grants\x18\x02 \x03(\v2\x1d.atoms.splitter.private.GrantR\x06grants\x1a\xa6\x01\n" +
+	"\x06grants\x18\x02 \x03(\v2\x1d.atoms.splitter.private.GrantR\x06grants\x1a\x99\x01\n" +
 	"\bSnapshot\x12S\n" +
-	"\vassignments\x18\x01 \x03(\v21.atoms.splitter.private.ClusterMessage.AssignmentR\vassignments\x12E\n" +
-	"\x06origin\x18\x02 \x01(\v2-.atoms.splitter.lib.service.location.InstanceR\x06origin\x1a]\n" +
+	"\vassignments\x18\x01 \x03(\v21.atoms.splitter.private.ClusterMessage.AssignmentR\vassignments\x128\n" +
+	"\x06origin\x18\x02 \x01(\v2 .atoms.lib.net.location.InstanceR\x06origin\x1a]\n" +
 	"\x06Update\x12S\n" +
 	"\vassignments\x18\x01 \x03(\v21.atoms.splitter.private.ClusterMessage.AssignmentR\vassignments\x1aJ\n" +
 	"\x06Remove\x12@\n" +
@@ -2689,9 +2689,9 @@ const file_atoms_splitter_private_leader_proto_rawDesc = "" +
 	"\rLeaderMessage\x12?\n" +
 	"\x06worker\x18\x01 \x01(\v2%.atoms.splitter.private.WorkerMessageH\x00R\x06worker\x12B\n" +
 	"\acluster\x18\x02 \x01(\v2&.atoms.splitter.private.ClusterMessageH\x00R\aclusterB\x05\n" +
-	"\x03msg\"\x9e\x01\n" +
-	"\vJoinMessage\x12G\n" +
-	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.session.MessageH\x00R\asession\x12?\n" +
+	"\x03msg\"\x91\x01\n" +
+	"\vJoinMessage\x12:\n" +
+	"\asession\x18\x01 \x01(\v2\x1e.atoms.lib.net.session.MessageH\x00R\asession\x12?\n" +
 	"\x06leader\x18\x02 \x01(\v2%.atoms.splitter.private.LeaderMessageH\x00R\x06leaderB\x05\n" +
 	"\x03msg2\xca\x01\n" +
 	"\rLeaderService\x12T\n" +
@@ -2785,12 +2785,12 @@ var file_atoms_splitter_private_leader_proto_goTypes = []any{
 	(*SnapshotResponse)(nil),            // 70: atoms.splitter.private.SnapshotResponse
 	(*pb.QualifiedServiceName)(nil),     // 71: atoms.splitter.QualifiedServiceName
 	(*timestamppb.Timestamp)(nil),       // 72: google.protobuf.Timestamp
-	(*pb1.Message)(nil),                 // 73: atoms.splitter.lib.service.session.Message
+	(*pb1.Message)(nil),                 // 73: atoms.lib.net.session.Message
 	(*pb.Instance)(nil),                 // 74: atoms.splitter.Instance
 	(*State)(nil),                       // 75: atoms.splitter.private.State
 	(*Update)(nil),                      // 76: atoms.splitter.private.Update
 	(*ServiceLoadInfo)(nil),             // 77: atoms.splitter.private.ServiceLoadInfo
-	(*pb2.Instance)(nil),                // 78: atoms.splitter.lib.service.location.Instance
+	(*pb2.Instance)(nil),                // 78: atoms.lib.net.location.Instance
 }
 var file_atoms_splitter_private_leader_proto_depIdxs = []int32{
 	29, // 0: atoms.splitter.private.TenantRequest.list:type_name -> atoms.splitter.ListTenantsRequest
@@ -2862,7 +2862,7 @@ var file_atoms_splitter_private_leader_proto_depIdxs = []int32{
 	72, // 66: atoms.splitter.private.ClusterMessage.timestamp:type_name -> google.protobuf.Timestamp
 	13, // 67: atoms.splitter.private.LeaderMessage.worker:type_name -> atoms.splitter.private.WorkerMessage
 	14, // 68: atoms.splitter.private.LeaderMessage.cluster:type_name -> atoms.splitter.private.ClusterMessage
-	73, // 69: atoms.splitter.private.JoinMessage.session:type_name -> atoms.splitter.lib.service.session.Message
+	73, // 69: atoms.splitter.private.JoinMessage.session:type_name -> atoms.lib.net.session.Message
 	15, // 70: atoms.splitter.private.JoinMessage.leader:type_name -> atoms.splitter.private.LeaderMessage
 	74, // 71: atoms.splitter.private.WorkerMessage.Register.worker:type_name -> atoms.splitter.Instance
 	12, // 72: atoms.splitter.private.WorkerMessage.Register.active:type_name -> atoms.splitter.private.Grant
@@ -2877,7 +2877,7 @@ var file_atoms_splitter_private_leader_proto_depIdxs = []int32{
 	74, // 81: atoms.splitter.private.ClusterMessage.Assignment.worker:type_name -> atoms.splitter.Instance
 	12, // 82: atoms.splitter.private.ClusterMessage.Assignment.grants:type_name -> atoms.splitter.private.Grant
 	25, // 83: atoms.splitter.private.ClusterMessage.Snapshot.assignments:type_name -> atoms.splitter.private.ClusterMessage.Assignment
-	78, // 84: atoms.splitter.private.ClusterMessage.Snapshot.origin:type_name -> atoms.splitter.lib.service.location.Instance
+	78, // 84: atoms.splitter.private.ClusterMessage.Snapshot.origin:type_name -> atoms.lib.net.location.Instance
 	25, // 85: atoms.splitter.private.ClusterMessage.Update.assignments:type_name -> atoms.splitter.private.ClusterMessage.Assignment
 	71, // 86: atoms.splitter.private.ClusterMessage.Remove.services:type_name -> atoms.splitter.QualifiedServiceName
 	16, // 87: atoms.splitter.private.LeaderService.Join:input_type -> atoms.splitter.private.JoinMessage

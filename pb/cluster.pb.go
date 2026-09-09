@@ -7,7 +7,7 @@
 package pb
 
 import (
-	pb "go.atoms.co/splitter/lib/service/location/pb"
+	pb "go.atoms.co/lib/net/location/go/location/pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
@@ -601,7 +601,7 @@ var File_atoms_splitter_cluster_proto protoreflect.FileDescriptor
 
 const file_atoms_splitter_cluster_proto_rawDesc = "" +
 	"\n" +
-	"\x1catoms/splitter/cluster.proto\x12\x0eatoms.splitter\x1a\x1fgoogle/protobuf/timestamp.proto\x1a2atoms/splitter/lib/service/location/location.proto\x1a\x1aatoms/splitter/model.proto\"\xca\n" +
+	"\x1catoms/splitter/cluster.proto\x12\x0eatoms.splitter\x1a\x1fgoogle/protobuf/timestamp.proto\x1a%atoms/lib/net/location/location.proto\x1a\x1aatoms/splitter/model.proto\"\xbd\n" +
 	"\n" +
 	"\x0eClusterMessage\x12E\n" +
 	"\bsnapshot\x18\x01 \x01(\v2'.atoms.splitter.ClusterMessage.SnapshotH\x00R\bsnapshot\x12?\n" +
@@ -616,10 +616,10 @@ const file_atoms_splitter_cluster_proto_rawDesc = "" +
 	"\n" +
 	"Assignment\x124\n" +
 	"\bconsumer\x18\x01 \x01(\v2\x18.atoms.splitter.InstanceR\bconsumer\x12@\n" +
-	"\x06grants\x18\x02 \x03(\v2(.atoms.splitter.ClusterMessage.GrantInfoR\x06grants\x1a\xcd\x01\n" +
+	"\x06grants\x18\x02 \x03(\v2(.atoms.splitter.ClusterMessage.GrantInfoR\x06grants\x1a\xc0\x01\n" +
 	"\bSnapshot\x12K\n" +
-	"\vassignments\x18\x01 \x03(\v2).atoms.splitter.ClusterMessage.AssignmentR\vassignments\x12E\n" +
-	"\x06origin\x18\x02 \x01(\v2-.atoms.splitter.lib.service.location.InstanceR\x06origin\x12-\n" +
+	"\vassignments\x18\x01 \x03(\v2).atoms.splitter.ClusterMessage.AssignmentR\vassignments\x128\n" +
+	"\x06origin\x18\x02 \x01(\v2 .atoms.lib.net.location.InstanceR\x06origin\x12-\n" +
 	"\x06shards\x18\x03 \x03(\v2\x15.atoms.splitter.ShardR\x06shards\x1aU\n" +
 	"\x06Assign\x12K\n" +
 	"\vassignments\x18\x01 \x03(\v2).atoms.splitter.ClusterMessage.AssignmentR\vassignments\x1aJ\n" +
@@ -668,7 +668,7 @@ var file_atoms_splitter_cluster_proto_goTypes = []any{
 	(*Shard)(nil),                     // 11: atoms.splitter.Shard
 	(GrantState)(0),                   // 12: atoms.splitter.GrantState
 	(*Instance)(nil),                  // 13: atoms.splitter.Instance
-	(*pb.Instance)(nil),               // 14: atoms.splitter.lib.service.location.Instance
+	(*pb.Instance)(nil),               // 14: atoms.lib.net.location.Instance
 }
 var file_atoms_splitter_cluster_proto_depIdxs = []int32{
 	3,  // 0: atoms.splitter.ClusterMessage.snapshot:type_name -> atoms.splitter.ClusterMessage.Snapshot
@@ -679,7 +679,7 @@ var file_atoms_splitter_cluster_proto_depIdxs = []int32{
 	13, // 5: atoms.splitter.ClusterMessage.Assignment.consumer:type_name -> atoms.splitter.Instance
 	1,  // 6: atoms.splitter.ClusterMessage.Assignment.grants:type_name -> atoms.splitter.ClusterMessage.GrantInfo
 	2,  // 7: atoms.splitter.ClusterMessage.Snapshot.assignments:type_name -> atoms.splitter.ClusterMessage.Assignment
-	14, // 8: atoms.splitter.ClusterMessage.Snapshot.origin:type_name -> atoms.splitter.lib.service.location.Instance
+	14, // 8: atoms.splitter.ClusterMessage.Snapshot.origin:type_name -> atoms.lib.net.location.Instance
 	11, // 9: atoms.splitter.ClusterMessage.Snapshot.shards:type_name -> atoms.splitter.Shard
 	2,  // 10: atoms.splitter.ClusterMessage.Assign.assignments:type_name -> atoms.splitter.ClusterMessage.Assignment
 	1,  // 11: atoms.splitter.ClusterMessage.Update.grants:type_name -> atoms.splitter.ClusterMessage.GrantInfo

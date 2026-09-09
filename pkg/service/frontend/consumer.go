@@ -7,16 +7,16 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"go.atoms.co/splitter/lib/service/session"
-	"go.atoms.co/lib/log"
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/iox"
+	"go.atoms.co/lib/net/session/go/session"
+	splitterpb "go.atoms.co/splitter/pb"
 	"go.atoms.co/splitter/pkg/model"
 	"go.atoms.co/splitter/pkg/service/consumer"
 	"go.atoms.co/splitter/pkg/service/worker"
-	splitterpb "go.atoms.co/splitter/pb"
 )
 
 // ConsumerService is used by clients to participate in the work distribution process.

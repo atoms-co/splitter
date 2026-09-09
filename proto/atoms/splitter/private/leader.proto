@@ -2,14 +2,14 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
+import "atoms/lib/net/location/location.proto";
+import "atoms/lib/net/session/session.proto";
 import "atoms/splitter/model.proto";
 import "atoms/splitter/managementapi.proto";
 import "atoms/splitter/private/load.proto";
 import "atoms/splitter/private/operation.proto";
 import "atoms/splitter/private/placement.proto";
 import "atoms/splitter/private/state.proto";
-import "atoms/splitter/lib/service/session/session.proto";
-import "atoms/splitter/lib/service/location/location.proto";
 import "google/protobuf/timestamp.proto";
 
 option go_package = "go.atoms.co/splitter/pb/private";
@@ -216,7 +216,7 @@ message ClusterMessage {
 
   message Snapshot {
     repeated Assignment assignments = 1;
-    atoms.splitter.lib.service.location.Instance origin = 2; // leader instance (for debugging)
+    atoms.lib.net.location.Instance origin = 2; // leader instance (for debugging)
   }
 
   message Update {
@@ -247,7 +247,7 @@ message LeaderMessage {
 
 message JoinMessage {
   oneof msg {
-    atoms.splitter.lib.service.session.Message session = 1;
+    atoms.lib.net.session.Message session = 1;
     LeaderMessage leader = 2;
   }
 }

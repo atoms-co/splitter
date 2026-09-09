@@ -9,8 +9,6 @@ go_library(
     importpath = "go.atoms.co/splitter/pkg/model",
     visibility = ["//visibility:public"],
     deps = [
-        "//lib/service/location",
-        "//lib/service/session",
         "//pkg/allocation",
         "//pkg/util/uuidx",
         "//proto/atoms/splitter:splitter_go_proto",
@@ -29,6 +27,8 @@ go_library(
         "@co_atoms_go_lib//timex",
         "@co_atoms_go_lib//uuidx",
         "@co_atoms_go_lib//workqueue",
+        "@co_atoms_go_lib_net_location//go/location",
+        "@co_atoms_go_lib_net_session//go/session",
         "@co_atoms_go_slicex//:slicex",
         "@com_github_google_uuid//:uuid",
         "@org_golang_google_grpc//:grpc",
@@ -50,7 +50,6 @@ go_test(
     },
     rundir = ".",
     deps = [
-        "//lib/service/location",
         "//proto/atoms/splitter:splitter_go_proto",
         "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//chanx",
@@ -59,6 +58,7 @@ go_test(
         "@co_atoms_go_lib//testing/requirex",
         "@co_atoms_go_lib//testing/synctestx",
         "@co_atoms_go_lib//uuidx",
+        "@co_atoms_go_lib_net_location//go/location",
         "@co_atoms_go_slicex//:slicex",
         "@com_github_google_uuid//:uuid",
         "@com_github_stretchr_testify//assert",

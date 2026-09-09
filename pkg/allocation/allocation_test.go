@@ -8,13 +8,13 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.atoms.co/lib/net/location/go/location"
 
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/lib/testing/synctestx"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/lib/service/location"
 	"go.atoms.co/splitter/pkg/allocation"
 )
 

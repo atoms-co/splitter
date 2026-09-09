@@ -9,9 +9,9 @@ go_library(
     importpath = "go.atoms.co/splitter/pkg/util/sessionx",
     visibility = ["//visibility:public"],
     deps = [
-        "//lib/service/session",
         "//pkg/model",
         "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//log",
+        "@co_atoms_go_lib_net_session//go/session",
     ],
 )

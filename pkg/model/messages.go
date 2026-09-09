@@ -3,12 +3,12 @@ package model
 import (
 	"time"
 
+	"go.atoms.co/lib/net/location/go/location"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.atoms.co/lib/encoding/protox"
+	"go.atoms.co/lib/net/session/go/session"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/splitter/lib/service/session"
 	splitterpb "go.atoms.co/splitter/pb"
 )
 

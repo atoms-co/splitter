@@ -13,8 +13,11 @@ load("@tar.bzl", "mutate", "tar")
 
 # Exclude directories with generated code
 # gazelle:exclude pb
-# gazelle:exclude lib/service/location/pb
-# gazelle:exclude lib/service/session/pb
+
+# gazelle:resolve proto atoms/lib/net/location/location.proto @co_atoms_go_lib_net_location//proto/atoms/lib/net/location:location_proto
+# gazelle:resolve proto go atoms/lib/net/location/location.proto @co_atoms_go_lib_net_location//proto/atoms/lib/net/location:location_go_proto
+# gazelle:resolve proto atoms/lib/net/session/session.proto @co_atoms_go_lib_net_session//proto/atoms/lib/net/session:session_proto
+# gazelle:resolve proto go atoms/lib/net/session/session.proto @co_atoms_go_lib_net_session//proto/atoms/lib/net/session:session_go_proto
 
 gazelle(name = "gazelle")
 

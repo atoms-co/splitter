@@ -9,10 +9,10 @@ go_library(
     importpath = "go.atoms.co/splitter/pkg/testing/leader",
     visibility = ["//visibility:public"],
     deps = [
-        "//lib/service/session",
         "//pkg/model",
         "//pkg/service/leader",
         "//proto/atoms/splitter/private:private_go_proto",
         "@co_atoms_go_iox//:iox",
+        "@co_atoms_go_lib_net_session//go/session",
     ],
 )

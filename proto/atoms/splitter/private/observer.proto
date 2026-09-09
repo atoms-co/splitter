@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package atoms.splitter.private;
 
-import "atoms/splitter/lib/service/session/session.proto";
+import "atoms/lib/net/session/session.proto";
 import "atoms/splitter/cluster.proto";
 import "atoms/splitter/model.proto";
 
@@ -16,7 +16,7 @@ message ObserverClientMessage {
   }
 
   oneof msg {
-    atoms.splitter.lib.service.session.Message session = 1;
+    atoms.lib.net.session.Message session = 1;
     Register register = 2;
   }
 }
@@ -24,7 +24,7 @@ message ObserverClientMessage {
 // ObserverServerMessage is a message sent from coordinator to observer
 message ObserverServerMessage {
   oneof msg {
-    atoms.splitter.lib.service.session.Message session = 1;
+    atoms.lib.net.session.Message session = 1;
     atoms.splitter.ClusterMessage cluster = 2;
   }
 }

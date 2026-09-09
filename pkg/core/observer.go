@@ -1,10 +1,10 @@
 package core
 
 import (
-	"go.atoms.co/splitter/lib/service/session"
 	"go.atoms.co/lib/encoding/protox"
-	"go.atoms.co/splitter/pkg/model"
+	"go.atoms.co/lib/net/session/go/session"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 type ObserverClientMessage struct {

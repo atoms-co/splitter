@@ -7,7 +7,7 @@
 package private
 
 import (
-	pb1 "go.atoms.co/splitter/lib/service/session/pb"
+	pb1 "go.atoms.co/lib/net/session/go/session/pb"
 	pb "go.atoms.co/splitter/pb"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -573,7 +573,7 @@ var File_atoms_splitter_private_coordinator_proto protoreflect.FileDescriptor
 
 const file_atoms_splitter_private_coordinator_proto_rawDesc = "" +
 	"\n" +
-	"(atoms/splitter/private/coordinator.proto\x12\x16atoms.splitter.private\x1a\x1datoms/splitter/consumer.proto\x1a\x1aatoms/splitter/model.proto\x1a&atoms/splitter/private/operation.proto\x1a%atoms/splitter/private/observer.proto\x1a0atoms/splitter/lib/service/session/session.proto\"\xc0\x04\n" +
+	"(atoms/splitter/private/coordinator.proto\x12\x16atoms.splitter.private\x1a#atoms/lib/net/session/session.proto\x1a\x1datoms/splitter/consumer.proto\x1a\x1aatoms/splitter/model.proto\x1a&atoms/splitter/private/operation.proto\x1a%atoms/splitter/private/observer.proto\"\xc0\x04\n" +
 	"\x1bCoordinatorOperationRequest\x12D\n" +
 	"\x04info\x18\x01 \x01(\v2..atoms.splitter.private.CoordinatorInfoRequestH\x00R\x04info\x12M\n" +
 	"\arestart\x18\x02 \x01(\v21.atoms.splitter.private.CoordinatorRestartRequestH\x00R\arestart\x12J\n" +
@@ -598,9 +598,9 @@ const file_atoms_splitter_private_coordinator_proto_rawDesc = "" +
 	"\x03req\"y\n" +
 	"\x19CoordinatorHandleResponse\x12T\n" +
 	"\toperation\x18\x01 \x01(\v24.atoms.splitter.private.CoordinatorOperationResponseH\x00R\toperationB\x06\n" +
-	"\x04resp\"\x9f\x01\n" +
-	"\x0eConnectMessage\x12G\n" +
-	"\asession\x18\x01 \x01(\v2+.atoms.splitter.lib.service.session.MessageH\x00R\asession\x12=\n" +
+	"\x04resp\"\x92\x01\n" +
+	"\x0eConnectMessage\x12:\n" +
+	"\asession\x18\x01 \x01(\v2\x1e.atoms.lib.net.session.MessageH\x00R\asession\x12=\n" +
 	"\bconsumer\x18\x02 \x01(\v2\x1f.atoms.splitter.ConsumerMessageH\x00R\bconsumerB\x05\n" +
 	"\x03msg2\xcf\x02\n" +
 	"\x12CoordinatorService\x12]\n" +
@@ -642,7 +642,7 @@ var file_atoms_splitter_private_coordinator_proto_goTypes = []any{
 	(*CoordinatorClusterSyncResponse)(nil),  // 17: atoms.splitter.private.CoordinatorClusterSyncResponse
 	(*CoordinatorRevokeGrantsResponse)(nil), // 18: atoms.splitter.private.CoordinatorRevokeGrantsResponse
 	(*pb.QualifiedServiceName)(nil),         // 19: atoms.splitter.QualifiedServiceName
-	(*pb1.Message)(nil),                     // 20: atoms.splitter.lib.service.session.Message
+	(*pb1.Message)(nil),                     // 20: atoms.lib.net.session.Message
 	(*pb.ConsumerMessage)(nil),              // 21: atoms.splitter.ConsumerMessage
 	(*ObserverClientMessage)(nil),           // 22: atoms.splitter.private.ObserverClientMessage
 	(*ObserverServerMessage)(nil),           // 23: atoms.splitter.private.ObserverServerMessage
@@ -665,7 +665,7 @@ var file_atoms_splitter_private_coordinator_proto_depIdxs = []int32{
 	19, // 14: atoms.splitter.private.CoordinatorHandleRequest.service:type_name -> atoms.splitter.QualifiedServiceName
 	0,  // 15: atoms.splitter.private.CoordinatorHandleRequest.operation:type_name -> atoms.splitter.private.CoordinatorOperationRequest
 	1,  // 16: atoms.splitter.private.CoordinatorHandleResponse.operation:type_name -> atoms.splitter.private.CoordinatorOperationResponse
-	20, // 17: atoms.splitter.private.ConnectMessage.session:type_name -> atoms.splitter.lib.service.session.Message
+	20, // 17: atoms.splitter.private.ConnectMessage.session:type_name -> atoms.lib.net.session.Message
 	21, // 18: atoms.splitter.private.ConnectMessage.consumer:type_name -> atoms.splitter.ConsumerMessage
 	4,  // 19: atoms.splitter.private.CoordinatorService.Connect:input_type -> atoms.splitter.private.ConnectMessage
 	2,  // 20: atoms.splitter.private.CoordinatorService.Handle:input_type -> atoms.splitter.private.CoordinatorHandleRequest

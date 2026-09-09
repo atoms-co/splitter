@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"go.atoms.co/lib/net/location/go/location"
 	"google.golang.org/grpc"
 
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/slicex"
-	"go.atoms.co/splitter/lib/service/location"
 )
 
 var (

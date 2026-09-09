@@ -9,8 +9,6 @@ go_library(
     importpath = "go.atoms.co/splitter/pkg/core",
     visibility = ["//visibility:public"],
     deps = [
-        "//lib/service/location",
-        "//lib/service/session",
         "//pkg/allocation",
         "//pkg/model",
         "//pkg/util/p2quantile",
@@ -28,6 +26,8 @@ go_library(
         "@co_atoms_go_lib//randx",
         "@co_atoms_go_lib//stringx",
         "@co_atoms_go_lib//uuidx",
+        "@co_atoms_go_lib_net_location//go/location",
+        "@co_atoms_go_lib_net_session//go/session",
         "@co_atoms_go_slicex//:slicex",
         "@com_github_google_uuid//:uuid",
         "@com_github_hashicorp_raft//:raft",

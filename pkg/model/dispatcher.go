@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"go.atoms.co/splitter/lib/service/location"
-	"go.atoms.co/lib/log"
-	"go.atoms.co/lib/contextx"
-	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/iox"
+	"go.atoms.co/lib/contextx"
+	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/lib/net/location/go/location"
 )
 
 // TODO(herohde) 8/23/2024: Dispatcher/Processor/Range are all somewhat prescriptive. We may want to

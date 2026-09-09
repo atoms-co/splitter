@@ -34,6 +34,7 @@ require (
 	github.com/prometheus/procfs v0.12.0 // indirect
 	github.com/prometheus/statsd_exporter v0.21.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
+	go.atoms.co/lib/net/session v1.0.3
 	go.etcd.io/bbolt v1.3.5 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
@@ -67,3 +68,5 @@ require (
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/yaml.v3 v3.0.1
 )
+
+require go.atoms.co/lib/net/location v1.0.2

@@ -8,10 +8,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"go.atoms.co/splitter/lib/service/location"
+	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/uuidx"
-	"go.atoms.co/splitter/pkg/model"
 	splitterpb "go.atoms.co/splitter/pb"
+	"go.atoms.co/splitter/pkg/model"
 )
 
 var (

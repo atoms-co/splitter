@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"go.atoms.co/lib/net/location/go/location"
 	"google.golang.org/grpc"
 
 	"go.atoms.co/iox"
 	"go.atoms.co/lib/testing/assertx"
-	"go.atoms.co/splitter/lib/service/location"
 )
 
 func TestDispatcher(t *testing.T) {
