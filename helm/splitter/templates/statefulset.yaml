@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "splitter.fullname" . }}
+  labels:
+    {{- include "splitter.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "splitter.headlessName" . }}
+  replicas: {{ .Values.replicas }}
+  # Start all pods at once so Raft nodes can discover each other during bootstrap.
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      {{- include "splitter.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "splitter.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      containers:
+        - name: splitter
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          command:
+            - {{ .Values.binaryPath }}
+          args:
+            - start
+            - --raft_id=$(POD_NAME)
+            - --raft_server=$(POD_NAME).{{ include "splitter.headlessName" . }}:{{ .Values.ports.raft }}
+            - --raft_port={{ .Values.ports.raft }}
+            # Peers point at the INTERNAL gRPC port, not the raft port — Notify is a gRPC call.
+            - --raft_join_peers={{ include "splitter.joinPeers" . }}
+            {{- if .Values.raft.fastBootstrap }}
+            - --raft_fast_bootstrap
+            {{- end }}
+            {{- if .Values.fastActivation }}
+            - --fast_activation
+            {{- end }}
+            - --splitter_server=0.0.0.0:{{ .Values.ports.public }}
+            - --splitter_port={{ .Values.ports.internal }}
+            - --port={{ .Values.ports.public }}
+            - --health_port={{ .Values.ports.health }}
+            - --log-level={{ .Values.logLevel }}
+          ports:
+            - name: public-grpc
+              containerPort: {{ .Values.ports.public }}
+            - name: internal-grpc
+              containerPort: {{ .Values.ports.internal }}
+            - name: raft
+              containerPort: {{ .Values.ports.raft }}
+            - name: metrics
+              containerPort: {{ .Values.ports.metrics }}
+            - name: health
+              containerPort: {{ .Values.ports.health }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          {{- toYaml .Values.persistence.accessModes | nindent 10 }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- end }}

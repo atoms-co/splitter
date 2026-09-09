@@ -1,0 +1,11 @@
+apiVersion: v2
+name: splitter
+description: Splitter — a control-plane service for assigning work to connected clients via Raft.
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/atoms-co/splitter
+sources:
+  - https://github.com/atoms-co/splitter
+maintainers:
+  - name: atoms-co
