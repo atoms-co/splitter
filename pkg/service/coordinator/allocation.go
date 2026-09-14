@@ -517,16 +517,14 @@ func toLocations(regions ...model.Region) []location.Location {
 }
 
 func serviceDefaultLocations(sCfg model.ServiceConfig) []location.Location {
-	region := sCfg.Region()
 	regions := sCfg.Regions()
-
-	var locations []location.Location
 	if len(regions) > 0 {
-		for _, region := range regions {
-			locations = append(locations, location.Location{Region: region})
-		}
-	} else if region != "" {
-		locations = append(locations, location.Location{Region: region})
+		return toLocations(regions...)
 	}
-	return locations
+	region := sCfg.Region()
+	if region != "" {
+		return []location.Location{{Region: region}}
+	}
+
+	return nil
 }

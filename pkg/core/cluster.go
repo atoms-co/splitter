@@ -106,11 +106,9 @@ func (c *Cluster) Assignments() []Assignment {
 		grants[id] = append(grants[id], coordinator.Grant)
 	}
 
-	var ret []Assignment
-	for id, inst := range workers {
-		ret = append(ret, Assignment{Worker: inst, Grants: grants[id]})
-	}
-	return ret
+	return mapx.MapToSlice(workers, func(id model.InstanceID, inst model.Instance) Assignment {
+		return Assignment{Worker: inst, Grants: grants[id]}
+	})
 }
 
 func (c *Cluster) String() string {
