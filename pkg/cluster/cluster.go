@@ -3,7 +3,6 @@ package cluster
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"net"
 	"slices"
 	"strings"
@@ -18,6 +17,7 @@ import (
 	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/metrics"
 	"go.atoms.co/lib/net/grpcx"
+	"go.atoms.co/lib/randx"
 	"go.atoms.co/lib/syncx"
 
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
@@ -325,7 +325,7 @@ func (c *cluster) bootstrapCluster(ctx context.Context) {
 
 	notifyCutoff := time.Now()
 	if !c.fastBootstrap {
-		notifyCutoff = notifyCutoff.Add(jitter(notifyInterval))
+		notifyCutoff = notifyCutoff.Add(notifyInterval + randx.Duration(notifyInterval))
 	}
 
 	// Initial notify
@@ -475,8 +475,4 @@ func (c *cluster) txn(ctx context.Context, fn func() error) error {
 	case <-ctx.Done():
 		return model.ErrDraining
 	}
-}
-
-func jitter(duration time.Duration) time.Duration {
-	return duration + time.Duration(rand.Float64()*float64(duration))
 }
