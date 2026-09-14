@@ -11,6 +11,7 @@ import (
 	"go.atoms.co/lib/chanx"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/log"
+	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/net/session/go/session"
 	"go.atoms.co/lib/randx"
@@ -163,13 +164,12 @@ func (c *client) CoordinatorRestart(ctx context.Context, service model.Qualified
 }
 
 func (c *client) CoordinatorRevokeGrants(ctx context.Context, service model.QualifiedServiceName, grants map[model.ConsumerID][]model.GrantID) error {
-	var pbs []*splitterprivatepb.CoordinatorRevokeGrantsRequest_ConsumerGrants
-	for cid, gs := range grants {
-		pbs = append(pbs, &splitterprivatepb.CoordinatorRevokeGrantsRequest_ConsumerGrants{
+	pbs := mapx.MapToSlice(grants, func(cid model.ConsumerID, gs []model.GrantID) *splitterprivatepb.CoordinatorRevokeGrantsRequest_ConsumerGrants {
+		return &splitterprivatepb.CoordinatorRevokeGrantsRequest_ConsumerGrants{
 			Consumer: string(cid),
 			Grants:   slicex.Map(gs, stringx.ToString[model.GrantID]),
-		})
-	}
+		}
+	})
 
 	req := &splitterprivatepb.CoordinatorRevokeGrantsRequest{
 		Service: service.ToProto(),

@@ -1334,7 +1334,6 @@ func (c *coordinator) handleServiceRestartRequest(ctx context.Context) (*splitte
 func (c *coordinator) revokeGrants(ctx context.Context, grants map[model.InstanceID][]model.GrantID) {
 	now := time.Now()
 	for cid, gs := range grants {
-		var toRevoke []Grant
 		gs := slicex.NewSet(gs...)
 		assigned := c.alloc.Assigned(cid)
 		for _, g := range assigned.Allocated {
@@ -1345,11 +1344,7 @@ func (c *coordinator) revokeGrants(ctx context.Context, grants map[model.Instanc
 				}
 			}
 		}
-		for _, g := range c.alloc.Assigned(cid).Active {
-			if gs[g.ID] {
-				toRevoke = append(toRevoke, g)
-			}
-		}
+		toRevoke := slicex.Filter(c.alloc.Assigned(cid).Active, func(g Grant) bool { return gs[g.ID] })
 
 		if r, ok := c.alloc.Revoke(cid, now, toRevoke...); ok && len(r) > 0 {
 			s := c.consumers[cid]
