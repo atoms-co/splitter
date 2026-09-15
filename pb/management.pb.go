@@ -1104,8 +1104,8 @@ const file_atoms_splitter_management_proto_rawDesc = "" +
 	"\x05Shard\x12\x12\n" +
 	"\x04from\x18\x01 \x01(\tR\x04from\x12\x0e\n" +
 	"\x02to\x18\x02 \x01(\tR\x02to\x12\x16\n" +
-	"\x06region\x18\x03 \x01(\tR\x06regionB1\n" +
-	"\x14co.atoms.splitter.pbP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
+	"\x06region\x18\x03 \x01(\tR\x06regionB4\n" +
+	"\x17co.atoms.splitter.protoP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
 
 var (
 	file_atoms_splitter_management_proto_rawDescOnce sync.Once

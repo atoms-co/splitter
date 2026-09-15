@@ -26,8 +26,8 @@ const file_atoms_splitter_consumerapi_proto_rawDesc = "" +
 	"\n" +
 	" atoms/splitter/consumerapi.proto\x12\x0eatoms.splitter\x1a\x1datoms/splitter/consumer.proto2W\n" +
 	"\x0fConsumerService\x12D\n" +
-	"\x04Join\x12\x1b.atoms.splitter.JoinMessage\x1a\x1b.atoms.splitter.JoinMessage(\x010\x01B1\n" +
-	"\x14co.atoms.splitter.pbP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
+	"\x04Join\x12\x1b.atoms.splitter.JoinMessage\x1a\x1b.atoms.splitter.JoinMessage(\x010\x01B4\n" +
+	"\x17co.atoms.splitter.protoP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
 
 var file_atoms_splitter_consumerapi_proto_goTypes = []any{
 	(*JoinMessage)(nil), // 0: atoms.splitter.JoinMessage
