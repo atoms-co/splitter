@@ -212,8 +212,8 @@ const file_atoms_splitter_placementapi_proto_rawDesc = "" +
 	"\x04info\x18\x01 \x01(\v2\x1d.atoms.splitter.PlacementInfoR\x04info2\xbe\x01\n" +
 	"\x10PlacementService\x12U\n" +
 	"\x04List\x12%.atoms.splitter.ListPlacementsRequest\x1a&.atoms.splitter.ListPlacementsResponse\x12S\n" +
-	"\x04Info\x12$.atoms.splitter.InfoPlacementRequest\x1a%.atoms.splitter.InfoPlacementResponseB1\n" +
-	"\x14co.atoms.splitter.pbP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
+	"\x04Info\x12$.atoms.splitter.InfoPlacementRequest\x1a%.atoms.splitter.InfoPlacementResponseB4\n" +
+	"\x17co.atoms.splitter.protoP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
 
 var (
 	file_atoms_splitter_placementapi_proto_rawDescOnce sync.Once

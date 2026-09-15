@@ -637,8 +637,8 @@ const file_atoms_splitter_cluster_proto_rawDesc = "" +
 	"\bunassign\x18\x03 \x01(\v2'.atoms.splitter.ClusterMessage.UnassignR\bunassign\x12=\n" +
 	"\x06remove\x18\x04 \x01(\v2%.atoms.splitter.ClusterMessage.RemoveR\x06remove\x12=\n" +
 	"\x06shards\x18\x05 \x01(\v2%.atoms.splitter.ClusterMessage.ShardsR\x06shardsB\x05\n" +
-	"\x03msgB1\n" +
-	"\x14co.atoms.splitter.pbP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
+	"\x03msgB4\n" +
+	"\x17co.atoms.splitter.protoP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
 
 var (
 	file_atoms_splitter_cluster_proto_rawDescOnce sync.Once

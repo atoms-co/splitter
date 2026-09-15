@@ -310,8 +310,8 @@ const file_atoms_splitter_placement_proto_rawDesc = "" +
 	"\rPlacementInfo\x127\n" +
 	"\tplacement\x18\x01 \x01(\v2\x19.atoms.splitter.PlacementR\tplacement\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x03R\aversion\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestampB1\n" +
-	"\x14co.atoms.splitter.pbP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
+	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestampB4\n" +
+	"\x17co.atoms.splitter.protoP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
 
 var (
 	file_atoms_splitter_placement_proto_rawDescOnce sync.Once
