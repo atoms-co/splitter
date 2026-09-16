@@ -8,7 +8,7 @@ import "atoms/splitter/model.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
-option java_package = "co.atoms.splitter.pb";
+option java_package = "co.atoms.splitter.proto";
 
 // ClusterMessage represents an update in grant ownership.
 message ClusterMessage {

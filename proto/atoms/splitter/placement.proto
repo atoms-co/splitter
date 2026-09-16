@@ -6,7 +6,7 @@ import "google/protobuf/timestamp.proto";
 
 option java_multiple_files = true;
 option go_package = "go.atoms.co/splitter/pb";
-option java_package = "co.atoms.splitter.pb";
+option java_package = "co.atoms.splitter.proto";
 
 // Distribution is a coarse assignment of keys to region. It defines a segmentation of the full key range
 // into segments, represented as sorted split points to minimize the work needed to ensure a valid,

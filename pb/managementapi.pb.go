@@ -1429,8 +1429,8 @@ const file_atoms_splitter_managementapi_proto_rawDesc = "" +
 	"\vListDomains\x12\".atoms.splitter.ListDomainsRequest\x1a#.atoms.splitter.ListDomainsResponse\x12P\n" +
 	"\tNewDomain\x12 .atoms.splitter.NewDomainRequest\x1a!.atoms.splitter.NewDomainResponse\x12Y\n" +
 	"\fUpdateDomain\x12#.atoms.splitter.UpdateDomainRequest\x1a$.atoms.splitter.UpdateDomainResponse\x12Y\n" +
-	"\fDeleteDomain\x12#.atoms.splitter.DeleteDomainRequest\x1a$.atoms.splitter.DeleteDomainResponseB1\n" +
-	"\x14co.atoms.splitter.pbP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
+	"\fDeleteDomain\x12#.atoms.splitter.DeleteDomainRequest\x1a$.atoms.splitter.DeleteDomainResponseB4\n" +
+	"\x17co.atoms.splitter.protoP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
 
 var (
 	file_atoms_splitter_managementapi_proto_rawDescOnce sync.Once

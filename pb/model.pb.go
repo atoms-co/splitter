@@ -702,8 +702,8 @@ const file_atoms_splitter_model_proto_rawDesc = "" +
 	"\tALLOCATED\x10\x02\x12\v\n" +
 	"\aREVOKED\x10\x03\x12\x14\n" +
 	"\x10ALLOCATED_LOADED\x10\x04\x12\x14\n" +
-	"\x10REVOKED_UNLOADED\x10\x05B1\n" +
-	"\x14co.atoms.splitter.pbP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
+	"\x10REVOKED_UNLOADED\x10\x05B4\n" +
+	"\x17co.atoms.splitter.protoP\x01Z\x17go.atoms.co/splitter/pbb\x06proto3"
 
 var (
 	file_atoms_splitter_model_proto_rawDescOnce sync.Once
