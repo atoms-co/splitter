@@ -75,6 +75,12 @@ func makeStartCommand() *cobra.Command {
 			log.Fatalf(ctx, "failed to create boltdb log store: %v", err)
 		}
 
+		const raftLogCacheCapacity = 64
+		logCache, err := raft.NewLogCache(raftLogCacheCapacity, ldb)
+		if err != nil {
+			log.Fatalf(ctx, "failed to create raft log cache: %v", err)
+		}
+
 		sdb, err := boltdb.NewBoltStore(filepath.Join(baseDir, "stable.dat"))
 		if err != nil {
 			log.Fatalf(ctx, "failed to create boltdb stable store: %v", err)
@@ -108,7 +114,7 @@ func makeStartCommand() *cobra.Command {
 
 		fsm := raftstorage.NewFSM()
 
-		r, err := raft.NewRaft(raftConf, fsm, ldb, sdb, fss, trans)
+		r, err := raft.NewRaft(raftConf, fsm, logCache, sdb, fss, trans)
 		if err != nil {
 			log.Fatalf(ctx, "Failed to initialize raft instance: %v", err)
 		}
