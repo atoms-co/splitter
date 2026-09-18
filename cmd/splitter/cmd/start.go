@@ -75,8 +75,7 @@ func makeStartCommand() *cobra.Command {
 			log.Fatalf(ctx, "failed to create boltdb log store: %v", err)
 		}
 
-		const raftLogCacheCapacity = 64
-		logCache, err := raft.NewLogCache(raftLogCacheCapacity, ldb)
+		logCache, err := raft.NewLogCache(64, ldb)
 		if err != nil {
 			log.Fatalf(ctx, "failed to create raft log cache: %v", err)
 		}
