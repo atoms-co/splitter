@@ -160,7 +160,7 @@ func TestFindWork_LoadScores(t *testing.T) {
 
 	globalDomainOpts := []model.DomainOption{model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(1))))}
 	newTracker := func(domain model.QualifiedDomainName, domainTracker *domainLoadTracker, serviceTracker *serviceLoadTracker) *loadTracker {
-		tracker := newLoadTracker(time.Time{})
+		tracker := newLoadTracker(time.Time{}, serviceTrackerPercentile)
 		tracker.domains[domain] = domainTracker
 		if serviceTracker != nil {
 			tracker.service = serviceTracker
@@ -194,7 +194,7 @@ func TestFindWork_LoadScores(t *testing.T) {
 				core.NewShard(shard.From, shard.To, shard.Region): 60,
 			},
 		}
-		serviceTracker := newServiceLoadTracker(time.Time{})
+		serviceTracker := newServiceLoadTracker(time.Time{}, serviceTrackerPercentile)
 		serviceQuantile := float64(20)
 		serviceTracker.quantile = &serviceQuantile
 
@@ -217,7 +217,7 @@ func TestFindWork_LoadScores(t *testing.T) {
 				core.NewShard(shard.From, shard.To, shard.Region): 60,
 			},
 		}
-		serviceTracker := newServiceLoadTracker(time.Time{})
+		serviceTracker := newServiceLoadTracker(time.Time{}, serviceTrackerPercentile)
 		serviceQuantile := float64(20)
 		serviceTracker.quantile = &serviceQuantile
 
@@ -238,7 +238,7 @@ func TestFindWork_LoadScores(t *testing.T) {
 				core.NewShard(shard.From, shard.To, shard.Region): 10_000,
 			},
 		}
-		serviceTracker := newServiceLoadTracker(time.Time{})
+		serviceTracker := newServiceLoadTracker(time.Time{}, serviceTrackerPercentile)
 		serviceQuantile := float64(100)
 		serviceTracker.quantile = &serviceQuantile
 

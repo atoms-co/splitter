@@ -1253,11 +1253,12 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 			wg.Wait()
 		}()
 
-		expected := model.Load(150)
 		size := 300
-		msg := make([]model.ShardLoad, size+1)
-		for i := 0; i <= size; i++ {
-			msg[i] = model.NewShardLoad(grantId, model.Load(i))
+		p50Load := model.Load(int64(float64(size) * 0.5))
+		p75Load := model.Load(int64(float64(size) * 0.75))
+		msg := make([]model.ShardLoad, size)
+		for i := 1; i <= size; i++ {
+			msg[i-1] = model.NewShardLoad(grantId, model.Load(i))
 		}
 		in <- model.NewShardLoadMessage(msg)
 		synctest.Wait()
@@ -1265,10 +1266,10 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 		require.Contains(t, c.tracker.domains, domainName)
 		dl, ok := c.tracker.domains[domainName].domainLoad()
 		require.True(t, ok)
-		require.Equal(t, expected, dl)
+		require.Equal(t, p50Load, dl)
 		serviceLoad, ok := c.tracker.service.serviceLoad()
 		require.True(t, ok)
-		require.Equal(t, expected, serviceLoad)
+		require.Equal(t, p75Load, serviceLoad)
 
 		// update createdAt for trackers to simulate time advancing.
 		updateCreatedAt(c.tracker, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
@@ -1284,7 +1285,8 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 		require.False(t, ok, "empty tracker should not have domain load")
 		sps := core.NewShard(shard.From, shard.To, shard.Region)
 		sl := c.tracker.shardScore(domainName, sps)
-		require.Equal(t, score(50.0), sl)
+		expectedScore := score(100 * (float64(p50Load) / float64(p50Load+p75Load)))
+		require.Equal(t, expectedScore, sl)
 	})
 }
 
@@ -1349,11 +1351,11 @@ func TestCoordinator_RestoresDomainLoadTrackers(t *testing.T) {
 		for range 10 {
 			stale.add(shard, model.Load(20))
 		}
-		expectedService := newServiceLoadTracker(start)
+		expectedService := newServiceLoadTracker(start, serviceTrackerPercentile)
 		for range 10 {
 			expectedService.add(model.Load(20))
 		}
-		expectedService.rotate(start.Add(defaultRotationInterval + time.Second))
+		expectedService.rotate(start.Add(defaultRotationInterval+time.Second), serviceTrackerPercentile)
 		for range 5 {
 			expectedService.add(model.Load(8))
 		}
@@ -1385,6 +1387,75 @@ func TestCoordinator_RestoresDomainLoadTrackers(t *testing.T) {
 		serviceLoad, ok := c.tracker.service.serviceLoad()
 		require.True(t, ok)
 		require.InDelta(t, 8, float64(serviceLoad), epsilon)
+	})
+}
+
+func TestCoordinator_RestoresP50ServiceLoadTrackerAndRotatesToP75(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+		domain, err := model.NewDomain(domainName, model.Unit, time.Now())
+		require.NoError(t, err)
+
+		tracker := newServiceLoadTracker(time.Now(), median)
+		const loadRange = 300
+		for i := range loadRange {
+			tracker.add(model.Load(i + 1))
+		}
+
+		snapshot, _ := tracker.snapshot()
+		status := core.NewServiceStatus(core.NewServiceLoadInfo(serviceName, nil, core.WithServiceTrackerSnapshot(snapshot)))
+		cfg := model.NewServiceConfig(model.WithTrackLoad(true))
+		// The worker passes the assignment's state, including service status, to the coordinator.
+		coord, cOut := setupWithServiceConfigAndStatuses(ctx, t, []model.Domain{domain}, cfg, []core.ServiceStatus{status}, WithFastActivation())
+		defer coord.Close()
+		c := coord.(*coordinator)
+		synctest.Wait()
+
+		require.Equal(t, median, c.tracker.service.tracker.snapshot().Snapshot().Percentile())
+		load, ok := c.tracker.service.tracker.quantile.Quantile()
+		require.True(t, ok)
+		require.InDelta(t, loadRange*median, load, epsilon)
+
+		w := model.NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		in, out := connectConsumer(ctx, t, coord, w)
+		assign := readFn(t, out, isAssign)
+		require.Len(t, assign.Grants(), 1)
+		grantID := assign.Grants()[0].ID()
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			chanx.Drain(out)
+		})
+		defer func() {
+			coord.Close()
+			assertx.Closed(t, out)
+			wg.Wait()
+		}()
+		synctest.Wait()
+
+		// trigger serviceLoadTracker to rotate. The new tracker should have percentile equal to serverTrackerPercentile.
+		updateCreatedAt(c.tracker, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
+		time.Sleep(loadTickerInterval + 10*time.Second)
+		synctest.Wait()
+
+		// Rotation publishes the restored p50 and starts an empty p75 tracker.
+		rotated := assertx.Element(t, cOut).Load()
+		require.True(t, rotated.HasQuantileInfo())
+		require.InDelta(t, loadRange*median, rotated.QuantileInfo().Quantile(), epsilon)
+		require.Equal(t, serviceTrackerPercentile, rotated.TrackerSnapshot().Snapshot().Percentile())
+		_, ok = c.tracker.service.tracker.quantile.Quantile()
+		require.False(t, ok)
+
+		loads := make([]model.ShardLoad, 300)
+
+		for i := range loads {
+			loads[i] = model.NewShardLoad(grantID, model.Load(i+1))
+		}
+		in <- model.NewShardLoadMessage(loads)
+		synctest.Wait()
+
+		load, ok = c.tracker.service.tracker.quantile.Quantile()
+		require.True(t, ok)
+		require.InDelta(t, loadRange*serviceTrackerPercentile, load, epsilon)
 	})
 }
 

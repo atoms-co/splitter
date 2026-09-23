@@ -63,8 +63,8 @@ type serviceTracker struct {
 	quantile  *p2quantile.P2Quantile
 }
 
-func newServiceTracker(now time.Time) *serviceTracker {
-	q, _ := p2quantile.New(median)
+func newServiceTracker(now time.Time, percentile float64) *serviceTracker {
+	q, _ := p2quantile.New(percentile)
 	return &serviceTracker{createdAt: now, quantile: q}
 }
 
@@ -99,8 +99,8 @@ type serviceLoadTracker struct {
 	tracker  *serviceTracker
 }
 
-func newServiceLoadTracker(now time.Time) *serviceLoadTracker {
-	return &serviceLoadTracker{tracker: newServiceTracker(now)}
+func newServiceLoadTracker(now time.Time, percentile float64) *serviceLoadTracker {
+	return &serviceLoadTracker{tracker: newServiceTracker(now, percentile)}
 }
 
 func (t *serviceLoadTracker) add(load model.Load) {
@@ -111,13 +111,13 @@ func (t *serviceLoadTracker) needsRotation(now time.Time) bool {
 	return t.tracker.needsRotation(now)
 }
 
-func (t *serviceLoadTracker) rotate(now time.Time) bool {
+func (t *serviceLoadTracker) rotate(now time.Time, percentile float64) bool {
 	updated := false
 	if q, ok := t.tracker.quantile.Quantile(); ok {
 		t.quantile = &q
 		updated = true
 	}
-	t.tracker = newServiceTracker(now)
+	t.tracker = newServiceTracker(now, percentile)
 	return updated
 }
 
@@ -134,9 +134,9 @@ func (t *serviceLoadTracker) snapshot() (core.ServiceTrackerSnapshot, *core.Serv
 	return snapshot, &quantile
 }
 
-func restoreServiceLoadTracker(now time.Time, info core.ServiceLoadInfo) (*serviceLoadTracker, error) {
+func restoreServiceLoadTracker(now time.Time, info core.ServiceLoadInfo, percentile float64) (*serviceLoadTracker, error) {
 	if !info.HasTrackerSnapshot() {
-		return newServiceLoadTracker(now), nil
+		return newServiceLoadTracker(now, percentile), nil
 	}
 
 	tracker, err := restoreServiceTracker(info.TrackerSnapshot())
@@ -380,9 +380,9 @@ type loadTracker struct {
 	domains map[model.QualifiedDomainName]*domainLoadTracker
 }
 
-func newLoadTracker(now time.Time) *loadTracker {
+func newLoadTracker(now time.Time, percentile float64) *loadTracker {
 	return &loadTracker{
-		service: newServiceLoadTracker(now),
+		service: newServiceLoadTracker(now, percentile),
 		domains: map[model.QualifiedDomainName]*domainLoadTracker{},
 	}
 }
@@ -397,12 +397,12 @@ func (t *loadTracker) add(now time.Time, shard model.Shard, load model.Load) {
 	t.service.add(load)
 }
 
-func (t *loadTracker) rotateIfNeeded(now time.Time) bool {
+func (t *loadTracker) rotateIfNeeded(now time.Time, percentile float64) bool {
 	if !t.service.needsRotation(now) {
 		return false
 	}
 
-	updated := t.service.rotate(now)
+	updated := t.service.rotate(now, percentile)
 	for _, tracker := range t.domains {
 		updated = tracker.rotateWithService(now) || updated
 	}
@@ -410,8 +410,8 @@ func (t *loadTracker) rotateIfNeeded(now time.Time) bool {
 }
 
 // resetActive starts a new observation window while preserving published domain quantiles as fallback scores.
-func (t *loadTracker) resetActive(now time.Time) {
-	t.service = newServiceLoadTracker(now)
+func (t *loadTracker) resetActive(now time.Time, percentile float64) {
+	t.service = newServiceLoadTracker(now, percentile)
 	for _, tracker := range t.domains {
 		tracker.tracker = newDomainTracker(now)
 	}
