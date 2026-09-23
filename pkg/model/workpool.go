@@ -31,8 +31,8 @@ const (
 )
 
 var (
-	numGrants      = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/client/workpool_grants", "Workpool grants", slicex.CopyAppend(qualifiedDomainKeys, sourceKey, sourceVersionKey, leaseStateKey)...))
-	grantsDuration = metrics.NewHistogram("go.atoms.co/splitter/client/workpool_grants_duration", "Workpool grants duration", grantDurationBucketOptions, slicex.CopyAppend(qualifiedDomainKeys, sourceKey, sourceVersionKey, leaseStateKey)...)
+	numGrants      = metrics.NewTrackedGauge(metrics.NewGauge("co.atoms/splitter/client/workpool_grants", "Workpool grants", slicex.CopyAppend(qualifiedDomainKeys, sourceKey, sourceVersionKey, leaseStateKey)...))
+	grantsDuration = metrics.NewHistogram("co.atoms/splitter/client/workpool_grants_duration", "Workpool grants duration", grantDurationBucketOptions, slicex.CopyAppend(qualifiedDomainKeys, sourceKey, sourceVersionKey, leaseStateKey)...)
 )
 
 type workPoolJoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error

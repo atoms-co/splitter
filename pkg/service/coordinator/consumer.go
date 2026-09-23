@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	numMessages = metrics.NewCounter("go.atoms.co/splitter/coordinator_messages", "Coordinator messages", core.MessageTypeKey)
+	numMessages = metrics.NewCounter("co.atoms/splitter/coordinator_messages", "Coordinator messages", core.MessageTypeKey)
 )
 
 type Consumer struct {

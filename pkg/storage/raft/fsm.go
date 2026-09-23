@@ -41,8 +41,8 @@ var (
 )
 
 var (
-	actionLatency = metrics.NewHistogram("go.atoms.co/splitter/storage_raft_fsm_action_latency", "Raft FSM action latency", nil, core.ActionKey, core.ResultKey)
-	messageSize   = metrics.NewByteHistogram("go.atoms.co/splitter/storage_raft_message_size", "Raft FSM message size", messageSizeBucketOpts, core.TenantKey, core.MessageTypeKey)
+	actionLatency = metrics.NewHistogram("co.atoms/splitter/storage_raft_fsm_action_latency", "Raft FSM action latency", nil, core.ActionKey, core.ResultKey)
+	messageSize   = metrics.NewByteHistogram("co.atoms/splitter/storage_raft_message_size", "Raft FSM message size", messageSizeBucketOpts, core.TenantKey, core.MessageTypeKey)
 )
 
 // FSM implements the finite state machine logic needed for deterministic state propagation. It

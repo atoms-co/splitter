@@ -48,48 +48,48 @@ const (
 
 var (
 	numConsumers = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_consumers", "Connected consumer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
 	)
 	numObservers = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_observers", "Connected observer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_observers", "Connected observer status", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
 	)
 	numAssignments = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey)...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedDomainKeys, core.GrantStateKey)...),
 	)
 	numShards = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_shards", "Shard count", core.QualifiedDomainKeys...),
 	)
 	domainLoad = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_domain_load", "Domain load", core.QualifiedDomainKeys...),
 	)
 	serviceLoadMetric = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_service_load", "Service load", core.QualifiedServiceKeys...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_service_load", "Service load", core.QualifiedServiceKeys...),
 	)
 	shardLoad = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_shard_load", "Shard load", core.QualifiedShardKeys...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_shard_load", "Shard load", core.QualifiedShardKeys...),
 	)
 	shardScore = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_shard_score", "Shard score", core.QualifiedShardKeys...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_shard_score", "Shard score", core.QualifiedShardKeys...),
 	)
 	numAssignmentsByLocation = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_assignments_by_location", "Assignment by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_assignments_by_location", "Assignment by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
 	numLoadByLocation = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_load_by_location", "Load by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_load_by_location", "Load by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
 	numLoadImbalanceByLocation = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_load_imbalance_by_location", "Regional load imbalance by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_load_imbalance_by_location", "Regional load imbalance by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.LocationKey)...),
 	)
 	numPlacementByLocation = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_placement_by_location", "Placement by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_placement_by_location", "Placement by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
 	numColocationByLocation = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/coordinator_colocation_by_location", "Colocation by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
+		metrics.NewGauge("co.atoms/splitter/coordinator_colocation_by_location", "Colocation by location", slicex.CopyAppend(core.QualifiedServiceKeys, core.InstanceIDKey, core.LocationKey)...),
 	)
-	numActions       = metrics.NewCounter("go.atoms.co/splitter/coordinator_actions", "Coordinator actions", slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey, core.ResultKey)...)
-	numExpired       = metrics.NewCounter("go.atoms.co/splitter/coordinator_expired_grants", "Coordinator expired grants", slicex.CopyAppend(core.QualifiedDomainKeys, core.ShardRegionKey)...)
-	numActionLatency = metrics.NewHistogram("go.atoms.co/splitter/coordinator_action_latency", "Coordinator action latency", nil, slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey)...)
-	grantsDuration   = metrics.NewHistogram("go.atoms.co/splitter/coordinator_grant_duration", "Coordinator completed grants duration", core.GrantDurationBucketOptions, core.QualifiedDomainKeys...)
+	numActions       = metrics.NewCounter("co.atoms/splitter/coordinator_actions", "Coordinator actions", slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey, core.ResultKey)...)
+	numExpired       = metrics.NewCounter("co.atoms/splitter/coordinator_expired_grants", "Coordinator expired grants", slicex.CopyAppend(core.QualifiedDomainKeys, core.ShardRegionKey)...)
+	numActionLatency = metrics.NewHistogram("co.atoms/splitter/coordinator_action_latency", "Coordinator action latency", nil, slicex.CopyAppend(core.QualifiedServiceKeys, core.ActionKey)...)
+	grantsDuration   = metrics.NewHistogram("co.atoms/splitter/coordinator_grant_duration", "Coordinator completed grants duration", core.GrantDurationBucketOptions, core.QualifiedDomainKeys...)
 )
 
 // Coordinator handles consumer connection and work allocation.
