@@ -44,6 +44,9 @@ const (
 	loadTickerInterval = 10 * time.Minute
 	// grantLogInterval defines how often grant state snapshots are logged.
 	grantLogInterval = 5 * time.Minute
+	// serviceTrackerPercentile defines the percentile values for service P2Quantile
+	// TODO: (xuhui) make it part of service config if different services require different percentile.
+	serviceTrackerPercentile = 0.75
 )
 
 var (
@@ -172,7 +175,7 @@ func New(ctx context.Context, loc location.Location, service model.QualifiedServ
 		messages:     make(chan *sessionx.Message[model.ConsumerMessage], 1000),
 		out:          make(chan core.ServiceStatusMessage, 100),
 
-		tracker: newLoadTracker(time.Now()),
+		tracker: newLoadTracker(time.Now(), serviceTrackerPercentile),
 
 		inject:        make(chan func()),
 		grantLogQueue: workqueue.New(1, 1),
@@ -588,10 +591,10 @@ func (c *coordinator) restoreLoadTrackers(ctx context.Context, now time.Time) {
 		return
 	}
 	resetActive := !status.Load().HasTrackerSnapshot()
-	serviceTracker, err := restoreServiceLoadTracker(now, status.Load())
+	serviceTracker, err := restoreServiceLoadTracker(now, status.Load(), serviceTrackerPercentile)
 	if err != nil {
 		log.Warnf(ctx, "Failed to restore service load tracker for service %v, err=%v", c.name, err)
-		c.tracker.service = newServiceLoadTracker(now)
+		c.tracker.service = newServiceLoadTracker(now, serviceTrackerPercentile)
 		resetActive = true
 	} else {
 		c.tracker.service = serviceTracker
@@ -609,7 +612,7 @@ func (c *coordinator) restoreLoadTrackers(ctx context.Context, now time.Time) {
 		}
 	}
 	if resetActive {
-		c.tracker.resetActive(now)
+		c.tracker.resetActive(now, serviceTrackerPercentile)
 	}
 }
 
@@ -676,7 +679,7 @@ steady:
 
 			if trackLoad != info.Service().Config().TrackLoad() {
 				// TrackLoad changed
-				c.tracker = newLoadTracker(now)
+				c.tracker = newLoadTracker(now, serviceTrackerPercentile)
 			}
 
 			oldShards := c.alloc.Units()
@@ -784,7 +787,7 @@ steady:
 }
 
 func (c *coordinator) rotateTrackerAndRefreshIfNeeded(ctx context.Context, now time.Time) {
-	if !c.tracker.rotateIfNeeded(now) {
+	if !c.tracker.rotateIfNeeded(now, serviceTrackerPercentile) {
 		return
 	}
 

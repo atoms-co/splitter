@@ -164,11 +164,11 @@ func TestServiceLoadTracker_MessageRoundTrip(t *testing.T) {
 	t.Parallel()
 
 	start := testStart()
-	original := newServiceLoadTracker(start)
+	original := newServiceLoadTracker(start, median)
 	for range 10 {
 		original.add(model.Load(20))
 	}
-	require.True(t, original.rotate(start.Add(defaultRotationInterval+time.Second)))
+	require.True(t, original.rotate(start.Add(defaultRotationInterval+time.Second), median))
 	for range 5 {
 		original.add(model.Load(8))
 	}
@@ -180,7 +180,7 @@ func TestServiceLoadTracker_MessageRoundTrip(t *testing.T) {
 		core.WithServiceTrackerSnapshot(snapshot),
 		core.WithServiceQuantileInfo(*quantile),
 	)
-	restored, err := restoreServiceLoadTracker(start, serviceLoad)
+	restored, err := restoreServiceLoadTracker(start, serviceLoad, median)
 	require.NoError(t, err)
 	require.NotNil(t, restored.quantile)
 	require.InDelta(t, 20, *restored.quantile, epsilon)
@@ -219,7 +219,7 @@ func TestLoadTracker_OwnsServiceAndDomainTrackers(t *testing.T) {
 	t.Parallel()
 
 	start := testStart()
-	tracker := newLoadTracker(start)
+	tracker := newLoadTracker(start, median)
 	globalShard := testShard()
 	unitShard := model.Shard{
 		Domain: model.MustParseQualifiedDomainNameStr("tenant/service/unit"),
@@ -236,8 +236,8 @@ func TestLoadTracker_OwnsServiceAndDomainTrackers(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, model.Load(400), serviceLoad, "service load must include observations from every domain type")
 
-	require.True(t, tracker.rotateIfNeeded(start.Add(defaultRotationInterval+time.Second)))
-	require.False(t, tracker.rotateIfNeeded(start.Add(defaultRotationInterval+2*time.Second)))
+	require.True(t, tracker.rotateIfNeeded(start.Add(defaultRotationInterval+time.Second), median))
+	require.False(t, tracker.rotateIfNeeded(start.Add(defaultRotationInterval+2*time.Second), median))
 
 	snapshot := tracker.snapshot(globalShard.Domain.Service)
 	require.True(t, snapshot.HasTrackerSnapshot())
@@ -256,7 +256,7 @@ func TestLoadTracker_RotationOnlyPublishesMatureDomains(t *testing.T) {
 	now := start.Add(defaultRotationInterval + time.Second)
 	eligibleDomainStart := now.Add(-domainPublicationAge)
 	newDomainStart := eligibleDomainStart.Add(time.Nanosecond)
-	tracker := newLoadTracker(start)
+	tracker := newLoadTracker(start, median)
 	matureShard := testShard()
 	eligibleShard := model.Shard{
 		Domain: model.MustParseQualifiedDomainNameStr("tenant/service/eligible-domain"),
@@ -273,7 +273,7 @@ func TestLoadTracker_RotationOnlyPublishesMatureDomains(t *testing.T) {
 		tracker.add(newDomainStart, newShard, model.Load(40))
 	}
 
-	require.True(t, tracker.rotateIfNeeded(now))
+	require.True(t, tracker.rotateIfNeeded(now, median))
 	require.NotNil(t, tracker.service.quantile)
 	require.NotNil(t, tracker.domains[matureShard.Domain].quantile)
 	require.NotNil(t, tracker.domains[eligibleShard.Domain].quantile, "a domain tracker at the publication interval must publish quantiles")
@@ -291,12 +291,12 @@ func TestLoadTracker_ResetActive(t *testing.T) {
 	t.Parallel()
 
 	start := testStart()
-	tracker := newLoadTracker(start)
+	tracker := newLoadTracker(start, median)
 	shard := testShard()
 	for range 10 {
 		tracker.add(start, shard, model.Load(100))
 	}
-	require.True(t, tracker.rotateIfNeeded(start.Add(defaultRotationInterval+time.Second)))
+	require.True(t, tracker.rotateIfNeeded(start.Add(defaultRotationInterval+time.Second), median))
 
 	domainTracker := tracker.domains[shard.Domain]
 	publishedDomainQuantile := domainTracker.quantile
@@ -308,7 +308,7 @@ func TestLoadTracker_ResetActive(t *testing.T) {
 	}
 
 	resetAt := start.Add(2 * defaultRotationInterval)
-	tracker.resetActive(resetAt)
+	tracker.resetActive(resetAt, median)
 
 	require.Nil(t, tracker.service.quantile)
 	require.Equal(t, resetAt, tracker.service.tracker.createdAt)
@@ -326,7 +326,7 @@ func TestLoadTracker_ShardScore(t *testing.T) {
 
 	shard := testShard()
 	shardSnapshot := core.NewShard(shard.From, shard.To, shard.Region)
-	tracker := newLoadTracker(testStart())
+	tracker := newLoadTracker(testStart(), median)
 	require.Equal(t, defaultShardScore, tracker.shardScore(shard.Domain, shardSnapshot))
 
 	tracker.domains[shard.Domain] = &domainLoadTracker{
