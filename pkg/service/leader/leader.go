@@ -38,15 +38,15 @@ const (
 )
 
 var (
-	numWorkers = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/leader_workers", "Connected worker status", core.StatusKey))
+	numWorkers = metrics.NewTrackedGauge(metrics.NewGauge("co.atoms/splitter/leader_workers", "Connected worker status", core.StatusKey))
 
 	numAssignments = metrics.NewTrackedGauge(
-		metrics.NewGauge("go.atoms.co/splitter/leader_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedServiceKeys, core.GrantStateKey)...),
+		metrics.NewGauge("co.atoms/splitter/leader_assignments", "Assignment count", slicex.CopyAppend(core.QualifiedServiceKeys, core.GrantStateKey)...),
 	)
 
-	numServices = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/leader_services", "Service count", core.TenantKey))
+	numServices = metrics.NewTrackedGauge(metrics.NewGauge("co.atoms/splitter/leader_services", "Service count", core.TenantKey))
 
-	numActions = metrics.NewCounter("go.atoms.co/splitter/leader_actions", "Leader actions", core.ActionKey, core.ResultKey)
+	numActions = metrics.NewCounter("co.atoms/splitter/leader_actions", "Leader actions", core.ActionKey, core.ResultKey)
 )
 
 type Option func(*leader)

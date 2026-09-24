@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	numMessages = metrics.NewCounter("go.atoms.co/splitter/leader_messages", "Leader messages", core.MessageTypeKey)
+	numMessages = metrics.NewCounter("co.atoms/splitter/leader_messages", "Leader messages", core.MessageTypeKey)
 )
 
 type workerSession struct {

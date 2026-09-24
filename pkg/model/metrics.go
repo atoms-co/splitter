@@ -103,8 +103,8 @@ func handlerNodeTag(node location.Node) metrics.Tag {
 }
 
 var (
-	numForwarded = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, handlerRegionKey, handlerNodeKey)...)
-	numHandled   = metrics.NewSingleViewCounter("go.atoms.co/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, handlerRegionKey, handlerNodeKey)...)
+	numForwarded = metrics.NewSingleViewCounter("co.atoms/splitter/client/forwarded_requests", "Number of forwarded requests", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, handlerRegionKey, handlerNodeKey)...)
+	numHandled   = metrics.NewSingleViewCounter("co.atoms/splitter/client/handled_requests", "Number of requests handled locally", slicex.CopyAppend(qualifiedDomainKeys, resultKey, handlerKey, handlerRegionKey, handlerNodeKey)...)
 )
 
 func recordForwardedRequest(ctx context.Context, domain QualifiedDomainName, handler, result string, location location.Location) {

@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	numGrants = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/worker_grants", "Worker grants", slicex.CopyAppend(core.QualifiedServiceKeys, core.LeaseStateKey)...))
+	numGrants = metrics.NewTrackedGauge(metrics.NewGauge("co.atoms/splitter/worker_grants", "Worker grants", slicex.CopyAppend(core.QualifiedServiceKeys, core.LeaseStateKey)...))
 )
 
 type JoinFn func(ctx context.Context, self location.Instance, handler grpcx.Handler[leader.Message, leader.Message]) error

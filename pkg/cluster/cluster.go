@@ -35,10 +35,10 @@ const (
 )
 
 var (
-	numAppliedIndex = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_applied_index", "RAFT last index applied to the FSM", core.RaftServerIdKey))
-	numLastIndex    = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_last_index", "RAFT last index in stable storage", core.RaftServerIdKey))
-	numLastContact  = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_last_contact", "RAFT time since last leader contact", core.RaftServerIdKey))
-	numState        = metrics.NewTrackedGauge(metrics.NewGauge("go.atoms.co/splitter/cluster/raft_state", "RAFT state iota", core.RaftServerIdKey))
+	numAppliedIndex = metrics.NewTrackedGauge(metrics.NewGauge("co.atoms/splitter/cluster/raft_applied_index", "RAFT last index applied to the FSM", core.RaftServerIdKey))
+	numLastIndex    = metrics.NewTrackedGauge(metrics.NewGauge("co.atoms/splitter/cluster/raft_last_index", "RAFT last index in stable storage", core.RaftServerIdKey))
+	numLastContact  = metrics.NewTrackedGauge(metrics.NewGauge("co.atoms/splitter/cluster/raft_last_contact", "RAFT time since last leader contact", core.RaftServerIdKey))
+	numState        = metrics.NewTrackedGauge(metrics.NewGauge("co.atoms/splitter/cluster/raft_state", "RAFT state iota", core.RaftServerIdKey))
 )
 
 type Option func(*cluster)
