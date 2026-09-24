@@ -26,7 +26,7 @@ var (
 	ErrExpired = errors.New("grant expired")
 
 	// ClientVersion of the client library.
-	ClientVersion = "1.2.2"
+	ClientVersion = "1.5.0"
 )
 
 // Ownership holds information about the grant state and expiration, as well as signals for
