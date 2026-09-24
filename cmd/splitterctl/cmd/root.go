@@ -48,6 +48,7 @@ func init() {
 	domainCmd.AddCommand(makeInfoDomainCmd())
 	domainCmd.AddCommand(makeDeleteDomainCmd())
 	domainCmd.AddCommand(makeAddCustomShardCmd())
+	domainCmd.AddCommand(makeRemoveCustomShardCmd())
 
 	rootCmd.AddCommand(placementCmd)
 	placementCmd.AddCommand(makeListPlacementCmd())
