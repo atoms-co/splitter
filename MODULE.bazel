@@ -19,7 +19,6 @@ use_repo(
     "co_atoms_go_lib_net_location",
     "co_atoms_go_lib_net_session",
     "co_atoms_go_slicex",
-    "com_github_golang_protobuf",
     "com_github_google_uuid",
     "com_github_hashicorp_go_hclog",
     "com_github_hashicorp_raft",
