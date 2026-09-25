@@ -191,7 +191,7 @@ func (o *OperationService) executeCoordinatorRequest(ctx context.Context, name m
 	})
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, model.ToGRPCError(err)
+		return nil, processCoordinatorError(err)
 	}
 	return resp, err
 }
@@ -253,7 +253,7 @@ func (o *OperationService) executeLeaderRequest(ctx context.Context, req leader.
 
 	if err != nil {
 		log.Errorf(ctx, "Leader request %v failed: %v", req, err)
-		return nil, model.ToGRPCError(err)
+		return nil, processLeaderError(err)
 	}
 	return resp, err
 }
