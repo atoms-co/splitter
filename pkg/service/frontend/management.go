@@ -31,7 +31,7 @@ func (s *ManagementService) ListTenants(ctx context.Context, req *splitterpb.Lis
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetList(), nil
 }
@@ -47,7 +47,7 @@ func (s *ManagementService) NewTenant(ctx context.Context, req *splitterpb.NewTe
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetNew(), nil
 }
@@ -63,7 +63,7 @@ func (s *ManagementService) InfoTenant(ctx context.Context, req *splitterpb.Info
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetInfo(), nil
 }
@@ -79,7 +79,7 @@ func (s *ManagementService) UpdateTenant(ctx context.Context, req *splitterpb.Up
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetUpdate(), nil
 }
@@ -95,7 +95,7 @@ func (s *ManagementService) DeleteTenant(ctx context.Context, req *splitterpb.De
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetDelete(), nil
 }
@@ -111,7 +111,7 @@ func (s *ManagementService) ListServices(ctx context.Context, req *splitterpb.Li
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetList(), nil
 }
@@ -127,7 +127,7 @@ func (s *ManagementService) NewService(ctx context.Context, req *splitterpb.NewS
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetNew(), nil
 }
@@ -143,7 +143,7 @@ func (s *ManagementService) InfoService(ctx context.Context, req *splitterpb.Inf
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetInfo(), nil
 }
@@ -159,7 +159,7 @@ func (s *ManagementService) UpdateService(ctx context.Context, req *splitterpb.U
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetUpdate(), nil
 }
@@ -175,7 +175,7 @@ func (s *ManagementService) DeleteService(ctx context.Context, req *splitterpb.D
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetDelete(), nil
 }
@@ -191,7 +191,7 @@ func (s *ManagementService) ListDomains(ctx context.Context, req *splitterpb.Lis
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetList(), nil
 }
@@ -207,7 +207,7 @@ func (s *ManagementService) NewDomain(ctx context.Context, req *splitterpb.NewDo
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetNew(), nil
 }
@@ -223,7 +223,7 @@ func (s *ManagementService) UpdateDomain(ctx context.Context, req *splitterpb.Up
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetUpdate(), nil
 }
@@ -239,7 +239,7 @@ func (s *ManagementService) DeleteDomain(ctx context.Context, req *splitterpb.De
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetDelete(), nil
 }
@@ -255,7 +255,7 @@ func (s *ManagementService) invokeTenant(ctx context.Context, request *splitterp
 
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, err
+		return nil, processLeaderError(err)
 	}
 	return resp.GetTenant(), nil
 }
@@ -271,7 +271,7 @@ func (s *ManagementService) invokeService(ctx context.Context, request *splitter
 
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, err
+		return nil, processLeaderError(err)
 	}
 	return resp.GetService(), nil
 }
@@ -287,7 +287,7 @@ func (s *ManagementService) invokeDomain(ctx context.Context, request *splitterp
 
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, err
+		return nil, processLeaderError(err)
 	}
 	return resp.GetDomain(), nil
 }

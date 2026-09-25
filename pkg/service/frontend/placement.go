@@ -72,7 +72,7 @@ func (i *InternalPlacementService) List(ctx context.Context, request *splitterpr
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetList(), err
 }
@@ -91,7 +91,7 @@ func (i *InternalPlacementService) New(ctx context.Context, request *splitterpri
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetNew(), err
 }
@@ -107,7 +107,7 @@ func (i *InternalPlacementService) Info(ctx context.Context, request *splitterpr
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetInfo(), err
 }
@@ -123,7 +123,7 @@ func (i *InternalPlacementService) Update(ctx context.Context, request *splitter
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetUpdate(), err
 }
@@ -139,7 +139,7 @@ func (i *InternalPlacementService) Delete(ctx context.Context, request *splitter
 		},
 	})
 	if err != nil {
-		return nil, model.ToGRPCError(err)
+		return nil, err
 	}
 	return resp.GetDelete(), err
 }
@@ -155,7 +155,7 @@ func (i *InternalPlacementService) invoke(ctx context.Context, request *splitter
 
 	if err != nil {
 		log.Errorf(ctx, "Invoke %v failed: %v", req, err)
-		return nil, err
+		return nil, processLeaderError(err)
 	}
 	return resp.GetPlacement(), nil
 }
