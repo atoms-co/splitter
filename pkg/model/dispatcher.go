@@ -38,6 +38,7 @@ type dispatcherOptions struct {
 	opts []ConsumerOption
 	fn   DispatcherClusterFn
 	pool DispatcherConnectionPoolFn
+	loc  *location.Location
 }
 
 // DispatcherOption provides advanced options to Dispatcher.
@@ -61,6 +62,13 @@ func WithDispatcherConnectionPoolFn(fn DispatcherConnectionPoolFn) DispatcherOpt
 	}
 }
 
+// WithDispatcherLocation overrides the default location
+func WithDispatcherLocation(loc location.Location) DispatcherOption {
+	return func(o *dispatcherOptions) {
+		o.loc = &loc
+	}
+}
+
 // Dispatcher joins the work distribution process for a service, maintaining a connection pool. Each received
 // grant is passed to a filter chain and given to the first DispatchFilter that accepts it. The Dispatcher
 // de-registers on context cancellation (or Drain) and is closed on its completion.
@@ -73,13 +81,12 @@ type Dispatcher struct {
 	initialized, drain, closed iox.AsyncCloser
 }
 
-func NewDispatcher(ctx context.Context, client ConsumerClient, loc location.Location, endpoint string, service QualifiedServiceName, chain []DispatchFilter, opts ...ConsumerOption) *Dispatcher {
-	return NewDispatcherEx(ctx, client, loc, endpoint, service, chain, WithDispatcherConsumerOptions(opts...))
+func NewDispatcher(ctx context.Context, client ConsumerClient, endpoint string, service QualifiedServiceName, chain []DispatchFilter, opts ...ConsumerOption) *Dispatcher {
+	return NewDispatcherEx(ctx, client, endpoint, service, chain, WithDispatcherConsumerOptions(opts...))
 }
 
-func NewDispatcherEx(ctx context.Context, client ConsumerClient, loc location.Location, endpoint string, service QualifiedServiceName, chain []DispatchFilter, opts ...DispatcherOption) *Dispatcher {
+func NewDispatcherEx(ctx context.Context, client ConsumerClient, endpoint string, service QualifiedServiceName, chain []DispatchFilter, opts ...DispatcherOption) *Dispatcher {
 	ret := &Dispatcher{
-		id:          NewInstance(location.NewInstance(loc), endpoint),
 		service:     service,
 		chain:       chain,
 		initialized: iox.NewAsyncCloser(),
@@ -90,6 +97,13 @@ func NewDispatcherEx(ctx context.Context, client ConsumerClient, loc location.Lo
 	for _, fn := range opts {
 		fn(&options)
 	}
+	var loc location.Location
+	if options.loc == nil {
+		loc = location.NewFromEnv()
+	} else {
+		loc = *(options.loc)
+	}
+	ret.id = NewInstance(location.NewInstance(loc), endpoint)
 
 	wctx, _ := contextx.WithQuitCancel(ctx, ret.drain.Closed())                             // drain => stop splitter
 	clusters, closed := client.Join(wctx, ret.id, ret.service, ret.handle, options.opts...) // closed == all grants are relinquished
