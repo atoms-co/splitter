@@ -1,0 +1,16 @@
+Splitter has been deployed as StatefulSet "{{ include "splitter.fullname" . }}" with {{ .Values.replicas }} Raft nodes.
+
+Watch the cluster form:
+  kubectl get pods -l app.kubernetes.io/instance={{ .Release.Name }} -w
+
+Confirm a leader was elected (look for "Cluster bootstrap successful" and a "New leader observation"):
+  kubectl logs {{ include "splitter.fullname" . }}-0 | grep -E "bootstrap|leader"
+
+{{- if .Values.service.enabled }}
+
+Clients reach Splitter at:
+  {{ include "splitter.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.port }}
+{{- end }}
+
+Run splitterctl against a pod:
+  kubectl exec -it {{ include "splitter.fullname" . }}-0 -- /usr/local/bin/splitterctl operations coordinator info <tenant>/<service>
