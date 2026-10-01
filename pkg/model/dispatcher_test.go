@@ -27,7 +27,7 @@ func TestDispatcher(t *testing.T) {
 
 		// (1) Join passes information correctly.
 
-		dispatcher := NewDispatcher(wctx, client, loc, endpoint, service, nil)
+		dispatcher := NewDispatcherEx(wctx, client, endpoint, service, nil, WithDispatcherLocation(loc))
 		assertx.Equal(t, client.Service, service)
 		assertx.Equal(t, client.Consumer.Location(), loc)
 		assertx.Equal(t, client.Consumer.Endpoint(), endpoint)
@@ -55,7 +55,7 @@ func TestDispatcher(t *testing.T) {
 
 		var counter int
 
-		dispatcher := NewDispatcher(ctx, client, loc, endpoint, service, []DispatchFilter{
+		dispatcher := NewDispatcher(ctx, client, endpoint, service, []DispatchFilter{
 			filter(func(shard Shard) bool {
 				counter += 1
 				return shard.Domain.Domain == "a"
@@ -96,6 +96,40 @@ func TestDispatcher(t *testing.T) {
 
 		client.Handler(ctx, "1", shard, newTestOwnership())
 		assertx.Equal(t, counter, 124)
+	})
+
+	t.Run("NewDispatcherEx with default location", func(t *testing.T) {
+		t.Setenv("APP_REGION", "region")
+		t.Setenv("HOSTNAME", "hostname")
+
+		client := newFakeClient()
+
+		// (1) Join passes information correctly.
+
+		dispatcher := NewDispatcherEx(ctx, client, endpoint, service, nil)
+
+		assertx.Equal(t, client.Consumer.Location().Node, "hostname")
+		assertx.Equal(t, client.Consumer.Location().Region, "region")
+
+		dispatcher.Drain(time.Second)
+		<-dispatcher.Closed()
+	})
+
+	t.Run("NewDispatcher with default location", func(t *testing.T) {
+		t.Setenv("APP_REGION", "region")
+		t.Setenv("HOSTNAME", "hostname")
+
+		client := newFakeClient()
+
+		// (1) Join passes information correctly.
+
+		dispatcher := NewDispatcher(ctx, client, endpoint, service, nil)
+
+		assertx.Equal(t, client.Consumer.Location().Node, "hostname")
+		assertx.Equal(t, client.Consumer.Location().Region, "region")
+
+		dispatcher.Drain(time.Second)
+		<-dispatcher.Closed()
 	})
 }
 
