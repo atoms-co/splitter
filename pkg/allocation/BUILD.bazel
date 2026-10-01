@@ -20,8 +20,8 @@ go_library(
 go_test(
     name = "allocation_test",
     srcs = glob(["*_test.go"]),
+    embed = [":allocation"],
     deps = [
-        ":allocation",
         "@co_atoms_go_lib//mapx",
         "@co_atoms_go_lib//testing/assertx",
         "@co_atoms_go_lib//testing/requirex",
