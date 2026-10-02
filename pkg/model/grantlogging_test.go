@@ -1,10 +1,77 @@
 package model
 
 import (
+	"context"
+	"runtime"
+	"sync"
 	"testing"
+	"time"
 
+	"go.atoms.co/lib/log"
 	"go.atoms.co/lib/testing/requirex"
 )
+
+type grantLogCall struct {
+	depth int
+	file  string
+	line  int
+}
+
+type grantRecordingLogger struct {
+	mu    sync.Mutex
+	calls []grantLogCall
+}
+
+func (l *grantRecordingLogger) Log(_ context.Context, _ log.Severity, calldepth int, _ string) {
+	// Like the production backends, skip the logger's own frame as well.
+	_, file, line, _ := runtime.Caller(calldepth + 1)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.calls = append(l.calls, grantLogCall{depth: calldepth, file: file, line: line})
+}
+
+func (l *grantRecordingLogger) Flush(context.Context) error { return nil }
+
+func recordGrantLogs(t *testing.T) *grantRecordingLogger {
+	t.Helper()
+	// These tests must remain sequential because the logging backend is global.
+	l := &grantRecordingLogger{}
+	log.SetLogger(l)
+	t.Cleanup(func() {
+		log.SetLogger(&log.Standard{})
+	})
+	return l
+}
+
+func TestLogGrantsConsumerCaller(t *testing.T) {
+	l := recordGrantLogs(t)
+	shards := []shardLogSnapshot{
+		{Grants: make([]grantLogSnapshot, maxGrantsPerLog)},
+		{Grants: make([]grantLogSnapshot, 1)},
+	}
+
+	_, file, line, _ := runtime.Caller(0)
+	logGrants(context.Background(), log.SevInfo, "Consumer grant states", grantLogSourceConsumer, time.Time{}, shards, 0)
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	requirex.Equal(t, l.calls, []grantLogCall{
+		{depth: 2, file: file, line: line + 1},
+		{depth: 2, file: file, line: line + 1},
+	})
+}
+
+func TestLogCoordinatorGrantsCaller(t *testing.T) {
+	l := recordGrantLogs(t)
+	cluster := NewClusterMap(ClusterID{}, nil)
+
+	_, file, line, _ := runtime.Caller(0)
+	LogCoordinatorGrants(context.Background(), log.SevInfo, "Coordinator grant states", time.Time{}, cluster)
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	requirex.Equal(t, l.calls, []grantLogCall{{depth: 3, file: file, line: line + 1}})
+}
 
 func TestSplitShards(t *testing.T) {
 	tests := []struct {

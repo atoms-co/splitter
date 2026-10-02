@@ -53,6 +53,7 @@ go_test(
         "//proto/atoms/splitter:splitter_go_proto",
         "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//chanx",
+        "@co_atoms_go_lib//log",
         "@co_atoms_go_lib//net/grpcx",
         "@co_atoms_go_lib//testing/assertx",
         "@co_atoms_go_lib//testing/requirex",
