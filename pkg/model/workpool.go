@@ -841,7 +841,7 @@ func (p *workPool) logGrants(ctx context.Context) {
 			}
 		})
 
-		logGrants(ctx, log.SevInfo, "Consumer grant states", grantLogSourceConsumer, at, shards, 2, log.String("worker", worker), log.Bool("coordinator_connected", coordinatorConnected), log.Bool("draining", draining), log.String("client_language", "go"), log.String("client_version", ClientVersion))
+		logGrants(ctx, log.SevInfo, "Consumer grant states", grantLogSourceConsumer, at, shards, 0, log.String("worker", worker), log.Bool("coordinator_connected", coordinatorConnected), log.Bool("draining", draining), log.String("client_language", "go"), log.String("client_version", ClientVersion))
 	}:
 	default:
 		log.Warnf(ctx, "Skipping consumer grant log: queue busy")

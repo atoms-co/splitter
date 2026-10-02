@@ -155,14 +155,14 @@ func logGrants(ctx context.Context, severity log.Severity, message string, sourc
 		logFields := grantEventFields(grantEvent{source: source, eventType: GrantCheckpoint})
 		logFields = append(logFields, partFields...)
 		logFields = append(logFields, fields...)
-		log.Output(log.NewContext(ctx, logFields...), severity, calldepth, message)
+		log.Output(log.NewContext(ctx, logFields...), severity, calldepth+1, message)
 	}
 }
 
 // LogCoordinatorGrants logs the coordinator's current grants grouped by shard,
 // splitting large grant sets across multiple log entries.
 func LogCoordinatorGrants(ctx context.Context, severity log.Severity, message string, at time.Time, cluster *ClusterMap, fields ...log.Field) {
-	logGrants(ctx, severity, message, grantLogSourceCoordinator, at, coordinatorGrantShards(cluster), 3, fields...)
+	logGrants(ctx, severity, message, grantLogSourceCoordinator, at, coordinatorGrantShards(cluster), 1, fields...)
 }
 
 func splitShards(shards []shardLogSnapshot) [][]shardLogSnapshot {
