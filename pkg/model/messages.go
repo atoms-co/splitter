@@ -515,6 +515,10 @@ func (m ConsumerMetadata) Version() string {
 	return m.pb.GetVersion()
 }
 
+func (m ConsumerMetadata) String() string {
+	return protox.CompactTextString(m.pb)
+}
+
 func (m RegisterMessage) Metadata() ConsumerMetadata {
 	return WrapConsumerMetadata(m.pb.GetMetadata())
 }
