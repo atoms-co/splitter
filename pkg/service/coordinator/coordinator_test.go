@@ -46,7 +46,7 @@ func newRegister(consumer model.Consumer, service model.QualifiedServiceName, do
 	if len(opts) > 0 {
 		options = opts[0]
 	}
-	return model.NewRegister(consumer, service, domains, grants, options, model.NewConsumerMetadata(""))
+	return model.NewRegister(consumer, service, domains, grants, options, model.NewConsumerMetadata())
 }
 
 func capacityLimitOptions(limit int) model.Options {

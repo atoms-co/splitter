@@ -499,8 +499,8 @@ type ConsumerMetadata struct {
 	pb *splitterpb.ClientMessage_Register_Metadata
 }
 
-func NewConsumerMetadata(version string) ConsumerMetadata {
-	return WrapConsumerMetadata(&splitterpb.ClientMessage_Register_Metadata{Version: version})
+func NewConsumerMetadata() ConsumerMetadata {
+	return WrapConsumerMetadata(&splitterpb.ClientMessage_Register_Metadata{})
 }
 
 func WrapConsumerMetadata(pb *splitterpb.ClientMessage_Register_Metadata) ConsumerMetadata {
