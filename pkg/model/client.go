@@ -374,7 +374,7 @@ func (c consumerClient) Join(ctx context.Context, consumer Consumer, service Qua
 	}
 	co := ConsumerOptions{
 		options:  NewOptions(),
-		metadata: NewConsumerMetadata(ClientVersion),
+		metadata: NewConsumerMetadata(),
 		workPoolOptions: &workPoolOptions{
 			drainTimeout: poolDrainTimeout,
 		},
