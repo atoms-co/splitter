@@ -3,3 +3,6 @@
 .ijwb
 bazel-*
 MODULE.bazel.lock
+
+# IntelliJ Bazel plugin
+.bazelbsp
