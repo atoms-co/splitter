@@ -1,0 +1,56 @@
+# Default values for the splitter chart.
+
+# Number of Raft nodes. Use an odd number (3 or 5) for quorum.
+replicas: 3
+
+image:
+  repository: k3d-splitter-registry:5111/splitter
+  tag: latest
+  pullPolicy: Always
+
+# Path to the splitter binary inside the image. The bazel oci_image places it here and sets no
+# ENTRYPOINT, so it must be the explicit command. (ko images would use /ko-app/splitter.)
+binaryPath: /usr/local/bin/splitter
+
+# Container ports. raft_join_peers is built from `internal` (the gRPC port), NOT `raft`,
+# because peer discovery (Notify) is a gRPC call served on the internal port.
+ports:
+  public: 50051     # client-facing gRPC
+  internal: 50052   # pod-to-pod gRPC (ClusterService: Notify / AddNode / forwarding)
+  raft: 50053       # hashicorp/raft TCP transport
+  metrics: 9090     # prometheus
+  health: 8081      # http health check
+
+raft:
+  # Skips bootstrap jitter for faster local/test startup.
+  fastBootstrap: true
+
+# Skips the leader/coordinator recovery period. Unsafe in production.
+fastActivation: true
+
+logLevel: INFO
+
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: local-path
+  accessModes:
+    - ReadWriteOnce
+
+resources: {}
+  # requests:
+  #   cpu: "500m"
+  #   memory: 512Mi
+  # limits:
+  #   memory: 1Gi
+
+# Public ClusterIP service for client traffic on the public gRPC port.
+service:
+  enabled: true
+  type: ClusterIP
+  port: 50051
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
