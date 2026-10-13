@@ -1,0 +1,16 @@
+{{- if .Values.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "splitter.fullname" . }}
+  labels:
+    {{- include "splitter.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "splitter.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: public-grpc
+      port: {{ .Values.service.port }}
+      targetPort: public-grpc
+{{- end }}
