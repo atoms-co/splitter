@@ -79,26 +79,42 @@ func TestPeeredConnectionCache(t *testing.T) {
 		assertx.Equal(t, dialer.count, 1)
 		assert.False(t, dialer.con[foo.Endpoint()].IsClosed())
 
-		// (2) If removed, they are cleared after 2 min
+		// (2) If removed, the connection is closed promptly
 
 		cache.Update(ctx, []Instance{})
-		assertx.Equal(t, dialer.count, 1)
-
-		time.Sleep(time.Minute)
-
-		_, err = cache.Resolve(ctx, foo)
-		assert.NoError(t, err)
-		assertx.Equal(t, dialer.count, 1)
-
-		time.Sleep(5 * time.Minute)
-
 		assert.True(t, dialer.con[foo.Endpoint()].IsClosed())
 
-		// (3) It then reverts to ad-hoc status
+		// (3) It then reverts to ad-hoc status.
 
 		_, err = cache.Resolve(ctx, foo)
 		assert.NoError(t, err)
 		assertx.Equal(t, dialer.count, 2)
+		assert.False(t, dialer.con[foo.Endpoint()].IsClosed())
+	})
+
+	synctestx.Run(t, "departed peer closed promptly and re-dialed on demand", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		dialer := newFakeDialer()
+		cache := NewPeeredConnectionCache[int](ctx, self.ID(), dialer.dial)
+
+		// (1) Peer present and resolved -> warm connection.
+		cache.Update(ctx, []Instance{foo})
+		_, err := cache.Resolve(ctx, foo)
+		assert.NoError(t, err)
+		assertx.Equal(t, dialer.count, 1)
+		firstConn := dialer.con[foo.Endpoint()]
+		assert.False(t, firstConn.IsClosed())
+
+		// (2) Peer leaves the list -> connection closed immediately, no 2-min wait.
+		cache.Update(ctx, []Instance{})
+		assert.True(t, firstConn.IsClosed())
+
+		// (3) Resolve re-dials on demand and yields a fresh, usable connection.
+		_, err = cache.Resolve(ctx, foo)
+		assert.NoError(t, err)
+		assertx.Equal(t, dialer.count, 2)
+		assert.False(t, dialer.con[foo.Endpoint()].IsClosed())
 	})
 
 	synctestx.Run(t, "adhoc context", func(t *testing.T) {

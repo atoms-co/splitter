@@ -299,6 +299,119 @@ func TestCoordinator_DisableLoadBalanceDuringDeploy(t *testing.T) {
 	})
 }
 
+func TestCoordinator_RestartRetainsPeerUntilOwnershipResolved(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx := context.Background()
+
+		domain, err := model.NewDomain(domainName, model.Global, time.Now(), model.WithDomainConfig(model.NewDomainConfig(model.WithDomainShardingPolicy(model.NewShardingPolicy(2)))))
+		require.NoError(t, err)
+
+		consumerA := model.NewInstance(location.NewInstance(location.New("centralus", "pod-a")), "endpoint-a")
+		consumerB := model.NewInstance(location.NewInstance(location.New("centralus", "pod-b")), "endpoint-b")
+
+		tenant, err := model.NewTenant(tenant1, time.Now())
+		require.NoError(t, err)
+		service, err := model.NewService(serviceName, time.Now())
+		require.NoError(t, err)
+		state := core.NewState(model.NewTenantInfo(tenant, 1, time.Now()), []model.ServiceInfoEx{model.NewServiceInfoEx(model.NewServiceInfo(service, 1, time.Now()), []model.Domain{domain})}, nil, nil)
+
+		coordinatorC1, _ := New(ctx, location.New("centralus", "splitter-c1"), serviceName, state, make(chan core.Update), WithFastActivation())
+		<-coordinatorC1.Initialized().Closed()
+
+		inA := make(chan model.ConsumerMessage, 10)
+		inA <- newRegister(consumerA, serviceName, nil, nil)
+		outA, err := coordinatorC1.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter-1")), inA)
+		require.NoError(t, err)
+
+		clientCluster := model.NewClusterMap(model.NewClusterID(consumerA.Instance(), time.Now()), nil)
+		clusterMessage := readFn(t, outA, model.ConsumerMessage.ClusterMessage)
+		clientCluster, err = model.UpdateClusterMap(ctx, clientCluster, clusterMessage)
+		require.NoError(t, err)
+		require.Len(t, readFn(t, outA, isAssign).Grants(), 1)
+		require.Len(t, readFn(t, outA, isAssign).Grants(), 1)
+		clusterMessage = readFn(t, outA, model.ConsumerMessage.ClusterMessage)
+		clientCluster, err = model.UpdateClusterMap(ctx, clientCluster, clusterMessage)
+		require.NoError(t, err)
+
+		inB := make(chan model.ConsumerMessage, 10)
+		inB <- newRegister(consumerB, serviceName, nil, nil)
+		outB, err := coordinatorC1.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter-1")), inB)
+		require.NoError(t, err)
+		readFn(t, outB, isClusterSnapshot)
+		clusterMessage = readFn(t, outA, model.ConsumerMessage.ClusterMessage)
+		clientCluster, err = model.UpdateClusterMap(ctx, clientCluster, clusterMessage)
+		require.NoError(t, err)
+
+		time.Sleep(15 * time.Second)
+
+		revoke := readFn(t, outA, isRevoke)
+		require.Len(t, revoke.Grants(), 1)
+		require.Len(t, readFn(t, outB, isAssign).Grants(), 1)
+		clusterMessage = readFn(t, outA, model.ConsumerMessage.ClusterMessage)
+		clientCluster, err = model.UpdateClusterMap(ctx, clientCluster, clusterMessage)
+		require.NoError(t, err)
+
+		inA <- model.NewReleased(revoke.Grants()...)
+		require.Len(t, readFn(t, outB, isPromote).Grants(), 1)
+		time.Sleep(300 * time.Millisecond)
+		clusterMessage = readFn(t, outA, model.ConsumerMessage.ClusterMessage)
+		clientCluster, err = model.UpdateClusterMap(ctx, clientCluster, clusterMessage)
+		require.NoError(t, err)
+
+		_, grantsA, ok := clientCluster.Consumer(consumerA.ID())
+		require.True(t, ok)
+		require.Len(t, grantsA, 1)
+		_, grantsB, ok := clientCluster.Consumer(consumerB.ID())
+		require.True(t, ok)
+		require.Len(t, grantsB, 1)
+		require.Equal(t, model.ActiveGrantState, grantsB[0].State())
+
+		formerBKey := model.QualifiedDomainKey{Domain: domainName, Key: model.DomainKey{Key: grantsB[0].Shard().From.Inc()}}
+		owner, grant, ok := clientCluster.Lookup(formerBKey)
+		require.True(t, ok)
+		require.Equal(t, consumerB.ID(), owner.ID())
+		require.Equal(t, grantsB[0].ID(), grant.ID())
+		c1Origin := clientCluster.ID().Origin.ID()
+
+		coordinatorC1.Close()
+		assertx.Closed(t, outA)
+		assertx.Closed(t, outB)
+
+		returning := []model.Grant{model.NewGrant(grantsA[0].ID(), grantsA[0].Shard(), grantsA[0].State(), time.Now().Add(time.Minute), time.Now())}
+		coordinatorC2, _ := New(ctx, location.New("centralus", "splitter-c2"), serviceName, state, make(chan core.Update), WithFastActivation())
+		<-coordinatorC2.Initialized().Closed()
+		defer coordinatorC2.Close()
+
+		inA = make(chan model.ConsumerMessage, 10)
+		inA <- newRegister(consumerA, serviceName, nil, returning)
+		outA, err = coordinatorC2.Connect(ctx, session.NewID(), location.NewInstance(location.New("centralus", "splitter-2")), inA)
+		require.NoError(t, err)
+
+		restartSnapshot := readFn(t, outA, model.ConsumerMessage.ClusterMessage)
+		snapshot, ok := restartSnapshot.Snapshot()
+		require.True(t, ok)
+		require.Empty(t, snapshot.Assignments())
+
+		clientCluster, err = model.UpdateClusterMap(ctx, clientCluster, restartSnapshot)
+		require.NoError(t, err)
+		require.NotEqual(t, c1Origin, clientCluster.ID().Origin.ID())
+		owner, grant, ok = clientCluster.Lookup(formerBKey)
+		require.True(t, ok)
+		require.Equal(t, consumerB.ID(), owner.ID())
+		require.Equal(t, grantsB[0].ID(), grant.ID())
+
+		clusterMessage = readFn(t, outA, model.ConsumerMessage.ClusterMessage)
+		clientCluster, err = model.UpdateClusterMap(ctx, clientCluster, clusterMessage)
+		require.NoError(t, err)
+		owner, grant, ok = clientCluster.Lookup(formerBKey)
+		require.True(t, ok)
+		require.Equal(t, consumerA.ID(), owner.ID())
+		require.NotEqual(t, grantsB[0].ID(), grant.ID())
+		_, _, ok = clientCluster.Grant(grantsB[0].ID())
+		require.False(t, ok)
+	})
+}
+
 func TestCoordinator_TwoConsumers_IgnoreLoadBalanceUnitDomain2(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx := context.Background()

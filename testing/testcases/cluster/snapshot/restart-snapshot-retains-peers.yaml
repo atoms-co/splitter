@@ -1,0 +1,78 @@
+# A partial snapshot from a restarted coordinator retains peers with valid grants.
+actions:
+  - action: create
+
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
+      - shard: range=(d:f),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        grants:
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
+      - consumer: c3
+        grants:
+          - id: DF
+            shard: range=(d:f),type=G
+            state: active
+
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(a:d),type=G
+      - shard: range=(d:f),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+
+  - action: compare
+    version: 3
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A]
+      - shard: range=(a:d),type=G
+        grants: [AD]
+      - shard: range=(d:f),type=G
+        grants: [DF]
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+      - consumer: c2
+        origin_cluster_version: 2
+        grants:
+          - id: AD
+            shard: range=(a:d),type=G
+            state: active
+            origin_cluster_version: 2
+      - consumer: c3
+        origin_cluster_version: 2
+        grants:
+          - id: DF
+            shard: range=(d:f),type=G
+            state: active
+            origin_cluster_version: 2
+
+  - action: lookup
+    lookups:
+      - key: "b"
+        expected:
+          grant: AD
+          consumer: c2
+      - key: "e"
+        expected:
+          grant: DF
+          consumer: c3

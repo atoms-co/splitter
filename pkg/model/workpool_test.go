@@ -3,6 +3,8 @@ package model
 import (
 	"context"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -17,6 +19,7 @@ import (
 	"go.atoms.co/lib/testing/assertx"
 	"go.atoms.co/lib/testing/requirex"
 	"go.atoms.co/lib/testing/synctestx"
+	"go.atoms.co/slicex"
 )
 
 var (
@@ -258,6 +261,97 @@ func TestWorkpool(t *testing.T) {
 		assert.Equal(t, register.Active()[0].State(), ActiveGrantState)
 
 		coordinatorCon.Out <- NewRevoke(grant)
+	})
+
+	synctestx.Run(t, "restart snapshot keeps peer connection", func(t *testing.T) {
+		coordinatorCon := newFakeCon[ConsumerMessage]()
+		defer coordinatorCon.Close()
+
+		consumer := NewInstance(location.NewInstance(location.New("centralus", "pod1")), "endpoint")
+		peer := NewInstance(location.NewInstance(location.New("centralus", "pod2")), "peer")
+		cacheContext, cancelCache := context.WithCancel(context.Background())
+		defer cancelCache()
+		dials := 0
+		cache := NewPeeredConnectionCache[int](cacheContext, consumer.ID(), func(endpoint string) (io.Closer, int, error) {
+			require.Equal(t, peer.Endpoint(), endpoint)
+			dials++
+			return io.NopCloser(strings.NewReader("")), dials, nil
+		})
+		w, clusters := newTestWorkPool(consumer, service1, []QualifiedDomainName{domain1},
+			func(ctx context.Context, self location.Instance, handler grpcx.Handler[ConsumerMessage, ConsumerMessage]) error {
+				return coordinatorCon.connect(ctx, handler)
+			},
+			func(ctx context.Context, id GrantID, shard Shard, ownership Ownership) {},
+			&workPoolOptions{drainTimeout: time.Second},
+		)
+		defer func() {
+			w.Drain()
+			<-w.Closed()
+		}()
+
+		<-coordinatorCon.Connected.Closed()
+
+		requirex.Element(t, coordinatorCon.In)
+		coordinatorCon.Out <- NewExtend(time.Now().Add(time.Minute))
+
+		key0 := MustParseKey("00000000-0000-0000-0000-000000000000")
+		keyA := MustParseKey("a0000000-0000-0000-0000-000000000000")
+		keyB := MustParseKey("b0000000-0000-0000-0000-000000000000")
+		keyD := MustParseKey("d0000000-0000-0000-0000-000000000000")
+		g0A := NewGrantInfo("g0A", Shard{Domain: domain1, Type: Global, From: key0, To: keyA}, ActiveGrantState)
+		gAD := NewGrantInfo("gAD", Shard{Domain: domain1, Type: Global, From: keyA, To: keyD}, ActiveGrantState)
+		origin := location.NewInstance(location.New("centralus", "coordinator"))
+		initialID := NewClusterID(origin, time.Now()).Next(time.Now())
+		initial := NewClusterSnapshot(initialID, []Assignment{NewAssignment(consumer, g0A), NewAssignment(peer, gAD)}, []Shard{g0A.Shard(), gAD.Shard()})
+		coordinatorCon.Out <- NewClusterMessage(initial)
+
+		cluster := requirex.Element(t, clusters)
+		require.ElementsMatch(t, []ConsumerID{consumer.ID(), peer.ID()}, slicex.Map(cluster.Consumers(), Consumer.ID))
+		cache.Update(cacheContext, cluster.Consumers())
+		connection, err := cache.Resolve(cacheContext, peer)
+		require.NoError(t, err)
+		require.Equal(t, 1, connection)
+		require.Equal(t, 1, dials)
+
+		oldCoordinatorCon := coordinatorCon
+		coordinatorCon = newFakeCon[ConsumerMessage]()
+		defer coordinatorCon.Close()
+		oldCoordinatorCon.Close()
+
+		time.Sleep(2 * time.Second)
+
+		<-coordinatorCon.Connected.Closed()
+
+		requirex.Element(t, coordinatorCon.In)
+		coordinatorCon.Out <- NewExtend(time.Now().Add(time.Minute))
+
+		restartOrigin := location.NewInstance(location.New("centralus", "coordinator-restarted"))
+		restartID := NewClusterID(restartOrigin, time.Now())
+		restart := NewClusterSnapshot(restartID, []Assignment{NewAssignment(consumer, g0A)}, []Shard{g0A.Shard(), gAD.Shard()})
+		coordinatorCon.Out <- NewClusterMessage(restart)
+
+		cluster = requirex.Element(t, clusters)
+		require.ElementsMatch(t, []ConsumerID{consumer.ID(), peer.ID()}, slicex.Map(cluster.Consumers(), Consumer.ID))
+		require.Equal(t, restartID.Origin.ID(), cluster.ID().Origin.ID())
+		cache.Update(cacheContext, cluster.Consumers())
+
+		clusterMap, ok := cluster.(*ClusterMap)
+		require.True(t, ok)
+		version, ok := ConsumerRetainedVersion(clusterMap, peer.ID())
+		require.True(t, ok)
+		require.Equal(t, initialID.Version, version)
+
+		owner, grant, ok := cluster.Lookup(QualifiedDomainKey{Domain: domain1, Key: DomainKey{Key: keyB}})
+		require.True(t, ok)
+		require.Equal(t, peer.ID(), owner.ID())
+		require.Equal(t, gAD.ID(), grant.ID())
+
+		time.Sleep(3 * time.Minute)
+
+		connection, err = cache.Resolve(cacheContext, peer)
+		require.NoError(t, err)
+		require.Equal(t, 1, connection)
+		require.Equal(t, 1, dials)
 	})
 
 	synctestx.Run(t, "reconnect with promotion", func(t *testing.T) {

@@ -26,14 +26,12 @@ type connection[T any] struct {
 	peer      Instance
 	quit      io.Closer
 	cc        T
-	ttl       time.Time // zero if indefinite
 	dialAfter time.Time // zero if already dialed
 }
 
 // PeeredConnectionCache is a pool of reusable connections of type T  to a dynamic set of peers. Connections to
-// peers in the mesh are made easily and reused, assuming long-running streaming usage. When a peer is gone
-// for 2 min, its connection is closed. This delay support temporary partial peer lists. Supports ad-hoc
-// connection created by considering them peers. Thread-safe.
+// peers in the mesh are made easily and reused, assuming long-running streaming usage. When a peer leaves the
+// peer list its connection is closed immediately. Supports ad-hoc connection created by considering them peers. Thread-safe.
 type PeeredConnectionCache[T any] struct {
 	self InstanceID
 	fn   DialFn[T]
@@ -92,7 +90,6 @@ func (p *PeeredConnectionCache[T]) Resolve(ctx context.Context, inst Instance) (
 		quit:      quit,
 		cc:        cc,
 		dialAfter: time.Time{}, // Adhoc connection is dialed
-		ttl:       time.Time{}, // Indefinite TTL for adhoc connections
 	}
 	return cc, nil
 }
@@ -112,7 +109,8 @@ func (p *PeeredConnectionCache[T]) Update(ctx context.Context, peers []Instance)
 			continue
 		}
 		if cur, ok := p.peers[id]; ok {
-			upd[id] = connection[T]{peer: inst, quit: cur.quit, cc: cur.cc, dialAfter: cur.dialAfter} // promote to indefinite tll
+			cur.peer = inst
+			upd[id] = cur
 			continue
 		}
 
@@ -120,20 +118,19 @@ func (p *PeeredConnectionCache[T]) Update(ctx context.Context, peers []Instance)
 		log.Infof(ctx, "New peer %v will be dialed after %v", inst, upd[id].dialAfter)
 	}
 
-	// (2) Set TTL for inactive connections.
+	// (2) Close connections to peers no longer in the list.
 
 	for id, con := range p.peers {
 		if _, ok := upd[id]; ok {
 			continue
 		}
-
-		if con.ttl.IsZero() {
-			con.ttl = time.Now().Add(2 * time.Minute)
+		if con.quit != nil {
+			log.Infof(ctx, "Closing connection to peer no longer in cluster: %v", con.peer)
+			_ = con.quit.Close()
 		}
-		upd[id] = con
 	}
 
-	// (3) Swap cluster map and peer connections.
+	// (3) Swap peer connections.
 
 	p.peers = upd
 }
@@ -146,7 +143,6 @@ func (p *PeeredConnectionCache[T]) process(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			p.dialPending(ctx)
-			p.expire(ctx)
 
 		case <-ctx.Done():
 			return
@@ -171,26 +167,7 @@ func (p *PeeredConnectionCache[T]) dialPending(ctx context.Context) {
 			continue
 		}
 
-		p.peers[id] = connection[T]{peer: con.peer, quit: quit, cc: cc, ttl: time.Time{}, dialAfter: time.Time{}}
-	}
-}
-
-func (p *PeeredConnectionCache[T]) expire(ctx context.Context) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	now := time.Now()
-
-	for id, con := range p.peers {
-		if con.ttl.IsZero() || now.Before(con.ttl) {
-			continue // skip
-		}
-
-		log.Infof(ctx, "Closing connection to inactive peer: %v", con.peer)
-		if con.quit != nil {
-			_ = con.quit.Close()
-		}
-		delete(p.peers, id)
+		p.peers[id] = connection[T]{peer: con.peer, quit: quit, cc: cc, dialAfter: time.Time{}}
 	}
 }
 
