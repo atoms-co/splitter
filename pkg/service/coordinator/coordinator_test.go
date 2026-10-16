@@ -1385,7 +1385,10 @@ func TestCoordinator_ConsumerShardLoad(t *testing.T) {
 		require.Equal(t, p75Load, serviceLoad)
 
 		// update createdAt for trackers to simulate time advancing.
-		updateCreatedAt(c.tracker, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
+		require.NoError(t, c.txn(ctx, func() error {
+			updateCreatedAt(c.tracker, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
+			return nil
+		}))
 		time.Sleep(loadTickerInterval + 10*time.Second)
 		synctest.Wait()
 
@@ -1546,7 +1549,10 @@ func TestCoordinator_RestoresP50ServiceLoadTrackerAndRotatesToP75(t *testing.T) 
 		synctest.Wait()
 
 		// trigger serviceLoadTracker to rotate. The new tracker should have percentile equal to serverTrackerPercentile.
-		updateCreatedAt(c.tracker, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
+		require.NoError(t, c.txn(ctx, func() error {
+			updateCreatedAt(c.tracker, time.Now().Add(-(defaultRotationInterval + time.Millisecond)))
+			return nil
+		}))
 		time.Sleep(loadTickerInterval + 10*time.Second)
 		synctest.Wait()
 
@@ -1664,7 +1670,12 @@ func TestCoordinator_DomainChangesPreserveLoadTrackers(t *testing.T) {
 		updates <- core.NewDomainRemoval(serviceInfo, domainName)
 		synctest.Wait()
 
-		require.Contains(t, c.tracker.domains, domainName, "domain tracker cleanup is deferred to the load ticker")
+		var hasDomainTracker bool
+		require.NoError(t, c.txn(ctx, func() error {
+			_, hasDomainTracker = c.tracker.domains[domainName]
+			return nil
+		}))
+		require.True(t, hasDomainTracker, "domain tracker cleanup is deferred to the load ticker")
 		time.Sleep(loadTickerInterval + time.Minute)
 		synctest.Wait()
 
