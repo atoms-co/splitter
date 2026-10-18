@@ -9,8 +9,9 @@ import (
 	"go.atoms.co/lib/container"
 	"go.atoms.co/lib/mapx"
 	"go.atoms.co/lib/mathx"
-	"go.atoms.co/lib/net/location/go/location"
 )
+
+type InstanceID string
 
 const (
 	// NoCapacityLimit indicates no bound to the amount of work that can be assigned to a worker
@@ -42,7 +43,7 @@ func (u unassigned) String() string {
 // Penalty rules must be deterministic. If they change, a new allocation must be created and data
 // transferred as possible. Update functions make the convenient.
 type Allocation[T comparable, W any, K comparable, V any] struct {
-	id location.InstanceID
+	id InstanceID
 
 	place Placements[T, W, K, V]
 	colo  Colocations[T, W, K, V]
@@ -56,7 +57,7 @@ type Allocation[T comparable, W any, K comparable, V any] struct {
 	seqno      int64                     // grant id seqno (for debuggability)
 }
 
-func New[T comparable, W any, K comparable, V any](id location.InstanceID, place []Placement[T, W, K, V], colo []Colocation[T, W, K, V], work []Work[T, W], activation time.Time) *Allocation[T, W, K, V] {
+func New[T comparable, W any, K comparable, V any](id InstanceID, place []Placement[T, W, K, V], colo []Colocation[T, W, K, V], work []Work[T, W], activation time.Time) *Allocation[T, W, K, V] {
 	ret := &Allocation[T, W, K, V]{
 		id:         id,
 		place:      Placements[T, W, K, V]{List: place},
@@ -140,7 +141,7 @@ func Reset[T comparable, W any, K comparable, V any](a *Allocation[T, W, K, V]) 
 	return Update(a, a.place.List, a.colo.List, nil, time.Now())
 }
 
-func (a *Allocation[T, W, K, V]) ID() location.InstanceID {
+func (a *Allocation[T, W, K, V]) ID() InstanceID {
 	return a.id
 }
 

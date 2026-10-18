@@ -12,7 +12,6 @@ go_library(
         "@co_atoms_go_lib//container",
         "@co_atoms_go_lib//mapx",
         "@co_atoms_go_lib//mathx",
-        "@co_atoms_go_lib_net_location//go/location",
         "@co_atoms_go_slicex//:slicex",
     ],
 )

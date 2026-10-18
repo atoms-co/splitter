@@ -41,7 +41,7 @@ type (
 // TODO(herohde) 11/12/2023: intra-domain anti-affinity to spread out domains evenly. Similar to general LB.
 
 func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, tracker *loadTracker, activation time.Time) *Allocation {
-	return allocation.New(id, findPlacements(tenant, info), findColocations(info), findWork(info, placements, tracker), activation)
+	return allocation.New(allocation.InstanceID(id), findPlacements(tenant, info), findColocations(info), findWork(info, placements, tracker), activation)
 }
 
 func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, namedShards []model.Shard, placements []core.InternalPlacementInfo, tracker *loadTracker, activation time.Time) (*Allocation, []Grant) {
