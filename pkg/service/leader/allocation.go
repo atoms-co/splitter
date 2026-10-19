@@ -31,7 +31,7 @@ func HasRegionAffinity(worker Worker, work Work) bool {
 }
 
 func newAllocation(id location.InstanceID, snapshot core.Snapshot, activation time.Time) *Allocation {
-	return allocation.New(id, findPlacements(snapshot), nil, findWork(snapshot), activation)
+	return allocation.New(allocation.InstanceID(id), findPlacements(snapshot), nil, findWork(snapshot), activation)
 }
 
 func updateAllocation(alloc *Allocation, snapshot core.Snapshot, activation time.Time) (*Allocation, []Grant) {
