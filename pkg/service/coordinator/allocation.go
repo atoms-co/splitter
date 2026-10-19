@@ -521,10 +521,6 @@ func serviceDefaultLocations(sCfg model.ServiceConfig) []location.Location {
 	if len(regions) > 0 {
 		return toLocations(regions...)
 	}
-	region := sCfg.Region()
-	if region != "" {
-		return []location.Location{{Region: region}}
-	}
 
 	return nil
 }

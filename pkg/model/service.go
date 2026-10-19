@@ -144,12 +144,6 @@ func (t Service) String() string {
 
 type ServiceConfigOption func(cfg *splitterpb.Service_Config)
 
-func WithServiceRegion(region Region) ServiceConfigOption {
-	return func(cfg *splitterpb.Service_Config) {
-		cfg.Region = string(region)
-	}
-}
-
 func WithServiceRegions(regions ...Region) ServiceConfigOption {
 	return func(cfg *splitterpb.Service_Config) {
 		cfg.Regions = slicex.Map(regions, stringx.ToString[Region])
@@ -213,10 +207,6 @@ func WrapServiceConfig(pb *splitterpb.Service_Config) ServiceConfig {
 
 func UnwrapServiceConfig(cfg ServiceConfig) *splitterpb.Service_Config {
 	return cfg.pb
-}
-
-func (c ServiceConfig) Region() Region {
-	return Region(c.pb.GetRegion())
 }
 
 func (c ServiceConfig) Regions() []Region {

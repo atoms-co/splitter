@@ -105,9 +105,9 @@ func TestLeader_MultipleWorker(t *testing.T) {
 		ctx := context.Background()
 		loc := location.New("centralus", "splitter-0")
 
-		s1, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
+		s1, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegions("centralus"))))
 		require.NoError(t, err)
-		s2, err := model.NewService(s2, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
+		s2, err := model.NewService(s2, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegions("northcentralus"))))
 		require.NoError(t, err)
 
 		db := setup(t, ctx, s1, s2)
@@ -170,9 +170,9 @@ func TestLeader_Operations(t *testing.T) {
 	ctx := context.Background()
 	loc := location.New("centralus", "splitter-0")
 
-	s1, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
+	s1, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegions("centralus"))))
 	require.NoError(t, err)
-	s2, err := model.NewService(s2, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("northcentralus"))))
+	s2, err := model.NewService(s2, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegions("northcentralus"))))
 	require.NoError(t, err)
 
 	db := setup(t, ctx, s1, s2)
@@ -316,7 +316,7 @@ func TestLeader_UpdateDomainRejectsStaleServiceVersion(t *testing.T) {
 	ctx := context.Background()
 	loc := location.New("centralus", "splitter-0")
 
-	service, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegion("centralus"))))
+	service, err := model.NewService(s1, time.Now(), model.WithServiceConfig(model.NewServiceConfig(model.WithServiceRegions("centralus"))))
 	require.NoError(t, err)
 
 	qdn := model.QualifiedDomainName{Service: service.Name(), Domain: model.DomainName("domain")}

@@ -88,9 +88,6 @@ func findWork(snapshot core.Snapshot) []Work {
 			cfg := info.Info().Service().Config()
 
 			rs := cfg.Regions()
-			if len(rs) == 0 {
-				rs = append(rs, cfg.Region())
-			}
 
 			ls := slicex.Map(rs, func(r model.Region) location.Location {
 				return location.Location{Region: r}
