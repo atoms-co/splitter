@@ -646,7 +646,6 @@ func (x *Tenant_Operational) GetBannedRegions() []string {
 
 type Service_Config struct {
 	state                 protoimpl.MessageState             `protogen:"open.v1"`
-	Region                string                             `protobuf:"bytes,1,opt,name=region,proto3" json:"region,omitempty"`
 	DefaultShardingPolicy *ShardingPolicy                    `protobuf:"bytes,2,opt,name=default_sharding_policy,json=defaultShardingPolicy,proto3" json:"default_sharding_policy,omitempty"`
 	Overrides             []*Service_Config_LocalityOverride `protobuf:"bytes,3,rep,name=overrides,proto3" json:"overrides,omitempty"`
 	Regions               []string                           `protobuf:"bytes,4,rep,name=regions,proto3" json:"regions,omitempty"`
@@ -683,13 +682,6 @@ func (x *Service_Config) ProtoReflect() protoreflect.Message {
 // Deprecated: Use Service_Config.ProtoReflect.Descriptor instead.
 func (*Service_Config) Descriptor() ([]byte, []int) {
 	return file_atoms_splitter_management_proto_rawDescGZIP(), []int{2, 0}
-}
-
-func (x *Service_Config) GetRegion() string {
-	if x != nil {
-		return x.Region
-	}
-	return ""
 }
 
 func (x *Service_Config) GetDefaultShardingPolicy() *ShardingPolicy {
@@ -1045,14 +1037,13 @@ const file_atoms_splitter_management_proto_rawDesc = "" +
 	"TenantInfo\x12.\n" +
 	"\x06tenant\x18\x01 \x01(\v2\x16.atoms.splitter.TenantR\x06tenant\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x03R\aversion\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\x83\a\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xf1\x06\n" +
 	"\aService\x128\n" +
 	"\x04name\x18\x01 \x01(\v2$.atoms.splitter.QualifiedServiceNameR\x04name\x126\n" +
 	"\x06config\x18\x02 \x01(\v2\x1e.atoms.splitter.Service.ConfigR\x06config\x124\n" +
 	"\acreated\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\acreated\x12E\n" +
-	"\voperational\x18\x04 \x01(\v2#.atoms.splitter.Service.OperationalR\voperational\x1a\xe0\x02\n" +
-	"\x06Config\x12\x16\n" +
-	"\x06region\x18\x01 \x01(\tR\x06region\x12V\n" +
+	"\voperational\x18\x04 \x01(\v2#.atoms.splitter.Service.OperationalR\voperational\x1a\xce\x02\n" +
+	"\x06Config\x12V\n" +
 	"\x17default_sharding_policy\x18\x02 \x01(\v2\x1e.atoms.splitter.ShardingPolicyR\x15defaultShardingPolicy\x12M\n" +
 	"\toverrides\x18\x03 \x03(\v2/.atoms.splitter.Service.Config.LocalityOverrideR\toverrides\x12\x18\n" +
 	"\aregions\x18\x04 \x03(\tR\aregions\x12\x1d\n" +
@@ -1060,7 +1051,7 @@ const file_atoms_splitter_management_proto_rawDesc = "" +
 	"track_load\x18\x05 \x01(\bR\ttrackLoad\x1a^\n" +
 	"\x10LocalityOverride\x12!\n" +
 	"\fshard_region\x18\x01 \x01(\tR\vshardRegion\x12'\n" +
-	"\x0fconsumer_region\x18\x02 \x01(\tR\x0econsumerRegion\x1a\xa5\x02\n" +
+	"\x0fconsumer_region\x18\x02 \x01(\tR\x0econsumerRegionJ\x04\b\x01\x10\x02\x1a\xa5\x02\n" +
 	"\vOperational\x12%\n" +
 	"\x0ebanned_regions\x18\x01 \x03(\tR\rbannedRegions\x12\x16\n" +
 	"\x06locked\x18\x03 \x01(\bR\x06locked\x12'\n" +

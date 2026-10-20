@@ -37,8 +37,7 @@ message Service {
   QualifiedServiceName name = 1;
 
   message Config {
-    // Default region preference for coordinator and UNIT/GLOBAL domains. Deprecated, use service and domain regions instead.
-    string region = 1;
+    reserved 1;
     // Default sharding policy. Optional.
     ShardingPolicy default_sharding_policy = 2;
 
@@ -49,7 +48,7 @@ message Service {
     }
     repeated LocalityOverride overrides = 3;
 
-    // region preferences for coordinator. Overrides `region` config if provided. Optional.
+    // Region preferences for coordinator. Optional.
     repeated string regions = 4;
     // Enables load tracking/reporting for the service
     bool track_load = 5;

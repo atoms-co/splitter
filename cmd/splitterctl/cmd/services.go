@@ -65,7 +65,7 @@ func makeNewServiceCmd() *cobra.Command {
 		region := model.Region(args[1])
 
 		var cfgOpts []model.ServiceConfigOption
-		cfgOpts = append(cfgOpts, model.WithServiceRegion(region), model.WithServiceRegions(region))
+		cfgOpts = append(cfgOpts, model.WithServiceRegions(region))
 
 		if len(*overrides) > 0 {
 			locality := map[location.Region]location.Region{}
@@ -127,7 +127,6 @@ func makeUpdateServiceCmd() *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	region := cmd.Flags().String("region", "", "Region")
 	regions := cmd.Flags().StringSlice("regions", []string{}, "Coordinator region preferences")
 	overrides := cmd.Flags().StringSlice("locality-overrides", []string{}, "locality overrides. e.g. us-west1:centralus")
 	trackLoad := cmd.Flags().Bool("track-load", false, "track shard load")
@@ -143,10 +142,6 @@ func makeUpdateServiceCmd() *cobra.Command {
 		}
 
 		var cfgOpts []model.ServiceConfigOption
-		if *region != "" {
-			cfgOpts = append(cfgOpts, model.WithServiceRegion(model.Region(*region)))
-		}
-
 		if len(*regions) > 0 {
 			cfgOpts = append(cfgOpts, model.WithServiceRegions(slicex.Map(*regions, stringx.FromString[model.Region])...))
 		}
