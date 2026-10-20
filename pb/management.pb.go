@@ -1037,12 +1037,12 @@ const file_atoms_splitter_management_proto_rawDesc = "" +
 	"TenantInfo\x12.\n" +
 	"\x06tenant\x18\x01 \x01(\v2\x16.atoms.splitter.TenantR\x06tenant\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\x03R\aversion\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xf9\x06\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xf1\x06\n" +
 	"\aService\x128\n" +
 	"\x04name\x18\x01 \x01(\v2$.atoms.splitter.QualifiedServiceNameR\x04name\x126\n" +
 	"\x06config\x18\x02 \x01(\v2\x1e.atoms.splitter.Service.ConfigR\x06config\x124\n" +
 	"\acreated\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\acreated\x12E\n" +
-	"\voperational\x18\x04 \x01(\v2#.atoms.splitter.Service.OperationalR\voperational\x1a\xd6\x02\n" +
+	"\voperational\x18\x04 \x01(\v2#.atoms.splitter.Service.OperationalR\voperational\x1a\xce\x02\n" +
 	"\x06Config\x12V\n" +
 	"\x17default_sharding_policy\x18\x02 \x01(\v2\x1e.atoms.splitter.ShardingPolicyR\x15defaultShardingPolicy\x12M\n" +
 	"\toverrides\x18\x03 \x03(\v2/.atoms.splitter.Service.Config.LocalityOverrideR\toverrides\x12\x18\n" +
@@ -1051,7 +1051,7 @@ const file_atoms_splitter_management_proto_rawDesc = "" +
 	"track_load\x18\x05 \x01(\bR\ttrackLoad\x1a^\n" +
 	"\x10LocalityOverride\x12!\n" +
 	"\fshard_region\x18\x01 \x01(\tR\vshardRegion\x12'\n" +
-	"\x0fconsumer_region\x18\x02 \x01(\tR\x0econsumerRegionJ\x04\b\x01\x10\x02R\x06region\x1a\xa5\x02\n" +
+	"\x0fconsumer_region\x18\x02 \x01(\tR\x0econsumerRegionJ\x04\b\x01\x10\x02\x1a\xa5\x02\n" +
 	"\vOperational\x12%\n" +
 	"\x0ebanned_regions\x18\x01 \x03(\tR\rbannedRegions\x12\x16\n" +
 	"\x06locked\x18\x03 \x01(\bR\x06locked\x12'\n" +
