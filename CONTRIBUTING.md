@@ -54,7 +54,7 @@ Feature requests are welcome! Please provide:
 
 ### Prerequisites
 
-- Go 1.24.12
+- Go 1.26.10
 - Bazel 9.0.0 or higher
 
 ### Building
