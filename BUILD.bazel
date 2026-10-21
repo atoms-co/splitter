@@ -43,7 +43,7 @@ tar(
 
 oci_image(
     name = "image",
-    base = "@golang_1_26_2",
+    base = "@golang_1_26_10",
     labels = {
         "org.opencontainers.image.source": "https://github.com/atoms-co/splitter",
     },
