@@ -1,0 +1,33 @@
+load("@rules_go//go:def.bzl", "go_library", "go_test")
+
+go_library(
+    name = "simulator",
+    srcs = glob(
+        ["*.go"],
+        exclude = ["*_test.go"],
+    ),
+    importpath = "go.atoms.co/splitter/testing/simulator",
+    visibility = ["//:__subpackages__"],
+    deps = [
+        "//pkg/core",
+        "//pkg/model",
+        "//pkg/service/coordinator",
+        "//pkg/util/p2quantile",
+        "@co_atoms_go_lib//log",
+        "@co_atoms_go_lib_net_location//go/location",
+        "@co_atoms_go_lib_net_session//go/session",
+    ],
+)
+
+go_test(
+    name = "simulator_test",
+    srcs = glob(
+        ["*_test.go"],
+    ),
+    data = glob(["scenarios/*.json"]),
+    embed = [":simulator"],
+    deps = [
+        "//pkg/model",
+        "@co_atoms_go_lib//log",
+    ],
+)

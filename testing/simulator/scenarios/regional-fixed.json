@@ -1,0 +1,43 @@
+{
+  "shard_load_type": "Fixed",
+  "consumers": 50,
+  "shards": 3118,
+  "seed": 42,
+  "warmup": "5m0s",
+  "duration": "12h0m0s",
+  "relinquish_rate": 0.05,
+  "drain_rate": 0.05,
+  "reconnect_rate": 0.02,
+  "reconnect_delay": "5s",
+  "quit_rate": 0.0002,
+  "consumer_regions": [
+    {
+      "region": "centralus",
+      "consumers": 28
+    },
+    {
+      "region": "northcentralus",
+      "consumers": 22
+    }
+  ],
+  "shard_region_preferences": [
+    {
+      "shards": 2456,
+      "regions": [
+        "centralus"
+      ]
+    },
+    {
+      "shards": 641,
+      "regions": [
+        "northcentralus"
+      ]
+    },
+    {
+      "shards": 21,
+      "regions": [
+        "eastus2"
+      ]
+    }
+  ]
+}
