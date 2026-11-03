@@ -111,40 +111,7 @@ func New(id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, ldb, sdb *bolt
 	r.RegisterObserver(observer)
 	c.observer = observer
 
-	leaderCh := chanx.Map(observeCh, func(o raft.Observation) leader.Directive {
-		obs, _ := o.Data.(raft.LeaderObservation)
-
-		log.Infof(context.Background(), "New leader observation: %v", obs)
-
-		switch obs.LeaderID {
-		case "":
-			return leader.Directive{
-				Type: leader.Disconnect,
-			}
-
-		case id:
-			return leader.Directive{
-				Type: leader.Lead,
-				ID:   string(id),
-			}
-
-		default:
-			host, _, err := net.SplitHostPort(string(obs.LeaderAddr))
-			if err != nil {
-				log.Errorf(context.Background(), "Internal: unexpected leader %v endpoint: %v", obs.LeaderID, obs.LeaderAddr)
-
-				return leader.Directive{
-					Type: leader.Disconnect,
-				}
-			}
-
-			return leader.Directive{
-				Type:     leader.Follow,
-				ID:       string(obs.LeaderID),
-				Endpoint: fmt.Sprintf("%v:%v", host, port),
-			}
-		}
-	})
+	leaderCh := c.leaderDirectives(observeCh)
 
 	broadcast := chanx.NewBroadcaster[leader.Directive]()
 	out1, _ := broadcast.Connect()
@@ -155,6 +122,62 @@ func New(id raft.ServerID, addr raft.ServerAddress, r *raft.Raft, ldb, sdb *bolt
 	go c.init(context.Background(), observeCh)
 
 	return c, out1
+}
+
+// leaderDirectives initializes leader routing from Raft's current state and applies subsequent observations.
+// The observer must be registered before calling it to avoid missing a leader change during initialization.
+func (c *cluster) leaderDirectives(observeCh <-chan raft.Observation) <-chan leader.Directive {
+	out := make(chan leader.Directive)
+	go func() {
+		defer close(out)
+
+		// Start disconnected and publish only changes, so an unknown initial leader or
+		// duplicate observation does not unnecessarily reset leader routing.
+		last := leader.Directive{Type: leader.Disconnect}
+		publish := func(id raft.ServerID, addr raft.ServerAddress) {
+			next := c.leaderDirective(id, addr)
+			if next != last {
+				out <- next
+				last = next
+			}
+		}
+
+		// Raft does not replay the current leader when an observer registers. Read it
+		// after subscribing so a leader discovered before registration is not missed.
+		addr, id := c.raft.LeaderWithID()
+		log.Infof(context.Background(), "Initial leader: %v @%v", id, addr)
+		publish(id, addr)
+
+		for o := range observeCh {
+			obs := o.Data.(raft.LeaderObservation)
+			log.Infof(context.Background(), "New leader observation: %v", obs)
+
+			publish(obs.LeaderID, obs.LeaderAddr)
+		}
+	}()
+	return out
+}
+
+func (c *cluster) leaderDirective(id raft.ServerID, addr raft.ServerAddress) leader.Directive {
+	switch id {
+	case "":
+		return leader.Directive{Type: leader.Disconnect}
+
+	case c.id:
+		return leader.Directive{Type: leader.Lead, ID: string(id)}
+
+	default:
+		host, _, err := net.SplitHostPort(string(addr))
+		if err != nil {
+			log.Errorf(context.Background(), "Internal: unexpected leader %v endpoint: %v", id, addr)
+			return leader.Directive{Type: leader.Disconnect}
+		}
+		return leader.Directive{
+			Type:     leader.Follow,
+			ID:       string(id),
+			Endpoint: fmt.Sprintf("%v:%v", host, c.port),
+		}
+	}
 }
 
 func (c *cluster) Notify(ctx context.Context, id string, address string) error {
