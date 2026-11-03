@@ -1,0 +1,80 @@
+# Keep retained consumers while they have grants, but not after the last grant is removed.
+actions:
+  - action: create
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+          - id: DE
+            shard: range=(d:e),type=G
+            state: active
+
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+    assignments:
+      - consumer: c2
+
+  - action: change
+    assignments:
+      - consumer: c3
+        grants:
+          - id: 0A_New
+            shard: range=(0:a),type=G
+            state: active
+
+  - action: compare
+    version: 4
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A_New]
+      - shard: range=(d:e),type=G
+        grants: [DE]
+    assignments:
+      - consumer: c1
+        origin_cluster_version: 2
+        grants:
+          - id: DE
+            shard: range=(d:e),type=G
+            state: active
+            origin_cluster_version: 2
+      - consumer: c2
+      - consumer: c3
+        grants:
+          - id: 0A_New
+            shard: range=(0:a),type=G
+            state: active
+
+  - action: change
+    assignments:
+      - consumer: c3
+        grants:
+          - id: DE_New
+            shard: range=(d:e),type=G
+            state: active
+
+  # The current consumer remains even though it also has no grants.
+  - action: compare
+    version: 5
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A_New]
+      - shard: range=(d:e),type=G
+        grants: [DE_New]
+    assignments:
+      - consumer: c2
+      - consumer: c3
+        grants:
+          - id: 0A_New
+            shard: range=(0:a),type=G
+            state: active
+          - id: DE_New
+            shard: range=(d:e),type=G
+            state: active

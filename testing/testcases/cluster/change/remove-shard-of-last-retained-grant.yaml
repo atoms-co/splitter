@@ -1,0 +1,54 @@
+# Keep retained consumers while they have grants, but not after shard changes discard the last grant.
+actions:
+  - action: create
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+    assignments:
+      - consumer: c1
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+          - id: DE
+            shard: range=(d:e),type=G
+            state: active
+
+  - action: snapshot
+    shards:
+      - shard: range=(0:a),type=G
+      - shard: range=(d:e),type=G
+    assignments:
+      - consumer: c2
+
+  - action: change
+    shards:
+      - shard: range=(0:a),type=G
+
+  - action: compare
+    version: 4
+    shards:
+      - shard: range=(0:a),type=G
+        grants: [0A]
+    assignments:
+      - consumer: c1
+        origin_cluster_version: 2
+        grants:
+          - id: 0A
+            shard: range=(0:a),type=G
+            state: active
+            origin_cluster_version: 2
+      - consumer: c2
+
+  - action: change
+    shards:
+      - shard: range=(a:d),type=G
+
+  # The current consumer remains even though it also has no grants.
+  - action: compare
+    version: 5
+    shards:
+      - shard: range=(a:d),type=G
+    assignments:
+      - consumer: c2

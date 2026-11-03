@@ -154,7 +154,11 @@ func (a Action) snapshot(t *testing.T, c *ClusterMap) *ClusterMap {
 func (a Action) change(t *testing.T, c *ClusterMap) *ClusterMap {
 	assignments := slicex.Map(a.Assignments, func(c ConsumerDescription) Assignment { return c.Assignment(t) })
 	updated := slicex.Map(a.Updated, func(g GrantDescription) GrantInfo { return g.Grant(t) })
-	change := NewClusterChange(a.id(c), assignments, updated, a.Unassigned, a.Removed)
+	var opts []ClusterChangeOption
+	if len(a.Shards) > 0 {
+		opts = append(opts, WithClusterChangeShards(a.GetShards(t)...))
+	}
+	change := NewClusterChange(a.id(c), assignments, updated, a.Unassigned, a.Removed, opts...)
 	upd, err := UpdateClusterMap(context.Background(), c, change)
 	if a.Error != "" {
 		require.EqualError(t, err, a.Error, "expected error")

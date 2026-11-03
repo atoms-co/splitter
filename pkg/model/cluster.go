@@ -238,8 +238,7 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 				continue // skip: consumer removed
 			}
 
-			// Ensure the consumer is copied even if it has no grants. Note that snapshot will remove old consumers
-			// without grants.
+			// Copy consumers before merging their grants; prune empty retained consumers below.
 			if _, ok := ret.consumers[cid]; !ok {
 				ret.consumers[cid] = consumerInfo{consumer: info.consumer, grants: make([]GrantInfo, 0, len(info.grants)), version: info.version}
 			}
@@ -254,6 +253,13 @@ func UpdateClusterMap(ctx context.Context, c *ClusterMap, msg ClusterMessage) (*
 					log.Debugf(ctx, "Old grant is no longer valid in a new cluster map. Discarding. Grant: %v. Reason: %v", old.grant, err)
 					continue // skip: invalid grant
 				}
+			}
+		}
+
+		// Retained consumers are only needed while their old grants survive.
+		for id, info := range ret.consumers {
+			if info.Retained() && len(info.grants) == 0 {
+				delete(ret.consumers, id)
 			}
 		}
 
