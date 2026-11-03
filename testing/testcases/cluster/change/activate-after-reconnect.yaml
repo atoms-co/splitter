@@ -39,15 +39,13 @@ actions:
         shard: range=(0:a),type=G
         state: active
 
-  #  0A_Revoked should be removed since it's in conflict with 0A_Allocated
+  # The conflicting retained grant and its now-empty consumer should be removed.
   - action: compare
     version: 5
     shards:
       - shard: range=(0:a),type=G
         grants: [0A_Allocated]
     assignments:
-      - consumer: c1
-        origin_cluster_version: 2
       - consumer: c2
         grants:
           - id: 0A_Allocated
