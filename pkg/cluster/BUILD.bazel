@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "cluster",
@@ -22,5 +22,18 @@ go_library(
         "@co_atoms_go_lib//syncx",
         "@com_github_hashicorp_raft//:raft",
         "@com_github_hashicorp_raft_boltdb_v2//:raft-boltdb",
+    ],
+)
+
+go_test(
+    name = "cluster_test",
+    srcs = glob(["*_test.go"]),
+    embed = [":cluster"],
+    deps = [
+        "//pkg/service/leader",
+        "//pkg/storage/raft",
+        "@co_atoms_go_lib//testing/assertx",
+        "@com_github_hashicorp_raft//:raft",
+        "@com_github_stretchr_testify//require",
     ],
 )
