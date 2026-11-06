@@ -19,6 +19,36 @@ const (
 	NoCapacityLimit = 0
 )
 
+type options struct {
+	// maxLoadPenaltyDelta defines the maximum load penalty delta for balancing moves.
+	// Load penalty delta is calculated in a way that more negative deltas indicate greater improvement.
+	// Moves with a load penalty delta greater than or equal to this threshold are skipped.
+	maxLoadPenaltyDelta *Load
+
+	// minLoadToMoveToUnderloaded defines the minimum work load eligible for a
+	// balancing move from an underloaded worker. Work with a load less than this threshold are skipped.
+	minLoadToMoveToUnderloaded *Load
+}
+
+// Option configures allocation behavior.
+type Option func(*options)
+
+// WithMaxLoadPenaltyDelta sets maxLoadPenaltyDelta option.
+// Pass nil to unset it.
+func WithMaxLoadPenaltyDelta(delta *Load) Option {
+	return func(opts *options) {
+		opts.maxLoadPenaltyDelta = delta
+	}
+}
+
+// WithMinLoadToMoveToUnderloaded sets minLoadToMoveToUnderloaded option.
+// Pass nil to unset it.
+func WithMinLoadToMoveToUnderloaded(load *Load) Option {
+	return func(opts *options) {
+		opts.minLoadToMoveToUnderloaded = load
+	}
+}
+
 // unassigned holds unassigned work or grant in any state. For revoked grants, the activation time is
 // the promotion time for the corresponding Allocated grant. If both legs of a transition ends up
 // unassigned, they combine to Active w/ the expiration time of the revoke.
@@ -43,7 +73,8 @@ func (u unassigned) String() string {
 // Penalty rules must be deterministic. If they change, a new allocation must be created and data
 // transferred as possible. Update functions make the convenient.
 type Allocation[T comparable, W any, K comparable, V any] struct {
-	id InstanceID
+	id      InstanceID
+	options options
 
 	place Placements[T, W, K, V]
 	colo  Colocations[T, W, K, V]
@@ -57,7 +88,7 @@ type Allocation[T comparable, W any, K comparable, V any] struct {
 	seqno      int64                     // grant id seqno (for debuggability)
 }
 
-func New[T comparable, W any, K comparable, V any](id InstanceID, place []Placement[T, W, K, V], colo []Colocation[T, W, K, V], work []Work[T, W], activation time.Time) *Allocation[T, W, K, V] {
+func New[T comparable, W any, K comparable, V any](id InstanceID, place []Placement[T, W, K, V], colo []Colocation[T, W, K, V], work []Work[T, W], activation time.Time, opts ...Option) *Allocation[T, W, K, V] {
 	ret := &Allocation[T, W, K, V]{
 		id:         id,
 		place:      Placements[T, W, K, V]{List: place},
@@ -66,6 +97,11 @@ func New[T comparable, W any, K comparable, V any](id InstanceID, place []Placem
 		workers:    map[K]*worker[T, W, K, V]{},
 		live:       map[T]K{},
 		unassigned: map[T]unassigned{},
+		options:    options{},
+	}
+
+	for _, opt := range opts {
+		opt(&ret.options)
 	}
 
 	for _, w := range work {
@@ -81,9 +117,13 @@ func New[T comparable, W any, K comparable, V any](id InstanceID, place []Placem
 
 // Update updates the work and allows re-evaluation of all rules, preserving existing assignments, expirations
 // and state of workers as best possible. Returns the updated allocation and any prior unassignable or now
-// invalid grants.
-func Update[T comparable, W any, K comparable, V any](a *Allocation[T, W, K, V], place []Placement[T, W, K, V], colo []Colocation[T, W, K, V], work []Work[T, W], activation time.Time) (*Allocation[T, W, K, V], []Grant[T, K]) {
+// invalid grants. Options preserve their current values unless explicitly overridden.
+func Update[T comparable, W any, K comparable, V any](a *Allocation[T, W, K, V], place []Placement[T, W, K, V], colo []Colocation[T, W, K, V], work []Work[T, W], activation time.Time, opts ...Option) (*Allocation[T, W, K, V], []Grant[T, K]) {
 	ret := New(a.id, place, colo, work, activation)
+	ret.options = a.options
+	for _, opt := range opts {
+		opt(&ret.options)
+	}
 	ret.seqno = a.seqno
 
 	// (1) Attach all workers and try to assign all old grants. That will preserve what grants can be preserved.
@@ -825,6 +865,13 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time, ignore map[T]bool) (
 				continue // skip: no penalty reduction
 			}
 
+			// diff.Place+diff.Colo >= 0 indicates the move does not improve the combined placement and colocation penalty.
+			// diff.Load indicates the load penalty delta, more negative values mean greater improvement.
+			// Require a load penalty delta below maxLoadPenaltyDelta to make the move.
+			if a.options.maxLoadPenaltyDelta != nil && diff.Place+diff.Colo >= 0 && diff.Load >= *a.options.maxLoadPenaltyDelta {
+				continue // skip: insufficient load penalty reduction
+			}
+
 			// Find best candidate: smallest diff value (largest load/penalty reduction)
 			cur := &candidate[T, W, K, V]{w: w, diff: diff}
 			if best == nil || cur.Less(best) {
@@ -856,8 +903,9 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time, ignore map[T]bool) (
 		return Move[T, K]{}, AdjustedLoad{}, false
 	}
 
-	// (5) Find source worker and the work to move. Assign first eligible move that makes the worker load more balanced
-	// and optionally reduce placement and collocation penalty.
+	// (5) Find source worker and the work to move. With load tracking enabled, shards
+	// must weigh at least minimumLoad when the source is below cutoff.
+	// Assign first eligible move that makes the worker load more balanced and optionally reduce placement and collocation penalty.
 
 	// Sorted workers by total load in descending order so that we consider stealing from most loaded workers first
 	slices.SortFunc(workers, func(a, b *worker[T, W, K, V]) int {
@@ -886,6 +934,9 @@ func (a *Allocation[T, W, K, V]) LoadBalance(now time.Time, ignore map[T]bool) (
 				}
 				if src.load.Load-des.load.Load < 2*l.work.Load {
 					continue // skip: avoid flip-flopping; needed src - load >= des + load
+				}
+				if a.options.minLoadToMoveToUnderloaded != nil && src.load.Load < cutoff && l.work.Load < *a.options.minLoadToMoveToUnderloaded {
+					continue // skip: small shard does not justify a move when the source is below cutoff
 				}
 
 				placement, ok := a.place.TryPlace(des.info.Instance, l.work)

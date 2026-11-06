@@ -25,6 +25,12 @@ const (
 	regionAffinityLoad = defaultShardLoad * 2
 	namedShardsLoad    = defaultShardLoad * 2
 	antiAffinityLoad   = defaultShardLoad * 2
+
+	// Following two constants limit excessive shard moves when load-aware allocation replaces
+	// fixed shard loads with dynamic values. They were tuned by using the load-balancing
+	// simulator to keep move counts close to those under fixed shard loads.
+	maxLoadPenaltyDelta        = allocation.Load(-1)
+	minLoadToMoveToUnderloaded = allocation.Load(20)
 )
 
 type (
@@ -40,12 +46,23 @@ type (
 
 // TODO(herohde) 11/12/2023: intra-domain anti-affinity to spread out domains evenly. Similar to general LB.
 
+func allocationOptions(trackLoad bool) []allocation.Option {
+	if trackLoad {
+		delta := maxLoadPenaltyDelta
+		load := minLoadToMoveToUnderloaded
+		return []allocation.Option{allocation.WithMaxLoadPenaltyDelta(&delta), allocation.WithMinLoadToMoveToUnderloaded(&load)}
+	}
+
+	// Explicitly reset allocation options.
+	return []allocation.Option{allocation.WithMaxLoadPenaltyDelta(nil), allocation.WithMinLoadToMoveToUnderloaded(nil)}
+}
+
 func newAllocation(id location.InstanceID, tenant model.TenantInfo, info model.ServiceInfoEx, placements []core.InternalPlacementInfo, tracker *loadTracker, activation time.Time) *Allocation {
-	return allocation.New(allocation.InstanceID(id), findPlacements(tenant, info), findColocations(info), findWork(info, placements, tracker), activation)
+	return allocation.New(allocation.InstanceID(id), findPlacements(tenant, info), findColocations(info), findWork(info, placements, tracker), activation, allocationOptions(info.Service().Config().TrackLoad())...)
 }
 
 func updateAllocation(a *Allocation, tenant model.TenantInfo, info model.ServiceInfoEx, namedShards []model.Shard, placements []core.InternalPlacementInfo, tracker *loadTracker, activation time.Time) (*Allocation, []Grant) {
-	return allocation.Update(a, findPlacements(tenant, info, namedShards...), findColocations(info), findWork(info, placements, tracker), activation)
+	return allocation.Update(a, findPlacements(tenant, info, namedShards...), findColocations(info), findWork(info, placements, tracker), activation, allocationOptions(info.Service().Config().TrackLoad())...)
 }
 
 // NamedShards handles named shard placement
