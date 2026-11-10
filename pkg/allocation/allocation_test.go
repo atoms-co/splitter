@@ -1,6 +1,7 @@
 package allocation
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"testing"
@@ -640,23 +641,23 @@ func TestAllocation(t *testing.T) {
 
 	synctestx.Run(t, "load-balance/canary-capacity-limit", func(t *testing.T) {
 		work := []Work[string, location.Location]{
-			{Unit: "1", Load: 10, Data: us},
-			{Unit: "2", Load: 10, Data: us},
-			{Unit: "3", Load: 10, Data: us},
-			{Unit: "4", Load: 10, Data: us},
-			{Unit: "5", Load: 10, Data: us},
-			{Unit: "6", Load: 10, Data: us},
-			{Unit: "7", Load: 10, Data: us},
-			{Unit: "8", Load: 10, Data: us},
-			{Unit: "9", Load: 10, Data: us},
-			{Unit: "10", Load: 10, Data: us},
-			{Unit: "11", Load: 10, Data: us},
-			{Unit: "12", Load: 10, Data: us},
-			{Unit: "13", Load: 10, Data: us},
-			{Unit: "14", Load: 10, Data: us},
-			{Unit: "15", Load: 10, Data: us},
-			{Unit: "16", Load: 10, Data: us},
-			{Unit: "leader", Load: 50, Data: us},
+			{Unit: "1", Load: 50, Data: us},
+			{Unit: "2", Load: 50, Data: us},
+			{Unit: "3", Load: 50, Data: us},
+			{Unit: "4", Load: 50, Data: us},
+			{Unit: "5", Load: 50, Data: us},
+			{Unit: "6", Load: 50, Data: us},
+			{Unit: "7", Load: 50, Data: us},
+			{Unit: "8", Load: 50, Data: us},
+			{Unit: "9", Load: 50, Data: us},
+			{Unit: "10", Load: 50, Data: us},
+			{Unit: "11", Load: 50, Data: us},
+			{Unit: "12", Load: 50, Data: us},
+			{Unit: "13", Load: 50, Data: us},
+			{Unit: "14", Load: 50, Data: us},
+			{Unit: "15", Load: 50, Data: us},
+			{Unit: "16", Load: 50, Data: us},
+			{Unit: "leader", Load: 250, Data: us},
 		}
 
 		alloc := New[string, location.Location, string, location.Location]("id", nil, nil, work, time.Now())
@@ -690,27 +691,27 @@ func TestAllocation(t *testing.T) {
 		w3Load, _ := alloc.LoadByWorker(w3.ID)
 		w4Load, _ := alloc.LoadByWorker(w4.ID)
 		w5Load, _ := alloc.LoadByWorker(w5.ID)
-		assert.Subset(t, []Load{w1Load.Load, w2Load.Load, w3Load.Load, w4Load.Load, w5Load.Load}, []Load{50, 40, 40, 40, 40})
+		assert.Subset(t, []Load{w1Load.Load, w2Load.Load, w3Load.Load, w4Load.Load, w5Load.Load}, []Load{250, 200, 200, 200, 200})
 
 		// (2) Attach two canary workers. Load balance should assign work.
 
 		c := Worker[string, location.Location]{ID: "c", Data: us}
 		b := Worker[string, location.Location]{ID: "b", Data: us}
 
-		_, ok = alloc.Attach(c, 10, lease)
+		_, ok = alloc.Attach(c, 50, lease)
 		assert.True(t, ok)
-		_, ok = alloc.Attach(b, 10, lease)
+		_, ok = alloc.Attach(b, 50, lease)
 		assert.True(t, ok)
 
 		loads, ok := loadBalanceIterations(t, alloc, nil, 2, time.Now())
 		require.True(t, ok)
-		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4", "w5"), []Load{50, 40, 40, 30, 30})
-		assert.Subset(t, intrinsicLoads(loads, "c", "b"), []Load{10, 10})
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4", "w5"), []Load{250, 200, 200, 150, 150})
+		assert.Subset(t, intrinsicLoads(loads, "c", "b"), []Load{50, 50})
 	})
 
 	synctestx.Run(t, "load-balance/skew-two-workers", func(t *testing.T) {
 		work := []Work[string, location.Location]{
-			{Unit: "a", Load: 20, Data: us},
+			{Unit: "a", Load: 30, Data: us},
 			{Unit: "b", Load: 10, Data: us},
 			{Unit: "c", Load: 10, Data: us},
 		}
@@ -736,7 +737,7 @@ func TestAllocation(t *testing.T) {
 		_, ok = alloc.Attach(us2, NoCapacityLimit, lease)
 		assert.True(t, ok)
 
-		// (10, 10), (20)
+		// (10, 10), (30)
 		move, diff, ok := alloc.LoadBalance(time.Now(), nil)
 		assert.True(t, ok)
 		assertx.Equal(t, move.From.Worker, us1.ID)
@@ -745,7 +746,7 @@ func TestAllocation(t *testing.T) {
 		assertx.Equal(t, move.To.Worker, us2.ID)
 		assertx.Equal(t, move.To.Unit, "a")
 		assertx.Equal(t, move.To.State, Allocated)
-		assertx.Equal(t, diff, AdjustedLoad{Load: -3})
+		assertx.Equal(t, diff, AdjustedLoad{Load: -4})
 		require.NoError(t, alloc.Check())
 
 		_, _, ok = alloc.LoadBalance(time.Now(), nil)
@@ -755,9 +756,9 @@ func TestAllocation(t *testing.T) {
 
 	synctestx.Run(t, "load-balance/skew-three-workers", func(t *testing.T) {
 		work := []Work[string, location.Location]{
-			{Unit: "1", Load: 10, Data: us},
-			{Unit: "2", Load: 10, Data: us},
-			{Unit: "3", Load: 50, Data: us},
+			{Unit: "1", Load: 50, Data: us},
+			{Unit: "2", Load: 50, Data: us},
+			{Unit: "3", Load: 250, Data: us},
 		}
 
 		alloc := New[string, location.Location, string, location.Location]("id", nil, nil, work, time.Now())
@@ -778,7 +779,7 @@ func TestAllocation(t *testing.T) {
 		assert.Len(t, grants, 3)
 		w1Load, _ := alloc.LoadByWorker(w1.ID)
 		w2Load, _ := alloc.LoadByWorker(w2.ID)
-		assert.Subset(t, []Load{w1Load.Load, w2Load.Load}, []Load{50, 20})
+		assert.Subset(t, []Load{w1Load.Load, w2Load.Load}, []Load{250, 100})
 
 		// (2) Add a worker. Load balance should assign work to it and stop.
 
@@ -788,7 +789,7 @@ func TestAllocation(t *testing.T) {
 
 		loads, ok := loadBalanceIterations(t, alloc, nil, 1, time.Now())
 		require.True(t, ok)
-		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3"), []Load{50, 10, 10})
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3"), []Load{250, 50, 50})
 
 		require.NoError(t, alloc.Check())
 	})
@@ -829,11 +830,11 @@ func TestAllocation(t *testing.T) {
 
 	synctestx.Run(t, "load-balance/skew-six-workers", func(t *testing.T) {
 		work := []Work[string, location.Location]{
-			{Unit: "1", Load: 10, Data: us},
-			{Unit: "2", Load: 10, Data: us},
-			{Unit: "3", Load: 10, Data: us},
-			{Unit: "4", Load: 10, Data: us},
-			{Unit: "5", Load: 50, Data: us},
+			{Unit: "1", Load: 50, Data: us},
+			{Unit: "2", Load: 50, Data: us},
+			{Unit: "3", Load: 50, Data: us},
+			{Unit: "4", Load: 50, Data: us},
+			{Unit: "5", Load: 250, Data: us},
 		}
 
 		alloc := New[string, location.Location, string, location.Location]("id", nil, nil, work, time.Now())
@@ -853,10 +854,10 @@ func TestAllocation(t *testing.T) {
 		grants := alloc.Allocate(time.Now())
 		assert.Len(t, grants, 5)
 
-		// (10, 10, 10, 10), (50)
+		// (50, 50, 50, 50), (250)
 		w1Load, _ := alloc.LoadByWorker(w1.ID)
 		w2Load, _ := alloc.LoadByWorker(w2.ID)
-		assert.Subset(t, []Load{w1Load.Load, w2Load.Load}, []Load{40, 50})
+		assert.Subset(t, []Load{w1Load.Load, w2Load.Load}, []Load{200, 250})
 
 		// (2) Add another worker. Load balance should assign work to it and stop.
 
@@ -866,7 +867,7 @@ func TestAllocation(t *testing.T) {
 
 		loads, ok := loadBalanceIterations(t, alloc, nil, 2, time.Now())
 		require.True(t, ok)
-		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3"), []Load{20, 20, 50})
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3"), []Load{100, 100, 250})
 
 		// (3) Add another worker. Load balance should assign work to it and stop.
 
@@ -876,7 +877,7 @@ func TestAllocation(t *testing.T) {
 
 		loads, ok = loadBalanceIterations(t, alloc, nil, 1, time.Now())
 		require.True(t, ok)
-		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4"), []Load{10, 10, 20, 50})
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4"), []Load{50, 50, 100, 250})
 
 		// (4) Add 2 workers. Load balance should assign work to one of them and stop.
 
@@ -889,7 +890,7 @@ func TestAllocation(t *testing.T) {
 
 		loads, ok = loadBalanceIterations(t, alloc, nil, 1, time.Now())
 		require.True(t, ok)
-		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4", "w5", "w6"), []Load{0, 10, 10, 10, 10, 50})
+		assert.Subset(t, intrinsicLoads(loads, "w1", "w2", "w3", "w4", "w5", "w6"), []Load{0, 50, 50, 50, 50, 250})
 
 		require.NoError(t, alloc.Check())
 	})
@@ -954,14 +955,14 @@ func TestAllocation(t *testing.T) {
 
 	synctestx.Run(t, "load-balance/region-misplaced-correction", func(t *testing.T) {
 		work := []Work[string, location.Location]{
-			{Unit: "1", Load: 10, Data: us},
-			{Unit: "2", Load: 10, Data: us},
-			{Unit: "3", Load: 10, Data: us},
-			{Unit: "4", Load: 10, Data: us},
-			{Unit: "5", Load: 10, Data: us},
-			{Unit: "6", Load: 10, Data: us},
-			{Unit: "7", Load: 10, Data: us},
-			{Unit: "8", Load: 10, Data: us},
+			{Unit: "1", Load: 20, Data: us},
+			{Unit: "2", Load: 20, Data: us},
+			{Unit: "3", Load: 20, Data: us},
+			{Unit: "4", Load: 20, Data: us},
+			{Unit: "5", Load: 20, Data: us},
+			{Unit: "6", Load: 20, Data: us},
+			{Unit: "7", Load: 20, Data: us},
+			{Unit: "8", Load: 20, Data: us},
 		}
 		region := NewPreference("region-affinity", 20, hasRegionAffinity)
 		alloc := New[string, location.Location, string, location.Location]("id", slicex.New(region), nil, work, time.Now())
@@ -977,7 +978,7 @@ func TestAllocation(t *testing.T) {
 		grants := alloc.Allocate(time.Now())
 		assert.Len(t, grants, 8)
 		eu1Load, _ := alloc.LoadByWorker(eu1.ID)
-		assertx.Equal(t, eu1Load, AdjustedLoad{Load: 80, Place: 20 * 8})
+		assertx.Equal(t, eu1Load, AdjustedLoad{Load: 160, Place: 20 * 8})
 
 		// (2) Attach us worker. Load balance should move all work from eu worker, reducing placement penalty to zero.
 
@@ -987,7 +988,7 @@ func TestAllocation(t *testing.T) {
 
 		loads, ok := loadBalanceIterations(t, alloc, nil, 8, time.Now()) // needs 8 iterations to move 8 grants
 		require.True(t, ok)
-		assertx.Equal(t, loads["us1"].Load, 80)
+		assertx.Equal(t, loads["us1"].Load, 160)
 		assertx.Equal(t, loads["eu1"].Total(), 0) // eu has zero load
 
 		// (3) Attach another us worker. Load balance should distribute work between us workers.
@@ -998,27 +999,27 @@ func TestAllocation(t *testing.T) {
 
 		loads, ok = loadBalanceIterations(t, alloc, nil, 4, time.Now())
 		require.True(t, ok)
-		assertx.Equal(t, loads["us1"].Load, 40)
-		assertx.Equal(t, loads["us2"].Load, 40)
+		assertx.Equal(t, loads["us1"].Load, 80)
+		assertx.Equal(t, loads["us2"].Load, 80)
 		assertx.Equal(t, loads["eu1"].Total(), 0) // unchanged
 		require.NoError(t, alloc.Check())
 	})
 
 	synctestx.Run(t, "load-balance/skew-regional-balance", func(t *testing.T) {
 		work := []Work[string, location.Location]{
-			{Unit: "1", Load: 10, Data: us},
-			{Unit: "2", Load: 10, Data: us},
-			{Unit: "3", Load: 10, Data: us},
-			{Unit: "4", Load: 10, Data: us},
-			{Unit: "5", Load: 10, Data: us},
-			{Unit: "6", Load: 10, Data: us},
-			{Unit: "7", Load: 10, Data: us},
-			{Unit: "8", Load: 10, Data: us},
-			{Unit: "9", Load: 10, Data: eu},
-			{Unit: "10", Load: 10, Data: eu},
-			{Unit: "11", Load: 10, Data: eu},
-			{Unit: "12", Load: 10, Data: eu},
-			{Unit: "leader", Load: 50, Data: us},
+			{Unit: "1", Load: 50, Data: us},
+			{Unit: "2", Load: 50, Data: us},
+			{Unit: "3", Load: 50, Data: us},
+			{Unit: "4", Load: 50, Data: us},
+			{Unit: "5", Load: 50, Data: us},
+			{Unit: "6", Load: 50, Data: us},
+			{Unit: "7", Load: 50, Data: us},
+			{Unit: "8", Load: 50, Data: us},
+			{Unit: "9", Load: 50, Data: eu},
+			{Unit: "10", Load: 50, Data: eu},
+			{Unit: "11", Load: 50, Data: eu},
+			{Unit: "12", Load: 50, Data: eu},
+			{Unit: "leader", Load: 250, Data: us},
 		}
 
 		region := NewPreference("region-affinity", 20, hasRegionAffinity)
@@ -1045,16 +1046,16 @@ func TestAllocation(t *testing.T) {
 		grants := alloc.Allocate(time.Now())
 		assert.Len(t, grants, 13)
 
-		// us: (50, 10, 10), (10, 10, 10, 10, 10, 10)
-		// eu: (10, 10), (10, 10)
+		// us: (250, 50, 50), (50, 50, 50, 50, 50, 50)
+		// eu: (50, 50), (50, 50)
 
 		us1Load, _ := alloc.LoadByWorker(us1.ID)
 		us2Load, _ := alloc.LoadByWorker(us2.ID)
-		assert.Subset(t, []Load{us1Load.Load, us2Load.Load}, []Load{70, 60})
+		assert.Subset(t, []Load{us1Load.Load, us2Load.Load}, []Load{350, 300})
 
 		eu1Load, _ := alloc.LoadByWorker(eu1.ID)
 		eu2Load, _ := alloc.LoadByWorker(eu2.ID)
-		assert.Subset(t, []Load{eu1Load.Load, eu2Load.Load}, []Load{20, 20})
+		assert.Subset(t, []Load{eu1Load.Load, eu2Load.Load}, []Load{100, 100})
 
 		// (2) Add 1 us + 1 eu worker. Load balance should distribute work evenly in each region.
 
@@ -1068,10 +1069,10 @@ func TestAllocation(t *testing.T) {
 		loads, ok := loadBalanceIterations(t, alloc, nil, 4, time.Now())
 		require.True(t, ok)
 
-		// us: (50), (10, 10, 10, 10), (10, 10, 10, 10)
-		// eu: (10, 10), (10), (10)
-		assert.Subset(t, intrinsicLoads(loads, "us1", "us2", "us3"), []Load{50, 40, 40})
-		assert.Subset(t, intrinsicLoads(loads, "eu1", "eu2", "eu3"), []Load{20, 10, 10})
+		// us: (250), (50, 50, 50, 50), (50, 50, 50, 50)
+		// eu: (50, 50), (50), (50)
+		assert.Subset(t, intrinsicLoads(loads, "us1", "us2", "us3"), []Load{250, 200, 200})
+		assert.Subset(t, intrinsicLoads(loads, "eu1", "eu2", "eu3"), []Load{100, 50, 50})
 		_, adj := alloc.Load()
 		assertx.Equal(t, adj.Place, 0) // No placement penalty
 
@@ -1087,10 +1088,10 @@ func TestAllocation(t *testing.T) {
 		loads, ok = loadBalanceIterations(t, alloc, nil, 4, time.Now())
 		require.True(t, ok)
 
-		// us: (50), (10, 10), (10, 10), (10, 10), (10, 10)
-		// eu: (10, 10), (10), (10)
-		assert.Subset(t, intrinsicLoads(loads, "us1", "us2", "us3", "us4", "us5"), []Load{50, 20, 20, 20, 20})
-		assert.Subset(t, intrinsicLoads(loads, "eu1", "eu2", "eu3"), []Load{20, 10, 10}) // unchanged
+		// us: (250), (50, 50), (50, 50), (50, 50), (50, 50)
+		// eu: (50, 50), (50), (50)
+		assert.Subset(t, intrinsicLoads(loads, "us1", "us2", "us3", "us4", "us5"), []Load{250, 100, 100, 100, 100})
+		assert.Subset(t, intrinsicLoads(loads, "eu1", "eu2", "eu3"), []Load{100, 50, 50}) // unchanged
 
 		_, adj = alloc.Load()
 		assertx.Equal(t, adj.Place, 0) // No placement penalty
@@ -1193,6 +1194,150 @@ func TestAllocation(t *testing.T) {
 		assert.Subset(t, intrinsicLoads(loads, "us2", "us3", "us4"), []Load{10, 0, 0})
 		require.NoError(t, alloc.Check())
 	})
+}
+
+func TestLoadBalanceLoadDrivenMove(t *testing.T) {
+	for _, tt := range []struct {
+		name                string
+		source, destination Load
+		shard               Load
+		placementPenalty    Load
+		wantMove            bool
+		wantDiff            Load
+	}{
+		{"minus one is insufficient", 100, 75, 10, 0, false, 0},
+		{"minus two permits a move", 100, 60, 10, 0, true, -2},
+		{"minus three permits a move", 100, 50, 10, 0, true, -3},
+		{"minus four permits a move", 100, 45, 10, 0, true, -4},
+		{"minus five permits a move", 100, 40, 10, 0, true, -5},
+		{"weight one has no overload penalty", 100, 60, 1, 0, false, 0},
+		{"large reduction permits overshoot", 100, 10, 50, 0, true, -13},
+		{"placement improvement bypasses load threshold", 100, 75, 10, 100, true, -1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			// A third worker lowers the cutoff so the candidate has a load
+			// penalty. Its capacity prevents it from receiving the shard.
+			a := newBalanceAllocation(t, []balanceWorker{
+				{id: "source", loads: append([]Load{tt.shard}, repeatedLoad(int(tt.source-tt.shard), 1)...)},
+				{id: "destination", loads: repeatedLoad(int(tt.destination), 1)},
+				{id: "other", loads: []Load{1}, limit: 1},
+			})
+			if tt.placementPenalty > 0 {
+				place := []Placement[string, string, string, string]{NewPreference("target", tt.placementPenalty, func(w Worker[string, string], work Work[string, string]) bool {
+					return work.Unit != "source-0" || w.ID == "destination"
+				})}
+				var bad []Grant[string, string]
+				a, bad = Update(a, place, nil, a.Work(), balanceTime)
+				require.Empty(t, bad)
+			}
+			ignore := map[string]bool{}
+			for unit := range a.work {
+				ignore[unit] = unit != "source-0"
+			}
+			move, diff, ok := a.LoadBalance(balanceTime, ignore)
+			require.Equal(t, tt.wantMove, ok)
+			if ok {
+				require.Equal(t, "source-0", move.From.Unit)
+				require.Equal(t, "source", move.From.Worker)
+				require.Equal(t, "destination", move.To.Worker)
+				require.Negative(t, diff.Total())
+				require.Equal(t, -tt.placementPenalty, diff.Place)
+				require.Equal(t, tt.wantDiff, diff.Load)
+				_, released, _, _ := a.Release(move.From, balanceTime)
+				require.True(t, released)
+				_, _, again := a.LoadBalance(balanceTime, ignore)
+				require.False(t, again)
+			}
+			require.NoError(t, a.Check())
+		})
+	}
+}
+
+func TestLoadBalanceShardWeight(t *testing.T) {
+	for _, tt := range []struct {
+		name                string
+		source, destination Load
+		shard               Load
+		wantMove            bool
+	}{
+		{"below cutoff weight 19", 190, 40, 19, false},
+		{"below cutoff weight 20", 190, 40, 20, true},
+		{"below cutoff weight 21", 190, 40, 21, true},
+		{"below cutoff small shard despite large gap", 190, 40, 1, false},
+		{"at cutoff small shard", 201, 182, 1, true},
+		{"above cutoff small shard", 202, 183, 1, true},
+		{"gap equals twice shard weight", 190, 90, 50, true},
+		{"gap below twice shard weight", 190, 90, 51, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			// Total load 600 across three workers gives expected=200.
+			// With weight-one shards cutoff=201; the larger selected shards
+			// increase cutoff to 202. The selected shard's overload penalty
+			// rounds to zero, so only Path B can move it.
+			other := 600 - tt.source - tt.destination
+			a := newBalanceAllocation(t, []balanceWorker{
+				{id: "source", loads: append([]Load{tt.shard}, repeatedLoad(int(tt.source-tt.shard), 1)...)},
+				{id: "destination", loads: repeatedLoad(int(tt.destination), 1)},
+				{id: "other", loads: repeatedLoad(int(other), 1), limit: other},
+			})
+			ignore := map[string]bool{}
+			for unit := range a.work {
+				ignore[unit] = unit != "source-0"
+			}
+			move, diff, ok := a.LoadBalance(balanceTime, ignore)
+			require.Equal(t, tt.wantMove, ok)
+			if ok {
+				require.Equal(t, "source-0", move.From.Unit)
+				require.Equal(t, "source", move.From.Worker)
+				require.Equal(t, "destination", move.To.Worker)
+				require.Equal(t, AdjustedLoad{}, diff)
+				_, released, _, _ := a.Release(move.From, balanceTime)
+				require.True(t, released)
+				_, _, again := a.LoadBalance(balanceTime, ignore)
+				require.False(t, again)
+			}
+			require.NoError(t, a.Check())
+		})
+	}
+}
+
+type balanceWorker struct {
+	id    string
+	loads []Load
+	limit Load
+}
+
+var balanceTime = time.Unix(1000, 0)
+
+func newBalanceAllocation(t *testing.T, workers []balanceWorker) *Allocation[string, string, string, string] {
+	t.Helper()
+	var work []Work[string, string]
+	for _, w := range workers {
+		for i, load := range w.loads {
+			work = append(work, Work[string, string]{Unit: fmt.Sprintf("%s-%d", w.id, i), Load: load})
+		}
+	}
+	delta, load := Load(-1), Load(20)
+	a := New[string, string, string, string]("allocation", nil, nil, work, balanceTime, WithMaxLoadPenaltyDelta(&delta), WithMinLoadToMoveToUnderloaded(&load))
+	for _, w := range workers {
+		var grants []Grant[string, string]
+		for i := range w.loads {
+			unit := fmt.Sprintf("%s-%d", w.id, i)
+			grants = append(grants, NewGrant(GrantID("old:"+unit), Active, None, unit, w.id, balanceTime, balanceTime.Add(time.Hour)))
+		}
+		_, ok := a.Attach(NewWorker(w.id, ""), w.limit, balanceTime.Add(time.Hour), grants...)
+		require.True(t, ok)
+	}
+	require.NoError(t, a.Check())
+	return a
+}
+
+func repeatedLoad(n int, load Load) []Load {
+	loads := make([]Load, n)
+	for i := range loads {
+		loads[i] = load
+	}
+	return loads
 }
 
 func newGrantMap[T, K comparable](list ...Grant[T, K]) map[T]Grant[T, K] {
