@@ -30,6 +30,7 @@ go_library(
         "@co_atoms_go_lib_net_location//go/location",
         "@co_atoms_go_lib_net_session//go/session",
         "@co_atoms_go_slicex//:slicex",
+        "@org_golang_google_grpc//:grpc",
         "@org_golang_google_protobuf//types/known/timestamppb",
     ],
 )
