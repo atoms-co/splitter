@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc"
+
 	"go.atoms.co/iox"
 	"go.atoms.co/lib/contextx"
 	"go.atoms.co/lib/log"
@@ -192,33 +194,38 @@ func (m *ResolvingManager) lead(ctx context.Context, halt iox.AsyncCloser, id st
 }
 
 func (m *ResolvingManager) follow(ctx context.Context, halt iox.AsyncCloser, id, endpoint string) {
-	for !halt.IsClosed() {
-		// (1) Dial leader. If it (unexpectedly) fails, re-try until leader change.
+	// (1) Dial leader. If it (unexpectedly) fails, re-try until leader change.
 
-		cc, err := grpcx.DialNonBlocking(ctx, endpoint, grpcx.WithInsecure())
+	var cc *grpc.ClientConn
+	for !halt.IsClosed() {
+		var err error
+		cc, err = grpcx.DialNonBlocking(ctx, endpoint, grpcx.WithInsecure())
 		if err != nil {
 			log.Errorf(ctx, "Failed to dial leader %v @%v: %v", id, endpoint, err)
 			time.Sleep(4 * time.Second)
 			continue
 		}
-		defer cc.Close()
-
-		log.Infof(ctx, "Connected to remote leader %v @%v", id, endpoint)
-
-		// (2) Once connected, wire in.
-
-		m.mu.Lock()
-		if halt.IsClosed() {
-			m.mu.Unlock()
-			return // leadership change
-		}
-		m.remote = splitterprivatepb.NewLeaderServiceClient(cc)
-		m.mu.Unlock()
-
-		// TODO(herohde) 9/7/2023: periodic connection health check at the grpc level?
-
-		<-halt.Closed()
+		break
 	}
+	defer func() {
+		_ = cc.Close()
+	}()
+
+	log.Infof(ctx, "Connected to remote leader %v @%v", id, endpoint)
+
+	// (2) Once connected, wire in.
+
+	m.mu.Lock()
+	if halt.IsClosed() {
+		m.mu.Unlock()
+		return // leadership change
+	}
+	m.remote = splitterprivatepb.NewLeaderServiceClient(cc)
+	m.mu.Unlock()
+
+	// TODO(herohde) 9/7/2023: periodic connection health check at the grpc level?
+
+	<-halt.Closed()
 }
 
 func (m *ResolvingManager) tryRemote() (splitterprivatepb.LeaderServiceClient, bool) {
