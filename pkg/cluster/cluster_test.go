@@ -1,20 +1,108 @@
 package cluster
 
 import (
+	"context"
 	"fmt"
 	"io"
+	"net"
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/hashicorp/raft"
+	boltdb "github.com/hashicorp/raft-boltdb/v2"
 	"github.com/stretchr/testify/require"
 
+	"go.atoms.co/iox"
 	"go.atoms.co/lib/testing/assertx"
 
 	"go.atoms.co/splitter/pkg/service/leader"
 	raftstorage "go.atoms.co/splitter/pkg/storage/raft"
 )
+
+func TestDrainTimeout(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		quit := iox.NewAsyncCloser()
+		c := &cluster{AsyncCloser: quit, drain: iox.NewAsyncCloser()}
+		c.Drain(time.Minute)
+		assertx.Closed(t, c.drain.Closed())
+		assertx.NoElement(t, c.Closed())
+		time.Sleep(time.Minute)
+		assertx.Closed(t, c.Closed())
+	})
+}
+
+func TestShutdown(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		peers   []string
+		trigger func(*cluster)
+	}{
+		{name: "drain during bootstrap", peers: []string{"local"}, trigger: func(c *cluster) { c.Drain(time.Hour) }},
+		{name: "quit during bootstrap", peers: []string{"local"}, trigger: func(c *cluster) { c.Close() }},
+		{name: "drain while processing", trigger: func(c *cluster) { c.Drain(time.Hour) }},
+		{name: "quit while processing", trigger: func(c *cluster) { c.Close() }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			addr, transport := raft.NewInmemTransport("local:50053")
+			t.Cleanup(func() { require.NoError(t, transport.Close()) })
+			stream := &testStreamLayer{closed: make(chan struct{})}
+			trans := raft.NewNetworkTransport(stream, 1, time.Second, io.Discard)
+			dir := t.TempDir()
+			ldb, err := boltdb.NewBoltStore(filepath.Join(dir, "logs.db"))
+			require.NoError(t, err)
+			sdb, err := boltdb.NewBoltStore(filepath.Join(dir, "stable.db"))
+			require.NoError(t, err)
+			config := raft.DefaultConfig()
+			config.LocalID = "local"
+			config.LogOutput = io.Discard
+			r, err := raft.NewRaft(config, raftstorage.NewFSM(), ldb, sdb, raft.NewInmemSnapshotStore(), transport)
+			require.NoError(t, err)
+
+			observations := make(chan raft.Observation)
+			observer := raft.NewObserver(observations, true, nil)
+			r.RegisterObserver(observer)
+			c := &cluster{
+				AsyncCloser: iox.NewAsyncCloser(), drain: iox.NewAsyncCloser(),
+				id: "local", addr: addr, raft: r, ldb: ldb, sdb: sdb, trans: trans,
+				peers: tt.peers, joiningNode: len(tt.peers) == 0, observer: observer,
+				leaderCh: make(chan leader.Directive), inject: make(chan func()),
+			}
+			done := make(chan struct{})
+			go func() { defer close(done); c.init(context.Background(), observations) }()
+			tt.trigger(c)
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				t.Fatal("timed out waiting for shutdown to finish")
+			}
+			require.Equal(t, raft.Shutdown, r.State())
+			assertx.Closed(t, observations)
+			assertx.Closed(t, c.Closed())
+			assertx.Closed(t, stream.closed)
+			_, err = ldb.GetUint64([]byte("test"))
+			require.Error(t, err)
+			_, err = sdb.GetUint64([]byte("test"))
+			require.Error(t, err)
+		})
+	}
+}
+
+type testStreamLayer struct{ closed chan struct{} }
+
+func (s *testStreamLayer) Accept() (net.Conn, error) {
+	<-s.closed
+	return nil, net.ErrClosed
+}
+
+func (s *testStreamLayer) Close() error { close(s.closed); return nil }
+
+func (s *testStreamLayer) Addr() net.Addr { return &net.TCPAddr{} }
+
+func (s *testStreamLayer) Dial(raft.ServerAddress, time.Duration) (net.Conn, error) {
+	return nil, fmt.Errorf("unexpected dial")
+}
 
 func TestLeaderDirectives_ExistingLeader(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
