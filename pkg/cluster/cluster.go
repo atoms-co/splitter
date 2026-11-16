@@ -375,6 +375,9 @@ notifyLoop:
 			}
 			return
 		case <-c.Closed():
+			if err := c.shutdownRaft(ctx); err != nil {
+				log.Errorf(ctx, "Failed to shutdown raft: %v", err)
+			}
 			return
 		}
 	}
@@ -436,6 +439,7 @@ func (c *cluster) process(ctx context.Context) {
 			if err := c.shutdownRaft(ctx); err != nil {
 				log.Errorf(ctx, "Failed to shutdown raft: %v", err)
 			}
+			return
 		}
 	}
 }

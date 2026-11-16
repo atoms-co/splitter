@@ -32,8 +32,10 @@ go_test(
     deps = [
         "//pkg/service/leader",
         "//pkg/storage/raft",
+        "@co_atoms_go_iox//:iox",
         "@co_atoms_go_lib//testing/assertx",
         "@com_github_hashicorp_raft//:raft",
+        "@com_github_hashicorp_raft_boltdb_v2//:raft-boltdb",
         "@com_github_stretchr_testify//require",
     ],
 )
