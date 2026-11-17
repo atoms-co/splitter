@@ -23,7 +23,6 @@ go_library(
         "@co_atoms_go_lib//contextx",
         "@co_atoms_go_lib//log",
         "@co_atoms_go_lib//net/grpcx",
-        "@co_atoms_go_lib//statshandlerx",
         "@co_atoms_go_lib_net_location//go/location",
         "@co_atoms_go_lib_net_session//go/session",
         "@org_golang_google_grpc//:grpc",
