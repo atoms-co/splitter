@@ -16,7 +16,6 @@ import (
 	"go.atoms.co/lib/net/grpcx"
 	"go.atoms.co/lib/net/location/go/location"
 	"go.atoms.co/lib/net/session/go/session"
-	"go.atoms.co/lib/statshandlerx"
 
 	splitterpb "go.atoms.co/splitter/pb"
 	splitterprivatepb "go.atoms.co/splitter/pb/private"
@@ -129,7 +128,7 @@ func New(ctx context.Context, loc location.Location, endpoint string, cluster cl
 func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 	placement := frontend.NewInternalPlacementService(s.manager, s.manager)
 
-	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
+	gs := grpc.NewServer(grpcServerOptions...)
 	splitterpb.RegisterConsumerServiceServer(gs, frontend.NewConsumerService(s.consumer, s.worker))
 	splitterpb.RegisterManagementServiceServer(gs, frontend.NewManagementService(s.manager, s.manager))
 	splitterpb.RegisterPlacementServiceServer(gs, frontend.NewPlacementService(placement))
@@ -163,7 +162,7 @@ func (s *Server) Serve(ctx context.Context, listeners ...net.Listener) error {
 
 // ServeInternal starts the internal grpc server on the given port. Blocking.
 func (s *Server) ServeInternal(ctx context.Context, listeners ...net.Listener) error {
-	gs := grpc.NewServer(statshandlerx.WithServerGRPCStatsHandler())
+	gs := grpc.NewServer(grpcServerOptions...)
 	splitterprivatepb.RegisterLeaderServiceServer(gs, frontend.NewLeaderService(s.loc, s.manager))
 	splitterprivatepb.RegisterCoordinatorServiceServer(gs, frontend.NewCoordinatorService(s.worker))
 	splitterprivatepb.RegisterClusterServiceServer(gs, frontend.NewClusterService(s.cluster))
@@ -225,4 +224,11 @@ func (s *Server) Shutdown(ctx context.Context, timeout time.Duration) {
 	case <-drainTimeout.C:
 		log.Warnf(ctx, "Failed to drain manager gracefully in %v", time.Since(now))
 	}
+}
+
+var grpcServerOptions []grpc.ServerOption
+
+// SetGRPCServerOptions sets gRPC server options for both public and internal servers
+func SetGRPCServerOptions(opts []grpc.ServerOption) {
+	grpcServerOptions = opts
 }

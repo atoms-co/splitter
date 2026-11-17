@@ -12,7 +12,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"go.atoms.co/lib/net/grpcx"
-	"go.atoms.co/lib/statshandlerx"
 
 	"go.atoms.co/splitter/pkg/core"
 	"go.atoms.co/splitter/pkg/model"
@@ -39,11 +38,7 @@ func withClient(fn func(ctx context.Context, client model.Client) error) error {
 	if len(endpoints) > 0 {
 		ctx, cancel := context.WithTimeout(ctx, dialTimeout)
 		defer cancel()
-		cc, err := grpc.DialContext(
-			ctx,
-			fmt.Sprintf("multi:///%s", strings.Join(endpoints, ",")),
-			append(opts, statshandlerx.WithClientGRPCStatsHandler())...,
-		)
+		cc, err := grpc.DialContext(ctx, fmt.Sprintf("multi:///%s", strings.Join(endpoints, ",")), opts...)
 		if err != nil {
 			return err
 		}
@@ -77,11 +72,7 @@ func withConsumerClient(fn func(ctx context.Context, client model.ConsumerClient
 	if len(endpoints) > 0 {
 		ctx, cancel := context.WithTimeout(ctx, dialTimeout)
 		defer cancel()
-		cc, err := grpc.DialContext(
-			ctx,
-			fmt.Sprintf("multi:///%s", strings.Join(endpoints, ",")),
-			append(opts, statshandlerx.WithClientGRPCStatsHandler())...,
-		)
+		cc, err := grpc.DialContext(ctx, fmt.Sprintf("multi:///%s", strings.Join(endpoints, ",")), opts...)
 		if err != nil {
 			return err
 		}
